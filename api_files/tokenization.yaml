@@ -1,0 +1,120 @@
+openapi: 3.0.1
+info:
+  title: FastAPI
+  version: 0.1.0
+paths:
+  /api/v1/task/tokenization:
+    post:
+      summary: 'Tokenization Handler'
+      operationId: _handler_api_v1_task_tokenization_post
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              properties:
+                inputs:
+                  type: string
+                  title: Inputs
+                model_id:
+                  type: string
+                  title: Model Id
+              required:
+                - inputs
+                - model_id
+              type: object
+              title: TokenizationTaskHttpRequest
+          application/json:
+            schema:
+              properties:
+                inputs:
+                  type: string
+                  title: Inputs
+                model_id:
+                  type: string
+                  title: Model Id
+              required:
+                - inputs
+                - model_id
+              additionalProperties: false
+              type: object
+              title: TokenizationTaskHttpRequest
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenizationResults'
+  /health:
+    get:
+      summary: 'Health Check'
+      operationId: _health_check_health_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            text/plain:
+              schema:
+                type: string
+components:
+  schemas:
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    TokenizationResults:
+      type: object
+      title: TokenizationResults
+      properties:
+        results:
+          anyOf:
+            - items:
+                additionalProperties: false
+                properties:
+                  start:
+                    title: Start
+                    type: integer
+                  end:
+                    title: End
+                    type: integer
+                  text:
+                    title: Text
+                    type: string
+                title: Token
+                type: object
+              type: array
+            - type: 'null'
+          title: Results
+        token_count:
+          anyOf:
+            - type: integer
+            - type: 'null'
+          title: Token Count
+          
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+              - type: string
+              - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+      type: object
+      required:
+        - loc
+        - msg
+        - type
+      title: ValidationError
