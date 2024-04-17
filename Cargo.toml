@@ -1,0 +1,30 @@
+[package]
+name = "fms-orchestr8"
+version = "0.1.0"
+edition = "2021" # Rust edition
+authors = ["Evaline Ju", "Gaurav Kumbhat"]
+description = "Foundation models orchestration server"
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "fmaas-orchestr8"
+path = "src/main.rs"
+
+[dependencies]
+axum = "0.6.20"
+anyhow = "^1.0.81"
+clap = { version = "^4.5.3", features = ["derive", "env"] }
+futures = "^0.3.30"
+tokio = { version = "^1.37.0", features = ["rt", "rt-multi-thread", "parking_lot", "signal", "sync", "fs"] }
+tracing = "0.1.40"
+tracing-subscriber = { version = "0.3.18", features = ["json", "env-filter"] }
+serde_yml = "^0.0.4"
+serde_json = "^1.0.116"
+serde = { version = "^1.0.197", features = ["derive"] }
+mio = "^0.8.11"
+rustls-webpki = "^0.102.2"
+
+[build-dependencies]
+tonic-build = "=0.11.0"
