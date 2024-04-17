@@ -15,8 +15,27 @@ use tokio::{fs::read, signal, time::sleep};
 use tracing::info;
 use std::convert::Infallible;
 
-
+// ========================================== Constants and Dummy Variables ==========================================
 const API_PREFIX: &'static str = r#"/api/v1/task"#;
+
+// TODO: Change with real object
+struct inner_response {
+    sample: bool
+}
+struct sample_response {
+    response: inner_response
+}
+
+// TODO: Dummy streaming response object
+#[derive(Serialize)]
+pub(crate) struct StreamResponse {
+    pub generated_text: String,
+    pub processed_index: i32,
+}
+
+const DUMMY_RESPONSE: [&'static str; 9] = ["This", "is", "very", "good", "news,", "streaming", "is", "working", "!"];
+
+// ========================================== Server functions ==========================================
 
 
 // Server shared state
@@ -53,23 +72,6 @@ async fn health() -> Result<(), ()> {
     // TODO: determine how to detect if orchestrator is healthy or not
     Ok(())
 }
-
-// TODO: Change with real object
-struct inner_response {
-    sample: bool
-}
-struct sample_response {
-    response: inner_response
-}
-
-// TODO: Dummy streaming response object
-#[derive(Serialize)]
-pub(crate) struct StreamResponse {
-    pub generated_text: String,
-    pub processed_index: i32,
-}
-
-const DUMMY_RESPONSE: [&'static str; 9] = ["This", "is", "very", "good", "news,", "streaming", "is", "working", "!"];
 
 async fn classification_with_generation(Json(payload): Json<Value>) ->  (StatusCode, Json<Value>) {
     // TODO: determine how to detect if orchestrator is healthy or not
