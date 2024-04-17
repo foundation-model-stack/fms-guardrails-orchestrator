@@ -1,4 +1,4 @@
-use std::{net::SocketAddr, time::Duration};
+use std::{net::SocketAddr};
 use axum::{
     extract::Extension,
     http::{HeaderMap, Method, StatusCode},
@@ -9,9 +9,9 @@ use axum::{
 // sse -> server side events
 use axum::response::sse::{Event, KeepAlive, Sse};
 use futures::stream::Stream;
-use serde::{Deserialize, Serialize};
+use serde::{Serialize};
 use serde_json::{json, Value};
-use tokio::{fs::read, signal, time::sleep};
+use tokio::{signal};
 use tracing::info;
 use std::convert::Infallible;
 
@@ -19,11 +19,11 @@ use std::convert::Infallible;
 const API_PREFIX: &'static str = r#"/api/v1/task"#;
 
 // TODO: Change with real object
-struct inner_response {
+struct InnerResponse {
     sample: bool
 }
-struct sample_response {
-    response: inner_response
+struct SampleResponse {
+    response: InnerResponse
 }
 
 // TODO: Dummy streaming response object
@@ -87,7 +87,7 @@ async fn stream_classification_with_gen(Json(payload): Json<Value>) -> Sse<impl 
         event.json_data(stream_token).unwrap()
     };
 
-    let (response_stream) =
+    let response_stream =
         generate_stream_response(Json(payload), on_message_callback).await;
     let sse = Sse::new(response_stream).keep_alive(KeepAlive::default());
     sse
