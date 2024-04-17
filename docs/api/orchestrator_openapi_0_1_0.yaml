@@ -1,0 +1,391 @@
+openapi: 3.0.1
+info:
+  title: FMS Orchestrator API
+  version: 0.1.0
+paths:
+  /api/v1/task/classification-with-text-generation:
+    post:
+      tags:
+        - Text Generation with HAP/PII
+      summary: Guardrails Unary Handler
+      operationId: >-
+        guardrails_unary_handler_api_v1_task_classification_with_text_generation_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GuardrailsHttpRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClassifiedGeneratedTextResult'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/task/server-streaming-classification-with-text-generation:
+    post:
+      tags:
+        - Text Generation with HAP/PII
+      summary: Guardrails Server Stream Handler
+      operationId: >-
+        guardrails_server_stream_handler_api_v1_task_server_streaming_classification_with_text_generation_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GuardrailsHttpRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClassifiedGeneratedTextStreamResult'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+components:
+  schemas:
+    ClassifiedGeneratedTextResult:
+      properties:
+        generated_text:
+          anyOf:
+            - type: string
+          title: Generated Text
+        token_classification_results:
+          anyOf:
+            - $ref: '#/components/schemas/TextGenTokenClassificationResults'
+        finish_reason:
+          anyOf:
+            - $ref: '#/components/schemas/FinishReason'
+        generated_token_count:
+          anyOf:
+            - type: integer
+          title: Generated Token Count
+        seed:
+          anyOf:
+            - type: integer
+          title: Seed
+        input_token_count:
+          anyOf:
+            - type: integer
+          title: Input Token Count
+        warnings:
+          anyOf:
+            - items:
+                $ref: '#/components/schemas/InputWarning'
+              type: array
+          title: Warnings
+        tokens:
+          anyOf:
+            - items:
+                $ref: '#/components/schemas/GeneratedToken'
+              type: array
+          title: Tokens
+        input_tokens:
+          anyOf:
+            - items:
+                $ref: '#/components/schemas/GeneratedToken'
+              type: array
+          title: Input Tokens
+      additionalProperties: false
+      required: ["input_token_count", "token_classification_results"]
+      type: object
+      title: ClassifiedGeneratedTextResult
+    ClassifiedGeneratedTextStreamResult:
+      properties:
+        generated_text:
+          anyOf:
+            - type: string
+          title: Generated Text
+        token_classification_results:
+          anyOf:
+            - $ref: '#/components/schemas/TextGenTokenClassificationResults'
+        finish_reason:
+          anyOf:
+            - $ref: '#/components/schemas/FinishReason'
+        generated_token_count:
+          anyOf:
+            - type: integer
+          title: Generated Token Count
+        seed:
+          anyOf:
+            - type: integer
+          title: Seed
+        input_token_count:
+          anyOf:
+            - type: integer
+          title: Input Token Count
+        warnings:
+          anyOf:
+            - items:
+                $ref: '#/components/schemas/InputWarning'
+              type: array
+          title: Warnings
+        tokens:
+          anyOf:
+            - items:
+                $ref: '#/components/schemas/GeneratedToken'
+              type: array
+          title: Tokens
+        input_tokens:
+          anyOf:
+            - items:
+                $ref: '#/components/schemas/GeneratedToken'
+              type: array
+          title: Input Tokens
+        processed_index:
+          anyOf:
+            - type: integer
+          title: Processed Index
+        start_index:
+          type: integer
+          title: Start Index
+      additionalProperties: false
+      required: ["input_token_count", "token_classification_results", "start_index"]
+      type: object
+      title: ClassifiedGeneratedTextStreamResult
+    ExponentialDecayLengthPenalty:
+      properties:
+        start_index:
+          type: integer
+          title: Start Index
+        decay_factor:
+          type: number
+          title: Decay Factor
+      additionalProperties: false
+      type: object
+      title: ExponentialDecayLengthPenalty
+    FinishReason:
+      type: string
+      enum:
+        - NOT_FINISHED
+        - MAX_TOKENS
+        - EOS_TOKEN
+        - CANCELLED
+        - TIME_LIMIT
+        - STOP_SEQUENCE
+        - TOKEN_LIMIT
+        - ERROR
+      title: FinishReason
+    GeneratedToken:
+      properties:
+        text:
+          type: string
+          title: Text
+        logprob:
+          anyOf:
+            - type: number
+          title: Logprob
+        rank:
+          anyOf:
+            - type: integer
+          title: Rank
+      additionalProperties: false
+      type: object
+      required: ["text"]
+      title: GeneratedToken
+    GuardrailsConfig:
+      properties:
+        input:
+          type: object
+          title: Input
+          default:
+            models: {}
+            masks: []
+        output:
+          additionalProperties:
+            type: object
+          type: object
+          title: Output
+          default:
+            models: {}
+      type: object
+      title: GuardrailsConfig
+    GuardrailsHttpRequest:
+      properties:
+        model_id:
+          type: string
+          title: Model Id
+        inputs:
+          type: string
+          title: Inputs
+        guardrail_config:
+          allOf:
+            - $ref: '#/components/schemas/GuardrailsConfig'
+          default:
+            input:
+              masks: []
+              models: {}
+            output:
+              models: {}
+        text_gen_parameters:
+          allOf:
+            - $ref: '#/components/schemas/GuardrailsTextGenerationParameters'
+      type: object
+      required:
+        - model_id
+        - inputs
+      title: GuardrailsHttpRequest
+    GuardrailsTextGenerationParameters:
+      properties:
+        max_new_tokens:
+          type: integer
+          title: Max New Tokens
+        min_new_tokens:
+          type: integer
+          title: Min New Tokens
+        truncate_input_tokens:
+          type: integer
+          title: Truncate Input Tokens
+        decoding_method:
+          type: string
+          title: Decoding Method
+        top_k:
+          type: integer
+          title: Top K
+        top_p:
+          type: number
+          title: Top P
+        typical_p:
+          type: number
+          title: Typical P
+        temperature:
+          type: number
+          title: Temperature
+        repetition_penalty:
+          type: number
+          title: Repetition Penalty
+        max_time:
+          type: number
+          title: Max Time
+        exponential_decay_length_penalty:
+          allOf:
+            - $ref: '#/components/schemas/ExponentialDecayLengthPenalty'
+        stop_sequences:
+          items:
+            type: string
+          type: array
+          title: Stop Sequences
+        seed:
+          type: integer
+          title: Seed
+        preserve_input_text:
+          type: boolean
+          title: Preserve Input Text
+        input_tokens:
+          type: boolean
+          title: Input Tokens
+        generated_tokens:
+          type: boolean
+          title: Generated Tokens
+        token_logprobs:
+          type: boolean
+          title: Token Logprobs
+        token_ranks:
+          type: boolean
+          title: Token Ranks
+      additionalProperties: false
+      type: object
+      title: GuardrailsTextGenerationParameters
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    InputWarning:
+      properties:
+        id:
+          allOf:
+            - $ref: '#/components/schemas/InputWarningReason'
+        message:
+          type: string
+          title: Message
+      additionalProperties: false
+      type: object
+      title: InputWarning
+    InputWarningReason:
+      enum: [UNSUITABLE_INPUT]
+      title: InputWarningReason
+    TextGenTokenClassificationResults:
+    # By default open-api spec consider all fields as optional
+      properties:
+        input:
+          anyOf:
+            - items:
+                $ref: '#/components/schemas/TokenClassificationResult'
+              type: array
+          title: Input
+        output:
+          anyOf:
+            - items:
+                $ref: '#/components/schemas/TokenClassificationResult'
+              type: array
+          title: Output
+      additionalProperties: false
+      type: object
+      title: TextGenTokenClassificationResults
+    TokenClassificationResult:
+      properties:
+        start:
+          type: integer
+          title: Start
+        end:
+          type: integer
+          title: End
+        word:
+          type: string
+          title: Word
+        entity:
+          type: string
+          title: Entity
+        entity_group:
+          type: string
+          title: Entity Group
+        score:
+          type: number
+          title: Score
+        token_count:
+          anyOf:
+            - type: integer
+          title: Token Count
+      additionalProperties: false
+      required: ["start", "end", "word", "entity", "entity_group", "score"]
+      type: object
+      title: TokenClassificationResult
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+              - type: string
+              - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+      type: object
+      required:
+        - loc
+        - msg
+        - type
+      title: ValidationError
