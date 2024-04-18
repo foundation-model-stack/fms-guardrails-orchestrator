@@ -27,14 +27,19 @@ pub enum ChunkerType {
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct ChunkerConfig {
-    r#type: ChunkerType
+    pub r#type: ChunkerType
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct DetectorConfig {
+<<<<<<< HEAD
     service_config: ServiceAddr,
     config: HashMap<String, String>, // arbitrary keys and values
     chunker: String // chunker id
+=======
+    pub config: HashMap<String, String>, // things like endpoint, tls key etc.
+    pub chunker: String // chunker id
+>>>>>>> f090844 (:construction: Begin orchestration)
 
 }
 
@@ -57,8 +62,8 @@ detectors:
 */
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct DetectorMap {
-    chunkers:  HashMap<String, ChunkerConfig>,
-    detectors: HashMap<String, DetectorConfig>
+    pub chunkers:  HashMap<String, ChunkerConfig>,
+    pub detectors: HashMap<String, DetectorConfig>
 }
 
 

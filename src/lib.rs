@@ -1,4 +1,5 @@
 // Declare modules
+<<<<<<< HEAD
 
 use anyhow::Context;
 use futures::future::try_join_all;
@@ -7,6 +8,12 @@ use tokio::try_join;
 use std::{collections::HashMap, path::Path};
 use tonic::transport::ClientTlsConfig;
 
+=======
+pub mod config;
+pub mod server;
+pub mod models;
+pub mod orchestrator;
+>>>>>>> f090844 (:construction: Begin orchestration)
 
 use serde::{Serialize, Deserialize};
 
