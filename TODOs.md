@@ -6,3 +6,4 @@
 - [ ] Add unit tests
 - [ ] Add request validation for classification with text generation endpoint
 - [ ] Add request validation for streaming classification with text generation endpoint
+- [ ] Host API in swagger pages in the reo
