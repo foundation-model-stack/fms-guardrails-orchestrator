@@ -1,3 +1,5 @@
+use crate::{models, ErrorResponse, GuardrailsResponse};
+
 use std::{net::SocketAddr};
 use axum::{
     extract::Extension,
@@ -35,7 +37,7 @@ pub(crate) struct StreamResponse {
 
 const DUMMY_RESPONSE: [&'static str; 9] = ["This", "is", "very", "good", "news,", "streaming", "is", "working", "!"];
 
-// ========================================== Server functions ==========================================
+// ========================================== Handler functions ==========================================
 
 
 // Server shared state
@@ -73,14 +75,23 @@ async fn health() -> Result<(), ()> {
     Ok(())
 }
 
-async fn classification_with_generation(Json(payload): Json<Value>) ->  (StatusCode, Json<Value>) {
-    // TODO: determine how to detect if orchestrator is healthy or not
-    let response = json!({"response": {"sample": true}});
-    (StatusCode::OK, Json(response))
+// #[debug_handler]
+// TODO: Improve Bad Request error handling by implementing Validate middleware
+async fn classification_with_generation(
+    Json(payload): Json<models::GuardrailsHttpRequest>) -> Json<GuardrailsResponse> {
+
+    // TODO: note this function currently is not doing .await and hence is blocking
+    let token_class_result = models::TextGenTokenClassificationResults::new();
+    let input_token_count = 2;
+    let response = models::ClassifiedGeneratedTextResult::new(token_class_result, input_token_count);
+    Json(GuardrailsResponse::SuccessfulResponse(response))
+
 }
 
 
-async fn stream_classification_with_gen(Json(payload): Json<Value>) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+async fn stream_classification_with_gen(
+    state: Extension<ServerState>,
+    Json(payload): Json<Value>) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
 
     let on_message_callback = |stream_token: StreamResponse| {
         let event = Event::default();
@@ -144,3 +155,4 @@ async fn shutdown_signal() {
 
     info!("signal received, starting graceful shutdown");
 }
+
