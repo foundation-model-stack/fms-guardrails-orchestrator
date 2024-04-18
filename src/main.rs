@@ -11,11 +11,11 @@ struct Args {
     rest_port: u16,
     #[clap(long, env)]
     json_output: bool,
-    #[clap(default_value="config/configmap.yaml", long, env = "DETECTOR_MAP_CONFIG")]
+    #[clap(default_value="config/configmap.yaml", long, env)]
     detector_map_config: String,
-    #[clap(long, env = "TLS_CERT_PATH")]
+    #[clap(long, env)]
     tls_cert_path: Option<String>,
-    #[clap(long, env = "TLS_KEY_PATH")]
+    #[clap(long, env)]
     tls_key_path: Option<String>
     // TODO: Add TLS configuration for other servers or get them via above detector config
     // TODO: Add router hostname, port and TLS config
