@@ -2,6 +2,8 @@
 
 Orchestrator server for invocation of detectors on text generation input and output [name subject to change]
 
+![LLM Orchestration diagram](docs/architecture/images/llm_detector_orchestration.png "Orchestr8 Diagram")
+
 
 ### Sample requests
 
