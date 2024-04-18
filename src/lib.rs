@@ -1,5 +1,5 @@
 // Declare modules
-pub mod detector_map_config;
+pub mod config;
 pub mod server;
 pub mod models;
 

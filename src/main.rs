@@ -1,7 +1,7 @@
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
 use clap::Parser;
-use fms_orchestr8::{server, detector_map_config::DetectorMap};
+use fms_orchestr8::{server, config::DetectorMap};
 
 /// App Configuration
 #[derive(Parser, Debug)]
@@ -11,7 +11,7 @@ struct Args {
     rest_port: u16,
     #[clap(long, env)]
     json_output: bool,
-    #[clap(default_value="config/configmap.yaml", long, env)]
+    #[clap(default_value="config/config.yaml", long, env)]
     detector_map_config: String,
     #[clap(long, env)]
     tls_cert_path: Option<String>,
