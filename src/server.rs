@@ -1,4 +1,4 @@
-use crate::{models, ErrorResponse, GuardrailsResponse};
+use crate::{config, models, utils, ErrorResponse, GuardrailsResponse};
 
 use std::{net::SocketAddr};
 use axum::{
@@ -19,6 +19,7 @@ use std::convert::Infallible;
 
 // ========================================== Constants and Dummy Variables ==========================================
 const API_PREFIX: &'static str = r#"/api/v1/task"#;
+const TGIS_PORT: u16 = 8033;
 
 // TODO: Change with real object
 struct InnerResponse {
@@ -49,10 +50,16 @@ pub(crate) struct ServerState {
 pub async fn run(
     rest_addr: SocketAddr,
     // tls_key_pair: Option<(String, String)>,
-    // detector_map: DetectorMap,
+    orchestrator_config: config::OrchestratorConfig,
 ) {
 
     // TODO: Configure TLS if requested
+
+    // Configure TGIS
+    let tgis_servicer = utils::configure_tgis(
+        orchestrator_config.tgis_config,
+        TGIS_PORT
+    );
 
     // Build and await on the HTTP server
     let app = Router::new()
@@ -90,7 +97,7 @@ async fn classification_with_generation(
 
 
 async fn stream_classification_with_gen(
-    state: Extension<ServerState>,
+    // state: Extension<ServerState>,
     Json(payload): Json<Value>) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
 
     let on_message_callback = |stream_token: StreamResponse| {

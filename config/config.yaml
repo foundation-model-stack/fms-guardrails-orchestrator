@@ -1,13 +1,21 @@
 # Meant to be read by orchestrator!!
-chunkers:
-    sentence-en: # chunker-id
-        type: SENTENCE
-    sentence-ja: # chunker-id
-        type: SENTENCE
-detectors:
-    hap-en:
-        config:
-            endpoint: router.svc.cluster.local
-            port: 12345
-        chunker: sentence-en
+tgis_config:
+    hostname: foo.com
+    port: 8080
+    tls_enabled: false
+detector_config:
+    chunkers:
+        sentence-en: # chunker-id
+            type: SENTENCE
+        sentence-ja: # chunker-id
+            type: SENTENCE
+    detectors:
+        hap-en:
+            service_config:
+                hostname: localhost
+                port: 8080
+                tls_enabled: false
+            config:
+                foo: bar
+            chunker: sentence-en
 
