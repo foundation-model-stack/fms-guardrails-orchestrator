@@ -2,6 +2,7 @@
 pub mod parse;
 pub mod server;
 pub mod models;
+pub mod detector_map_config;
 
 use serde::{Serialize, Deserialize};
 

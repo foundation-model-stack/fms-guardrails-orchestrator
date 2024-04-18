@@ -1,7 +1,7 @@
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
 use clap::Parser;
-use fms_orchestr8::server;
+use fms_orchestr8::{server, detector_map_config::DetectorMap};
 
 /// App Configuration
 #[derive(Parser, Debug)]
@@ -11,13 +11,15 @@ struct Args {
     rest_port: u16,
     #[clap(long, env)]
     json_output: bool,
-    #[clap(long, env = "DETECTOR_MAP_CONFIG")]
-    detector_map_config: Option<String>,
+    #[clap(default_value="config/configmap.yaml", long, env = "DETECTOR_MAP_CONFIG")]
+    detector_map_config: String,
     #[clap(long, env = "TLS_CERT_PATH")]
     tls_cert_path: Option<String>,
     #[clap(long, env = "TLS_KEY_PATH")]
     tls_key_path: Option<String>
     // TODO: Add TLS configuration for other servers or get them via above detector config
+    // TODO: Add router hostname, port and TLS config
+    // TODO: Add chunker hostname, port and TLS config (for now we will assume that all chunkers live locally)
 }
 
 fn main() -> Result<(), std::io::Error> {
@@ -29,7 +31,9 @@ fn main() -> Result<(), std::io::Error> {
     // }
 
     // Load detector map config
-    // let detector_map = DetectorMap::load(args.detector_map_config);
+    let detector_map = DetectorMap::load(args.detector_map_config);
+
+    println!("{:?}", detector_map);
 
     // Launch Tokio runtime
     tokio::runtime::Builder::new_multi_thread()

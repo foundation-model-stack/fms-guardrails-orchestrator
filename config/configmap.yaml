@@ -1,18 +1,13 @@
 # Meant to be read by orchestrator!!
 chunkers:
-  sentence-en:
-    type: test
-    config:
-      model: syntax_test_en
-  sentence-jp:
-    type: test
-    config:
-      model: syntax_test_jp
-
+    sentence-en: # chunker-id
+        type: SENTENCE
+    sentence-ja: # chunker-id
+        type: SENTENCE
 detectors:
-  hap-en:
-    type: hap
-    config:
-      model: en_test.38m.hap
-      chunker: sentence-en
-      endpoint: router.svc.cluster.local:12345 # Q: what info does router need?
+    hap-en:
+        config:
+            endpoint: router.svc.cluster.local
+            port: 12345
+        chunker: sentence-en
+
