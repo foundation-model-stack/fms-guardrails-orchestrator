@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021" # Rust edition
 authors = ["Evaline Ju", "Gaurav Kumbhat"]
 description = "Foundation models orchestration server"
+build = "build.rs"
 
 [lib]
 path = "src/lib.rs"
