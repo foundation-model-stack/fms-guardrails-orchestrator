@@ -95,10 +95,14 @@ const DUMMY_RESPONSE: [&'static str; 9] = ["This", "is", "very", "good", "news,"
 //     for (detector_name, detector_config) in detectors.into_iter() {
 //         if detector_to_find == detector_name {
 //             let chunker_name: String = detector_config.chunker;
-//             return Ok(Some(&chunker_name)) // FIX
+//             // Could just form call here
+//             match chunkers.get(&chunker_name) {
+//                 Some(&v) => v,
+//                 None => ErrorResponse{error: "Detector not configured correctly".to_owned()},
+//             }
 //         }
 //     }
-//     ErrorResponse("Detector not configured correctly");
+//     ErrorResponse{error: "Detector not configured correctly".to_owned()}
 // }
 
 // ========================================== Dummy Tasks ==========================================
@@ -197,11 +201,11 @@ async fn input_detection(input_detectors_models: HashMap<String, HashMap<String,
 pub async fn create_tasks(payload: GuardrailsHttpRequest) {
     
     // LLM / text generation model
-    let model_id: String = payload.model_id;
+    let model_id: String = payload.clone().model_id;
 
     // Original user input text, initialized as vector for type
     // consistency if masks are supplied
-    let mut user_input: Vec<String> = vec![payload.inputs];
+    let mut user_input: Vec<String> = vec![payload.clone().inputs];
 
     // No guardrail_config specified
     if payload.guardrail_config.is_none() {
@@ -212,10 +216,10 @@ pub async fn create_tasks(payload: GuardrailsHttpRequest) {
     // Slice up if masks are supplied
     // Whole payload is just passed here to abstract away impl, could be separate task
     // tracked as part of DAG/list instead of function in the future
-    user_input = slice_input(user_input, payload);
+    user_input = slice_input(user_input, payload.clone());
 
     // Check for input detection
-    let input_detectors: Option<HashMap<String, HashMap<String, String>>> = payload.guardrail_config.unwrap().input.unwrap().models;
+    let input_detectors: Option<HashMap<String, HashMap<String, String>>> = payload.clone().guardrail_config.unwrap().input.unwrap().models;
     let do_input_detection: bool = input_detectors.is_some();
     if do_input_detection {
         // Input detection tasks - all unary - can abstract this later
@@ -246,7 +250,7 @@ pub async fn create_tasks(payload: GuardrailsHttpRequest) {
     };
 
     let tgis_response_stream =
-        tgis_call(Json(payload), on_message_callback).await;
+        tgis_call(Json(payload.clone()), on_message_callback).await;
 
 
     // If output detection

@@ -3,7 +3,7 @@
 use validator::Validate;
 
 
-#[derive(Debug, serde::Serialize, serde::Deserialize, validator::Validate)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, validator::Validate)]
 pub struct GuardrailsHttpRequest {
     #[serde(rename = "model_id")]
     pub model_id: String,
