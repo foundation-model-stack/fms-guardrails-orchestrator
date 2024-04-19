@@ -1,4 +1,10 @@
-use crate::{clients::tgis::GenerationServicer, config::{self, OrchestratorConfig}, models, utils, ErrorResponse, GuardrailsResponse};
+use crate::{clients::tgis::{self, GenerationServicer}, config::{self, OrchestratorConfig}, models, pb::fmaas::generation_service_server::GenerationService, utils, ErrorResponse, GuardrailsResponse};
+
+use crate::{pb::fmaas::{
+    GenerationRequest, GenerationResponse,  Parameters,
+    SingleGenerationRequest,
+}};
+
 use std::{net::SocketAddr, sync::Arc};
 use axum::{
     extract::{Extension, State},
@@ -9,7 +15,7 @@ use axum::{
 };
 // sse -> server side events
 use axum::response::sse::{Event, KeepAlive, Sse};
-use futures::stream::Stream;
+use futures::{stream::Stream, StreamExt};
 use serde::{Serialize};
 use serde_json::{json, Value};
 use tokio::{signal};
@@ -114,30 +120,56 @@ async fn stream_classification_with_gen(
     };
 
     let response_stream =
-        generate_stream_response(Json(payload), on_message_callback).await;
+        generate_stream_response(Json(payload), state.tgis_servicer.clone(), on_message_callback).await;
     let sse = Sse::new(response_stream).keep_alive(KeepAlive::default());
     sse
 }
 
 async fn generate_stream_response(
     Json(payload): Json<models::GuardrailsHttpRequest>,
+    tgis_servicer: GenerationServicer,
     on_message_callback: impl Fn(StreamResponse) -> Event,
 ) -> impl Stream<Item = Result<Event, Infallible>> {
 
 
-    let mut dummy_response_iterator = DUMMY_RESPONSE.iter();
+    // let mut dummy_response_iterator = DUMMY_RESPONSE.iter();
+
+    // TODO: Add remaining parameter
+    let mut tgis_request = tonic::Request::new(
+        SingleGenerationRequest {
+            model_id: payload.model_id,
+            request: Some(GenerationRequest {text: payload.inputs}),
+            prefix_id: None,
+            params: None,
+
+            // prefix_id: Some("".to_string()),
+            // params: None,
+        }
+    );
+
 
     let mut index: i32 = 0;
     let stream = async_stream::stream! {
         // Server sending event stream
-        while let Some(&token) = dummy_response_iterator.next() {
-            let stream_token = StreamResponse {
-                generated_text: token.to_string(),
-                processed_index: index
-            };
-            index += 1;
-            let event = on_message_callback(stream_token);
-            yield Ok(event);
+        // TODO: Currently following is considering successfully response. We need to put it under match to handle potential errors.
+        let mut result = tgis_servicer.generate_stream(tgis_request).await.unwrap().into_inner();
+
+        while let Some(item) = result.next().await  {
+            match item {
+                Ok(gen_response) => {
+                    let tgis_r = gen_response;
+                    println!("{:?}", tgis_r);
+                    let stream_token = StreamResponse {
+                        generated_text: tgis_r.text.to_string(),
+                        processed_index: index
+                    };
+                    index += 1;
+                    let event = on_message_callback(stream_token);
+                    yield Ok(event);
+                }
+                status => print!("{:?}", status)
+            }
+
         }
     };
     stream

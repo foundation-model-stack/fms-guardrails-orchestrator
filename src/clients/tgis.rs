@@ -34,7 +34,7 @@ impl GenerationServicer {
     ) -> Result<GenerationServiceClient<LoadBalancedChannel>, Status> {
         Ok(self
             .clients
-            .get(model_id)
+            .get(&"tgis-all-models".to_string())
             .ok_or_else(|| Status::not_found(format!("Unrecognized model_id: {model_id}")))?
             .clone())
     }

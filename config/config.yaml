@@ -1,7 +1,7 @@
 # Meant to be read by orchestrator!!
 tgis_config:
-    hostname: foo.com
-    port: 8080
+    hostname: localhost
+    port: 8033
     tls_enabled: false
 detector_config:
     chunkers:
