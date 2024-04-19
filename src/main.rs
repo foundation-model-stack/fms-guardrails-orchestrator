@@ -1,7 +1,7 @@
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
 use clap::Parser;
-use fms_orchestr8::{server, config::DetectorMap};
+use fms_orchestr8::{config::{DetectorMap, OrchestratorConfig}, server};
 
 /// App Configuration
 #[derive(Parser, Debug)]
@@ -12,7 +12,7 @@ struct Args {
     #[clap(long, env)]
     json_output: bool,
     #[clap(default_value="config/config.yaml", long, env)]
-    detector_map_config: String,
+    orchestrator_config: String,
     #[clap(long, env)]
     tls_cert_path: Option<String>,
     #[clap(long, env)]
@@ -31,9 +31,9 @@ fn main() -> Result<(), std::io::Error> {
     // }
 
     // Load detector map config
-    let detector_map = DetectorMap::load(args.detector_map_config);
+    let orchestrator_config = OrchestratorConfig::load(args.orchestrator_config);
 
-    println!("{:?}", detector_map);
+    println!("{:?}", orchestrator_config);
 
     // Launch Tokio runtime
     tokio::runtime::Builder::new_multi_thread()
@@ -47,7 +47,7 @@ fn main() -> Result<(), std::io::Error> {
                 rest_addr,
                 // args.tls_cert_path
                 //     .map(|cp| (cp, args.tls_key_path.unwrap())),
-                // detector_map,
+                orchestrator_config,
             )
             .await;
 

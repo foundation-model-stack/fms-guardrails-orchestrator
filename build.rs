@@ -8,7 +8,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .out_dir("src/pb")
         .include_file("mod.rs")
         .compile(
-            &["protos/caikit_runtime_Nlp.proto"],
+            &["protos/caikit_runtime_Nlp.proto", "protos/generation.proto"],
             &["protos"],
         )
         .unwrap_or_else(|e| panic!("protobuf compilation failed: {}", e));
