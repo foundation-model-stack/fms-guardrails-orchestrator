@@ -238,16 +238,16 @@ fn slice_input(mut user_input: Vec<String>, payload: GuardrailsHttpRequest) -> V
     user_input
 }
 
-async fn input_detection(
-    input_detectors_models: HashMap<String, HashMap<String, String>>,
-    chunker_map: HashMap<String, String>,
-    chunker_config_map: HashMap<String, Result<ChunkerConfig, ErrorResponse>>,
+async fn unary_chunk_and_detection(
+    detectors_models: HashMap<String, HashMap<String, String>>,
+    chunker_map: &HashMap<String, String>,
+    chunker_config_map: &HashMap<String, Result<ChunkerConfig, ErrorResponse>>,
     texts: Vec<String>,
 ) -> Vec<DetectorResponse> {
     // input_detectors_models: model_name: {param: value}
     // Future - parallelize calls
     let mut detector_responses = Vec::new();
-    for detector_id in input_detectors_models.keys() {
+    for detector_id in detectors_models.keys() {
         if let Some(chunker_id) = chunker_map.get(detector_id){
             for text in texts.iter() {
                 // TODO: Get config/type for chunker call
@@ -310,7 +310,7 @@ pub async fn do_tasks(payload: GuardrailsHttpRequest, detector_hashmaps: (HashMa
         let input_detector_models: HashMap<String, HashMap<String, String>> = input_detectors.unwrap();
         // Add detection task for each detector - rest [unary] call
         // For each detector, add chunker task as precursor - grpc [unary] call
-        let input_response = input_detection(input_detector_models, chunker_map, chunker_config_map, user_input.clone()).await;
+        let input_detection_response = unary_chunk_and_detection(input_detector_models, &chunker_map, &chunker_config_map, user_input.clone()).await;
     }
 
     // Response aggregation task
@@ -329,6 +329,7 @@ pub async fn do_tasks(payload: GuardrailsHttpRequest, detector_hashmaps: (HashMa
             let output_detector_models: HashMap<String, HashMap<String, String>> = output_detectors.unwrap();
             // Add detection task for each detector - rest [unary] call
             // For each detector, add chunker task as precursor - grpc [unary] call
+            let output_detection_response = unary_chunk_and_detection(output_detector_models, &chunker_map, &chunker_config_map, user_input.clone()).await;
         }
         // Response aggregation task
 
