@@ -13,6 +13,13 @@ use tokio::{signal};
 use tracing::info;
 use std::convert::Infallible;
 
+use crate::{pb::{
+    caikit_data_model::nlp::{
+        Token, TokenizationResults, TokenizationStreamResult,
+    },
+}};
+
+
 // ========================================== Constants and Dummy Variables ==========================================
 const API_PREFIX: &'static str = r#"/api/v1/task"#;
 
@@ -30,25 +37,6 @@ pub(crate) struct GenerationResponse {
 pub(crate) struct TokenizeResponse {
     pub token_count: u32,
     // ...
-}
-
-// TODO: Dummy chunker response objects - replace later
-#[derive(Clone, Serialize)]
-pub(crate) struct Token {
-    pub start: u32,
-    pub end: u32,
-    pub text: String
-}
-#[derive(Clone, Serialize)]
-pub(crate) struct TokenizationResults {
-    pub results: Vec<Token>,
-}
-
-#[derive(Clone, Serialize)]
-pub(crate) struct TokenizationStreamResult {
-    pub results: TokenizationResults,
-    pub processed_index: u32,
-    pub start_index: u32,
 }
 
 // TODO: Dummy detector response objects - replace later
@@ -168,7 +156,8 @@ async fn chunker_unary_call(model_id: String, text: String) -> TokenizationResul
         text: "is".to_string(),
     };
     TokenizationResults {
-        results: vec![token_0, token_1]
+        results: vec![token_0, token_1],
+        token_count: 2,
     }
 }
 
@@ -184,18 +173,17 @@ async fn chunker_stream_call(model_id: String, texts: Vec<String>, on_message_ca
         end: 7,
         text: "is".to_string(),
     };
-    let tok_results = TokenizationResults {
-        results: vec![token_0, token_1]
-    };
+    let token_vec = vec![token_0, token_1];
     let mut dummy_response_iterator = DUMMY_RESPONSE.iter();
 
     let stream = async_stream::stream! {
         // Server sending event stream
         while let Some(&token) = dummy_response_iterator.next() {
             let stream_token = TokenizationStreamResult {
-                results: tok_results.clone(),
+                results: token_vec.clone(),
                 processed_index: 1, 
-                start_index: 0 
+                start_index: 0,
+                token_count: 2,
             };
             let event = on_message_callback(stream_token);
             yield Ok(event);
