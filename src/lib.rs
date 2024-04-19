@@ -18,8 +18,8 @@ pub mod utils;
 mod pb;
 
 
-#[derive(Serialize)]
-pub(crate) struct ErrorResponse {
+#[derive(Debug, Serialize)]
+pub struct ErrorResponse {
     pub error: String,
 }
 

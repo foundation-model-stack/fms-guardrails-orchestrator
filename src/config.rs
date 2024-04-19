@@ -30,7 +30,7 @@ pub struct ChunkerConfig {
     pub r#type: ChunkerType
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, Debug)]
 pub struct DetectorConfig {
     pub service_config: ServiceAddr,
     pub config: HashMap<String, String>, // arbitrary keys and values
@@ -54,7 +54,7 @@ detectors:
         chunker: sentence-en
 
 */
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, Debug)]
 pub struct DetectorMap {
     pub chunkers:  HashMap<String, ChunkerConfig>,
     pub detectors: HashMap<String, DetectorConfig>
@@ -83,7 +83,7 @@ detector_config:
                 foo: bar
             chunker: sentence-en
 */
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, Debug)]
 pub struct OrchestratorConfig {
     pub tgis_config: ServiceAddr,
     pub detector_config: DetectorMap

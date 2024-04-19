@@ -53,58 +53,24 @@ const DUMMY_RESPONSE: [&'static str; 9] = ["This", "is", "very", "good", "news,"
 // ========================================== Handler functions ==========================================
 
 
-// pub fn parse_detector_map(detector_map: DetectorMap) -> (HashMap<std::string::String, std::string::String>, HashMap<std::string::String, Vec<std::string::String>>) {
-//     let chunkers: HashMap<String, ChunkerConfig> = detector_map.chunkers;
-//     let detectors:HashMap<String, DetectorConfig> = detector_map.detectors;
-
-//     let mut detectors_to_chunkers = HashMap::with_capacity(detectors.len());
-//     // This could be more intelligently replaced with a DAG but non-optimized for now
-//     // Map of each chunker to list of detectors they support to optimize
-//     let mut chunkers_to_detectors: HashMap<String, Vec<String>> = HashMap::with_capacity(chunkers.len());
-//     let mut detector_info: HashMap<String, DetectorConfig> = HashMap::with_capacity(detectors.len());
-
-//     for (detector_name, detector_config) in detectors.into_iter() {
-
-//         // Track detectors for each chunker
-//         let chunker_id: String = detector_config.chunker;
-//         match chunkers_to_detectors.entry(chunker_id) {
-//             Entry::Vacant(e) => { e.insert(vec![detector_name]); },
-//             Entry::Occupied(mut e) => { e.get_mut().push(detector_name); }
-//         }
-//         detectors_to_chunkers.insert(detector_name, chunker_id);
-//         detector_info.insert(detector_name, detector_config);
-//     }
-//     // At the end of this we should know which chunkers actually could
-//     // be invoked based on the chunkers_to_detectors map. Extra chunkers
-//     // don't need tracking because should not be invoked independently
-//     // of a detector.
-
-//     // Based on the user request, the detector request list will be formed,
-//     // with chunker requests as prerequisites.
-
-//     // for (key, value) in chunkers_to_detectors.into_iter() {
-//     //     println!("{} / {:?}", key, value);
-//     // }
-//     (detectors_to_chunkers, chunkers_to_detectors)
-
-// }
-
-fn preprocess_detector_map(detector_map: DetectorMap) -> Result<HashMap<String, Result<ChunkerConfig, ErrorResponse>>, ErrorResponse> {
+pub fn preprocess_detector_map(detector_map: DetectorMap) -> Result<(HashMap<String, String>, HashMap<String, Result<ChunkerConfig, ErrorResponse>>), ErrorResponse> {
     // Map detectors to respective chunkers
     let chunkers: HashMap<String, ChunkerConfig> = detector_map.chunkers;
-    let detectors:HashMap<String, DetectorConfig> = detector_map.detectors;
+    let detectors: HashMap<String, DetectorConfig> = detector_map.detectors;
 
+    let mut detector_chunker_map: HashMap<String, String> = HashMap::new();
     let mut chunker_map: HashMap<String, Result<ChunkerConfig, ErrorResponse>> = HashMap::new();
-    while let Some(detector) = detectors.iter().next() {
-        let detector_config = detector.1;
+    for (detector_name, detector_config) in detectors.into_iter() {
         let chunker_name: String = detector_config.chunker.to_string();
         let result: Result<ChunkerConfig, ErrorResponse> = match chunkers.get(&chunker_name) {
             Some(&v) => Ok(v),
-            None => Err(ErrorResponse{error: "Detector not configured correctly".to_string()})
+            None => Err(ErrorResponse{error: format!("Detector {detector_name} not configured correctly")})
         };
         chunker_map.insert(chunker_name, result);
+        // TODO: chunker_name can't be reused
+        detector_chunker_map.insert(detector_name, detector_config.chunker.to_string());
     }
-    Ok(chunker_map)
+    Ok((detector_chunker_map, chunker_map))
 }
 
 // ========================================== Dummy Tasks ==========================================
