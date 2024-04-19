@@ -1,12 +1,30 @@
 
-use std::{collections::HashMap, hash::Hash};
 
+use std::{collections::HashMap, hash::Hash};
+use std::convert::Infallible;
+
+use axum::{
+    extract::{Extension, State},
+    http::{HeaderMap, Method, StatusCode},
+    response::{IntoResponse, sse::{Event, KeepAlive, Sse}},
+    Json,
+};
+use futures::{stream::Stream, StreamExt};
 use tonic::transport::{
     server::RoutesBuilder, Certificate, ClientTlsConfig, Identity, Server, ServerTlsConfig,
 };
 use tokio::fs::read;
 
-use crate::{clients::tgis::GenerationServicer, config::ServiceAddr};
+use crate::{models, ErrorResponse, GuardrailsResponse};
+use crate::{clients::tgis::{self, GenerationServicer}};
+use crate::{config::{ServiceAddr, OrchestratorConfig}};
+use crate::{pb::fmaas::{
+    generation_service_server::GenerationService,
+    GenerationRequest, GenerationResponse,  Parameters,
+    SingleGenerationRequest,
+}};
+
+
 
 // =========================================== Client Calls ==============================================
 
@@ -29,6 +47,58 @@ pub async fn configure_tgis(
     let generation_servicer =
             GenerationServicer::new(default_target_port, client_tls.as_ref(), &model_map);
     generation_servicer.await
+}
+
+pub async fn call_tgis_stream(
+    Json(payload): Json<models::GuardrailsHttpRequest>,
+    tgis_servicer: GenerationServicer,
+    on_message_callback: impl Fn(models::ClassifiedGeneratedTextStreamResult) -> Event,
+)  -> impl Stream<Item = Result<Event, Infallible>> {
+    // TODO: Add remaining parameter
+    let mut tgis_request = tonic::Request::new(
+        SingleGenerationRequest {
+            model_id: payload.model_id,
+            request: Some(GenerationRequest {text: payload.inputs}),
+            prefix_id: None,
+            params: None,
+
+            // prefix_id: Some("".to_string()),
+            // params: None,
+        }
+    );
+
+
+    let mut index: i32 = 0;
+    // TODO: Fix hardcoded start index
+    let start_index: i32 = 0;
+    let stream = async_stream::stream! {
+        // Server sending event stream
+        // TODO: Currently following is considering successfully response. We need to put it under match to handle potential errors.
+        let mut result = tgis_servicer.generate_stream(tgis_request).await.unwrap().into_inner();
+
+        while let Some(item) = result.next().await  {
+            match item {
+                Ok(gen_response) => {
+                    let tgis_r = gen_response;
+                    println!("{:?}", tgis_r);
+                    let mut stream_token = models::ClassifiedGeneratedTextStreamResult::new(
+                        // TODO: Implement real text gen token classification results
+                        models::TextGenTokenClassificationResults::new(),
+                        tgis_r.input_token_count as i32,
+                        start_index
+                    );
+                    stream_token.generated_text = Some(tgis_r.text);
+                    stream_token.processed_index = index.into();
+                    index += 1;
+                    let event = on_message_callback(stream_token);
+                    yield Ok(event);
+                }
+                status => print!("{:?}", status)
+            }
+
+        }
+    };
+    stream
 }
 
 
