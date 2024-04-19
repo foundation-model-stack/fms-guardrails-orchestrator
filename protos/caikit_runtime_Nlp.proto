@@ -3,30 +3,81 @@
  * AUTO GENERATED
  *----------------------------------------------------------------------------*/
 
-syntax = "proto3";
-package caikit.runtime.Nlp;
-import "caikit_data_model_nlp.proto";
+ syntax = "proto3";
+ package caikit.runtime.Nlp;
+ import "google/protobuf/struct.proto";
+ import "caikit_data_model_nlp.proto";
+ import "caikit_data_model_caikit_nlp.proto";
 
 
-/*-- MESSAGES ----------------------------------------------------------------*/
+ /*-- MESSAGES ----------------------------------------------------------------*/
 
-message BidiStreamingTokenizationTaskRequest {
+ message BidiStreamingTokenizationTaskRequest {
 
-  /*-- fields --*/
-  string text_stream = 1;
-}
+   /*-- fields --*/
+   string text_stream = 1;
+ }
+
+ message ServerStreamingTextGenerationTaskRequest {
+
+   /*-- fields --*/
+   string text = 1;
+   optional int64 max_new_tokens = 2;
+   optional int64 min_new_tokens = 3;
+   optional int64 truncate_input_tokens = 4;
+   optional string decoding_method = 5;
+   optional int64 top_k = 6;
+   optional double top_p = 7;
+   optional double typical_p = 8;
+   optional double temperature = 9;
+   optional double repetition_penalty = 10;
+   optional double max_time = 11;
+   optional caikit_data_model.caikit_nlp.ExponentialDecayLengthPenalty exponential_decay_length_penalty = 12;
+   repeated string stop_sequences = 13;
+   optional uint64 seed = 14;
+   optional bool preserve_input_text = 15;
+   optional bool input_tokens = 16;
+   optional bool generated_tokens = 17;
+   optional bool token_logprobs = 18;
+   optional bool token_ranks = 19;
+ }
+
+ message TextGenerationTaskRequest {
+
+   /*-- fields --*/
+   string text = 1;
+   optional int64 max_new_tokens = 2;
+   optional int64 min_new_tokens = 3;
+   optional int64 truncate_input_tokens = 4;
+   optional string decoding_method = 5;
+   optional int64 top_k = 6;
+   optional double top_p = 7;
+   optional double typical_p = 8;
+   optional double temperature = 9;
+   optional double repetition_penalty = 10;
+   optional double max_time = 11;
+   optional caikit_data_model.caikit_nlp.ExponentialDecayLengthPenalty exponential_decay_length_penalty = 12;
+   repeated string stop_sequences = 13;
+   optional uint64 seed = 14;
+   optional bool preserve_input_text = 15;
+   optional bool input_tokens = 16;
+   optional bool generated_tokens = 17;
+   optional bool token_logprobs = 18;
+   optional bool token_ranks = 19;
+ }
+
+ message TokenizationTaskRequest {
+
+   /*-- fields --*/
+   string text = 1;
+ }
 
 
-message TokenizationTaskRequest {
+ /*-- SERVICES ----------------------------------------------------------------*/
 
-  /*-- fields --*/
-  string text = 1;
-}
-
-
-/*-- SERVICES ----------------------------------------------------------------*/
-
-service NlpService {
-  rpc BidiStreamingTokenizationTaskPredict(stream caikit.runtime.Nlp.BidiStreamingTokenizationTaskRequest) returns (stream caikit_data_model.nlp.TokenizationStreamResult);
-  rpc TokenizationTaskPredict(caikit.runtime.Nlp.TokenizationTaskRequest) returns (caikit_data_model.nlp.TokenizationResults);
-}
+ service NlpService {
+   rpc BidiStreamingTokenizationTaskPredict(stream caikit.runtime.Nlp.BidiStreamingTokenizationTaskRequest) returns (stream caikit_data_model.nlp.TokenizationStreamResult);
+   rpc ServerStreamingTextGenerationTaskPredict(caikit.runtime.Nlp.ServerStreamingTextGenerationTaskRequest) returns (stream caikit_data_model.nlp.GeneratedTextStreamResult);
+   rpc TextGenerationTaskPredict(caikit.runtime.Nlp.TextGenerationTaskRequest) returns (caikit_data_model.nlp.GeneratedTextResult);
+   rpc TokenizationTaskPredict(caikit.runtime.Nlp.TokenizationTaskRequest) returns (caikit_data_model.nlp.TokenizationResults);
+ }

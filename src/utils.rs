@@ -16,12 +16,19 @@ use tonic::transport::{
 use tokio::fs::read;
 
 use crate::{models, ErrorResponse, GuardrailsResponse};
-use crate::{clients::tgis::{self, GenerationServicer}};
+use crate::{
+    clients::tgis::{self, GenerationServicer},
+    clients::nlp::NlpServicer
+};
 use crate::{config::{ServiceAddr, OrchestratorConfig}};
 use crate::{pb::fmaas::{
     generation_service_server::GenerationService,
     GenerationRequest, GenerationResponse,  Parameters,
     SingleGenerationRequest,
+}};
+use crate::{pb::caikit::runtime::nlp::{
+    nlp_service_server::NlpService,
+    ServerStreamingTextGenerationTaskRequest
 }};
 
 
@@ -67,7 +74,6 @@ pub async fn call_tgis_stream(
         }
     );
 
-
     let mut index: i32 = 0;
     // TODO: Fix hardcoded start index
     let start_index: i32 = 0;
@@ -102,6 +108,48 @@ pub async fn call_tgis_stream(
 }
 
 
+
+pub async fn call_nlp_text_gen_stream (
+    Json(payload): Json<models::GuardrailsHttpRequest>,
+    nlp_servicer: NlpServicer,
+    on_message_callback: impl Fn(models::ClassifiedGeneratedTextStreamResult) -> Event,
+) -> impl Stream<Item = Result<Event, Infallible>> {
+
+    // TODO: Add remaining parameter
+    let mut nlp_request = tonic::Request::new(
+        ServerStreamingTextGenerationTaskRequest::new(payload.inputs)
+    );
+
+    let mut index: i32 = 0;
+    // TODO: Fix hardcoded start index
+    let start_index: i32 = 0;
+    let stream = async_stream::stream! {
+        // Server sending event stream
+        // TODO: Currently following is considering successfully response. We need to put it under match to handle potential errors.
+        let mut result = nlp_servicer.server_streaming_text_generation_task_predict(nlp_request).await.unwrap().into_inner();
+        while let Some(item) = result.next().await  {
+            match item {
+                Ok(gen_response) => {
+                    let nlp_r = gen_response;
+                    println!("{:?}", nlp_r);
+                    let mut stream_token = models::ClassifiedGeneratedTextStreamResult::new(
+                        // TODO: Implement real text gen token classification results
+                        models::TextGenTokenClassificationResults::new(),
+                        nlp_r.details.unwrap().input_token_count as i32,
+                        start_index
+                    );
+                    stream_token.generated_text = Some(nlp_r.generated_text);
+                    stream_token.processed_index = index.into();
+                    index += 1;
+                    let event = on_message_callback(stream_token);
+                    yield Ok(event);
+                }
+                status => println!("{:?}", status)
+            }
+        }
+    };
+    stream
+}
 // =========================================== Util functions ==============================================
 
 
@@ -109,4 +157,32 @@ async fn load_pem(path: String, name: &str) -> Vec<u8> {
     read(&path)
         .await
         .unwrap_or_else(|_| panic!("couldn't load {name} from {path}"))
+}
+
+// Add initialization method to the request
+impl ServerStreamingTextGenerationTaskRequest {
+    #[allow(clippy::new_without_default)]
+    pub fn new(text: String) -> ServerStreamingTextGenerationTaskRequest {
+        ServerStreamingTextGenerationTaskRequest {
+            text,
+            max_new_tokens: None,
+            min_new_tokens: None,
+            truncate_input_tokens: None,
+            decoding_method: None,
+            top_k: None,
+            top_p: None,
+            typical_p: None,
+            temperature: None,
+            repetition_penalty: None,
+            max_time: None,
+            exponential_decay_length_penalty: None,
+            stop_sequences: [].to_vec(),
+            seed: None,
+            preserve_input_text: None,
+            input_tokens: None,
+            generated_tokens: None,
+            token_logprobs: None,
+            token_ranks: None,
+        }
+    }
 }

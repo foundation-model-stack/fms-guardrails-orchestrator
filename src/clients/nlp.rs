@@ -11,10 +11,16 @@ use futures::stream::iter;
 use crate::{pb::{
     caikit::runtime::nlp::{
         nlp_service_client::NlpServiceClient, nlp_service_server::NlpService,
-        BidiStreamingTokenizationTaskRequest, TokenizationTaskRequest,
+        BidiStreamingTokenizationTaskRequest,
+        ServerStreamingTextGenerationTaskRequest,
+        TextGenerationTaskRequest,
+        TokenizationTaskRequest,
     },
-    caikit_data_model::nlp::{
-        TokenizationResults, TokenizationStreamResult,
+    caikit_data_model::{
+        nlp::{
+            GeneratedTextResult, GeneratedTextStreamResult,
+            TokenizationResults, TokenizationStreamResult,
+        },
     },
 }, create_clients, config::ServiceAddr};
 
@@ -98,6 +104,23 @@ impl NlpService for NlpServicer {
             .await?
             .bidi_streaming_tokenization_task_predict(stream)
             .await
+    }
+
+    type ServerStreamingTextGenerationTaskPredictStream = Streaming<GeneratedTextStreamResult>;
+    #[instrument(skip_all)]
+    async fn server_streaming_text_generation_task_predict(
+        &self,
+        _request: Request<ServerStreamingTextGenerationTaskRequest>,
+    ) -> Result<Response<Self::ServerStreamingTextGenerationTaskPredictStream>, Status> {
+        Err(Status::unimplemented("not implemented"))
+    }
+
+    #[instrument(skip_all)]
+    async fn text_generation_task_predict(
+        &self,
+        _request: Request<TextGenerationTaskRequest>,
+    ) -> Result<Response<GeneratedTextResult>, Status> {
+        Err(Status::unimplemented("not implemented"))
     }
 
 }

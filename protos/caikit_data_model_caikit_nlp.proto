@@ -1,0 +1,19 @@
+
+/*------------------------------------------------------------------------------
+ * AUTO GENERATED
+ *----------------------------------------------------------------------------*/
+
+syntax = "proto3";
+package caikit_data_model.caikit_nlp;
+import "google/protobuf/struct.proto";
+
+
+/*-- MESSAGES ----------------------------------------------------------------*/
+
+
+message ExponentialDecayLengthPenalty {
+
+  /*-- fields --*/
+  int64 start_index = 1;
+  double decay_factor = 2;
+}
