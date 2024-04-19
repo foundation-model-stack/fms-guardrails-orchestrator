@@ -24,9 +24,9 @@ use crate::{pb::{
     },
 }, create_clients, config::ServiceAddr};
 
-const METADATA_NAME_MODEL_ID: &str = "mm-model-id";
+pub const METADATA_NAME_MODEL_ID: &str = "mm-model-id";
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct NlpServicer {
     clients: HashMap<String, NlpServiceClient<LoadBalancedChannel>>,
 }
@@ -47,9 +47,10 @@ impl NlpServicer {
         &self,
         model_id: &str,
     ) -> Result<NlpServiceClient<LoadBalancedChannel>, Status> {
+        // TODO: Fix below model mapping
         Ok(self
             .clients
-            .get(model_id)
+            .get("gen-all-models")
             .ok_or_else(|| Status::not_found(format!("Unrecognized model_id: {model_id}")))?
             .clone())
     }

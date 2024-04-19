@@ -32,6 +32,7 @@ impl GenerationServicer {
         &self,
         model_id: &str,
     ) -> Result<GenerationServiceClient<LoadBalancedChannel>, Status> {
+        // TODO: Fix below model mapping
         Ok(self
             .clients
             .get(&"tgis-all-models".to_string())

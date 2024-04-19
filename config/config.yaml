@@ -1,5 +1,9 @@
 # Meant to be read by orchestrator!!
-tgis_config:
+# tgis_config:
+#     hostname: localhost
+#     port: 8033
+#     tls_enabled: false
+caikit_nlp_config:
     hostname: localhost
     port: 8033
     tls_enabled: false

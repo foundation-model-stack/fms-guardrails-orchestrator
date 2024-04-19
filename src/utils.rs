@@ -18,7 +18,7 @@ use tokio::fs::read;
 use crate::{models, ErrorResponse, GuardrailsResponse};
 use crate::{
     clients::tgis::{self, GenerationServicer},
-    clients::nlp::NlpServicer
+    clients::nlp::{NlpServicer, METADATA_NAME_MODEL_ID}
 };
 use crate::{config::{ServiceAddr, OrchestratorConfig}};
 use crate::{pb::fmaas::{
@@ -109,6 +109,27 @@ pub async fn call_tgis_stream(
 
 
 
+pub async fn configure_nlp(
+    service_addr: ServiceAddr,
+    default_target_port: u16,
+) -> NlpServicer {
+
+    // NOTE: We only want to configure and connect to 1 caikit nlp service which will send request to all
+    let model_map = HashMap::from([("gen-all-models".to_owned(), service_addr.clone())]);
+
+    // Configure TLS if requested
+    let mut client_tls = service_addr.tls_enabled.then_some(ClientTlsConfig::new());
+    if let Some(cert_path) = service_addr.tls_ca_path {
+        // info!("Configuring TLS for outgoing connections to model servers");
+        let cert_pem = load_pem(cert_path, "cert").await;
+        let cert = Certificate::from_pem(cert_pem);
+        client_tls = client_tls.map(|c| c.ca_certificate(cert));
+    }
+    let nlp_servicer =
+        NlpServicer::new(default_target_port, client_tls.as_ref(), &model_map);
+    nlp_servicer.await
+}
+
 pub async fn call_nlp_text_gen_stream (
     Json(payload): Json<models::GuardrailsHttpRequest>,
     nlp_servicer: NlpServicer,
@@ -119,6 +140,8 @@ pub async fn call_nlp_text_gen_stream (
     let mut nlp_request = tonic::Request::new(
         ServerStreamingTextGenerationTaskRequest::new(payload.inputs)
     );
+
+    nlp_request.metadata_mut().insert(METADATA_NAME_MODEL_ID, payload.model_id.parse().unwrap());
 
     let mut index: i32 = 0;
     // TODO: Fix hardcoded start index

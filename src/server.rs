@@ -1,4 +1,12 @@
-use crate::{clients::tgis::{self, GenerationServicer}, config::{self, OrchestratorConfig}, models, pb::fmaas::generation_service_server::GenerationService, utils, ErrorResponse, GuardrailsResponse};
+use crate::{
+    clients::tgis::{self, GenerationServicer},
+    clients::nlp::NlpServicer,
+    config::{self, OrchestratorConfig},
+    models,
+    pb::fmaas::generation_service_server::GenerationService,
+    utils,
+    ErrorResponse,
+    GuardrailsResponse};
 
 
 use std::{net::SocketAddr, sync::Arc};
@@ -21,6 +29,7 @@ use std::convert::Infallible;
 // ========================================== Constants and Dummy Variables ==========================================
 const API_PREFIX: &'static str = r#"/api/v1/task"#;
 const TGIS_PORT: u16 = 8033;
+const DEFAULT_CAIKIT_NLP_PORT: u16 = 8085;
 
 // TODO: Change with real object
 struct InnerResponse {
@@ -45,7 +54,8 @@ const DUMMY_RESPONSE: [&'static str; 9] = ["This", "is", "very", "good", "news,"
 // Server shared state
 #[derive(Clone)]
 pub(crate) struct ServerState {
-    pub tgis_servicer: GenerationServicer,
+    // pub tgis_servicer: GenerationServicer,
+    pub caikit_nlp_servicer: NlpServicer
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -59,14 +69,20 @@ pub async fn run(
     // TODO: How to share orchestrator_config across handler
 
     // Configure TGIS
-    let tgis_servicer = utils::configure_tgis(
-        orchestrator_config.tgis_config,
-        TGIS_PORT
+    // let tgis_servicer = utils::configure_tgis(
+    //     orchestrator_config.tgis_config,
+    //     TGIS_PORT
+    // ).await;
+
+    // Configure Caikit NLP
+    let caikit_nlp_servicer = utils::configure_nlp(
+       orchestrator_config.caikit_nlp_config,
+       DEFAULT_CAIKIT_NLP_PORT
     ).await;
 
     // Add server and configs to shared state
     let shared_state = Arc::new(ServerState {
-        tgis_servicer,
+        caikit_nlp_servicer,
     });
 
     // Build and await on the HTTP server
@@ -116,7 +132,8 @@ async fn stream_classification_with_gen(
     };
 
     let response_stream =
-        utils::call_tgis_stream(Json(payload), state.tgis_servicer.clone(), on_message_callback).await;
+        utils::call_nlp_text_gen_stream(Json(payload), state.caikit_nlp_servicer.clone(), on_message_callback).await;
+        // utils::call_tgis_stream(Json(payload), state.tgis_servicer.clone(), on_message_callback).await;
     let sse = Sse::new(response_stream).keep_alive(KeepAlive::default());
     sse
 }

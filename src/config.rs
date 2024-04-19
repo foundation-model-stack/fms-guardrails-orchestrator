@@ -100,7 +100,8 @@ detector_config:
 */
 #[derive(Clone, Serialize, Deserialize, PartialEq, Debug)]
 pub struct OrchestratorConfig {
-    pub tgis_config: ServiceAddr,
+    // pub tgis_config: ServiceAddr,
+    pub caikit_nlp_config: ServiceAddr,
     pub detector_config: DetectorMap
 }
 
