@@ -17,7 +17,22 @@ pub struct ServiceAddr {
     pub tls_ca_path: Option<String>
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+impl ServiceAddr {
+    #[allow(clippy::new_without_default)]
+    pub fn new(hostname: String, tls_enabled: bool, ) -> ServiceAddr {
+        ServiceAddr {
+            hostname,
+            port: None,
+            tls_enabled,
+            tls_cert_path: None,
+            tls_key_path: None,
+            tls_ca_path: None
+        }
+    }
+}
+
+
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum ChunkerType {
     #[serde(rename = "SENTENCE")]
     Sentence,
@@ -25,12 +40,12 @@ pub enum ChunkerType {
     All
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct ChunkerConfig {
     r#type: ChunkerType
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct DetectorConfig {
     service_config: ServiceAddr,
     config: HashMap<String, String>, // arbitrary keys and values
@@ -55,7 +70,7 @@ detectors:
         chunker: sentence-en
 
 */
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct DetectorMap {
     chunkers:  HashMap<String, ChunkerConfig>,
     detectors: HashMap<String, DetectorConfig>
@@ -84,7 +99,7 @@ detector_config:
                 foo: bar
             chunker: sentence-en
 */
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
 pub struct OrchestratorConfig {
     pub tgis_config: ServiceAddr,
     pub detector_config: DetectorMap

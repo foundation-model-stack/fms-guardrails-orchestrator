@@ -11,7 +11,7 @@ use crate::{pb::fmaas::{
     GenerationResponse, ModelInfoRequest, ModelInfoResponse, SingleGenerationRequest,
 }, create_clients, config::ServiceAddr};
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct GenerationServicer {
     clients: HashMap<String, GenerationServiceClient<LoadBalancedChannel>>,
 }

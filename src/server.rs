@@ -1,7 +1,7 @@
-use crate::{config, models, utils, ErrorResponse, GuardrailsResponse};
-use std::{net::SocketAddr};
+use crate::{clients::tgis::GenerationServicer, config::{self, OrchestratorConfig}, models, utils, ErrorResponse, GuardrailsResponse};
+use std::{net::SocketAddr, sync::Arc};
 use axum::{
-    extract::Extension,
+    extract::{Extension, State},
     http::{HeaderMap, Method, StatusCode},
     response::IntoResponse,
     routing::{get, post},
@@ -43,6 +43,7 @@ const DUMMY_RESPONSE: [&'static str; 9] = ["This", "is", "very", "good", "news,"
 // Server shared state
 #[derive(Clone)]
 pub(crate) struct ServerState {
+    pub tgis_servicer: GenerationServicer,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -52,19 +53,26 @@ pub async fn run(
     orchestrator_config: config::OrchestratorConfig,
 ) {
 
-    // TODO: Configure TLS if requested
+    // TODO: Configure TLS for this server if requested
+    // TODO: How to share orchestrator_config across handler
 
     // Configure TGIS
     let tgis_servicer = utils::configure_tgis(
         orchestrator_config.tgis_config,
         TGIS_PORT
-    );
+    ).await;
+
+    // Add server and configs to shared state
+    let shared_state = Arc::new(ServerState {
+        tgis_servicer,
+    });
 
     // Build and await on the HTTP server
     let app = Router::new()
         .route("/health", get(health))
         .route(&format!("{}/classification-with-text-generation", API_PREFIX), post(classification_with_generation))
-        .route(&format!("{}/server-streaming-classification-with-text-generation", API_PREFIX), post(stream_classification_with_gen));
+        .route(&format!("{}/server-streaming-classification-with-text-generation", API_PREFIX), post(stream_classification_with_gen))
+        .with_state(shared_state);
 
     let server = axum::Server::bind(&rest_addr)
         .serve(app.into_make_service())
@@ -84,6 +92,7 @@ async fn health() -> Result<(), ()> {
 // #[debug_handler]
 // TODO: Improve Bad Request error handling by implementing Validate middleware
 async fn classification_with_generation(
+    State(state): State<Arc<ServerState>>,
     Json(payload): Json<models::GuardrailsHttpRequest>) -> Json<GuardrailsResponse> {
 
     // TODO: note this function currently is not doing .await and hence is blocking
@@ -96,7 +105,7 @@ async fn classification_with_generation(
 
 
 async fn stream_classification_with_gen(
-    // state: Extension<ServerState>,
+    State(state): State<Arc<ServerState>>,
     Json(payload): Json<models::GuardrailsHttpRequest>) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
 
     let on_message_callback = |stream_token: StreamResponse| {

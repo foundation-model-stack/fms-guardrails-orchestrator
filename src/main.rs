@@ -45,8 +45,6 @@ fn main() -> Result<(), std::io::Error> {
 
             server::run(
                 rest_addr,
-                // args.tls_cert_path
-                //     .map(|cp| (cp, args.tls_key_path.unwrap())),
                 orchestrator_config,
             )
             .await;
