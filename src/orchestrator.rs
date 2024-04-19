@@ -1,6 +1,6 @@
 use std::{collections::{hash_map::Entry, HashMap}, usize};
 
-use crate::{config::{ChunkerConfig, ChunkerType, DetectorConfig, DetectorMap}, models::{GuardrailsConfig, GuardrailsHttpRequest}, ErrorResponse};
+use crate::{config::{ChunkerConfig, ChunkerType, DetectorConfig, DetectorMap}, models::{GuardrailsConfig, GuardrailsHttpRequest}, pb::fmaas::{generation_service_server::GenerationService, BatchedTokenizeRequest, TokenizeRequest}, ErrorResponse};
 use axum::{
     response::IntoResponse,
     Json,
@@ -107,7 +107,7 @@ const DUMMY_RESPONSE: [&'static str; 9] = ["This", "is", "very", "good", "news,"
 
 // Server streaming TGIS call
 async fn tgis_call(
-    Json(tgis_payload): Json<Value>,
+    Json(tgis_payload): Json<GuardrailsHttpRequest>,
     on_message_callback: impl Fn(GenerationResponse) -> Event,
 ) -> impl Stream<Item = Result<Event, Infallible>> {
 
@@ -134,7 +134,21 @@ async fn tgis_call(
 }
 
 // Unary TGIS tokenize call
-async fn tokenize_call(_input: Vec<String>) -> TokenizeResponse {
+async fn tokenize_call(model_id: String, texts: Vec<String>) -> TokenizeResponse {
+    let mut tokenize_requests: Vec<TokenizeRequest> = vec![];
+    for text in texts.iter() {
+        let tokenize_request: TokenizeRequest = TokenizeRequest { text: text.to_string() };
+        tokenize_requests.push(tokenize_request);
+    };
+
+    // Structs have to be filled in, so default to no truncation or extra return fields
+    let request: BatchedTokenizeRequest = BatchedTokenizeRequest {
+        model_id,
+        requests: tokenize_requests,
+        return_tokens: false,
+        return_offsets: false,
+        truncate_input_tokens: 0,
+    };
     TokenizeResponse {
         token_count: 9
     }
@@ -182,6 +196,9 @@ async fn input_detection(input_detectors_models: HashMap<String, HashMap<String,
 
 pub async fn create_tasks(payload: GuardrailsHttpRequest) {
     
+    // LLM / text generation model
+    let model_id: String = payload.model_id;
+
     // Original user input text, initialized as vector for type
     // consistency if masks are supplied
     let mut user_input: Vec<String> = vec![payload.inputs];
@@ -206,7 +223,7 @@ pub async fn create_tasks(payload: GuardrailsHttpRequest) {
         // or spliced user input (for masks) - latter today
         // This separate call would not be necessary if generation is called, since it
         // provides input_token_count
-        let input_token_count = tokenize_call(user_input);
+        let input_token_count = tokenize_call(model_id, user_input);
         
         let input_detector_models: HashMap<String, HashMap<String, String>> = input_detectors.unwrap();
         //let input_response = input_detection(input_detectors_models);
