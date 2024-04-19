@@ -98,11 +98,11 @@ detector_config:
                 foo: bar
             chunker: sentence-en
 */
-<<<<<<< HEAD
 #[derive(Clone, Serialize, Deserialize, PartialEq, Debug)]
-=======
-#[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
 pub struct OrchestratorConfig {
+    pub tgis_config: ServiceAddr,
+    pub detector_config: DetectorMap
+}
 
 impl OrchestratorConfig {
     pub fn load(path: impl AsRef<Path>) -> Self {
