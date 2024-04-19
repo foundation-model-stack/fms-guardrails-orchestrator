@@ -1,5 +1,4 @@
-use crate::{config::DetectorMap, models::{self, GuardrailsHttpRequest}, utils, ErrorResponse, GuardrailsResponse};
-
+use crate::{config, models, utils, ErrorResponse, GuardrailsResponse};
 use std::{net::SocketAddr};
 use axum::{
     extract::Extension,
@@ -98,7 +97,7 @@ async fn classification_with_generation(
 
 async fn stream_classification_with_gen(
     // state: Extension<ServerState>,
-    Json(payload): Json<GuardrailsHttpRequest>) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+    Json(payload): Json<models::GuardrailsHttpRequest>) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
 
     let on_message_callback = |stream_token: StreamResponse| {
         let event = Event::default();
@@ -112,7 +111,7 @@ async fn stream_classification_with_gen(
 }
 
 async fn generate_stream_response(
-    Json(payload): Json<GuardrailsHttpRequest>,
+    Json(payload): Json<models::GuardrailsHttpRequest>,
     on_message_callback: impl Fn(StreamResponse) -> Event,
 ) -> impl Stream<Item = Result<Event, Infallible>> {
 
