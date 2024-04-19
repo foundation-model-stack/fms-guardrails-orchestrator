@@ -17,7 +17,7 @@ pub struct ServiceAddr {
     pub tls_ca_path: Option<String>
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Copy, Clone, Serialize, Deserialize, PartialEq, Debug)]
 pub enum ChunkerType {
     #[serde(rename = "SENTENCE")]
     Sentence,
@@ -25,7 +25,7 @@ pub enum ChunkerType {
     All
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Copy, Clone, Serialize, Deserialize, PartialEq, Debug)]
 pub struct ChunkerConfig {
     pub r#type: ChunkerType
 }

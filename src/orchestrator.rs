@@ -89,28 +89,30 @@ const DUMMY_RESPONSE: [&'static str; 9] = ["This", "is", "very", "good", "news,"
 
 // }
 
-// fn get_chunker_for_detector(detector_to_find: String, detector_map: DetectorMap) -> Result<ChunkerConfig, ErrorResponse> {
-//     let chunkers: HashMap<String, ChunkerConfig> = detector_map.chunkers;
-//     let detectors:HashMap<String, DetectorConfig> = detector_map.detectors;
-//     for (detector_name, detector_config) in detectors.into_iter() {
-//         if detector_to_find == detector_name {
-//             let chunker_name: String = detector_config.chunker;
-//             // Could just form call here
-//             match chunkers.get(&chunker_name) {
-//                 Some(&v) => v,
-//                 None => ErrorResponse{error: "Detector not configured correctly".to_owned()},
-//             }
-//         }
-//     }
-//     ErrorResponse{error: "Detector not configured correctly".to_owned()}
-// }
+fn preprocess_detector_map(detector_map: DetectorMap) -> Result<HashMap<String, Result<ChunkerConfig, ErrorResponse>>, ErrorResponse> {
+    // Map detectors to respective chunkers
+    let chunkers: HashMap<String, ChunkerConfig> = detector_map.chunkers;
+    let detectors:HashMap<String, DetectorConfig> = detector_map.detectors;
+
+    let mut chunker_map: HashMap<String, Result<ChunkerConfig, ErrorResponse>> = HashMap::new();
+    while let Some(detector) = detectors.iter().next() {
+        let detector_config = detector.1;
+        let chunker_name: String = detector_config.chunker.to_string();
+        let result: Result<ChunkerConfig, ErrorResponse> = match chunkers.get(&chunker_name) {
+            Some(&v) => Ok(v),
+            None => Err(ErrorResponse{error: "Detector not configured correctly".to_string()})
+        };
+        chunker_map.insert(chunker_name, result);
+    }
+    Ok(chunker_map)
+}
 
 // ========================================== Dummy Tasks ==========================================
 
 // API calls
 
 // Server streaming TGIS call
-async fn tgis_call(
+async fn tgis_stream_call(
     Json(tgis_payload): Json<GuardrailsHttpRequest>,
     on_message_callback: impl Fn(GenerationResponse) -> Event,
 ) -> impl Stream<Item = Result<Event, Infallible>> {
@@ -199,7 +201,8 @@ async fn input_detection(input_detectors_models: HashMap<String, HashMap<String,
 // ========================================== Main ==========================================
 
 pub async fn create_tasks(payload: GuardrailsHttpRequest) {
-    
+    // TODO: is clone() needed for every payload use? Otherwise move errors since payload has String
+
     // LLM / text generation model
     let model_id: String = payload.clone().model_id;
 
@@ -242,15 +245,26 @@ pub async fn create_tasks(payload: GuardrailsHttpRequest) {
 
     // payload.text_gen_parameters - extra TGIS generation parameters
 
+    // ============= Unary endpoint =============
+    // Add TGIS generation task - grpc [unary] call
+    // If output detection
+    // Get any detectors from payload.guardrail_config.output.models
+    // Add detection task for each detector - rest [unary] call
+    // For each detector, add chunker task as precursor - grpc [unary] call
+    // Response aggregation task
 
+
+
+    // ============= Streaming endpoint =============
     // Add TGIS generation task - grpc [server streaming] call
     let on_message_callback = |stream_token: GenerationResponse| {
         let event = Event::default();
         event.json_data(stream_token).unwrap()
     };
 
+    // Fix payload here
     let tgis_response_stream =
-        tgis_call(Json(payload.clone()), on_message_callback).await;
+        tgis_stream_call(Json(payload.clone()), on_message_callback).await;
 
 
     // If output detection
