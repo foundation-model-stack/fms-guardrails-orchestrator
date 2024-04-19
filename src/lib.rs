@@ -7,19 +7,19 @@ use tokio::try_join;
 use std::{collections::HashMap, path::Path};
 use tonic::transport::ClientTlsConfig;
 
-
 use serde::{Serialize, Deserialize};
 
 pub mod clients;
 pub mod config;
-pub mod server;
 pub mod models;
+pub mod orchestrator;
+pub mod server;
 pub mod utils;
 mod pb;
 
 
-#[derive(Serialize)]
-pub(crate) struct ErrorResponse {
+#[derive(Debug, Serialize)]
+pub struct ErrorResponse {
     pub error: String,
 }
 

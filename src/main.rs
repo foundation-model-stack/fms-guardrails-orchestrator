@@ -1,7 +1,7 @@
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
 use clap::Parser;
-use fms_orchestr8::{config::OrchestratorConfig, server};
+use fms_orchestr8::{config::OrchestratorConfig, orchestrator, server};
 
 /// App Configuration
 #[derive(Parser, Debug)]
@@ -30,10 +30,15 @@ fn main() -> Result<(), std::io::Error> {
     //     panic!("tls: must provide both cert and key")
     // }
 
-    // Load detector map config
+    // Load orchestrator config - load could move to orchestrator if necessary
     let orchestrator_config = OrchestratorConfig::load(args.orchestrator_config);
-
     println!("{:?}", orchestrator_config);
+
+    let chunker_map = orchestrator::preprocess_detector_map(orchestrator_config.clone().detector_config);
+    match chunker_map {
+        Ok(v) => println!("hashmap: {v:?}"),
+        Err(e) => println!("error: {e:?}"),
+    }
 
     // Launch Tokio runtime
     tokio::runtime::Builder::new_multi_thread()

@@ -3,7 +3,7 @@
 use validator::Validate;
 
 
-#[derive(Debug, serde::Serialize, serde::Deserialize, validator::Validate)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, validator::Validate)]
 pub struct GuardrailsHttpRequest {
     #[serde(rename = "model_id")]
     pub model_id: String,
@@ -37,12 +37,30 @@ impl GuardrailsHttpRequest {
 pub struct GuardrailsConfig {
     #[serde(rename = "input")]
     #[serde(skip_serializing_if="Option::is_none")]
-    pub input: Option<serde_json::Value>,
+    pub input: Option<GuardrailsConfigInput>,
 
     #[serde(rename = "output")]
     #[serde(skip_serializing_if="Option::is_none")]
-    pub output: Option<std::collections::HashMap<String, serde_json::Value>>,
+    pub output: Option<GuardrailsConfigOutput>,
 
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, validator::Validate)]
+pub struct GuardrailsConfigInput {
+    #[serde(rename = "models")]
+    #[serde(skip_serializing_if="Option::is_none")]
+    pub models: Option<std::collections::HashMap<String, std::collections::HashMap<String, String>>>,
+
+    #[serde(rename = "masks")]
+    #[serde(skip_serializing_if="Option::is_none")]
+    pub masks: Option<(usize, usize)>
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, validator::Validate)]
+pub struct GuardrailsConfigOutput {
+    #[serde(rename = "models")]
+    #[serde(skip_serializing_if="Option::is_none")]
+    pub models: Option<std::collections::HashMap<String, std::collections::HashMap<String, String>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, validator::Validate)]

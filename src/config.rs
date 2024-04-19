@@ -32,7 +32,7 @@ impl ServiceAddr {
 }
 
 
-#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+#[derive(Copy, Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum ChunkerType {
     #[serde(rename = "SENTENCE")]
     Sentence,
@@ -40,17 +40,16 @@ pub enum ChunkerType {
     All
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+#[derive(Copy, Clone, Serialize, Deserialize, PartialEq, Debug)]
 pub struct ChunkerConfig {
-    r#type: ChunkerType
+    pub r#type: ChunkerType
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, Debug)]
 pub struct DetectorConfig {
-    service_config: ServiceAddr,
-    config: HashMap<String, String>, // arbitrary keys and values
-    chunker: String // chunker id
-
+    pub service_config: ServiceAddr,
+    pub config: HashMap<String, String>, // arbitrary keys and values
+    pub chunker: String // chunker id
 }
 
 /*
@@ -70,10 +69,10 @@ detectors:
         chunker: sentence-en
 
 */
-#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, Debug)]
 pub struct DetectorMap {
-    chunkers:  HashMap<String, ChunkerConfig>,
-    detectors: HashMap<String, DetectorConfig>
+    pub chunkers:  HashMap<String, ChunkerConfig>,
+    pub detectors: HashMap<String, DetectorConfig>
 }
 
 
@@ -99,7 +98,7 @@ detector_config:
                 foo: bar
             chunker: sentence-en
 */
-#[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, Debug)]
 pub struct OrchestratorConfig {
     pub tgis_config: ServiceAddr,
     pub detector_config: DetectorMap
