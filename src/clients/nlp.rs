@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use ginepro::LoadBalancedChannel;
 use tonic::{transport::ClientTlsConfig, Code, Request, Response, Status, Streaming};
 use tracing::{debug, instrument};
+use futures::stream::iter;
 
 use crate::{pb::{
     caikit::runtime::nlp::{
@@ -15,7 +16,7 @@ use crate::{pb::{
     caikit_data_model::nlp::{
         TokenizationResults, TokenizationStreamResult,
     },
-}, create_clients, ServiceAddr};
+}, create_clients, config::ServiceAddr};
 
 const METADATA_NAME_MODEL_ID: &str = "mm-model-id";
 
@@ -77,7 +78,7 @@ impl NlpService for NlpServicer {
     #[instrument(skip_all)]
     async fn bidi_streaming_tokenization_task_predict(
         &self,
-        _request: Request<Streaming<BidiStreamingTokenizationTaskRequest>>,
+        request: Request<Streaming<BidiStreamingTokenizationTaskRequest>>,
     ) -> Result<Response<Self::BidiStreamingTokenizationTaskPredictStream>, Status> {
         let model_id = extract_model_id(&request)?;
         let br = request.get_ref();
@@ -86,9 +87,16 @@ impl NlpService for NlpServicer {
             "Performing bidirectional streaming tokenization task predict request for Model ID {}",
             model_id
         );
+
+        // TODO: fake request here - need to update request above to be
+        // expected type constructed from TGIS response, appears to be server type?
+        let stream = tonic::Request::new(iter(vec![
+            BidiStreamingTokenizationTaskRequest {text_stream: String::from("moo") },
+            BidiStreamingTokenizationTaskRequest {text_stream: String::from("moo") },
+        ]));
         self.client(model_id)
             .await?
-            .bidi_streaming_tokenization_task_predict(request)
+            .bidi_streaming_tokenization_task_predict(stream)
             .await
     }
 

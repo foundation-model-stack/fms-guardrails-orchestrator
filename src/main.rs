@@ -1,7 +1,7 @@
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
 use clap::Parser;
-use fms_orchestr8::{config::{DetectorMap, OrchestratorConfig}, orchestrator, server};
+use fms_orchestr8::{config::OrchestratorConfig, orchestrator, server};
 
 /// App Configuration
 #[derive(Parser, Debug)]
