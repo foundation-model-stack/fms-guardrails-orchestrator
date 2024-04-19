@@ -32,15 +32,9 @@ pub struct ChunkerConfig {
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct DetectorConfig {
-<<<<<<< HEAD
-    service_config: ServiceAddr,
-    config: HashMap<String, String>, // arbitrary keys and values
-    chunker: String // chunker id
-=======
-    pub config: HashMap<String, String>, // things like endpoint, tls key etc.
+    pub service_config: ServiceAddr,
+    pub config: HashMap<String, String>, // arbitrary keys and values
     pub chunker: String // chunker id
->>>>>>> f090844 (:construction: Begin orchestration)
-
 }
 
 /*
