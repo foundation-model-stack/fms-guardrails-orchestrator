@@ -64,6 +64,31 @@
    string message = 2;
  }
 
+ message TextGenTokenClassificationResults {
+
+  /*-- fields --*/
+  repeated caikit_data_model.nlp.TokenClassificationResult input = 10;
+  repeated caikit_data_model.nlp.TokenClassificationResult output = 20;
+}
+
+message TokenClassificationResult {
+
+  /*-- fields --*/
+  int64 start = 1;
+  int64 end = 2;
+  string word = 3;
+  string entity = 4;
+  string entity_group = 5;
+  double score = 6;
+  int64 token_count = 7;
+}
+
+message TokenClassificationResults {
+
+  /*-- fields --*/
+  repeated caikit_data_model.nlp.TokenClassificationResult results = 1;
+}
+
  message Token {
 
    /*-- fields --*/

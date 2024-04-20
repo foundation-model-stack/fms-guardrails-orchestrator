@@ -15,11 +15,13 @@ use crate::{pb::{
         ServerStreamingTextGenerationTaskRequest,
         TextGenerationTaskRequest,
         TokenizationTaskRequest,
+        TokenClassificationTaskRequest,
     },
     caikit_data_model::{
         nlp::{
             GeneratedTextResult, GeneratedTextStreamResult,
             TokenizationResults, TokenizationStreamResult,
+            TokenClassificationResults
         },
     },
 }, create_clients, config::ServiceAddr};
@@ -131,6 +133,14 @@ impl NlpService for NlpServicer {
         &self,
         _request: Request<TextGenerationTaskRequest>,
     ) -> Result<Response<GeneratedTextResult>, Status> {
+        Err(Status::unimplemented("not implemented"))
+    }
+
+    #[instrument(skip_all)]
+    async fn token_classification_task_predict(
+        &self,
+        _request: Request<TokenClassificationTaskRequest>,
+    ) -> Result<Response<TokenClassificationResults>, Status> {
         Err(Status::unimplemented("not implemented"))
     }
 

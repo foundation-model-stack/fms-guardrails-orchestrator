@@ -72,6 +72,13 @@
    string text = 1;
  }
 
+ message TokenClassificationTaskRequest {
+
+  /*-- fields --*/
+  string text = 1;
+  optional double threshold = 2;
+}
+
 
  /*-- SERVICES ----------------------------------------------------------------*/
 
@@ -80,4 +87,5 @@
    rpc ServerStreamingTextGenerationTaskPredict(caikit.runtime.Nlp.ServerStreamingTextGenerationTaskRequest) returns (stream caikit_data_model.nlp.GeneratedTextStreamResult);
    rpc TextGenerationTaskPredict(caikit.runtime.Nlp.TextGenerationTaskRequest) returns (caikit_data_model.nlp.GeneratedTextResult);
    rpc TokenizationTaskPredict(caikit.runtime.Nlp.TokenizationTaskRequest) returns (caikit_data_model.nlp.TokenizationResults);
+   rpc TokenClassificationTaskPredict(caikit.runtime.Nlp.TokenClassificationTaskRequest) returns (caikit_data_model.nlp.TokenClassificationResults);
  }
