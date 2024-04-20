@@ -14,6 +14,7 @@ use tonic::transport::{
     server::RoutesBuilder, Certificate, ClientTlsConfig, Identity, Server, ServerTlsConfig,
 };
 use tokio::fs::read;
+use tracing::{error, info};
 
 use crate::{models, ErrorResponse, GuardrailsResponse};
 use crate::{
@@ -144,32 +145,45 @@ pub async fn call_nlp_text_gen_stream (
     nlp_request.metadata_mut().insert(METADATA_NAME_MODEL_ID, payload.model_id.parse().unwrap());
 
     let mut index: i32 = 0;
+
     // TODO: Fix hardcoded start index
     let start_index: i32 = 0;
+    // TODO: Implement proper error handling for cases when we receive error connecting to server
+    // or when server returns error
     let stream = async_stream::stream! {
         // Server sending event stream
-        // TODO: Currently following is considering successfully response. We need to put it under match to handle potential errors.
-        let mut result = nlp_servicer.server_streaming_text_generation_task_predict(nlp_request).await.unwrap().into_inner();
-        while let Some(item) = result.next().await  {
-            match item {
-                Ok(gen_response) => {
-                    let nlp_r = gen_response;
-                    println!("{:?}", nlp_r);
-                    let mut stream_token = models::ClassifiedGeneratedTextStreamResult::new(
-                        // TODO: Implement real text gen token classification results
-                        models::TextGenTokenClassificationResults::new(),
-                        nlp_r.details.unwrap().input_token_count as i32,
-                        start_index
-                    );
-                    stream_token.generated_text = Some(nlp_r.generated_text);
-                    stream_token.processed_index = index.into();
-                    index += 1;
-                    let event = on_message_callback(stream_token);
-                    yield Ok(event);
+        let result = nlp_servicer.server_streaming_text_generation_task_predict(nlp_request).await;
+
+        match result {
+            Ok(response) => {
+                let mut result = response.into_inner();
+                while let Some(item) = result.next().await  {
+                    match item {
+                        Ok(gen_response) => {
+                            let nlp_r = gen_response;
+                            println!("{:?}", nlp_r);
+                            let mut stream_token = models::ClassifiedGeneratedTextStreamResult::new(
+                                // TODO: Implement real text gen token classification results
+                                models::TextGenTokenClassificationResults::new(),
+                                nlp_r.details.unwrap().input_token_count as i32,
+                                start_index
+                            );
+                            stream_token.generated_text = Some(nlp_r.generated_text);
+                            stream_token.processed_index = index.into();
+                            index += 1;
+                            let event = on_message_callback(stream_token);
+                            yield Ok(event);
+                        }
+                        status => println!("{:?}", status)
+                    }
                 }
-                status => println!("{:?}", status)
+            }
+            Err(error) => {
+                error!("Logged error: {:?}", error);
+               panic!("{}", error)
             }
         }
+
     };
     stream
 }

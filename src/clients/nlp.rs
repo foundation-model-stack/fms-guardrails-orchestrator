@@ -111,9 +111,19 @@ impl NlpService for NlpServicer {
     #[instrument(skip_all)]
     async fn server_streaming_text_generation_task_predict(
         &self,
-        _request: Request<ServerStreamingTextGenerationTaskRequest>,
+        request: Request<ServerStreamingTextGenerationTaskRequest>,
     ) -> Result<Response<Self::ServerStreamingTextGenerationTaskPredictStream>, Status> {
-        Err(Status::unimplemented("not implemented"))
+        // let sstr = request.get_ref();
+        let model_id = extract_model_id(&request)?;
+        debug!(
+            "Routing text generation streaming generation request for Model ID {}",
+            model_id
+        );
+        self.client(model_id)
+            .await?
+            .server_streaming_text_generation_task_predict(request)
+            .await
+
     }
 
     #[instrument(skip_all)]
