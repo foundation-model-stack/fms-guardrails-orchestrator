@@ -393,6 +393,74 @@ pub struct GeneratedToken {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, validator::Validate)]
 #[cfg_attr(feature = "conversion", derive(frunk::LabelledGeneric))]
+pub struct GeneratedTextResult {
+    #[serde(rename = "generated_text")]
+    pub generated_text: String,
+
+    #[serde(rename = "generated_tokens")]
+    #[serde(skip_serializing_if="Option::is_none")]
+    pub generated_tokens: Option<i32>,
+
+    #[serde(rename = "finish_reason")]
+    #[serde(skip_serializing_if="Option::is_none")]
+    pub finish_reason: Option<FinishReason>,
+
+    #[serde(rename = "input_token_count")]
+    pub input_token_count: i32,
+
+    #[serde(rename = "seed")]
+    #[serde(skip_serializing_if="Option::is_none")]
+    pub seed: Option<i32>,
+
+    #[serde(rename = "tokens")]
+    #[serde(skip_serializing_if="Option::is_none")]
+    pub tokens: Option<Vec<GeneratedToken>>,
+
+    #[serde(rename = "input_tokens")]
+    #[serde(skip_serializing_if="Option::is_none")]
+    pub input_tokens: Option<Vec<GeneratedToken>>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, validator::Validate)]
+#[cfg_attr(feature = "conversion", derive(frunk::LabelledGeneric))]
+pub struct TokenStreamDetails {
+    #[serde(rename = "finish_reason")]
+    #[serde(skip_serializing_if="Option::is_none")]
+    pub finish_reason: Option<FinishReason>,
+
+    #[serde(rename = "generated_tokens")]
+    #[serde(skip_serializing_if="Option::is_none")]
+    pub generated_tokens: Option<i32>,
+
+    #[serde(rename = "seed")]
+    #[serde(skip_serializing_if="Option::is_none")]
+    pub seed: Option<i32>,
+
+    #[serde(rename = "input_token_count")]
+    pub input_token_count: i32,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, validator::Validate)]
+#[cfg_attr(feature = "conversion", derive(frunk::LabelledGeneric))]
+pub struct GeneratedTextStreamResult {
+    #[serde(rename = "generated_text")]
+    pub generated_text: String,
+
+    #[serde(rename = "tokens")]
+    #[serde(skip_serializing_if="Option::is_none")]
+    pub tokens: Option<Vec<GeneratedToken>>,
+
+    #[serde(rename = "details")]
+    #[serde(skip_serializing_if="Option::is_none")]
+    pub details: Option<TokenStreamDetails>,
+
+    #[serde(rename = "input_tokens")]
+    #[serde(skip_serializing_if="Option::is_none")]
+    pub input_tokens: Option<Vec<GeneratedToken>>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, validator::Validate)]
+#[cfg_attr(feature = "conversion", derive(frunk::LabelledGeneric))]
 pub struct HttpValidationError {
     #[serde(rename = "detail")]
     #[serde(skip_serializing_if="Option::is_none")]

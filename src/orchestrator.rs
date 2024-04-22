@@ -1,9 +1,10 @@
 use std::{collections::HashMap, usize};
 
-use crate::{config::{ChunkerConfig, DetectorConfig, DetectorMap}, models::{ClassifiedGeneratedTextResult, GuardrailsHttpRequest, GuardrailsTextGenerationParameters, InputWarning, InputWarningReason, TextGenTokenClassificationResults, TokenClassificationResult}, ErrorResponse};
-use crate::{pb::fmaas::{
-    BatchedTokenizeRequest, TokenizeRequest,
-}};
+use crate::{config::{ChunkerConfig, DetectorConfig, DetectorMap},
+    models::{ClassifiedGeneratedTextResult, FinishReason, GeneratedTextResult, GeneratedTextStreamResult, GeneratedToken, GuardrailsHttpRequest, GuardrailsTextGenerationParameters, InputWarning, InputWarningReason, TextGenTokenClassificationResults, TokenClassificationResult, TokenStreamDetails},
+    pb::fmaas::{BatchedTokenizeRequest, TokenizeRequest},
+    ErrorResponse
+};
 use axum::Json;
 use axum::response::sse::Event;
 use futures::stream::Stream;
@@ -19,15 +20,6 @@ use crate::{pb::{
 // ========================================== Constants and Dummy Variables ==========================================
 const API_PREFIX: &'static str = r#"/api/v1/task"#;
 const UNSUITABLE_INPUT_MESSAGE: &'static str = "Unsuitable input detected. Please check the detected entities on your input and try again with the unsuitable input removed.";
-
-// TODO: Dummy TGIS streaming generation response object - replace later
-#[derive(Serialize)]
-pub(crate) struct GenerationResponse {
-    pub input_token_count: u32,
-    pub generated_token_count: u32,
-    pub text: String,
-    // StopReason.....
-}
 
 // TODO: Dummy TGIS tokenization response object - replace later
 #[derive(Serialize)]
@@ -82,33 +74,54 @@ pub fn preprocess_detector_map(detector_map: DetectorMap) -> Result<(HashMap<Str
 
 // API calls - do not have to actually live here
 
-// Unary TGIS call
-async fn tgis_unary_call(model_id: String, texts: Vec<String>, text_gen_params: Option<GuardrailsTextGenerationParameters>) -> GenerationResponse {
-    GenerationResponse {
-        input_token_count: 1,
-        generated_token_count: 1, 
+// Unary TGIS call - first pass will be through caikit-nlp
+async fn tgis_unary_call(model_id: String, texts: Vec<String>, text_gen_params: Option<GuardrailsTextGenerationParameters>) -> GeneratedTextResult {
+    let token_info: GeneratedToken = GeneratedToken {
         text: "hi".to_string(),
+        logprob: Some(0.53),
+        rank: Some(1),
+    };
+    GeneratedTextResult {
+        input_token_count: 1,
+        generated_tokens: Some(1),
+        generated_text: "hi".to_string(),
+        finish_reason: Some(FinishReason::MaxTokens),
+        seed: Some(42),
+        tokens: Some(vec![token_info.clone()]),
+        input_tokens: Some(vec![token_info.clone()]),
     }
 }
 
-// Server streaming TGIS call
+// Server streaming TGIS call - first pass will be through caikit-nlp
 // TODO: update payload here
 async fn tgis_stream_call(
     Json(tgis_payload): Json<GuardrailsHttpRequest>,
     text_gen_params: Option<GuardrailsTextGenerationParameters>,
-    on_message_callback: impl Fn(GenerationResponse) -> Event,
+    on_message_callback: impl Fn(GeneratedTextStreamResult) -> Event,
 ) -> impl Stream<Item = Result<Event, Infallible>> {
     let mut dummy_response_iterator = DUMMY_RESPONSE.iter();
 
-    let mut input_token_count: u32 = 0;
+    let mut input_token_count: i32 = 0;
+    let token_info: GeneratedToken = GeneratedToken {
+        text: "hi".to_string(),
+        logprob: Some(0.53),
+        rank: Some(1),
+    };
+
     let stream = async_stream::stream! {
         // Server sending event stream
         while let Some(&token) = dummy_response_iterator.next() {
-            let stream_token = GenerationResponse {
-                input_token_count: input_token_count,
-                generated_token_count: input_token_count, 
-                text: token.to_string(),
-                
+            let details: TokenStreamDetails = TokenStreamDetails {
+                finish_reason:FinishReason::MaxTokens.into(),
+                seed: Some(42),
+                input_token_count,
+                generated_tokens: Some(20),
+            };
+            let stream_token = GeneratedTextStreamResult {
+                generated_text: token.to_string(),
+                details: Some(details),
+                input_tokens: Some(vec![token_info.clone()]),
+                tokens: Some(vec![token_info.clone()]),
             };
             input_token_count += 1;
             let event = on_message_callback(stream_token);
@@ -254,7 +267,7 @@ async fn unary_chunk_and_detection(
 // ========================================== Main ==========================================
 
 // In the future probably create DAG/list of tasks to be invoked
-pub async fn do_tasks(payload: GuardrailsHttpRequest, detector_hashmaps: (HashMap<String, String>, HashMap<String, Result<ChunkerConfig, ErrorResponse>>),streaming: bool) {
+pub async fn do_tasks(payload: GuardrailsHttpRequest, detector_hashmaps: (HashMap<String, String>, HashMap<String, Result<ChunkerConfig, ErrorResponse>>), streaming: bool) {
     // TODO: is clone() needed for every payload use? Otherwise move errors since payload has String
 
     // LLM / text generation model
@@ -301,34 +314,22 @@ pub async fn do_tasks(payload: GuardrailsHttpRequest, detector_hashmaps: (HashMa
         input_detection_response = unary_chunk_and_detection(input_detector_models, &chunker_map, &chunker_config_map, user_input.clone()).await;
     }
 
-    let mut token_classification_results = TextGenTokenClassificationResults {
-        input: None,
+    // Response aggregation - could move into task
+    let token_classification_results = TextGenTokenClassificationResults {
+        input: Some(input_detection_response.clone()),
         output: None,
     };
     let mut warnings = None;
     // Parse input detection results if they do exist
-    if !input_detection_response.is_empty() {
-        token_classification_results.input = Some(input_detection_response.clone());
+    if !input_detection_response.clone().is_empty() {
         warnings = Some(vec![InputWarning {
             id: Some(InputWarningReason::UnsuitableInput),
             message: Some(UNSUITABLE_INPUT_MESSAGE.to_string()),
         }]);
     };
-
-    // Response aggregation - could move into task
-    let classified_result: ClassifiedGeneratedTextResult = ClassifiedGeneratedTextResult {
-        generated_text: None,
-        token_classification_results: token_classification_results,
-        finish_reason: None,
-        generated_token_count: None,
-        seed: None,
-        input_token_count: input_token_count,
-        warnings: warnings,
-        tokens: None,
-        input_tokens: None,
-    };
-    // "break" if input detection - but this fn not responsible for short-circuit
-
+    let mut classified_result: ClassifiedGeneratedTextResult = ClassifiedGeneratedTextResult::new(token_classification_results, input_token_count);
+    classified_result.warnings = warnings;
+    // TODO: "break" if input detection - but this fn not responsible for short-circuit
 
     // Check for output detection
     let output_detectors: Option<HashMap<String, HashMap<String, String>>> = payload.clone().guardrail_config.unwrap().output.unwrap().models;
@@ -338,17 +339,32 @@ pub async fn do_tasks(payload: GuardrailsHttpRequest, detector_hashmaps: (HashMa
     if !streaming {
         // Add TGIS generation - grpc [unary] call
         let tgis_response = tgis_unary_call(model_id.clone(), user_input.clone(), payload.text_gen_parameters).await;
+        let mut output_detection_response: Vec<TokenClassificationResult> = Vec::new();
         if do_output_detection {
             let output_detector_models: HashMap<String, HashMap<String, String>> = output_detectors.unwrap();
             // Add detection task for each detector - rest [unary] call
             // For each detector, add chunker task as precursor - grpc [unary] call
-            let output_detection_response = unary_chunk_and_detection(output_detector_models, &chunker_map, &chunker_config_map, user_input.clone()).await;
+            output_detection_response = unary_chunk_and_detection(output_detector_models, &chunker_map, &chunker_config_map, user_input.clone()).await;
         }
-        // Response aggregation task
-
+        // Response aggregation
+        let output_token_classification_results = TextGenTokenClassificationResults {
+            input: None,
+            output: Some(output_detection_response),
+        };
+        let classified_output_result = ClassifiedGeneratedTextResult {
+            generated_text: Some(tgis_response.generated_text),
+            token_classification_results: output_token_classification_results,
+            finish_reason: tgis_response.finish_reason,
+            generated_token_count: tgis_response.generated_tokens,
+            seed: tgis_response.seed,
+            input_token_count,
+            warnings: None,
+            tokens: tgis_response.tokens,
+            input_tokens: tgis_response.input_tokens,
+        };
     } else { // ============= Streaming endpoint =============
         // Add TGIS generation task - grpc [server streaming] call
-        let on_message_callback = |stream_token: GenerationResponse| {
+        let on_message_callback = |stream_token: GeneratedTextStreamResult| {
             let event = Event::default();
             event.json_data(stream_token).unwrap()
         };
