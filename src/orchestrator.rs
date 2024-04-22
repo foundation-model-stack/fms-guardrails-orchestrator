@@ -1,27 +1,24 @@
 use std::{collections::HashMap, usize};
 
-use crate::{config::{ChunkerConfig, ChunkerType, DetectorConfig, DetectorMap}, models::{GuardrailsConfig, GuardrailsHttpRequest, GuardrailsTextGenerationParameters}, pb::fmaas::{generation_service_server::GenerationService, BatchedTokenizeRequest, TokenizeRequest}, ErrorResponse};
-use axum::{
-    response::IntoResponse,
-    Json,
-};
-use axum::response::sse::{Event, KeepAlive, Sse};
+use crate::{config::{ChunkerConfig, DetectorConfig, DetectorMap}, models::{ClassifiedGeneratedTextResult, GuardrailsHttpRequest, GuardrailsTextGenerationParameters, InputWarning, InputWarningReason, TextGenTokenClassificationResults, TokenClassificationResult}, ErrorResponse};
+use crate::{pb::fmaas::{
+    BatchedTokenizeRequest, TokenizeRequest,
+}};
+use axum::Json;
+use axum::response::sse::Event;
 use futures::stream::Stream;
-use serde::{Serialize};
-use serde_json::{json, Value};
-use tokio::{signal};
-use tracing::info;
+use serde::Serialize;
 use std::convert::Infallible;
 
 use crate::{pb::{
     caikit_data_model::nlp::{
         Token, TokenizationResults, TokenizationStreamResult,
-    },
-}};
+}}};
 
 
 // ========================================== Constants and Dummy Variables ==========================================
 const API_PREFIX: &'static str = r#"/api/v1/task"#;
+const UNSUITABLE_INPUT_MESSAGE: &'static str = "Unsuitable input detected. Please check the detected entities on your input and try again with the unsuitable input removed.";
 
 // TODO: Dummy TGIS streaming generation response object - replace later
 #[derive(Serialize)]
@@ -35,7 +32,7 @@ pub(crate) struct GenerationResponse {
 // TODO: Dummy TGIS tokenization response object - replace later
 #[derive(Serialize)]
 pub(crate) struct TokenizeResponse {
-    pub token_count: u32,
+    pub token_count: i32,
     // ...
 }
 
@@ -193,21 +190,20 @@ async fn chunker_stream_call(model_id: String, texts: Vec<String>, on_message_ca
 }
 
 // Unary detector call
+// Token classification result vector used for now but expecting more generic DetectorResponse in the future
 // Assume processing on batch (multiple strings) can at least happen
-async fn detector_call(detector_id: String, inputs: Vec<String>) -> DetectorResponse {
+async fn detector_call(detector_id: String, inputs: Vec<String>) -> Vec<TokenClassificationResult> {
     // Might need some routing/extra endpoint info to begin with
-    let result: DetectorResult = DetectorResult {
+    let result: TokenClassificationResult = TokenClassificationResult {
         start: 0,
         end: 3,
         word: "moo".to_owned(),
         entity: "cow".to_owned(),
         entity_group: "cow".to_owned(),
-        token_count: 1,
+        token_count: Some(1),
         score: 0.5,
     };
-    DetectorResponse {
-        results: vec![result]
-    }
+    vec![result]
 }
 
 // Orchestrator internal logic
@@ -231,7 +227,7 @@ async fn unary_chunk_and_detection(
     chunker_map: &HashMap<String, String>,
     chunker_config_map: &HashMap<String, Result<ChunkerConfig, ErrorResponse>>,
     texts: Vec<String>,
-) -> Vec<DetectorResponse> {
+) -> Vec<TokenClassificationResult> {
     // input_detectors_models: model_name: {param: value}
     // Future - parallelize calls
     let mut detector_responses = Vec::new();
@@ -245,7 +241,8 @@ async fn unary_chunk_and_detection(
                 for token in tokenization_results.results.iter() {
                     texts.push(token.text.to_string())
                 }
-                detector_responses.push(detector_call(detector_id.to_string(), texts).await)
+                let detector_response = detector_call(detector_id.to_string(), texts).await;
+                detector_responses.extend(detector_response)
             }
         } else {
             continue;
@@ -286,6 +283,8 @@ pub async fn do_tasks(payload: GuardrailsHttpRequest, detector_hashmaps: (HashMa
     // Check for input detection
     let input_detectors: Option<HashMap<String, HashMap<String, String>>> = payload.clone().guardrail_config.unwrap().input.unwrap().models;
     let do_input_detection: bool = input_detectors.is_some();
+    let mut input_detection_response: Vec<TokenClassificationResult> = Vec::new();
+    let mut input_token_count = 0;
     if do_input_detection {
         // Input detection tasks - all unary - can abstract this later
         // TODO: Confirm if tokenize should be happening on original user input
@@ -293,15 +292,41 @@ pub async fn do_tasks(payload: GuardrailsHttpRequest, detector_hashmaps: (HashMa
         // This separate call would not be necessary if generation is called, since it
         // provides input_token_count
         // Add tokenization task to count input tokens - grpc [unary] call
-        let input_token_count = tokenize_unary_call(model_id.clone(), user_input.clone()).await;
+        let tokenize_response = tokenize_unary_call(model_id.clone(), user_input.clone()).await;
+        input_token_count = tokenize_response.token_count;
         
         let input_detector_models: HashMap<String, HashMap<String, String>> = input_detectors.unwrap();
         // Add detection task for each detector - rest [unary] call
         // For each detector, add chunker task as precursor - grpc [unary] call
-        let input_detection_response = unary_chunk_and_detection(input_detector_models, &chunker_map, &chunker_config_map, user_input.clone()).await;
+        input_detection_response = unary_chunk_and_detection(input_detector_models, &chunker_map, &chunker_config_map, user_input.clone()).await;
     }
 
-    // Response aggregation task
+    let mut token_classification_results = TextGenTokenClassificationResults {
+        input: None,
+        output: None,
+    };
+    let mut warnings = None;
+    // Parse input detection results if they do exist
+    if !input_detection_response.is_empty() {
+        token_classification_results.input = Some(input_detection_response.clone());
+        warnings = Some(vec![InputWarning {
+            id: Some(InputWarningReason::UnsuitableInput),
+            message: Some(UNSUITABLE_INPUT_MESSAGE.to_string()),
+        }]);
+    };
+
+    // Response aggregation - could move into task
+    let classified_result: ClassifiedGeneratedTextResult = ClassifiedGeneratedTextResult {
+        generated_text: None,
+        token_classification_results: token_classification_results,
+        finish_reason: None,
+        generated_token_count: None,
+        seed: None,
+        input_token_count: input_token_count,
+        warnings: warnings,
+        tokens: None,
+        input_tokens: None,
+    };
     // "break" if input detection - but this fn not responsible for short-circuit
 
 
