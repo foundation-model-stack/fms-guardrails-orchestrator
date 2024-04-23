@@ -1,6 +1,6 @@
 use std::{collections::HashMap, usize};
 
-use crate::{config::{ChunkerConfig, DetectorConfig, DetectorMap}, models::{ClassifiedGeneratedTextResult, FinishReason, GeneratedTextResult, GeneratedTextStreamResult, GeneratedToken, GuardrailsHttpRequest, GuardrailsTextGenerationParameters, InputWarning, InputWarningReason, TextGenTokenClassificationResults, TokenClassificationResult, TokenStreamDetails}, pb::fmaas::{BatchedTokenizeRequest, TokenizeRequest}, ErrorResponse
+use crate::{clients::nlp::NlpServicer, config::{ChunkerConfig, DetectorConfig, DetectorMap}, models::{ClassifiedGeneratedTextResult, FinishReason, GeneratedTextResult, GeneratedTextStreamResult, GeneratedToken, GuardrailsHttpRequest, GuardrailsTextGenerationParameters, InputWarning, InputWarningReason, TextGenTokenClassificationResults, TokenClassificationResult, TokenStreamDetails}, pb::fmaas::{BatchedTokenizeRequest, TokenizeRequest}, utils::call_chunker, ErrorResponse
 };
 use axum::Json;
 use axum::response::sse::Event;
@@ -10,7 +10,7 @@ use std::convert::Infallible;
 
 use crate::{pb::{
     caikit_data_model::nlp::{
-        Token, TokenizationResults, TokenizationStreamResult,
+        Token, TokenizationStreamResult,
 }}};
 
 
@@ -52,7 +52,7 @@ pub fn preprocess_detector_map(detector_map: DetectorMap) -> Result<(HashMap<Str
 
 // ========================================== Dummy Tasks ==========================================
 
-// API calls - do not have to actually live here
+// API calls - will not live here
 
 // Unary TGIS call - first pass will be through caikit-nlp
 async fn tgis_unary_call(model_id: String, text: String, text_gen_params: Option<GuardrailsTextGenerationParameters>) -> GeneratedTextResult {
@@ -132,25 +132,6 @@ async fn tokenize_unary_call(model_id: String, texts: Vec<String>) -> TokenizeRe
     }
 }
 
-// Unary chunker call
-async fn chunker_unary_call(model_id: String, text: String) -> TokenizationResults {
-    // unary under the hood
-    let token_0 = Token {
-        start: 0,
-        end: 4,
-        text: "This".to_string(),
-    };
-    let token_1 = Token {
-        start: 5,
-        end: 7,
-        text: "is".to_string(),
-    };
-    TokenizationResults {
-        results: vec![token_0, token_1],
-        token_count: 2,
-    }
-}
-
 // Bidirectional streaming chunker call
 async fn chunker_stream_call(model_id: String, texts: Vec<String>, on_message_callback: impl Fn(TokenizationStreamResult) -> Event) -> impl Stream<Item = Result<Event, Infallible>> {
     let token_0 = Token {
@@ -199,7 +180,7 @@ async fn detector_call(detector_id: String, inputs: Vec<String>) -> Vec<TokenCla
     vec![result]
 }
 
-// Orchestrator internal logic
+// ================================ Orchestrator internal logic ==========================================
 
 fn slice_input(mut user_input: Vec<String>, payload: GuardrailsHttpRequest) -> Vec<String>{
     if let Some(input_masks) = payload.guardrail_config.unwrap().input.unwrap().masks {
@@ -219,25 +200,32 @@ async fn unary_chunk_and_detection(
     chunker_map: &HashMap<String, String>,
     chunker_config_map: &HashMap<String, Result<ChunkerConfig, ErrorResponse>>,
     texts: Vec<String>,
+    nlp_servicer: NlpServicer,
 ) -> Vec<TokenClassificationResult> {
-    // input_detectors_models: model_name: {param: value}
+    // detectors_models: model_name: {param: value}
     // Future - parallelize calls
     let mut detector_responses = Vec::new();
     for detector_id in detectors_models.keys() {
         if let Some(chunker_id) = chunker_map.get(detector_id){
             for text in texts.iter() {
                 // TODO: Get config/type for chunker call
-                let tokenization_results = chunker_unary_call(chunker_id.to_string(), text.to_string()).await;
-                // Optimize later - chunkers would always be called even if multiple detectors had same chunker
-                let mut texts: Vec<String> = Vec::new();
-                for token in tokenization_results.results.iter() {
-                    texts.push(token.text.to_string())
+                if let Ok(tokenization_results) = call_chunker(text.to_string(), chunker_id.to_string(), nlp_servicer.clone()).await {
+                    // Optimize later - chunkers would always be called even if multiple detectors had same chunker
+                    let mut texts: Vec<String> = Vec::new();
+                    for token in tokenization_results.results.iter() {
+                        texts.push(token.text.to_string())
+                    }
+                    // TODO: Pass on detector params
+                    let detector_response = detector_call(detector_id.to_string(), texts).await;
+                    detector_responses.extend(detector_response)
+                } else {
+                    // TODO: handle error - this would be an internal error if a chunker call did
+                    // not succeed because end users will know nothing about chunkers
                 }
-                let detector_response = detector_call(detector_id.to_string(), texts).await;
-                detector_responses.extend(detector_response)
             }
         } else {
-            continue;
+            continue; // Configuration errors for missing detectors and/or associated chunkers should have
+            // already been handled and surfaced at config parsing time
         }
     }
     detector_responses
@@ -286,6 +274,7 @@ fn aggregate_response_for_output_unary(
 // In the future probably create DAG/list of tasks to be invoked
 pub async fn do_tasks(payload: GuardrailsHttpRequest, 
     detector_hashmaps: (HashMap<String, String>, HashMap<String, Result<ChunkerConfig, ErrorResponse>>),
+    nlp_servicer: NlpServicer,
     streaming: bool) {
     // TODO: is clone() needed for every payload use? Otherwise move errors since payload has String
 
@@ -330,7 +319,7 @@ pub async fn do_tasks(payload: GuardrailsHttpRequest,
         let input_detector_models: HashMap<String, HashMap<String, String>> = input_detectors.unwrap();
         // Add detection task for each detector - rest [unary] call
         // For each detector, add chunker task as precursor - grpc [unary] call
-        input_detection_response = unary_chunk_and_detection(input_detector_models, &chunker_map, &chunker_config_map, user_input.clone()).await;
+        input_detection_response = unary_chunk_and_detection(input_detector_models, &chunker_map, &chunker_config_map, user_input.clone(), nlp_servicer.clone()).await;
     }
 
     let classified_result: ClassifiedGeneratedTextResult = aggregate_response_for_input(input_detection_response, input_token_count);
@@ -349,7 +338,7 @@ pub async fn do_tasks(payload: GuardrailsHttpRequest,
             let output_detector_models: HashMap<String, HashMap<String, String>> = output_detectors.unwrap();
             // Add detection task for each detector - rest [unary] call
             // For each detector, add chunker task as precursor - grpc [unary] call
-            output_detection_response = unary_chunk_and_detection(output_detector_models, &chunker_map, &chunker_config_map, user_input.clone()).await;
+            output_detection_response = unary_chunk_and_detection(output_detector_models, &chunker_map, &chunker_config_map, user_input.clone(), nlp_servicer.clone()).await;
         }
         // Response aggregation
         let classified_result = aggregate_response_for_output_unary(output_detection_response, tgis_response);
