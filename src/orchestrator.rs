@@ -342,33 +342,32 @@ pub async fn do_tasks(payload: GuardrailsHttpRequest,
 
     // ============= Unary endpoint =============
     if !streaming {
-    // Add TGIS generation - grpc [unary] call
-    let tgis_response = tgis_unary_call(model_id.clone(), payload.inputs, payload.text_gen_parameters).await;
-    let mut output_detection_response: Vec<TokenClassificationResult> = Vec::new();
-    if do_output_detection {
-        let output_detector_models: HashMap<String, HashMap<String, String>> = output_detectors.unwrap();
-        // Add detection task for each detector - rest [unary] call
-        // For each detector, add chunker task as precursor - grpc [unary] call
-        output_detection_response = unary_chunk_and_detection(output_detector_models, &chunker_map, &chunker_config_map, user_input.clone()).await;
-    }
-    // Response aggregation
-    let classified_result = aggregate_response_for_output_unary(output_detection_response, tgis_response);
-} else { // ============= Streaming endpoint =============
-    // Add TGIS generation task - grpc [server streaming] call
-    let on_message_callback = |stream_token: GeneratedTextStreamResult| {
-        let event = Event::default();
-        event.json_data(stream_token).unwrap()
-    };
+        // Add TGIS generation - grpc [unary] call
+        let tgis_response = tgis_unary_call(model_id.clone(), payload.inputs, payload.text_gen_parameters).await;
+        let mut output_detection_response: Vec<TokenClassificationResult> = Vec::new();
+        if do_output_detection {
+            let output_detector_models: HashMap<String, HashMap<String, String>> = output_detectors.unwrap();
+            // Add detection task for each detector - rest [unary] call
+            // For each detector, add chunker task as precursor - grpc [unary] call
+            output_detection_response = unary_chunk_and_detection(output_detector_models, &chunker_map, &chunker_config_map, user_input.clone()).await;
+        }
+        // Response aggregation
+        let classified_result = aggregate_response_for_output_unary(output_detection_response, tgis_response);
+    } else { // ============= Streaming endpoint =============
+        // Add TGIS generation task - grpc [server streaming] call
+        let on_message_callback = |stream_token: GeneratedTextStreamResult| {
+            let event = Event::default();
+            event.json_data(stream_token).unwrap()
+        };
 
-    // Fix payload here
-    let tgis_response_stream =
-        tgis_stream_call(Json(payload.inputs), payload.text_gen_parameters, on_message_callback, ).await;
+        let tgis_response_stream =
+            tgis_stream_call(Json(payload.inputs), payload.text_gen_parameters, on_message_callback, ).await;
 
-    if do_output_detection {
-        let output_detector_models: HashMap<String, HashMap<String, String>> = output_detectors.unwrap();
-        // Add detection task for each detector - rest [unary] call
-        // For each detector, add chunker task as precursor - grpc [bidi stream] call
-    }
+        if do_output_detection {
+            let output_detector_models: HashMap<String, HashMap<String, String>> = output_detectors.unwrap();
+            // Add detection task for each detector - rest [unary] call
+            // For each detector, add chunker task as precursor - grpc [bidi stream] call
+        }
     // Response aggregation task
-}
+    }
 }
