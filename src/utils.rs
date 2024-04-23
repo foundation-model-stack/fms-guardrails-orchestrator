@@ -29,8 +29,11 @@ use crate::{pb::fmaas::{
 }};
 use crate::{pb::caikit::runtime::nlp::{
     nlp_service_server::NlpService,
-    ServerStreamingTextGenerationTaskRequest
+    ServerStreamingTextGenerationTaskRequest,
+    TokenClassificationTaskRequest
 }};
+use crate::pb::caikit_data_model::nlp::TokenClassificationResults;
+
 
 
 
@@ -179,14 +182,96 @@ pub async fn call_nlp_text_gen_stream (
                 }
             }
             Err(error) => {
-                error!("Logged error: {:?}", error);
-               panic!("{}", error)
-            }
+                error!("error response from caikit-nlp: {:?}", error);
+
+                let err = Err(ErrorResponse{error: "error response from caikit-nlp".to_string()});
+                yield Ok(Event::from(err.expect("Error handling not implemented")));
+            //    panic!("{}", error.message().to_string())
+            }//.unwrap() //.expect("error response from caikit-nlp")
         }
 
     };
     stream
 }
+
+
+pub async fn call_nlp_token_classification (
+    text: String,
+    model_id: String,
+    params: Option<HashMap<String, Box<dyn std::any::Any>>>,
+    nlp_servicer: NlpServicer,
+) -> Result<TokenClassificationResults, ErrorResponse> {
+
+    // TODO: Get real parameters from params and splat them into the section below
+    let mut nlp_request = tonic::Request::new(
+        TokenClassificationTaskRequest {
+            text: text,
+            threshold: None
+        }
+    );
+
+    nlp_request.metadata_mut().insert(METADATA_NAME_MODEL_ID, model_id.parse().unwrap());
+
+    let result = nlp_servicer.token_classification_task_predict(nlp_request).await;
+
+    match result {
+        Ok(response) => {
+            return Ok(response.get_ref().to_owned());
+        }
+        Err(error) => {
+            error!("error response from caikit-nlp: {:?}", error);
+            Err(ErrorResponse{error: error.message().to_string()})
+        }
+    }
+}
+
+
+
+// pub async fn detector_streamify (
+//     text: String,
+//     model_id: String,
+//     params: Option<HashMap<String, Box<dyn std::any::Any>>>,
+//     nlp_servicer: NlpServicer,
+// ) -> impl Stream<Item = Result<Event, Infallible>> {
+
+//     let token_class_result =
+//         call_nlp_token_classification(
+//             text,
+//             model_id,
+//             params,
+//             nlp_servicer).await;
+
+//     let response_stream = sync_stream::stream! {
+//         token
+//     };
+//     // How to convert non stream to stream.
+//     // let token_class_to_stream = Stream<Item = Result<TokenClassificationResults, ErrorResponse>>::new( {
+//     //     stream::unfold((), |()| async { Some((token_class_result.await, ())) })
+//     // });
+//     // let token_class_strm = stream::once(token_class_result);
+
+//     // let response_stream = match token_class_result.await {
+//     //     // TODO: Add logic to parse and handle token_class_result properly
+//     //     Ok(value) => {
+//     //         print!("Response from token class result: {:?}", value);
+
+//     //     // utils::call_tgis_stream(Json(payload), state.tgis_servicer.clone(), on_message_callback).await;
+//     //     }
+//     //     error => {
+//     //         println!("{:?}", error);
+//     //         // let error_res = stream::once(async {Err(ErrorResponse {error: "token classification failed".to_string()});
+//     //         // let error_strm = stream::repeat_with(|| Event::default().data(Err(ErrorResponse {error: "token classification failed".to_string()}))).map(Err);
+
+//     //         let error_strm = async_stream::stream! {
+//     //             Err(ErrorResponse {error: "token classification failed".to_string()})
+//     //         };
+
+//     //     }
+//     // };
+//     response_stream
+// }
+
+
 // =========================================== Util functions ==============================================
 
 

@@ -1,28 +1,28 @@
 use crate::{
-    clients::tgis::{self, GenerationServicer},
-    clients::nlp::NlpServicer,
+    clients::{nlp::NlpServicer, tgis::{self, GenerationServicer}},
     config::{self, OrchestratorConfig},
     models,
-    pb::fmaas::generation_service_server::GenerationService,
+    pb::{caikit_data_model::nlp::TokenClassificationResults, fmaas::generation_service_server::GenerationService},
     utils,
     ErrorResponse,
     GuardrailsResponse};
 
 
+use core::panic;
 use std::{net::SocketAddr, sync::Arc};
+use async_stream::try_stream;
 use axum::{
-    extract::{Extension, State},
-    http::{HeaderMap, Method, StatusCode},
-    response::IntoResponse,
-    routing::{get, post},
-    Json, Router,
+    error_handling::HandleError,
+    error_handling::future::HandleErrorFuture, extract::{Extension, State}, http::{response, HeaderMap, Method, StatusCode}, response::IntoResponse, routing::{get, post}, Json, Router
 };
 // sse -> server side events
+use axum_macros::debug_handler;
 use axum::response::sse::{Event, KeepAlive, Sse};
-use futures::{stream::Stream, StreamExt};
+use futures::{stream::{self, Stream}, FutureExt, StreamExt, TryStreamExt};
 use serde::{Serialize};
 use serde_json::{json, Value};
 use tokio::{signal};
+use tokio_stream::wrappers;
 use tracing::info;
 use std::convert::Infallible;
 
@@ -122,6 +122,7 @@ async fn classification_with_generation(
 }
 
 
+// #[debug_handler]
 async fn stream_classification_with_gen(
     State(state): State<Arc<ServerState>>,
     Json(payload): Json<models::GuardrailsHttpRequest>) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
@@ -131,13 +132,64 @@ async fn stream_classification_with_gen(
         event.json_data(stream_token).unwrap()
     };
 
+    // TODO: check if input guardrails is required and if so call detectors
+
+    let guardrails_model_id = "en_syntax_slate.38m.hap".to_string();
+
+    let token_class_result =
+        utils::call_nlp_token_classification(
+            payload.clone().inputs,
+            guardrails_model_id,
+            None,
+            state.caikit_nlp_servicer.clone());
+
+    // How to convert non stream to stream.
+    // let token_class_to_stream = Stream<Item = Result<TokenClassificationResults, ErrorResponse>>::new( {
+    //     stream::unfold((), |()| async { Some((token_class_result.await, ())) })
+    // });
+    // let token_class_strm = stream::once(token_class_result);
+
+    let _ = async_stream::stream! {
+        let result = token_class_result.await;
+        match result {
+            // TODO: Add logic to parse and handle token_class_result properly
+            Ok(value) => {
+                print!("Response from token class result: {:?}", value);
+                // TODO: Add logic to parse classification response and send appropriate event back
+                // based on output
+                Ok(Event::default())
+            },
+            _ => Err(Event::default())
+
+        }
+    };
+
+
     let response_stream =
-        utils::call_nlp_text_gen_stream(Json(payload), state.caikit_nlp_servicer.clone(), on_message_callback).await;
-        // utils::call_tgis_stream(Json(payload), state.tgis_servicer.clone(), on_message_callback).await;
-    let sse = Sse::new(response_stream).keep_alive(KeepAlive::default());
-    sse
+            utils::call_nlp_text_gen_stream(
+                Json(payload),
+                state.caikit_nlp_servicer.clone(),
+                on_message_callback
+            );
+
+    Sse::new(response_stream.await).keep_alive(KeepAlive::default())
+
 }
 
+
+impl IntoResponse for ErrorResponse {
+    fn into_response(self) -> axum::response::Response {
+        match self.error {
+            _ => (StatusCode::INTERNAL_SERVER_ERROR, "Error handling not implemented".to_string())
+        }.into_response()
+    }
+}
+
+async fn handle_error(error: ErrorResponse) -> (StatusCode, String) {
+    match error.error {
+        _ => (StatusCode::INTERNAL_SERVER_ERROR, "Error handling not implemented".to_string())
+    }
+}
 
 /// Shutdown signal handler
 async fn shutdown_signal() {
