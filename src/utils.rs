@@ -15,7 +15,7 @@ use tonic::transport::{
 use tokio::fs::read;
 use tracing::{error, info};
 
-use crate::{models, ErrorResponse, GuardrailsResponse};
+use crate::{models, ErrorResponse};
 use crate::{
     clients::tgis::GenerationServicer,
     clients::nlp::{NlpServicer, METADATA_NAME_MODEL_ID}
