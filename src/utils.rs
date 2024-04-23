@@ -1,38 +1,41 @@
 
 
-use std::{collections::HashMap, hash::Hash};
+use std::collections::HashMap;
 use std::convert::Infallible;
 
 use axum::{
-    extract::{Extension, State},
-    http::{HeaderMap, Method, StatusCode},
-    response::{IntoResponse, sse::{Event, KeepAlive, Sse}},
+    http::StatusCode,
+    response::{IntoResponse, sse::{Event, KeepAlive}},
     Json,
 };
 use futures::{stream::Stream, StreamExt};
 use tonic::transport::{
-    server::RoutesBuilder, Certificate, ClientTlsConfig, Identity, Server, ServerTlsConfig,
+    Certificate, ClientTlsConfig,
 };
 use tokio::fs::read;
 use tracing::{error, info};
 
 use crate::{models, ErrorResponse, GuardrailsResponse};
 use crate::{
-    clients::tgis::{self, GenerationServicer},
+    clients::tgis::GenerationServicer,
     clients::nlp::{NlpServicer, METADATA_NAME_MODEL_ID}
 };
-use crate::{config::{ServiceAddr, OrchestratorConfig}};
-use crate::{pb::fmaas::{
+use crate::config::ServiceAddr;
+use crate::pb::fmaas::{
     generation_service_server::GenerationService,
-    GenerationRequest, GenerationResponse,  Parameters,
+    GenerationRequest,
     SingleGenerationRequest,
-}};
-use crate::{pb::caikit::runtime::nlp::{
+};
+use crate::pb::caikit::runtime::nlp::{
     nlp_service_server::NlpService,
     ServerStreamingTextGenerationTaskRequest,
-    TokenClassificationTaskRequest
-}};
-use crate::pb::caikit_data_model::nlp::TokenClassificationResults;
+    TokenClassificationTaskRequest,
+    TokenizationTaskRequest
+};
+use crate::pb::caikit_data_model::nlp::{
+    TokenClassificationResults,
+    TokenizationResults
+};
 
 
 
@@ -225,52 +228,32 @@ pub async fn call_nlp_token_classification (
     }
 }
 
+pub async fn call_chunker(
+    text: String,
+    model_id: String,
+    nlp_servicer: NlpServicer
+) -> Result<TokenizationResults, ErrorResponse> {
 
+    let mut nlp_request = tonic::Request::new(
+        TokenizationTaskRequest {
+            text: text
+        }
+    );
 
-// pub async fn detector_streamify (
-//     text: String,
-//     model_id: String,
-//     params: Option<HashMap<String, Box<dyn std::any::Any>>>,
-//     nlp_servicer: NlpServicer,
-// ) -> impl Stream<Item = Result<Event, Infallible>> {
+    nlp_request.metadata_mut().insert(METADATA_NAME_MODEL_ID, model_id.parse().unwrap());
 
-//     let token_class_result =
-//         call_nlp_token_classification(
-//             text,
-//             model_id,
-//             params,
-//             nlp_servicer).await;
+    let result = nlp_servicer.tokenization_task_predict(nlp_request).await;
 
-//     let response_stream = sync_stream::stream! {
-//         token
-//     };
-//     // How to convert non stream to stream.
-//     // let token_class_to_stream = Stream<Item = Result<TokenClassificationResults, ErrorResponse>>::new( {
-//     //     stream::unfold((), |()| async { Some((token_class_result.await, ())) })
-//     // });
-//     // let token_class_strm = stream::once(token_class_result);
-
-//     // let response_stream = match token_class_result.await {
-//     //     // TODO: Add logic to parse and handle token_class_result properly
-//     //     Ok(value) => {
-//     //         print!("Response from token class result: {:?}", value);
-
-//     //     // utils::call_tgis_stream(Json(payload), state.tgis_servicer.clone(), on_message_callback).await;
-//     //     }
-//     //     error => {
-//     //         println!("{:?}", error);
-//     //         // let error_res = stream::once(async {Err(ErrorResponse {error: "token classification failed".to_string()});
-//     //         // let error_strm = stream::repeat_with(|| Event::default().data(Err(ErrorResponse {error: "token classification failed".to_string()}))).map(Err);
-
-//     //         let error_strm = async_stream::stream! {
-//     //             Err(ErrorResponse {error: "token classification failed".to_string()})
-//     //         };
-
-//     //     }
-//     // };
-//     response_stream
-// }
-
+    match result {
+        Ok(response) => {
+            return Ok(response.get_ref().to_owned());
+        }
+        Err(error) => {
+            error!("error response from caikit-nlp {:?}", error);
+            Err(ErrorResponse{error: error.message().to_string()})
+        }
+    }
+}
 
 // =========================================== Util functions ==============================================
 
