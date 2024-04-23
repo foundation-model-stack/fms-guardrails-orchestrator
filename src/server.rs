@@ -1,8 +1,7 @@
 use crate::{
-    clients::{nlp::NlpServicer, tgis::{self, GenerationServicer}},
-    config::{self, OrchestratorConfig},
+    clients::{nlp::NlpServicer},
+    config::{self},
     models,
-    pb::{caikit_data_model::nlp::TokenClassificationResults, fmaas::generation_service_server::GenerationService},
     utils,
     ErrorResponse,
     GuardrailsResponse};
@@ -10,19 +9,15 @@ use crate::{
 
 use core::panic;
 use std::{net::SocketAddr, sync::Arc};
-use async_stream::try_stream;
+
 use axum::{
-    error_handling::HandleError,
-    error_handling::future::HandleErrorFuture, extract::{Extension, State}, http::{response, HeaderMap, Method, StatusCode}, response::IntoResponse, routing::{get, post}, Json, Router
+    extract::State, http::StatusCode, response::IntoResponse, routing::{get, post}, Json, Router
 };
 // sse -> server side events
-use axum_macros::debug_handler;
 use axum::response::sse::{Event, KeepAlive, Sse};
-use futures::{stream::{self, Stream}, FutureExt, StreamExt, TryStreamExt};
-use serde::{Serialize};
-use serde_json::{json, Value};
-use tokio::{signal};
-use tokio_stream::wrappers;
+use futures::stream::Stream;
+use serde::Serialize;
+use tokio::signal;
 use tracing::info;
 use std::convert::Infallible;
 
@@ -51,13 +46,14 @@ const DUMMY_RESPONSE: [&'static str; 9] = ["This", "is", "very", "good", "news,"
 // ========================================== Handler functions ==========================================
 
 
-// Server shared state
+/// Server shared state
 #[derive(Clone)]
 pub(crate) struct ServerState {
     // pub tgis_servicer: GenerationServicer,
     pub caikit_nlp_servicer: NlpServicer
 }
 
+/// Run the orchestrator server
 #[allow(clippy::too_many_arguments)]
 pub async fn run(
     rest_addr: SocketAddr,
@@ -110,8 +106,8 @@ async fn health() -> Result<(), ()> {
 // #[debug_handler]
 // TODO: Improve Bad Request error handling by implementing Validate middleware
 async fn classification_with_generation(
-    State(state): State<Arc<ServerState>>,
-    Json(payload): Json<models::GuardrailsHttpRequest>) -> Json<GuardrailsResponse> {
+    State(_state): State<Arc<ServerState>>,
+    Json(_payload): Json<models::GuardrailsHttpRequest>) -> Json<GuardrailsResponse> {
 
     // TODO: note this function currently is not doing .await and hence is blocking
     let token_class_result = models::TextGenTokenClassificationResults::new();

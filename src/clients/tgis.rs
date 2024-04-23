@@ -17,6 +17,7 @@ pub struct GenerationServicer {
 }
 
 impl GenerationServicer {
+    /// Create a new text generation client
     pub async fn new(
         default_target_port: u16,
         client_tls: Option<&ClientTlsConfig>,
@@ -55,7 +56,7 @@ impl GenerationService for GenerationServicer {
         }
         debug!("Routing generation request for Model ID {}", &br.model_id);
         let mut client = self.client(&br.model_id).await?;
-        let mut span = tracing::info_span!(
+        let _span = tracing::info_span!(
             "fmaas.GenerationService/Generate",
             rpc.system = "grpc",
             rpc.method = "Generate",
@@ -85,7 +86,7 @@ impl GenerationService for GenerationServicer {
             &sr.model_id
         );
         let mut client = self.client(&sr.model_id).await?;
-        let mut span = tracing::info_span!(
+        let _span = tracing::info_span!(
             "fmaas.GenerationService/GenerateStream",
             rpc.system = "grpc",
             rpc.method = "GenerateStream",
