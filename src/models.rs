@@ -53,7 +53,7 @@ pub struct GuardrailsConfigInput {
 
     #[serde(rename = "masks")]
     #[serde(skip_serializing_if="Option::is_none")]
-    pub masks: Option<(usize, usize)>
+    pub masks: Option<Vec<(usize, usize)>>
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, validator::Validate)]

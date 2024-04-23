@@ -97,7 +97,7 @@ impl NlpService for NlpServicer {
             model_id
         );
 
-        // TODO: fake request here - need to update request above to be
+        // TODO: FIXME!! fake request here - need to update request above to be
         // expected type constructed from TGIS response, appears to be server type?
         let stream = tonic::Request::new(iter(vec![
             BidiStreamingTokenizationTaskRequest {text_stream: String::from("moo") },

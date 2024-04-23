@@ -75,7 +75,8 @@ pub fn preprocess_detector_map(detector_map: DetectorMap) -> Result<(HashMap<Str
 // API calls - do not have to actually live here
 
 // Unary TGIS call - first pass will be through caikit-nlp
-async fn tgis_unary_call(model_id: String, texts: Vec<String>, text_gen_params: Option<GuardrailsTextGenerationParameters>) -> GeneratedTextResult {
+async fn tgis_unary_call(model_id: String, text: String, text_gen_params: Option<GuardrailsTextGenerationParameters>) -> GeneratedTextResult {
+    // Expect only one text here
     let token_info: GeneratedToken = GeneratedToken {
         text: "hi".to_string(),
         logprob: Some(0.53),
@@ -93,9 +94,8 @@ async fn tgis_unary_call(model_id: String, texts: Vec<String>, text_gen_params: 
 }
 
 // Server streaming TGIS call - first pass will be through caikit-nlp
-// TODO: update payload here
 async fn tgis_stream_call(
-    Json(tgis_payload): Json<GuardrailsHttpRequest>,
+    Json(text): Json<String>,
     text_gen_params: Option<GuardrailsTextGenerationParameters>,
     on_message_callback: impl Fn(GeneratedTextStreamResult) -> Event,
 ) -> impl Stream<Item = Result<Event, Infallible>> {
@@ -222,12 +222,11 @@ async fn detector_call(detector_id: String, inputs: Vec<String>) -> Vec<TokenCla
 // Orchestrator internal logic
 
 fn slice_input(mut user_input: Vec<String>, payload: GuardrailsHttpRequest) -> Vec<String>{
-    let input_masks = payload.guardrail_config.unwrap().input.unwrap().masks;
-    if input_masks.is_some() {
+    if let Some(input_masks) = payload.guardrail_config.unwrap().input.unwrap().masks {
         let user_input_vec = user_input[0].chars().collect::<Vec<_>>();
         // Extra work for codepoint slicing in Rust
         user_input = vec![];
-        for (start, end) in input_masks.into_iter() {
+        for (start, end) in input_masks {
             let mask_string: String = user_input_vec[start..end].iter().cloned().collect::<String>();
             user_input.push(mask_string);
         }
@@ -338,7 +337,7 @@ pub async fn do_tasks(payload: GuardrailsHttpRequest, detector_hashmaps: (HashMa
     // ============= Unary endpoint =============
     if !streaming {
         // Add TGIS generation - grpc [unary] call
-        let tgis_response = tgis_unary_call(model_id.clone(), user_input.clone(), payload.text_gen_parameters).await;
+        let tgis_response = tgis_unary_call(model_id.clone(), payload.inputs, payload.text_gen_parameters).await;
         let mut output_detection_response: Vec<TokenClassificationResult> = Vec::new();
         if do_output_detection {
             let output_detector_models: HashMap<String, HashMap<String, String>> = output_detectors.unwrap();
@@ -371,7 +370,7 @@ pub async fn do_tasks(payload: GuardrailsHttpRequest, detector_hashmaps: (HashMa
 
         // Fix payload here
         let tgis_response_stream =
-            tgis_stream_call(Json(payload.clone()), payload.text_gen_parameters, on_message_callback, ).await;
+            tgis_stream_call(Json(payload.inputs), payload.text_gen_parameters, on_message_callback, ).await;
 
         if do_output_detection {
             let output_detector_models: HashMap<String, HashMap<String, String>> = output_detectors.unwrap();
