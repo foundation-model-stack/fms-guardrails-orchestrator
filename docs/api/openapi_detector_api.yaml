@@ -1,0 +1,126 @@
+openapi: 3.0.1
+info:
+  title: Detector API
+  version: 0.1.0
+paths:
+  /api/v1/task/detector:
+    post:
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              properties:
+                inputs:
+                  allOf:
+                    - properties:
+                        text:
+                          type: string
+                          title: Text
+                        parameters:
+                          anyOf:
+                            - additionalProperties:
+                                anyOf:
+                                  - type: integer
+                                  - type: number
+                                  - type: string
+                                  - type: boolean
+                                  - items:
+                                      type: object
+                                    type: array
+                                  - type: object
+                              type: object
+                          title: Parameters
+                      type: object
+                      title: detector.data_model.DetectorInput
+                model_id:
+                  type: string
+                  title: Model Id
+              type: object
+              title: DetectorTaskRequestHttpRequest
+          application/json:
+            schema:
+              properties:
+                inputs:
+                  allOf:
+                    - properties:
+                        text:
+                          type: string
+                          title: Text
+                        parameters:
+                          anyOf:
+                            - additionalProperties:
+                                anyOf:
+                                  - type: integer
+                                  - type: number
+                                  - type: string
+                                  - type: boolean
+                                  - items:
+                                      type: object
+                                    type: array
+                                  - type: object
+                              type: object
+                          title: Parameters
+                      additionalProperties: false
+                      type: object
+                      title: detector.data_model.DetectorInput
+                model_id:
+                  type: string
+                  title: Model Id
+              additionalProperties: false
+              type: object
+              title: DetectorTaskRequestHttpRequest
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetectorResponseList'
+components:
+  schemas:
+    DetectorResponseList:
+      properties:
+        detectors:
+          items:
+            properties:
+              start:
+                title: Start
+                type: integer
+              end:
+                title: End
+                type: integer
+              word:
+                title: Word
+                type: string
+              entity:
+                title: Entity
+                type: string
+              entity_group:
+                title: Entity Group
+                type: string
+              score:
+                title: Score
+                type: number
+              token_count:
+                title: Token Count
+                type: integer
+              annotations:
+                anyOf:
+                  - type: integer
+                  - type: number
+                  - type: string
+                  - type: boolean
+                  - items:
+                      type: object
+                    type: array
+                  - type: object
+                type: object
+                title: Annotations
+            title: detector.data_model.DetectorResponse
+            type: object
+          title: Detectors
+          type: array
+      title: detector.data_model.DetectorResponseList
+      type: object
+
