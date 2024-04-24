@@ -14,26 +14,27 @@ name = "fms-orchestr8"
 path = "src/main.rs"
 
 [dependencies]
-async-stream = "^0.3.5"
 anyhow = "^1.0.81"
+async-stream = "^0.3.5"
 axum = { version = "0.6.20", features = ["json"] }
 axum-macros = "0.4.1"
-config = { version = "0.13", default-features = false, features = ["yaml"] }
 clap = { version = "^4.5.3", features = ["derive", "env"] }
+config = { version = "0.13", default-features = false, features = ["yaml"] }
 futures = "^0.3.30"
 ginepro = "=0.7.1"
-tokio = { version = "^1.37.0", features = ["rt", "rt-multi-thread", "parking_lot", "signal", "sync", "fs"] }
-tonic = { version = "=0.11.0", features = ["tls"] }
-tokio-stream = "^0.1.14"
-tracing = "0.1.40"
-tracing-subscriber = { version = "0.3.18", features = ["json", "env-filter"] }
-serde_yml = "^0.0.4"
-serde_json = "^1.0.116"
-serde = { version = "^1.0.197", features = ["derive"] }
+mio = "^0.8.11"
 prost = "^0.12.3"
 prost-types = "^0.12.3"
-mio = "^0.8.11"
+reqwest = { version = "0.12.4", features = ["blocking", "rustls-tls"] }
 rustls-webpki = "^0.102.2"
+serde = { version = "^1.0.197", features = ["derive"] }
+serde_json = "^1.0.116"
+serde_yml = "^0.0.4"
+tokio = { version = "^1.37.0", features = ["rt", "rt-multi-thread", "parking_lot", "signal", "sync", "fs"] }
+tokio-stream = "^0.1.14"
+tonic = { version = "=0.11.0", features = ["tls"] }
+tracing = "0.1.40"
+tracing-subscriber = { version = "0.3.18", features = ["json", "env-filter"] }
 utoipa = { version = "3.5.0", features = ["axum_extras"] } # Provides open-api documentation for rust
 validator = { version = "0.16", features = ["derive"] } # For API validation
 
