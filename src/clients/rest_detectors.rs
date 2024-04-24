@@ -1,10 +1,14 @@
+use reqwest::Client;
 use serde::Deserialize;
 use serde_json::json;
+use std::borrow::Borrow;
+use std::collections::HashMap;
 use std::env;
-use reqwest::Client;
 
-use crate::{create_rest_clients, detector_models};
 
+use crate::config::ServiceAddr;
+use crate::{create_rest_clients, clients::detector_models};
+use crate::{ErrorResponse, RestClientConfig};
 
 // Struct containing map of clients,
 // where each model name is mapped to a tuple of
@@ -20,31 +24,51 @@ impl DetectorServicer {
         default_target_port: u16,
         model_map: &HashMap<String, ServiceAddr>,
     ) -> Self {
-        let clients = create_rest_clients(
-            default_target_port, model_map, NlpServiceClient::new
+        let clients: HashMap<String, RestClientConfig> = create_rest_clients(
+            default_target_port, model_map,
         ).await;
         Self { clients }
     }
+
+    async fn client(
+        &self,
+        model_id: &str,
+    ) -> Result<RestClientConfig, ErrorResponse> {
+        // TODO: Fix below model mapping
+        Ok(self
+            .clients
+            .get(&model_id.to_string())
+            .ok_or_else(|| ErrorResponse{ error: format!("Unrecognized model_id: {model_id}")})?
+            .clone())
+    }
+
+}
+
+
+trait DetectorService {
+    async fn classify(
+        &self,
+        request: detector_models::DetectorTaskRequestHttpRequest
+    ) -> Result<detector_models::DetectorTaskResponseList, ErrorResponse> ;
 }
 
 impl DetectorService for DetectorServicer {
+
     async fn classify(
         &self,
         request: detector_models::DetectorTaskRequestHttpRequest
     ) -> Result<detector_models::DetectorTaskResponseList, ErrorResponse> {
+        let detector_req = request.borrow();
+        let model_id: &str = detector_req.model_id.as_str().as_ref();
+        let client_config = self.client(model_id).await?;
 
-        let detector_req = request.get_ref();
-        if detector_req.is_empty() {
-            return Err(ErrorResponse {error: "Empty Request"})
-        }
-
-        let client_config = self.client(&detector_req.model_id).await?;
-
-        client_config
+        let url = client_config.url;
+        let response = client_config
             .client
-            .post(client_config.url)
-            .json(request)
+            .post(url)
+            .json(request.borrow())
             .send().await;
-
+        response.unwrap().json().await.unwrap()
     }
+
 }

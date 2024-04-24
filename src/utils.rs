@@ -12,12 +12,13 @@ use tonic::transport::{
     Certificate, ClientTlsConfig,
 };
 use tokio::fs::read;
-use tracing::{error};
+use tracing::error;
 
 use crate::{models, ErrorResponse};
 use crate::{
+    clients::nlp::{NlpServicer, METADATA_NAME_MODEL_ID},
+    clients::rest_detectors::DetectorServicer,
     clients::tgis::GenerationServicer,
-    clients::nlp::{NlpServicer, METADATA_NAME_MODEL_ID}
 };
 use crate::config::ServiceAddr;
 use crate::pb::fmaas::{
@@ -254,6 +255,18 @@ pub async fn call_chunker(
             Err(ErrorResponse{error: error.message().to_string()})
         }
     }
+}
+
+/// Configures detector clients
+pub async fn configured_detectors(
+    model_map: &HashMap<String, ServiceAddr>,
+    default_target_port: u16,
+) -> DetectorServicer {
+
+    let detector_servicer = DetectorServicer::new(
+        default_target_port, model_map
+    );
+    detector_servicer.await
 }
 
 // =========================================== Util functions ==============================================

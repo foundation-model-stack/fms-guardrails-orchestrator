@@ -21,7 +21,7 @@ mod pb;
 use reqwest::{Client as RestClient, Certificate as ReqwestCertificate, Url};
 
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ErrorResponse {
     pub error: String
 }
@@ -82,7 +82,7 @@ async fn create_grpc_clients<C>(
 
 // Function to create rest clients given a model_map containing
 // model name mapped to their client service address
-async fn create_rest_clients<C> (
+async fn create_rest_clients (
     default_target_port: u16,
     model_map: &HashMap<String, config::ServiceAddr>
  ) -> HashMap<String, RestClientConfig> {
