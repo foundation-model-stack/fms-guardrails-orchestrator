@@ -10,7 +10,7 @@ build = "build.rs"
 path = "src/lib.rs"
 
 [[bin]]
-name = "fmaas-orchestr8"
+name = "fms-orchestr8"
 path = "src/main.rs"
 
 [dependencies]

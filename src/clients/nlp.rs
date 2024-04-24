@@ -34,6 +34,7 @@ pub struct NlpServicer {
 }
 
 impl NlpServicer {
+    /// Create a new NLP client
     pub async fn new(
         default_target_port: u16,
         client_tls: Option<&ClientTlsConfig>,
@@ -90,7 +91,7 @@ impl NlpService for NlpServicer {
         request: Request<Streaming<BidiStreamingTokenizationTaskRequest>>,
     ) -> Result<Response<Self::BidiStreamingTokenizationTaskPredictStream>, Status> {
         let model_id = extract_model_id(&request)?;
-        let br = request.get_ref();
+        let _br = request.get_ref();
         // TODO: Empty case should look different for streaming
         debug!(
             "Performing bidirectional streaming tokenization task predict request for Model ID {}",
