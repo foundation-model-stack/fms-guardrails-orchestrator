@@ -259,7 +259,7 @@ pub async fn call_chunker(
 // =========================================== Util functions ==============================================
 
 
-async fn load_pem(path: String, name: &str) -> Vec<u8> {
+pub async fn load_pem(path: String, name: &str) -> Vec<u8> {
     read(&path)
         .await
         .unwrap_or_else(|_| panic!("couldn't load {name} from {path}"))

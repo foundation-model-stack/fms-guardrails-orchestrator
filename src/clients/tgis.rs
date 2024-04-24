@@ -9,7 +9,7 @@ use crate::{pb::fmaas::{
     generation_service_server::GenerationService, BatchedGenerationRequest,
     BatchedGenerationResponse, BatchedTokenizeRequest, BatchedTokenizeResponse,
     GenerationResponse, ModelInfoRequest, ModelInfoResponse, SingleGenerationRequest,
-}, create_clients, config::ServiceAddr};
+}, create_grpc_clients, config::ServiceAddr};
 
 #[derive(Debug, Default, Clone)]
 pub struct GenerationServicer {
@@ -23,7 +23,7 @@ impl GenerationServicer {
         client_tls: Option<&ClientTlsConfig>,
         model_map: &HashMap<String, ServiceAddr>,
     ) -> Self {
-        let clients = create_clients(
+        let clients = create_grpc_clients(
             default_target_port, client_tls, model_map, GenerationServiceClient::new
         ).await;
         Self { clients }

@@ -24,7 +24,7 @@ use crate::{pb::{
             TokenClassificationResults
         },
     },
-}, create_clients, config::ServiceAddr};
+}, create_grpc_clients, config::ServiceAddr};
 
 pub const METADATA_NAME_MODEL_ID: &str = "mm-model-id";
 
@@ -40,7 +40,7 @@ impl NlpServicer {
         client_tls: Option<&ClientTlsConfig>,
         model_map: &HashMap<String, ServiceAddr>,
     ) -> Self {
-        let clients = create_clients(
+        let clients = create_grpc_clients(
             default_target_port, client_tls, model_map, NlpServiceClient::new
         ).await;
         Self { clients }
