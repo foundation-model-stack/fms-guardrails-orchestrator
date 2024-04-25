@@ -1,5 +1,5 @@
 use crate::{
-    clients::nlp::NlpServicer, config::{self, DetectorMap, OrchestratorConfig}, models::{self, HttpValidationError}, orchestrator, utils, ErrorResponse, GuardrailsResponse};
+    clients::nlp::NlpServicer, config::{self, DetectorMap, OrchestratorConfig}, models::{self, HttpValidationError, LocationInner, ValidationError}, orchestrator, utils, ErrorResponse, GuardrailsResponse};
 
 
 use core::panic;
@@ -106,10 +106,20 @@ async fn classification_with_generation(
     State(state): State<Arc<ServerState>>,
     Json(payload): Json<models::GuardrailsHttpRequest>) -> Json<GuardrailsResponse> {
 
-    info!("Unary classification call");
+    info!("Unary classification with generation call");
     if let Ok(detector_hashmaps) = orchestrator::preprocess_detector_map(state.detector_config.clone()) {
         let response = orchestrator::do_unary_tasks(payload, detector_hashmaps, state.caikit_nlp_servicer.clone()).await;
-        return Json(GuardrailsResponse::SuccessfulResponse(response))
+        match response {
+            Ok(classified_result) => return Json(GuardrailsResponse::SuccessfulResponse(classified_result)),
+            // Improve dummy error / reconsider error objects
+            Err(error_response) => return Json(GuardrailsResponse::ValidationError(HttpValidationError { detail: Some(
+                vec![ValidationError{
+                    loc: vec![LocationInner{}],
+                    msg: error_response.error,
+                    r#type: "error".to_string()
+                }])
+            })),
+        }
     }
     // Dummy error for now
     Json(GuardrailsResponse::ValidationError(HttpValidationError { detail: None }))
@@ -121,7 +131,7 @@ async fn stream_classification_with_gen(
     State(state): State<Arc<ServerState>>,
     Json(payload): Json<models::GuardrailsHttpRequest>) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
 
-    info!("Streaming classification call");
+    info!("Streaming classification with generation call");
     let on_message_callback = |stream_token: models::ClassifiedGeneratedTextStreamResult| {
         let event = Event::default();
         event.json_data(stream_token).unwrap()
