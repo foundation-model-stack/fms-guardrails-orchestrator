@@ -258,7 +258,7 @@ pub async fn call_chunker(
 }
 
 /// Configures detector clients
-pub async fn configured_detectors(
+pub async fn configure_detectors(
     model_map: &HashMap<String, ServiceAddr>,
     default_target_port: u16,
 ) -> DetectorServicer {

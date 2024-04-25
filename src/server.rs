@@ -1,14 +1,9 @@
 use crate::{
-    clients::{nlp::NlpServicer},
-    config::{self},
-    models,
-    utils,
-    ErrorResponse,
-    GuardrailsResponse};
+    clients::{nlp::NlpServicer, rest_detectors::DetectorServicer}, config::{self, ServiceAddr}, models, orchestrator, utils, ErrorResponse, GuardrailsResponse};
 
 
 use core::panic;
-use std::{net::SocketAddr, sync::Arc};
+use std::{collections::HashMap, net::SocketAddr, sync::Arc};
 
 use axum::{
     extract::State, http::StatusCode, response::IntoResponse, routing::{get, post}, Json, Router
@@ -25,23 +20,7 @@ use std::convert::Infallible;
 const API_PREFIX: &'static str = r#"/api/v1/task"#;
 const TGIS_PORT: u16 = 8033;
 const DEFAULT_CAIKIT_NLP_PORT: u16 = 8085;
-
-// TODO: Change with real object
-struct InnerResponse {
-    sample: bool
-}
-struct SampleResponse {
-    response: InnerResponse
-}
-
-// TODO: Dummy streaming response object
-#[derive(Serialize)]
-pub(crate) struct StreamResponse {
-    pub generated_text: String,
-    pub processed_index: i32,
-}
-
-const DUMMY_RESPONSE: [&'static str; 9] = ["This", "is", "very", "good", "news,", "streaming", "is", "working", "!"];
+const DEFAULT_DETECTOR_PORT:u16 = 8080;
 
 // ========================================== Handler functions ==========================================
 
@@ -50,7 +29,8 @@ const DUMMY_RESPONSE: [&'static str; 9] = ["This", "is", "very", "good", "news,"
 #[derive(Clone)]
 pub(crate) struct ServerState {
     // pub tgis_servicer: GenerationServicer,
-    pub caikit_nlp_servicer: NlpServicer
+    pub caikit_nlp_servicer: NlpServicer,
+    pub detector_servicer: DetectorServicer
 }
 
 /// Run the orchestrator server
@@ -76,9 +56,21 @@ pub async fn run(
        DEFAULT_CAIKIT_NLP_PORT
     ).await;
 
+    // Configure Detectors
+    let mut detector_model_map: HashMap<String, ServiceAddr> = HashMap::new();
+    for (name, detector_config) in orchestrator_config.detector_config.detectors.into_iter() {
+        detector_model_map.insert(name, detector_config.service_config);
+    }
+
+    let detector_servicer = utils::configure_detectors(
+        &detector_model_map,
+        DEFAULT_DETECTOR_PORT
+    ).await;
+
     // Add server and configs to shared state
     let shared_state = Arc::new(ServerState {
         caikit_nlp_servicer,
+        detector_servicer
     });
 
     // Build and await on the HTTP server

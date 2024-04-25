@@ -1,34 +1,34 @@
-
+use serde::{Serialize, Deserialize};
 
 #[derive(Clone, Default, Debug, PartialEq, Serialize, Deserialize)]
 pub struct DetectorTaskRequestHttpRequest {
-    #[serde(rename = "inputs", skip_serializing_if = "Option::is_none")]
-    pub inputs: Option<Box<models::DetectorTaskRequestInputs>>,
-    #[serde(rename = "model_id", skip_serializing_if = "Option::is_none")]
-    pub model_id: Option<String>,
+    #[serde(rename = "inputs")]
+    pub inputs: DetectorTaskRequestInputs,
+    #[serde(rename = "model_id")]
+    pub model_id: String,
 }
 
 impl DetectorTaskRequestHttpRequest {
-    pub fn new() -> DetectorTaskRequestHttpRequest {
+    pub fn new(inputs: DetectorTaskRequestInputs, model_id: String) -> DetectorTaskRequestHttpRequest {
         DetectorTaskRequestHttpRequest {
-            inputs: None,
-            model_id: None,
+            inputs: inputs,
+            model_id: model_id,
         }
     }
 }
 
 #[derive(Clone, Default, Debug, PartialEq, Serialize, Deserialize)]
 pub struct DetectorTaskRequestInputs {
-    #[serde(rename = "text", skip_serializing_if = "Option::is_none")]
-    pub text: Option<String>,
+    #[serde(rename = "text")]
+    pub text: String,
     #[serde(rename = "parameters", skip_serializing_if = "Option::is_none")]
-    pub parameters: Option<std::collections::HashMap<String, models::DetectorInputParametersValue>>,
+    pub parameters: Option<std::collections::HashMap<String, DetectorInputParametersValue>>,
 }
 
 impl DetectorTaskRequestInputs {
-    pub fn new() -> DetectorTaskRequestInputs {
+    pub fn new(text: String) -> DetectorTaskRequestInputs {
         DetectorTaskRequestInputs {
-            text: None,
+            text: text,
             parameters: None,
         }
     }
@@ -83,7 +83,7 @@ impl DetectorTaskResponse {
 #[derive(Clone, Default, Debug, PartialEq, Serialize, Deserialize)]
 pub struct DetectorTaskResponseList {
     #[serde(rename = "detectors", skip_serializing_if = "Option::is_none")]
-    pub detectors: Option<Vec<models::DetectorTaskResponse>>,
+    pub detectors: Option<Vec<DetectorTaskResponse>>,
 }
 
 impl DetectorTaskResponseList {
