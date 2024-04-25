@@ -138,11 +138,11 @@ async fn chunker_stream_call(model_id: String, texts: Vec<String>, on_message_ca
 // Unary detector call
 // Token classification result vector used for now but expecting more generic DetectorResponse in the future
 // Assume no batched calls currently
-async fn detector_call(detector_id: String, input: String) -> Vec<TokenClassificationResult> {
+async fn detector_call(detector_id: String, input: String, offset: usize) -> Vec<TokenClassificationResult> {
     // Might need some routing/extra endpoint info to begin with
     let result: TokenClassificationResult = TokenClassificationResult {
-        start: 0,
-        end: 3,
+        start: 0 + offset as i32,
+        end: 3 + offset as i32,
         word: "moo".to_owned(),
         entity: "cow".to_owned(),
         entity_group: "cow".to_owned(),
@@ -154,14 +154,17 @@ async fn detector_call(detector_id: String, input: String) -> Vec<TokenClassific
 
 // ================================ Orchestrator internal logic ==========================================
 
-fn slice_input(mut user_input: Vec<String>, payload: GuardrailsHttpRequest) -> Vec<String>{
+fn slice_input(mut user_input: Vec<(String, usize)>, payload: GuardrailsHttpRequest) -> Vec<(String, usize)>{
+    // Slice user input based on masks if they are provided, tracking the mask start for offset
     if let Some(input_masks) = payload.guardrail_config.unwrap().input.unwrap().masks {
-        let user_input_vec = user_input[0].chars().collect::<Vec<_>>();
-        // Extra work for codepoint slicing in Rust
-        user_input = vec![];
-        for (start, end) in input_masks {
-            let mask_string: String = user_input_vec[start..end].iter().cloned().collect::<String>();
-            user_input.push(mask_string);
+        if let Some((original_user_input, _offset)) = user_input.first() {
+            let user_input_vec = original_user_input.chars().collect::<Vec<_>>();
+            // Extra work for codepoint slicing in Rust
+            user_input = vec![];
+            for (start, end) in input_masks {
+                let mask_string: String = user_input_vec[start..end].iter().cloned().collect::<String>();
+                user_input.push((mask_string, start));
+            }
         }
     }
     user_input
@@ -172,7 +175,7 @@ async fn unary_chunk_and_detection(
     detectors_models: HashMap<String, HashMap<String, String>>,
     chunker_map: &HashMap<String, String>,
     chunker_config_map: &HashMap<String, Result<ChunkerConfig, ErrorResponse>>,
-    texts: Vec<String>,
+    texts_with_offsets: Vec<(String, usize)>,
     nlp_servicer: NlpServicer,
 ) -> Vec<TokenClassificationResult> {
     // detectors_models: model_name: {param: value}
@@ -180,8 +183,7 @@ async fn unary_chunk_and_detection(
     let mut detector_responses = Vec::new();
     for detector_id in detectors_models.keys() {
         if let Some(chunker_id) = chunker_map.get(detector_id){
-            // TODO: mask texts will need adjusted span start and end
-            for text in texts.iter() {
+            for (text, offset) in texts_with_offsets.iter() {
                 // TODO: Get config/type for chunker call
                 if let Ok(tokenization_results) = call_chunker(text.to_string(), chunker_id.to_string(), nlp_servicer.clone()).await {
                     // Optimize later - chunkers would always be called even if multiple detectors had same chunker
@@ -191,7 +193,7 @@ async fn unary_chunk_and_detection(
                     }
                     // TODO: Pass on detector params
                     for text in texts.iter() {
-                        let detector_response = detector_call(detector_id.to_string(), text.to_string()).await;
+                        let detector_response = detector_call(detector_id.to_string(), text.to_string(), *offset).await;
                         detector_responses.extend(detector_response)
                     }
                 } else {
@@ -283,17 +285,17 @@ pub async fn do_tasks(payload: GuardrailsHttpRequest,
         }
 
         // Initialize as vector for type consistency if masks are supplied
-        let mut user_input: Vec<String> = vec![payload.clone().inputs];
+        let mut user_input_with_offsets: Vec<(String, usize)> = vec![(payload.clone().inputs, 0)];
 
         // Slice up if masks are supplied
         // Whole payload is just passed here to abstract away impl, could be separate task
         // tracked as part of DAG/list instead of function in the future
-        user_input = slice_input(user_input, payload.clone());
+        user_input_with_offsets = slice_input(user_input_with_offsets, payload.clone());
         
         let input_detector_models: HashMap<String, HashMap<String, String>> = input_detectors.unwrap();
         // Add detection task for each detector - rest [unary] call
         // For each detector, add chunker task as precursor - grpc [unary] call
-        input_detection_response = unary_chunk_and_detection(input_detector_models, &chunker_map, &chunker_config_map, user_input.clone(), nlp_servicer.clone()).await;
+        input_detection_response = unary_chunk_and_detection(input_detector_models, &chunker_map, &chunker_config_map, user_input_with_offsets.clone(), nlp_servicer.clone()).await;
     }
 
     let classified_result: ClassifiedGeneratedTextResult = aggregate_response_for_input(input_detection_response, input_token_count as i32);
@@ -312,7 +314,7 @@ pub async fn do_tasks(payload: GuardrailsHttpRequest,
             let output_detector_models: HashMap<String, HashMap<String, String>> = output_detectors.unwrap();
             // Add detection task for each detector - rest [unary] call
             // For each detector, add chunker task as precursor - grpc [unary] call
-            output_detection_response = unary_chunk_and_detection(output_detector_models, &chunker_map, &chunker_config_map, vec![tgis_response.clone().generated_text], nlp_servicer.clone()).await;
+            output_detection_response = unary_chunk_and_detection(output_detector_models, &chunker_map, &chunker_config_map, vec![(tgis_response.clone().generated_text, 0)], nlp_servicer.clone()).await;
         }
         // Response aggregation
         let classified_result = aggregate_response_for_output_unary(output_detection_response, tgis_response);
