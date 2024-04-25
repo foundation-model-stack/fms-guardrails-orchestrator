@@ -11,14 +11,13 @@ use axum::{
 // sse -> server side events
 use axum::response::sse::{Event, KeepAlive, Sse};
 use futures::stream::Stream;
-use serde::Serialize;
 use tokio::signal;
 use tracing::info;
 use std::convert::Infallible;
 
 // ========================================== Constants and Dummy Variables ==========================================
 const API_PREFIX: &'static str = r#"/api/v1/task"#;
-const TGIS_PORT: u16 = 8033;
+const _TGIS_PORT: u16 = 8033;
 const DEFAULT_CAIKIT_NLP_PORT: u16 = 8085;
 const DEFAULT_DETECTOR_PORT:u16 = 8080;
 
