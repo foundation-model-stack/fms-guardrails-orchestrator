@@ -137,8 +137,8 @@ async fn chunker_stream_call(model_id: String, texts: Vec<String>, on_message_ca
 
 // Unary detector call
 // Token classification result vector used for now but expecting more generic DetectorResponse in the future
-// Assume processing on batch (multiple strings) can at least happen
-async fn detector_call(detector_id: String, inputs: Vec<String>) -> Vec<TokenClassificationResult> {
+// Assume no batched calls currently
+async fn detector_call(detector_id: String, input: String) -> Vec<TokenClassificationResult> {
     // Might need some routing/extra endpoint info to begin with
     let result: TokenClassificationResult = TokenClassificationResult {
         start: 0,
@@ -190,8 +190,10 @@ async fn unary_chunk_and_detection(
                         texts.push(token.text.to_string())
                     }
                     // TODO: Pass on detector params
-                    let detector_response = detector_call(detector_id.to_string(), texts).await;
-                    detector_responses.extend(detector_response)
+                    for text in texts.iter() {
+                        let detector_response = detector_call(detector_id.to_string(), text.to_string()).await;
+                        detector_responses.extend(detector_response)
+                    }
                 } else {
                     // TODO: handle error - this would be an internal error if a chunker call did
                     // not succeed because end users will know nothing about chunkers
