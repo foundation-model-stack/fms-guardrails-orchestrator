@@ -6,6 +6,6 @@
 - [ ] Add unit tests
 - [ ] Add request validation for classification with text generation endpoint
 - [ ] Add request validation for streaming classification with text generation endpoint
-- [ ] Host API in swagger pages in the reo
+- [ ] Host API in swagger pages in the repo
 - [ ] Tokenization REST API and client will need to be updated for bidirectional streaming if/when available for REST use
 - [ ] There is currently NO WAY for us to know the prefix ID required by TGIS for inferencing on tuned prompts

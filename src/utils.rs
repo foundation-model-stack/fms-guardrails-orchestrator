@@ -4,8 +4,7 @@ use std::collections::HashMap;
 use std::convert::Infallible;
 
 use axum::{
-    http::StatusCode,
-    response::{IntoResponse, sse::{Event, KeepAlive}},
+    response::{sse::{Event}},
     Json,
 };
 use futures::{stream::Stream, StreamExt};
@@ -13,7 +12,7 @@ use tonic::transport::{
     Certificate, ClientTlsConfig,
 };
 use tokio::fs::read;
-use tracing::{error, info};
+use tracing::{error};
 
 use crate::{models, ErrorResponse};
 use crate::{
@@ -38,10 +37,9 @@ use crate::pb::caikit_data_model::nlp::{
 };
 
 
-
-
 // =========================================== Client Calls ==============================================
 
+/// Configures the text generation (TGIS) client
 pub async fn configure_tgis(
     service_addr: ServiceAddr,
     default_target_port: u16,
@@ -63,13 +61,14 @@ pub async fn configure_tgis(
     generation_servicer.await
 }
 
+/// Calls server streaming text generation through the TGIS client
 pub async fn call_tgis_stream(
     Json(payload): Json<models::GuardrailsHttpRequest>,
     tgis_servicer: GenerationServicer,
     on_message_callback: impl Fn(models::ClassifiedGeneratedTextStreamResult) -> Event,
 )  -> impl Stream<Item = Result<Event, Infallible>> {
     // TODO: Add remaining parameter
-    let mut tgis_request = tonic::Request::new(
+    let tgis_request = tonic::Request::new(
         SingleGenerationRequest {
             model_id: payload.model_id,
             request: Some(GenerationRequest {text: payload.inputs}),
@@ -115,7 +114,7 @@ pub async fn call_tgis_stream(
 }
 
 
-
+/// Configures the NLP client
 pub async fn configure_nlp(
     service_addr: ServiceAddr,
     default_target_port: u16,
@@ -137,6 +136,7 @@ pub async fn configure_nlp(
     nlp_servicer.await
 }
 
+/// Calls server streaming text generation through the NLP client
 pub async fn call_nlp_text_gen_stream (
     Json(payload): Json<models::GuardrailsHttpRequest>,
     nlp_servicer: NlpServicer,
@@ -197,11 +197,11 @@ pub async fn call_nlp_text_gen_stream (
     stream
 }
 
-
+/// Calls a given detector through the NLP token classification API
 pub async fn call_nlp_token_classification (
     text: String,
     model_id: String,
-    params: Option<HashMap<String, Box<dyn std::any::Any>>>,
+    _params: Option<HashMap<String, Box<dyn std::any::Any>>>,
     nlp_servicer: NlpServicer,
 ) -> Result<TokenClassificationResults, ErrorResponse> {
 
@@ -228,6 +228,7 @@ pub async fn call_nlp_token_classification (
     }
 }
 
+/// Calls a given chunker through the NLP tokenization API
 pub async fn call_chunker(
     text: String,
     model_id: String,

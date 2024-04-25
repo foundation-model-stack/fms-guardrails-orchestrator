@@ -3,8 +3,8 @@
 use anyhow::Context;
 use futures::future::try_join_all;
 use ginepro::LoadBalancedChannel;
-use tokio::try_join;
-use std::{collections::HashMap, path::Path};
+
+use std::{collections::HashMap};
 use tonic::transport::ClientTlsConfig;
 
 use serde::{Serialize, Deserialize};
