@@ -5,67 +5,38 @@ info:
 paths:
   /api/v1/task/detector:
     post:
+      parameters:
+        - in: header
+          name: detector-id
+          schema:
+            type: string
+          required: true
+          example: profanity.detector.v1-en
       requestBody:
         content:
-          multipart/form-data:
-            schema:
-              properties:
-                inputs:
-                  allOf:
-                    - properties:
-                        text:
-                          type: string
-                          title: Text
-                        parameters:
-                          anyOf:
-                            - additionalProperties:
-                                anyOf:
-                                  - type: integer
-                                  - type: number
-                                  - type: string
-                                  - type: boolean
-                                  - items:
-                                      type: object
-                                    type: array
-                                  - type: object
-                              type: object
-                          title: Parameters
-                      type: object
-                      title: detector.data_model.DetectorInput
-                model_id:
-                  type: string
-                  title: Model Id
-              type: object
-              title: DetectorTaskRequestHttpRequest
           application/json:
             schema:
               properties:
-                inputs:
-                  allOf:
-                    - properties:
-                        text:
-                          type: string
-                          title: Text
-                        parameters:
-                          anyOf:
-                            - additionalProperties:
-                                anyOf:
-                                  - type: integer
-                                  - type: number
-                                  - type: string
-                                  - type: boolean
-                                  - items:
-                                      type: object
-                                    type: array
-                                  - type: object
-                              type: object
-                          title: Parameters
-                      additionalProperties: false
-                      type: object
-                      title: detector.data_model.DetectorInput
-                model_id:
+                text:
                   type: string
-                  title: Model Id
+                  title: Text
+                parameters:
+                    
+                  # threshold is responsibility of the detector, if it supports and user provides then orchestrator will
+                  # just pass it along
+                  anyOf:
+                    - additionalProperties:
+                        anyOf:
+                          - type: integer
+                          - type: number
+                          - type: string
+                          - type: boolean
+                          - items:
+                              type: object
+                            type: array
+                          - type: object
+                      type: object
+                  title: Parameters
               additionalProperties: false
               type: object
               title: DetectorTaskRequestHttpRequest
@@ -81,42 +52,33 @@ components:
   schemas:
     DetectorResponseList:
       properties:
-        detectors:
+        detections:
           items:
             properties:
               start:
                 title: Start
                 type: integer
+                example: 0
               end:
                 title: End
                 type: integer
-              word:
-                title: Word
+                example: 10
+              text:
+                title: Text
                 type: string
-              entity:
-                title: Entity
+                example: "my bad text"
+              detection:
+                title: Detection
                 type: string
-              entity_group:
-                title: Entity Group
+                example: "has_HAP"
+              detection_type:
+                title: Detection Type
                 type: string
+                example: "hap"
               score:
                 title: Score
                 type: number
-              token_count:
-                title: Token Count
-                type: integer
-              annotations:
-                anyOf:
-                  - type: integer
-                  - type: number
-                  - type: string
-                  - type: boolean
-                  - items:
-                      type: object
-                    type: array
-                  - type: object
-                type: object
-                title: Annotations
+                example: 0.5
             title: detector.data_model.DetectorResponse
             type: object
           title: Detectors
