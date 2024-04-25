@@ -157,6 +157,9 @@ async fn detector_call(detector_id: String, input: String, offset: usize) -> Vec
 fn slice_input(mut user_input: Vec<(String, usize)>, payload: GuardrailsHttpRequest) -> Vec<(String, usize)>{
     // Slice user input based on masks if they are provided, tracking the mask start for offset
     if let Some(input_masks) = payload.guardrail_config.unwrap().input.unwrap().masks {
+        if input_masks.is_empty() {
+            return user_input
+        }
         if let Some((original_user_input, _offset)) = user_input.first() {
             let user_input_vec = original_user_input.chars().collect::<Vec<_>>();
             // Extra work for codepoint slicing in Rust
@@ -253,7 +256,7 @@ fn aggregate_response_for_output_unary(
 pub async fn do_tasks(payload: GuardrailsHttpRequest, 
     detector_hashmaps: (HashMap<String, String>, HashMap<String, Result<ChunkerConfig, ErrorResponse>>),
     nlp_servicer: NlpServicer,
-    streaming: bool) {
+    streaming: bool) -> ClassifiedGeneratedTextResult {
     // TODO: is clone() needed for every payload use? Otherwise move errors since payload has String
 
     // LLM / text generation model
@@ -271,6 +274,7 @@ pub async fn do_tasks(payload: GuardrailsHttpRequest,
     let chunker_config_map: HashMap<String, Result<ChunkerConfig, ErrorResponse>> = detector_hashmaps.1;
 
     // Check for input detection
+    // TODO: account for Nones while unwrapping
     let input_detectors: Option<HashMap<String, HashMap<String, String>>> = payload.clone().guardrail_config.unwrap().input.unwrap().models;
     let do_input_detection: bool = input_detectors.is_some();
     let mut input_detection_response: Vec<TokenClassificationResult> = Vec::new();
@@ -299,40 +303,41 @@ pub async fn do_tasks(payload: GuardrailsHttpRequest,
     }
 
     let classified_result: ClassifiedGeneratedTextResult = aggregate_response_for_input(input_detection_response, input_token_count as i32);
+    return classified_result;
     // TODO: "break" if input detection - but this fn not responsible for short-circuit
 
-    // Check for output detection
-    let output_detectors: Option<HashMap<String, HashMap<String, String>>> = payload.clone().guardrail_config.unwrap().output.unwrap().models;
-    let do_output_detection: bool = output_detectors.is_some();
+    // // Check for output detection
+    // let output_detectors: Option<HashMap<String, HashMap<String, String>>> = payload.clone().guardrail_config.unwrap().output.unwrap().models;
+    // let do_output_detection: bool = output_detectors.is_some();
 
-    // ============= Unary endpoint =============
-    if !streaming {
-        // Add TGIS generation - grpc [unary] call
-        let tgis_response = tgis_unary_call(model_id.clone(), payload.inputs, payload.text_gen_parameters).await;
-        let mut output_detection_response: Vec<TokenClassificationResult> = Vec::new();
-        if do_output_detection {
-            let output_detector_models: HashMap<String, HashMap<String, String>> = output_detectors.unwrap();
-            // Add detection task for each detector - rest [unary] call
-            // For each detector, add chunker task as precursor - grpc [unary] call
-            output_detection_response = unary_chunk_and_detection(output_detector_models, &chunker_map, &chunker_config_map, vec![(tgis_response.clone().generated_text, 0)], nlp_servicer.clone()).await;
-        }
-        // Response aggregation
-        let classified_result = aggregate_response_for_output_unary(output_detection_response, tgis_response);
-    } else { // ============= Streaming endpoint =============
-        // Add TGIS generation task - grpc [server streaming] call
-        let on_message_callback = |stream_token: GeneratedTextStreamResult| {
-            let event = Event::default();
-            event.json_data(stream_token).unwrap()
-        };
+    // // ============= Unary endpoint =============
+    // if !streaming {
+    //     // Add TGIS generation - grpc [unary] call
+    //     let tgis_response = tgis_unary_call(model_id.clone(), payload.inputs, payload.text_gen_parameters).await;
+    //     let mut output_detection_response: Vec<TokenClassificationResult> = Vec::new();
+    //     if do_output_detection {
+    //         let output_detector_models: HashMap<String, HashMap<String, String>> = output_detectors.unwrap();
+    //         // Add detection task for each detector - rest [unary] call
+    //         // For each detector, add chunker task as precursor - grpc [unary] call
+    //         output_detection_response = unary_chunk_and_detection(output_detector_models, &chunker_map, &chunker_config_map, vec![(tgis_response.clone().generated_text, 0)], nlp_servicer.clone()).await;
+    //     }
+    //     // Response aggregation
+    //     let classified_result = aggregate_response_for_output_unary(output_detection_response, tgis_response);
+    // } else { // ============= Streaming endpoint =============
+    //     // Add TGIS generation task - grpc [server streaming] call
+    //     let on_message_callback = |stream_token: GeneratedTextStreamResult| {
+    //         let event = Event::default();
+    //         event.json_data(stream_token).unwrap()
+    //     };
 
-        let tgis_response_stream =
-            tgis_stream_call(Json(payload.inputs), payload.text_gen_parameters, on_message_callback, ).await;
+    //     let tgis_response_stream =
+    //         tgis_stream_call(Json(payload.inputs), payload.text_gen_parameters, on_message_callback, ).await;
 
-        if do_output_detection {
-            let output_detector_models: HashMap<String, HashMap<String, String>> = output_detectors.unwrap();
-            // Add detection task for each detector - rest [unary] call
-            // For each detector, add chunker task as precursor - grpc [bidi stream] call
-        }
-    // Response aggregation task
-    }
+    //     if do_output_detection {
+    //         let output_detector_models: HashMap<String, HashMap<String, String>> = output_detectors.unwrap();
+    //         // Add detection task for each detector - rest [unary] call
+    //         // For each detector, add chunker task as precursor - grpc [bidi stream] call
+    //     }
+    // // Response aggregation task
+    // }
 }
