@@ -300,29 +300,33 @@ pub async fn do_tasks(payload: GuardrailsHttpRequest,
         // Add detection task for each detector - rest [unary] call
         // For each detector, add chunker task as precursor - grpc [unary] call
         input_detection_response = unary_chunk_and_detection(input_detector_models, &chunker_map, &chunker_config_map, user_input_with_offsets.clone(), nlp_servicer.clone()).await;
+
+        if !input_detection_response.is_empty() {
+            // "break"/return on input detection - whether or not to "break" can move elsewhere
+            let classified_result: ClassifiedGeneratedTextResult = aggregate_response_for_input(input_detection_response, input_token_count as i32);
+            return classified_result;
+        }
     }
 
-    let classified_result: ClassifiedGeneratedTextResult = aggregate_response_for_input(input_detection_response, input_token_count as i32);
-    return classified_result;
-    // TODO: "break" if input detection - but this fn not responsible for short-circuit
+    // Check for output detection
+    let output_detectors: Option<HashMap<String, HashMap<String, String>>> = payload.clone().guardrail_config.unwrap().output.unwrap().models;
+    let do_output_detection: bool = output_detectors.is_some();
 
-    // // Check for output detection
-    // let output_detectors: Option<HashMap<String, HashMap<String, String>>> = payload.clone().guardrail_config.unwrap().output.unwrap().models;
-    // let do_output_detection: bool = output_detectors.is_some();
-
-    // // ============= Unary endpoint =============
+    // ============= Unary endpoint =============
+    // Add TGIS generation - grpc [unary] call
+    let tgis_response = tgis_unary_call(model_id.clone(), payload.inputs, payload.text_gen_parameters).await;
+    let mut output_detection_response: Vec<TokenClassificationResult> = Vec::new();
+    if do_output_detection {
+        let output_detector_models: HashMap<String, HashMap<String, String>> = output_detectors.unwrap();
+        // Add detection task for each detector - rest [unary] call
+        // For each detector, add chunker task as precursor - grpc [unary] call
+        output_detection_response = unary_chunk_and_detection(output_detector_models, &chunker_map, &chunker_config_map, vec![(tgis_response.clone().generated_text, 0)], nlp_servicer.clone()).await;
+    }
+    // Response aggregation
+    aggregate_response_for_output_unary(output_detection_response, tgis_response)
     // if !streaming {
-    //     // Add TGIS generation - grpc [unary] call
-    //     let tgis_response = tgis_unary_call(model_id.clone(), payload.inputs, payload.text_gen_parameters).await;
-    //     let mut output_detection_response: Vec<TokenClassificationResult> = Vec::new();
-    //     if do_output_detection {
-    //         let output_detector_models: HashMap<String, HashMap<String, String>> = output_detectors.unwrap();
-    //         // Add detection task for each detector - rest [unary] call
-    //         // For each detector, add chunker task as precursor - grpc [unary] call
-    //         output_detection_response = unary_chunk_and_detection(output_detector_models, &chunker_map, &chunker_config_map, vec![(tgis_response.clone().generated_text, 0)], nlp_servicer.clone()).await;
-    //     }
-    //     // Response aggregation
-    //     let classified_result = aggregate_response_for_output_unary(output_detection_response, tgis_response);
+
+    // }
     // } else { // ============= Streaming endpoint =============
     //     // Add TGIS generation task - grpc [server streaming] call
     //     let on_message_callback = |stream_token: GeneratedTextStreamResult| {

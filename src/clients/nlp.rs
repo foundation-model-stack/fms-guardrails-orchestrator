@@ -120,7 +120,7 @@ impl NlpService for NlpServicer {
         // let sstr = request.get_ref();
         let model_id = extract_model_id(&request)?;
         debug!(
-            "Routing text generation streaming generation request for Model ID {}",
+            "Performing text generation streaming generation request for Model ID {}",
             model_id
         );
         self.client(model_id)
@@ -133,17 +133,33 @@ impl NlpService for NlpServicer {
     #[instrument(skip_all)]
     async fn text_generation_task_predict(
         &self,
-        _request: Request<TextGenerationTaskRequest>,
+        request: Request<TextGenerationTaskRequest>,
     ) -> Result<Response<GeneratedTextResult>, Status> {
-        Err(Status::unimplemented("not implemented"))
+        let model_id = extract_model_id(&request)?;
+        debug!(
+            "Performing text generation unary generation request for Model ID {}",
+            model_id
+        );
+        self.client(model_id)
+            .await?
+            .text_generation_task_predict(request)
+            .await
     }
 
     #[instrument(skip_all)]
     async fn token_classification_task_predict(
         &self,
-        _request: Request<TokenClassificationTaskRequest>,
+        request: Request<TokenClassificationTaskRequest>,
     ) -> Result<Response<TokenClassificationResults>, Status> {
-        Err(Status::unimplemented("not implemented"))
+        let model_id = extract_model_id(&request)?;
+        debug!(
+            "Performing token classification request for Model ID {}",
+            model_id
+        );
+        self.client(model_id)
+            .await?
+            .token_classification_task_predict(request)
+            .await
     }
 
 }
