@@ -247,24 +247,21 @@ pub async fn do_unary_tasks(payload: GuardrailsHttpRequest,
     // LLM / text generation model
     let model_id: String = payload.clone().model_id;
 
-    // No guardrail_config specified
-    if payload.guardrail_config.is_none() {
-        // TODO: Just do text gen? Error?
-        // This falls through to text gen today but validation is not done
-    }
-
     // Process detector hashmaps
     let chunker_map: HashMap<String, String> = detector_hashmaps.0;
     // Should ideally just be HashMap<String, ChunkerConfig> after processing
     let chunker_config_map: HashMap<String, Result<ChunkerConfig, ErrorResponse>> = detector_hashmaps.1;
 
+    let mut do_input_detection: bool = false;
+    let mut input_detectors: Option<HashMap<String, HashMap<String, String>>> = None;
     // Check for input detection
-    // TODO: account for Nones while unwrapping
-    let input_detectors: Option<HashMap<String, HashMap<String, String>>> = payload.clone().guardrail_config.unwrap().input.unwrap().models;
-    let do_input_detection: bool = input_detectors.is_some();
-    let mut input_detection_response: Vec<TokenClassificationResult> = Vec::new();
-    let mut input_token_count = 0;
+    if payload.guardrail_config.is_some() && payload.clone().guardrail_config.unwrap().input.is_some() {
+        input_detectors = payload.clone().guardrail_config.unwrap().input.unwrap().models;
+        do_input_detection = input_detectors.is_some();
+    }
     if do_input_detection {
+        let mut input_detection_response: Vec<TokenClassificationResult> = Vec::new();
+        let mut input_token_count = 0;
         // Input detection tasks - all unary - can abstract this later
         // Add tokenization task to count input tokens - grpc [unary] call
         // This separate call would not be necessary if generation is called, since it
@@ -300,8 +297,13 @@ pub async fn do_unary_tasks(payload: GuardrailsHttpRequest,
     }
 
     // Check for output detection
-    let output_detectors: Option<HashMap<String, HashMap<String, String>>> = payload.clone().guardrail_config.unwrap().output.unwrap().models;
-    let do_output_detection: bool = output_detectors.is_some();
+    let mut do_output_detection: bool = false;
+    let mut output_detectors: Option<HashMap<String, HashMap<String, String>>> = None;
+    // Check for input detection
+    if payload.guardrail_config.is_some() && payload.clone().guardrail_config.unwrap().output.is_some() {
+        output_detectors = payload.clone().guardrail_config.unwrap().output.unwrap().models;
+        do_output_detection = output_detectors.is_some();
+    }
 
     // ============= Unary endpoint =============
     // Add TGIS generation - grpc [unary] call
