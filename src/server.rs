@@ -108,7 +108,7 @@ async fn classification_with_generation(
 
     info!("Unary classification call");
     if let Ok(detector_hashmaps) = orchestrator::preprocess_detector_map(state.detector_config.clone()) {
-        let response = orchestrator::do_tasks(payload, detector_hashmaps, state.caikit_nlp_servicer.clone(), false).await;
+        let response = orchestrator::do_unary_tasks(payload, detector_hashmaps, state.caikit_nlp_servicer.clone()).await;
         return Json(GuardrailsResponse::SuccessfulResponse(response))
     }
     // Dummy error for now

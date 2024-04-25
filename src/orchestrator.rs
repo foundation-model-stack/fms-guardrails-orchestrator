@@ -233,10 +233,9 @@ fn aggregate_response_for_output_unary(
 // ========================================== Main ==========================================
 
 // In the future probably create DAG/list of tasks to be invoked
-pub async fn do_tasks(payload: GuardrailsHttpRequest, 
+pub async fn do_unary_tasks(payload: GuardrailsHttpRequest, 
     detector_hashmaps: (HashMap<String, String>, HashMap<String, Result<ChunkerConfig, ErrorResponse>>),
-    nlp_servicer: NlpServicer,
-    streaming: bool) -> ClassifiedGeneratedTextResult {
+    nlp_servicer: NlpServicer) -> ClassifiedGeneratedTextResult {
     // TODO: is clone() needed for every payload use? Otherwise move errors since payload has String
 
     // LLM / text generation model
@@ -311,6 +310,7 @@ pub async fn do_tasks(payload: GuardrailsHttpRequest,
         return ClassifiedGeneratedTextResult::new(TextGenTokenClassificationResults {input: None, output: None}, 0);
     }
 
+    // TODO: Move since this will return separate streaming object
     // if !streaming {
 
     // }
