@@ -1,10 +1,5 @@
 use crate::{
-    clients::{nlp::NlpServicer},
-    config::{self},
-    models,
-    utils,
-    ErrorResponse,
-    GuardrailsResponse};
+    clients::nlp::NlpServicer, config::{self, DetectorMap, OrchestratorConfig}, models::{self, HttpValidationError}, orchestrator, utils, ErrorResponse, GuardrailsResponse};
 
 
 use core::panic;
@@ -50,7 +45,8 @@ const DUMMY_RESPONSE: [&'static str; 9] = ["This", "is", "very", "good", "news,"
 #[derive(Clone)]
 pub(crate) struct ServerState {
     // pub tgis_servicer: GenerationServicer,
-    pub caikit_nlp_servicer: NlpServicer
+    pub caikit_nlp_servicer: NlpServicer,
+    pub detector_config: DetectorMap
 }
 
 /// Run the orchestrator server
@@ -79,6 +75,7 @@ pub async fn run(
     // Add server and configs to shared state
     let shared_state = Arc::new(ServerState {
         caikit_nlp_servicer,
+        detector_config: orchestrator_config.detector_config
     });
 
     // Build and await on the HTTP server
@@ -106,15 +103,16 @@ async fn health() -> Result<(), ()> {
 // #[debug_handler]
 // TODO: Improve Bad Request error handling by implementing Validate middleware
 async fn classification_with_generation(
-    State(_state): State<Arc<ServerState>>,
-    Json(_payload): Json<models::GuardrailsHttpRequest>) -> Json<GuardrailsResponse> {
+    State(state): State<Arc<ServerState>>,
+    Json(payload): Json<models::GuardrailsHttpRequest>) -> Json<GuardrailsResponse> {
 
-    // TODO: note this function currently is not doing .await and hence is blocking
-    let token_class_result = models::TextGenTokenClassificationResults::new();
-    let input_token_count = 2;
-    let response = models::ClassifiedGeneratedTextResult::new(token_class_result, input_token_count);
-    Json(GuardrailsResponse::SuccessfulResponse(response))
-
+    info!("Unary classification call");
+    if let Ok(detector_hashmaps) = orchestrator::preprocess_detector_map(state.detector_config.clone()) {
+        let response = orchestrator::do_tasks(payload, detector_hashmaps, state.caikit_nlp_servicer.clone(), false).await;
+        return Json(GuardrailsResponse::SuccessfulResponse(response))
+    }
+    // Dummy error for now
+    Json(GuardrailsResponse::ValidationError(HttpValidationError { detail: None }))
 }
 
 
@@ -123,6 +121,7 @@ async fn stream_classification_with_gen(
     State(state): State<Arc<ServerState>>,
     Json(payload): Json<models::GuardrailsHttpRequest>) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
 
+    info!("Streaming classification call");
     let on_message_callback = |stream_token: models::ClassifiedGeneratedTextStreamResult| {
         let event = Event::default();
         event.json_data(stream_token).unwrap()

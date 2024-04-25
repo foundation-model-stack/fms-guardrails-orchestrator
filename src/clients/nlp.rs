@@ -62,6 +62,7 @@ impl NlpServicer {
 #[tonic::async_trait]
 impl NlpService for NlpServicer {
 
+    // Note this will cover both LLM tokenization and chunking
     #[instrument(skip_all)]
     async fn tokenization_task_predict(
         &self,
