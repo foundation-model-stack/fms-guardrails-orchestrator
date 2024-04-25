@@ -256,6 +256,17 @@ pub async fn call_chunker(
     }
 }
 
+/// Calls tokenization on the text generation model through the NLP client
+pub async fn call_text_gen_tokenization(
+    text: String,
+    model_id: String,
+    nlp_servicer: NlpServicer
+) -> Result<TokenizationResults, ErrorResponse> {
+    // Through the NLP client this is the same call as for the chunker
+    // but can be switched out in the future
+    call_chunker(text, model_id, nlp_servicer).await
+}
+
 // =========================================== Util functions ==============================================
 
 
