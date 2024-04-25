@@ -6,6 +6,9 @@ use crate::config::ServiceAddr;
 use crate::{create_rest_clients, clients::detector_models};
 use crate::{ErrorResponse, RestClientConfig};
 
+
+pub const DETECTOR_ID_HEADER_NAME: &'static str = "detector-id";
+
 // Struct containing map of clients,
 // where each model name is mapped to a tuple of
 // url (host) and client
@@ -44,6 +47,7 @@ impl DetectorServicer {
 trait DetectorService {
     async fn classify(
         &self,
+        model_id: String,
         request: detector_models::DetectorTaskRequestHttpRequest
     ) -> Result<detector_models::DetectorTaskResponseList, ErrorResponse> ;
 }
@@ -52,17 +56,19 @@ impl DetectorService for DetectorServicer {
 
     async fn classify(
         &self,
+        model_id: String,
         request: detector_models::DetectorTaskRequestHttpRequest
     ) -> Result<detector_models::DetectorTaskResponseList, ErrorResponse> {
         let detector_req = request.borrow();
-        let model_id: &str = detector_req.model_id.as_str().as_ref();
+        let model_id: &str = model_id.as_str().as_ref();
         let client_config = self.client(model_id).await?;
 
         let url = client_config.url;
         let response = client_config
             .client
             .post(url)
-            .json(request.borrow())
+            .header(DETECTOR_ID_HEADER_NAME.to_string(), model_id)
+            .json(detector_req)
             .send().await;
         response.unwrap().json().await.unwrap()
     }
