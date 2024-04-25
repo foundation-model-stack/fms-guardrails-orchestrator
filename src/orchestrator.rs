@@ -1,11 +1,10 @@
 use std::{collections::HashMap, usize};
 
-use crate::{clients::nlp::NlpServicer, config::{ChunkerConfig, DetectorConfig, DetectorMap}, models::{ClassifiedGeneratedTextResult, FinishReason, GeneratedTextResult, GeneratedTextStreamResult, GeneratedToken, GuardrailsHttpRequest, GuardrailsTextGenerationParameters, InputWarning, InputWarningReason, TextGenTokenClassificationResults, TokenClassificationResult, TokenStreamDetails}, pb::fmaas::{BatchedTokenizeRequest, TokenizeRequest}, utils::{call_chunker, call_text_gen_tokenization}, ErrorResponse
+use crate::{clients::nlp::NlpServicer, config::{ChunkerConfig, DetectorConfig, DetectorMap}, models::{ClassifiedGeneratedTextResult, FinishReason, GeneratedTextResult, GeneratedTextStreamResult, GeneratedToken, GuardrailsHttpRequest, GuardrailsTextGenerationParameters, InputWarning, InputWarningReason, TextGenTokenClassificationResults, TokenClassificationResult, TokenStreamDetails}, pb::fmaas::{BatchedTokenizeRequest, TokenizeRequest}, utils::{call_chunker, call_nlp_text_gen_unary, call_text_gen_tokenization}, ErrorResponse
 };
 use axum::Json;
 use axum::response::sse::Event;
 use futures::stream::Stream;
-use serde::Serialize;
 use std::convert::Infallible;
 
 use crate::pb::{
@@ -46,25 +45,6 @@ pub fn preprocess_detector_map(detector_map: DetectorMap) -> Result<(HashMap<Str
 // ========================================== Dummy Tasks ==========================================
 
 // API calls - will not live here
-
-// Unary TGIS call - first pass will be through caikit-nlp
-async fn tgis_unary_call(model_id: String, text: String, text_gen_params: Option<GuardrailsTextGenerationParameters>) -> GeneratedTextResult {
-    // Expect only one text here
-    let token_info: GeneratedToken = GeneratedToken {
-        text: "hi".to_string(),
-        logprob: Some(0.53),
-        rank: Some(1),
-    };
-    GeneratedTextResult {
-        input_token_count: 1,
-        generated_tokens: Some(1),
-        generated_text: "hi".to_string(),
-        finish_reason: Some(FinishReason::MaxTokens),
-        seed: Some(42),
-        tokens: Some(vec![token_info.clone()]),
-        input_tokens: Some(vec![token_info.clone()]),
-    }
-}
 
 // Server streaming TGIS call - first pass will be through caikit-nlp
 async fn tgis_stream_call(
@@ -314,16 +294,23 @@ pub async fn do_tasks(payload: GuardrailsHttpRequest,
 
     // ============= Unary endpoint =============
     // Add TGIS generation - grpc [unary] call
-    let tgis_response = tgis_unary_call(model_id.clone(), payload.inputs, payload.text_gen_parameters).await;
-    let mut output_detection_response: Vec<TokenClassificationResult> = Vec::new();
-    if do_output_detection {
-        let output_detector_models: HashMap<String, HashMap<String, String>> = output_detectors.unwrap();
-        // Add detection task for each detector - rest [unary] call
-        // For each detector, add chunker task as precursor - grpc [unary] call
-        output_detection_response = unary_chunk_and_detection(output_detector_models, &chunker_map, &chunker_config_map, vec![(tgis_response.clone().generated_text, 0)], nlp_servicer.clone()).await;
+    if let Ok(tgis_response) = call_nlp_text_gen_unary(Json(payload.clone()), None, nlp_servicer.clone()).await {
+        let mut output_detection_response: Vec<TokenClassificationResult> = Vec::new();
+        if do_output_detection {
+            let output_detector_models: HashMap<String, HashMap<String, String>> = output_detectors.unwrap();
+            // Add detection task for each detector - rest [unary] call
+            // For each detector, add chunker task as precursor - grpc [unary] call
+            output_detection_response = unary_chunk_and_detection(output_detector_models, &chunker_map, &chunker_config_map, vec![(tgis_response.clone().generated_text, 0)], nlp_servicer.clone()).await;
+        }
+        // Response aggregation
+        let classified_result = aggregate_response_for_output_unary(output_detection_response, tgis_response);
+        return classified_result;
+    } else {
+        // TODO: Error handling!
+        // Return fake object for now
+        return ClassifiedGeneratedTextResult::new(TextGenTokenClassificationResults {input: None, output: None}, 0);
     }
-    // Response aggregation
-    aggregate_response_for_output_unary(output_detection_response, tgis_response)
+
     // if !streaming {
 
     // }

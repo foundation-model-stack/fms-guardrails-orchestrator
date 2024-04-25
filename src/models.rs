@@ -541,6 +541,22 @@ pub struct GeneratedTextResult {
     pub input_tokens: Option<Vec<GeneratedToken>>,
 }
 
+impl GeneratedTextResult {
+    /// Creates a result on text produced by a text generation model
+    #[allow(clippy::new_without_default)]
+    pub fn new(text: String, input_token_count: i32) -> GeneratedTextResult {
+        GeneratedTextResult {
+            generated_text: text,
+            finish_reason: None,
+            generated_tokens: None,
+            seed: None,
+            input_token_count,
+            tokens: None,
+            input_tokens: None,
+        }
+    }
+}
+
 /// Details on the streaming result of a text generation model
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, validator::Validate)]
 #[cfg_attr(feature = "conversion", derive(frunk::LabelledGeneric))]

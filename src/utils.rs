@@ -12,9 +12,9 @@ use tonic::transport::{
     Certificate, ClientTlsConfig,
 };
 use tokio::fs::read;
-use tracing::{error};
+use tracing::error;
 
-use crate::{models, ErrorResponse};
+use crate::{models::{self, GeneratedTextResult, GuardrailsTextGenerationParameters}, pb::caikit::runtime::nlp::TextGenerationTaskRequest, ErrorResponse};
 use crate::{
     clients::tgis::GenerationServicer,
     clients::nlp::{NlpServicer, METADATA_NAME_MODEL_ID}
@@ -134,6 +134,34 @@ pub async fn configure_nlp(
     let nlp_servicer =
         NlpServicer::new(default_target_port, client_tls.as_ref(), &model_map);
     nlp_servicer.await
+}
+
+/// Calls unary text generation through the NLP API
+pub async fn call_nlp_text_gen_unary (
+    Json(payload): Json<models::GuardrailsHttpRequest>,
+    _params: Option<GuardrailsTextGenerationParameters>,
+    nlp_servicer: NlpServicer,
+) -> Result<GeneratedTextResult, ErrorResponse> {
+
+    // TODO: Add remaining parameters
+    let mut nlp_request = tonic::Request::new(
+        TextGenerationTaskRequest::new(payload.inputs)
+    );
+
+    nlp_request.metadata_mut().insert(METADATA_NAME_MODEL_ID, payload.model_id.parse().unwrap());
+
+    let result = nlp_servicer.text_generation_task_predict(nlp_request).await;
+
+    match result {
+        Ok(response) => {
+            let owned_response = response.get_ref().to_owned();
+            return Ok(GeneratedTextResult::new(owned_response.generated_text, owned_response.input_token_count as i32));
+        }
+        Err(error) => {
+            error!("error response from caikit-nlp: {:?}", error);
+            Err(ErrorResponse{error: error.message().to_string()})
+        }
+    }
 }
 
 /// Calls server streaming text generation through the NLP client
@@ -274,6 +302,34 @@ async fn load_pem(path: String, name: &str) -> Vec<u8> {
     read(&path)
         .await
         .unwrap_or_else(|_| panic!("couldn't load {name} from {path}"))
+}
+
+// Add initialization method to the request
+impl TextGenerationTaskRequest {
+    #[allow(clippy::new_without_default)]
+    pub fn new(text: String) -> TextGenerationTaskRequest {
+        TextGenerationTaskRequest {
+            text,
+            max_new_tokens: None,
+            min_new_tokens: None,
+            truncate_input_tokens: None,
+            decoding_method: None,
+            top_k: None,
+            top_p: None,
+            typical_p: None,
+            temperature: None,
+            repetition_penalty: None,
+            max_time: None,
+            exponential_decay_length_penalty: None,
+            stop_sequences: [].to_vec(),
+            seed: None,
+            preserve_input_text: None,
+            input_tokens: None,
+            generated_tokens: None,
+            token_logprobs: None,
+            token_ranks: None,
+        }
+    }
 }
 
 // Add initialization method to the request
