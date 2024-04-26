@@ -94,7 +94,7 @@ async fn create_rest_clients (
             let mut client_builder = reqwest::ClientBuilder::new();
 
             // Check if tls is enabled for this model
-            if  service_addr.tls_enabled == true {
+            if service_addr.tls_enabled == true {
                 if !service_addr.tls_ca_path.is_none() {
                     let tls_ca_path: &String = service_addr.tls_ca_path.as_ref().unwrap();
                     let cert_pem = utils::load_pem(tls_ca_path.clone(), "cert").await;
