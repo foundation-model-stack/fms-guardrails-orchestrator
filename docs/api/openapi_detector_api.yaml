@@ -21,9 +21,7 @@ paths:
                   type: string
                   title: Text
                 parameters:
-                    
-                  # threshold is responsibility of the detector, if it supports and user provides then orchestrator will
-                  # just pass it along
+
                   anyOf:
                     - additionalProperties:
                         anyOf:
@@ -37,11 +35,13 @@ paths:
                           - type: object
                       type: object
                   title: Parameters
+                  example: {"threshold": 0.8}
               additionalProperties: false
               type: object
               title: DetectorTaskRequestHttpRequest
         required: true
       responses:
+        # TODO: Add other potential responses like 204 for when there is no detection and other error responses.
         '200':
           description: Successful Response
           content:
@@ -81,8 +81,10 @@ components:
                 example: 0.5
             title: detector.data_model.DetectorResponse
             type: object
+            # required: ["start", "end", "text", "detection", "detection_type", "score"]
           title: Detectors
           type: array
       title: detector.data_model.DetectorResponseList
       type: object
+
 

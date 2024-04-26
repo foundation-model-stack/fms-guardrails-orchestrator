@@ -270,6 +270,7 @@ pub async fn configure_detectors(
     detector_servicer.await
 }
 
+/// Function to call out to detector with the provided parameters and servicer
 pub async fn call_detector(
     text: String,
     model_id: String,
@@ -295,7 +296,7 @@ pub async fn call_detector(
 
 // =========================================== Util functions ==============================================
 
-
+/// Utility function to load pem file given a path
 pub async fn load_pem(path: String, name: &str) -> Vec<u8> {
     read(&path)
         .await

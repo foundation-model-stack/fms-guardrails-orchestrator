@@ -75,7 +75,7 @@ async fn create_grpc_clients<C>(
         .collect::<Vec<_>>();
     try_join_all(clients)
         .await
-        .expect("Error creating upstream service clients")
+        .expect("Error creating upstream service for gRPC clients")
         .into_iter()
         .collect()
 }
@@ -121,7 +121,7 @@ async fn create_rest_clients (
         .collect::<Vec<_>>();
     try_join_all(clients)
         .await
-        .expect("Error creating upstream service clients")
+        .expect("Error creating upstream service for REST clients")
         .into_iter()
         .collect()
 

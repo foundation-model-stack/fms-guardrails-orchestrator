@@ -9,9 +9,9 @@ use crate::{ErrorResponse, RestClientConfig};
 
 pub const DETECTOR_ID_HEADER_NAME: &'static str = "detector-id";
 
-// Struct containing map of clients,
-// where each model name is mapped to a tuple of
-// url (host) and client
+/// Struct containing map of clients,
+/// where each model name is mapped to a tuple of
+/// url (host) and client
 #[derive(Debug, Default, Clone)]
 pub struct DetectorServicer {
     clients: HashMap<String, RestClientConfig>,
@@ -43,6 +43,9 @@ impl DetectorServicer {
 
 }
 
+/// Trait that provides specific API calls for DetectorService.
+/// All the DetectorService functions will automatically find the detector client
+/// given the model id and make the request to the downstream service
 pub trait DetectorService {
     async fn classify(
         &self,
