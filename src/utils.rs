@@ -274,7 +274,7 @@ pub async fn configure_detectors(
 pub async fn call_detector(
     text: String,
     model_id: String,
-    parameters: Option<HashMap<String, i32>>,
+    parameters: Option<HashMap<String, serde_json::Value>>,
     detector_servicer: DetectorServicer
 ) -> Result<DetectorTaskResponseList, ErrorResponse> {
 
