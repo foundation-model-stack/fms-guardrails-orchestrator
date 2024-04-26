@@ -12,12 +12,14 @@ use tonic::transport::{
     Certificate, ClientTlsConfig,
 };
 use tokio::fs::read;
-use tracing::{error};
+use tracing::error;
 
 use crate::{models, ErrorResponse};
 use crate::{
+    clients::nlp::{NlpServicer, METADATA_NAME_MODEL_ID},
+    clients::rest_detectors::{DetectorService, DetectorServicer},
     clients::tgis::GenerationServicer,
-    clients::nlp::{NlpServicer, METADATA_NAME_MODEL_ID}
+    clients::detector_models::{DetectorTaskResponseList, DetectorTaskRequestHttpRequest}
 };
 use crate::config::ServiceAddr;
 use crate::pb::fmaas::{
@@ -256,10 +258,46 @@ pub async fn call_chunker(
     }
 }
 
+/// Configures detector clients
+pub async fn configure_detectors(
+    model_map: &HashMap<String, ServiceAddr>,
+    default_target_port: u16,
+) -> DetectorServicer {
+
+    let detector_servicer = DetectorServicer::new(
+        default_target_port, model_map
+    );
+    detector_servicer.await
+}
+
+/// Function to call out to detector with the provided parameters and servicer
+pub async fn call_detector(
+    text: String,
+    model_id: String,
+    parameters: Option<HashMap<String, serde_json::Value>>,
+    detector_servicer: DetectorServicer
+) -> Result<DetectorTaskResponseList, ErrorResponse> {
+
+    // TODO: Add support for parameters
+    let mut detector_request = DetectorTaskRequestHttpRequest::new(text);
+
+    let result = detector_servicer.classify(model_id, detector_request);
+
+    match result.await {
+        Ok(response) => {
+            return Ok(response);
+        }
+        Err(error) => {
+            error!("error response from detector {:?}", error);
+            Err(error)
+        }
+    }
+}
+
 // =========================================== Util functions ==============================================
 
-
-async fn load_pem(path: String, name: &str) -> Vec<u8> {
+/// Utility function to load pem file given a path
+pub async fn load_pem(path: String, name: &str) -> Vec<u8> {
     read(&path)
         .await
         .unwrap_or_else(|_| panic!("couldn't load {name} from {path}"))

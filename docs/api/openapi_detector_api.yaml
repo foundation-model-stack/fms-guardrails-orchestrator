@@ -1,0 +1,90 @@
+openapi: 3.0.1
+info:
+  title: Detector API
+  version: 0.1.0
+paths:
+  /api/v1/task/detector:
+    post:
+      parameters:
+        - in: header
+          name: detector-id
+          schema:
+            type: string
+          required: true
+          example: profanity.detector.v1-en
+      requestBody:
+        content:
+          application/json:
+            schema:
+              properties:
+                text:
+                  type: string
+                  title: Text
+                parameters:
+
+                  anyOf:
+                    - additionalProperties:
+                        anyOf:
+                          - type: integer
+                          - type: number
+                          - type: string
+                          - type: boolean
+                          - items:
+                              type: object
+                            type: array
+                          - type: object
+                      type: object
+                  title: Parameters
+                  example: {"threshold": 0.8}
+              additionalProperties: false
+              type: object
+              title: DetectorTaskRequestHttpRequest
+        required: true
+      responses:
+        # TODO: Add other potential responses like 204 for when there is no detection and other error responses.
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetectorResponseList'
+components:
+  schemas:
+    DetectorResponseList:
+      properties:
+        detections:
+          items:
+            properties:
+              start:
+                title: Start
+                type: integer
+                example: 0
+              end:
+                title: End
+                type: integer
+                example: 10
+              text:
+                title: Text
+                type: string
+                example: "my bad text"
+              detection:
+                title: Detection
+                type: string
+                example: "has_HAP"
+              detection_type:
+                title: Detection Type
+                type: string
+                example: "hap"
+              score:
+                title: Score
+                type: number
+                example: 0.5
+            title: detector.data_model.DetectorResponse
+            type: object
+            # required: ["start", "end", "text", "detection", "detection_type", "score"]
+          title: Detectors
+          type: array
+      title: detector.data_model.DetectorResponseList
+      type: object
+
+
