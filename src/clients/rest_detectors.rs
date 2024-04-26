@@ -73,7 +73,7 @@ impl DetectorService for DetectorServicer {
 
         match response.await {
             Ok(response) => {
-                response.json().await.unwarp()
+                response.json().await.unwrap()
             }
             Err(error) => {
                 error!("error response from detector {:?}", error);

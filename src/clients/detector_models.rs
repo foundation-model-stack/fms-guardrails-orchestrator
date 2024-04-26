@@ -30,29 +30,29 @@ impl DetectorInputParametersValue {
 
 #[derive(Clone, Default, Debug, PartialEq, Serialize, Deserialize)]
 pub struct DetectorTaskResponse {
-    #[serde(rename = "start", skip_serializing_if = "Option::is_none")]
-    pub start: Option<i32>,
-    #[serde(rename = "end", skip_serializing_if = "Option::is_none")]
-    pub end: Option<i32>,
-    #[serde(rename = "text", skip_serializing_if = "Option::is_none")]
-    pub text: Option<String>,
-    #[serde(rename = "detection", skip_serializing_if = "Option::is_none")]
-    pub detection: Option<String>,
-    #[serde(rename = "detection_type", skip_serializing_if = "Option::is_none")]
-    pub detection_type: Option<String>,
-    #[serde(rename = "score", skip_serializing_if = "Option::is_none")]
-    pub score: Option<f64>,
+    #[serde(rename = "start",)]
+    pub start: i32,
+    #[serde(rename = "end",)]
+    pub end: i32,
+    #[serde(rename = "text",)]
+    pub text: String,
+    #[serde(rename = "detection",)]
+    pub detection: String,
+    #[serde(rename = "detection_type",)]
+    pub detection_type: String,
+    #[serde(rename = "score",)]
+    pub score: f64,
 }
 
 impl DetectorTaskResponse {
-    pub fn new() -> DetectorTaskResponse {
+    pub fn new(start: i32, end: i32, text: String, detection: String, detection_type: String, score: f64) -> DetectorTaskResponse {
         DetectorTaskResponse {
-            start: None,
-            end: None,
-            text: None,
-            detection: None,
-            detection_type: None,
-            score: None,
+            start: start,
+            end: end,
+            text: text,
+            detection: detection,
+            detection_type: detection_type,
+            score: score,
         }
     }
 }
