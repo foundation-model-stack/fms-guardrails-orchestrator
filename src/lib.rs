@@ -105,12 +105,13 @@ async fn create_rest_clients (
             // TODO: create timeouts
             let client = client_builder.build()?;
 
-            let url_obj = Url::parse(
-                format!("{}:{}", service_addr.hostname, service_addr.port.unwrap().to_string())
-                .as_str())
-                .unwrap();
+            let mut url_obj = Url::parse(service_addr.hostname.as_str().as_ref()).unwrap();
+
+            if service_addr.port.is_some() {
+                url_obj.set_port(service_addr.port);
+            }
             let client_config = RestClientConfig {
-                url: url_obj.to_string(),
+                url: url_obj.as_str().into(),
                 client: client
             };
 

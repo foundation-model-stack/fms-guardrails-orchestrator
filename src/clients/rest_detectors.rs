@@ -1,6 +1,6 @@
 use std::borrow::Borrow;
 use std::collections::HashMap;
-
+use tracing::error;
 
 use crate::config::ServiceAddr;
 use crate::{create_rest_clients, clients::detector_models};
@@ -37,14 +37,13 @@ impl DetectorServicer {
         Ok(self
             .clients
             .get(&model_id.to_string())
-            .ok_or_else(|| ErrorResponse{ error: format!("Unrecognized model_id: {model_id}")})?
+            .ok_or_else(|| ErrorResponse{ error: format!("Unrecognized detector id: {model_id}")})?
             .clone())
     }
 
 }
 
-
-trait DetectorService {
+pub trait DetectorService {
     async fn classify(
         &self,
         model_id: String,
@@ -63,14 +62,24 @@ impl DetectorService for DetectorServicer {
         let model_id: &str = model_id.as_str().as_ref();
         let client_config = self.client(model_id).await?;
 
+
         let url = client_config.url;
         let response = client_config
             .client
             .post(url)
-            .header(DETECTOR_ID_HEADER_NAME.to_string(), model_id)
+            .header(DETECTOR_ID_HEADER_NAME, model_id)
             .json(detector_req)
-            .send().await;
-        response.unwrap().json().await.unwrap()
+            .send();
+
+        match response.await {
+            Ok(response) => {
+                response.json().await.unwarp()
+            }
+            Err(error) => {
+                error!("error response from detector {:?}", error);
+                Err(ErrorResponse { error: error.to_string()})
+            }
+        }
     }
 
 }

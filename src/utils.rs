@@ -17,8 +17,9 @@ use tracing::error;
 use crate::{models, ErrorResponse};
 use crate::{
     clients::nlp::{NlpServicer, METADATA_NAME_MODEL_ID},
-    clients::rest_detectors::DetectorServicer,
+    clients::rest_detectors::{DetectorService, DetectorServicer},
     clients::tgis::GenerationServicer,
+    clients::detector_models::{DetectorTaskResponseList, DetectorTaskRequestHttpRequest}
 };
 use crate::config::ServiceAddr;
 use crate::pb::fmaas::{
@@ -267,6 +268,29 @@ pub async fn configure_detectors(
         default_target_port, model_map
     );
     detector_servicer.await
+}
+
+pub async fn call_detector(
+    text: String,
+    model_id: String,
+    parameters: Option<HashMap<String, i32>>,
+    detector_servicer: DetectorServicer
+) -> Result<DetectorTaskResponseList, ErrorResponse> {
+
+    // TODO: Add support for parameters
+    let mut detector_request = DetectorTaskRequestHttpRequest::new(text);
+
+    let result = detector_servicer.classify(model_id, detector_request);
+
+    match result.await {
+        Ok(response) => {
+            return Ok(response);
+        }
+        Err(error) => {
+            error!("error response from detector {:?}", error);
+            Err(error)
+        }
+    }
 }
 
 // =========================================== Util functions ==============================================

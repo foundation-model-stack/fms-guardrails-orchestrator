@@ -1,5 +1,5 @@
 use crate::{
-    clients::{nlp::NlpServicer, rest_detectors::DetectorServicer}, config::{self, ServiceAddr}, models, orchestrator, utils, ErrorResponse, GuardrailsResponse};
+    clients::{nlp::NlpServicer, rest_detectors::DetectorServicer}, config::{self, ServiceAddr}, models::{self, ClassifiedGeneratedTextResult}, orchestrator, utils, ErrorResponse, GuardrailsResponse};
 
 
 use core::panic;
@@ -10,6 +10,7 @@ use axum::{
 };
 // sse -> server side events
 use axum::response::sse::{Event, KeepAlive, Sse};
+use axum_macros::debug_handler;
 use futures::stream::Stream;
 use tokio::signal;
 use tracing::info;
@@ -94,17 +95,39 @@ async fn health() -> Result<(), ()> {
     Ok(())
 }
 
-// #[debug_handler]
+#[debug_handler]
 // TODO: Improve Bad Request error handling by implementing Validate middleware
 async fn classification_with_generation(
-    State(_state): State<Arc<ServerState>>,
-    Json(_payload): Json<models::GuardrailsHttpRequest>) -> Json<GuardrailsResponse> {
+    State(state): State<Arc<ServerState>>,
+    Json(payload): Json<models::GuardrailsHttpRequest>) -> Json<GuardrailsResponse> {
 
-    // TODO: note this function currently is not doing .await and hence is blocking
+    // TODO: Add chunker call first
+    let guardrails_model_id = "pii".to_string();
+
+    let detector_result = utils::call_detector(
+        payload.clone().inputs,
+        guardrails_model_id,
+        None,
+        state.detector_servicer.clone()
+    );
+
     let token_class_result = models::TextGenTokenClassificationResults::new();
     let input_token_count = 2;
     let response = models::ClassifiedGeneratedTextResult::new(token_class_result, input_token_count);
-    Json(GuardrailsResponse::SuccessfulResponse(response))
+
+
+    // TODO: Handle failure to return error response
+    match detector_result.await {
+        Ok(result) => {
+            return Json(GuardrailsResponse::SuccessfulResponse(response))
+        }
+        Err(error) => {
+            return Json(GuardrailsResponse::ValidationError(models::HttpValidationError { detail:None }))
+        }
+    }
+
+    // Dummy error for now
+    // Json(GuardrailsResponse::ValidationError(models::HttpValidationError { detail: None }))
 
 }
 
@@ -141,7 +164,6 @@ async fn stream_classification_with_gen(
         match result {
             // TODO: Add logic to parse and handle token_class_result properly
             Ok(value) => {
-                print!("Response from token class result: {:?}", value);
                 // TODO: Add logic to parse classification response and send appropriate event back
                 // based on output
                 Ok(Event::default())
