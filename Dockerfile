@@ -44,6 +44,12 @@ COPY config /app/config
 RUN microdnf install -y --disableplugin=subscription-manager shadow-utils && \
     microdnf clean all --disableplugin=subscription-manager
 
+RUN groupadd --system orchestr8 --gid 1001 && \
+    adduser --system --uid 1001 --gid 0 --groups orchestr8 \
+    --create-home --home-dir /app --shell /sbin/nologin \
+    --comment "FMS Orchestrator User" orchestr8
+
+USER orchestr8
 
 ENV ORCHESTRATOR_CONFIG /app/config/config.yaml
 
