@@ -13,6 +13,11 @@ To build and install the binary locally:
 cargo install --path .
 ```
 
+To run the server locally:
+```sh
+cargo run --bin fms-orchestr8
+```
+
 To run tests:
 ```sh
 cargo test
