@@ -4,6 +4,24 @@ Orchestrator server for invocation of detectors on text generation input and out
 
 ![LLM Orchestration diagram](docs/architecture/images/llm_detector_orchestration.png "Orchestr8 Diagram")
 
+## Getting Started
+
+Make sure Rust and Cargo are [installed](https://doc.rust-lang.org/cargo/getting-started/installation.html).
+
+To build and install the binary locally:
+```sh
+cargo install --path .
+```
+
+To run tests:
+```sh
+cargo test
+```
+
+To build documenation:
+```sh
+cargo doc
+```
 
 ### Sample requests
 
