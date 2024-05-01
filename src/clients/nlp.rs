@@ -1,165 +1,132 @@
-// Adapted from https://github.com/IBM/text-generation-router
-// This is intended for use for the chunking/tokenization GRPC API until
-// the REST API is able to support client streaming.
-use std::collections::HashMap;
+use std::{collections::HashMap, pin::Pin};
 
+use futures::{Stream, StreamExt};
 use ginepro::LoadBalancedChannel;
-use tonic::{transport::ClientTlsConfig, Code, Request, Response, Status, Streaming};
-use tracing::{debug, instrument};
-use futures::stream::iter;
+use tokio::sync::mpsc;
+use tokio_stream::wrappers::ReceiverStream;
+use tonic::Request;
 
-use crate::{pb::{
-    caikit::runtime::nlp::{
-        nlp_service_client::NlpServiceClient, nlp_service_server::NlpService,
-        BidiStreamingTokenizationTaskRequest,
-        ServerStreamingTextGenerationTaskRequest,
-        TextGenerationTaskRequest,
-        TokenizationTaskRequest,
-        TokenClassificationTaskRequest,
-    },
-    caikit_data_model::{
-        nlp::{
-            GeneratedTextResult, GeneratedTextStreamResult,
+use super::{create_grpc_clients, Error};
+use crate::{
+    config::ServiceConfig,
+    pb::{
+        caikit::runtime::nlp::{
+            nlp_service_client::NlpServiceClient, BidiStreamingTokenizationTaskRequest,
+            ServerStreamingTextGenerationTaskRequest, TextGenerationTaskRequest,
+            TokenClassificationTaskRequest, TokenizationTaskRequest,
+        },
+        caikit_data_model::nlp::{
+            GeneratedTextResult, GeneratedTextStreamResult, TokenClassificationResults,
             TokenizationResults, TokenizationStreamResult,
-            TokenClassificationResults
         },
     },
-}, create_grpc_clients, config::ServiceAddr};
+};
 
-pub const METADATA_NAME_MODEL_ID: &str = "mm-model-id";
+const MODEL_ID_HEADER_NAME: &str = "mm-model-id";
 
-#[derive(Debug, Default, Clone)]
-pub struct NlpServicer {
+#[derive(Clone)]
+pub struct NlpClient {
     clients: HashMap<String, NlpServiceClient<LoadBalancedChannel>>,
 }
 
-impl NlpServicer {
-    /// Create a new NLP client
-    pub async fn new(
-        default_target_port: u16,
-        client_tls: Option<&ClientTlsConfig>,
-        model_map: &HashMap<String, ServiceAddr>,
-    ) -> Self {
-        let clients = create_grpc_clients(
-            default_target_port, client_tls, model_map, NlpServiceClient::new
-        ).await;
-        Self { clients }
+impl NlpClient {
+    pub async fn new(default_port: u16, config: &[(String, ServiceConfig)]) -> Result<Self, Error> {
+        let clients = create_grpc_clients(default_port, config, NlpServiceClient::new).await?;
+        Ok(Self { clients })
     }
 
-    async fn client(
-        &self,
-        model_id: &str,
-    ) -> Result<NlpServiceClient<LoadBalancedChannel>, Status> {
-        // TODO: Fix below model mapping
+    fn client(&self, model_id: &str) -> Result<NlpServiceClient<LoadBalancedChannel>, Error> {
         Ok(self
             .clients
-            .get("gen-all-models")
-            .ok_or_else(|| Status::not_found(format!("Unrecognized model_id: {model_id}")))?
+            .get(model_id)
+            .ok_or_else(|| Error::ModelNotFound(model_id.into()))?
             .clone())
     }
-}
 
-#[tonic::async_trait]
-impl NlpService for NlpServicer {
-
-    #[instrument(skip_all)]
-    async fn tokenization_task_predict(
+    pub async fn tokenization_task_predict(
         &self,
-        request: Request<TokenizationTaskRequest>,
-    ) -> Result<Response<TokenizationResults>, Status> {
-        let model_id = extract_model_id(&request)?;
-        let br = request.get_ref();
-        // TODO: Verify if this makes sense
-        if br.text.is_empty() {
-            return Ok(Response::new(TokenizationResults::default()));
-        }
-        debug!(
-            "Performing tokenization task predict request for Model ID {}",
-            model_id
-        );
-        self.client(model_id)
-            .await?
+        model_id: &str,
+        request: TokenizationTaskRequest,
+    ) -> Result<TokenizationResults, Error> {
+        let request = request_with_model_id(request, model_id);
+        Ok(self
+            .client(model_id)?
             .tokenization_task_predict(request)
-            .await
+            .await?
+            .into_inner())
     }
 
-    type BidiStreamingTokenizationTaskPredictStream =
-        Streaming<TokenizationStreamResult>;
-    #[instrument(skip_all)]
-    async fn bidi_streaming_tokenization_task_predict(
+    pub async fn bidi_streaming_tokenization_task_predict(
         &self,
-        request: Request<Streaming<BidiStreamingTokenizationTaskRequest>>,
-    ) -> Result<Response<Self::BidiStreamingTokenizationTaskPredictStream>, Status> {
-        let model_id = extract_model_id(&request)?;
-        let _br = request.get_ref();
-        // TODO: Empty case should look different for streaming
-        debug!(
-            "Performing bidirectional streaming tokenization task predict request for Model ID {}",
-            model_id
-        );
-
-        // TODO: FIXME!! fake request here - need to update request above to be
-        // expected type constructed from TGIS response, appears to be server type?
-        let stream = tonic::Request::new(iter(vec![
-            BidiStreamingTokenizationTaskRequest {text_stream: String::from("moo") },
-            BidiStreamingTokenizationTaskRequest {text_stream: String::from("moo") },
-        ]));
-        self.client(model_id)
+        model_id: &str,
+        request: Pin<Box<dyn Stream<Item = BidiStreamingTokenizationTaskRequest> + Send + 'static>>,
+    ) -> Result<ReceiverStream<TokenizationStreamResult>, Error> {
+        let request = request_with_model_id(request, model_id);
+        let mut response_stream = self
+            .client(model_id)?
+            .bidi_streaming_tokenization_task_predict(request)
             .await?
-            .bidi_streaming_tokenization_task_predict(stream)
-            .await
+            .into_inner();
+        let (tx, rx) = mpsc::channel(128);
+        tokio::spawn(async move {
+            while let Some(Ok(message)) = response_stream.next().await {
+                let _ = tx.send(message).await;
+            }
+        });
+        Ok(ReceiverStream::new(rx))
     }
 
-    type ServerStreamingTextGenerationTaskPredictStream = Streaming<GeneratedTextStreamResult>;
-    #[instrument(skip_all)]
-    async fn server_streaming_text_generation_task_predict(
+    pub async fn token_classification_task_predict(
         &self,
-        request: Request<ServerStreamingTextGenerationTaskRequest>,
-    ) -> Result<Response<Self::ServerStreamingTextGenerationTaskPredictStream>, Status> {
-        // let sstr = request.get_ref();
-        let model_id = extract_model_id(&request)?;
-        debug!(
-            "Routing text generation streaming generation request for Model ID {}",
-            model_id
-        );
-        self.client(model_id)
+        model_id: &str,
+        request: TokenClassificationTaskRequest,
+    ) -> Result<TokenClassificationResults, Error> {
+        let request = request_with_model_id(request, model_id);
+        Ok(self
+            .client(model_id)?
+            .token_classification_task_predict(request)
             .await?
+            .into_inner())
+    }
+
+    pub async fn text_generation_task_predict(
+        &self,
+        model_id: &str,
+        request: TextGenerationTaskRequest,
+    ) -> Result<GeneratedTextResult, Error> {
+        let request = request_with_model_id(request, model_id);
+        Ok(self
+            .client(model_id)?
+            .text_generation_task_predict(request)
+            .await?
+            .into_inner())
+    }
+
+    pub async fn server_streaming_text_generation_task_predict(
+        &self,
+        model_id: &str,
+        request: ServerStreamingTextGenerationTaskRequest,
+    ) -> Result<ReceiverStream<GeneratedTextStreamResult>, Error> {
+        let request = request_with_model_id(request, model_id);
+        let mut response_stream = self
+            .client(model_id)?
             .server_streaming_text_generation_task_predict(request)
-            .await
-
+            .await?
+            .into_inner();
+        let (tx, rx) = mpsc::channel(128);
+        tokio::spawn(async move {
+            while let Some(Ok(message)) = response_stream.next().await {
+                let _ = tx.send(message).await;
+            }
+        });
+        Ok(ReceiverStream::new(rx))
     }
-
-    #[instrument(skip_all)]
-    async fn text_generation_task_predict(
-        &self,
-        _request: Request<TextGenerationTaskRequest>,
-    ) -> Result<Response<GeneratedTextResult>, Status> {
-        Err(Status::unimplemented("not implemented"))
-    }
-
-    #[instrument(skip_all)]
-    async fn token_classification_task_predict(
-        &self,
-        _request: Request<TokenClassificationTaskRequest>,
-    ) -> Result<Response<TokenClassificationResults>, Status> {
-        Err(Status::unimplemented("not implemented"))
-    }
-
 }
 
-/// Extracts model_id from [`Request`] metadata.
-fn extract_model_id<T>(request: &Request<T>) -> Result<&str, Status> {
-    let metadata = request.metadata();
-    if !metadata.contains_key(METADATA_NAME_MODEL_ID) {
-        return Err(Status::new(
-            Code::InvalidArgument,
-            "Missing required model ID",
-        ));
-    }
-    let model_id = metadata
-        .get(METADATA_NAME_MODEL_ID)
-        .unwrap()
-        .to_str()
-        .unwrap();
-    Ok(model_id)
+fn request_with_model_id<T>(request: T, model_id: &str) -> Request<T> {
+    let mut request = Request::new(request);
+    request
+        .metadata_mut()
+        .insert(MODEL_ID_HEADER_NAME, model_id.parse().unwrap());
+    request
 }

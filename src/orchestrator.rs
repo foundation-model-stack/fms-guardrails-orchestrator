@@ -1,382 +1,560 @@
-use std::{collections::HashMap, usize};
+use std::{collections::HashMap, sync::Arc};
 
-use crate::{config::{ChunkerConfig, DetectorConfig, DetectorMap},
-    models::{ClassifiedGeneratedTextResult, FinishReason, GeneratedTextResult, GeneratedTextStreamResult, GeneratedToken, GuardrailsHttpRequest, GuardrailsTextGenerationParameters, InputWarning, InputWarningReason, TextGenTokenClassificationResults, TokenClassificationResult, TokenStreamDetails},
-    pb::fmaas::{BatchedTokenizeRequest, TokenizeRequest},
-    ErrorResponse
+use futures::{
+    future::try_join_all,
+    stream::{self, StreamExt},
 };
-use axum::Json;
-use axum::response::sse::Event;
-use futures::stream::Stream;
-use serde::Serialize;
-use std::convert::Infallible;
+use tokio_stream::wrappers::ReceiverStream;
+use tracing::{debug, info};
 
-use crate::{pb::{
-    caikit_data_model::nlp::{
-        Token, TokenizationResults, TokenizationStreamResult,
-}}};
+use crate::{
+    clients::{
+        self, detector::DetectorRequest, DetectorClient, GenerationClient, NlpClient, TgisClient,
+    },
+    config::{GenerationProvider, OrchestratorConfig},
+    models::{
+        ClassifiedGeneratedTextResult, ClassifiedGeneratedTextStreamResult, DetectorParams,
+        GuardrailsConfig, GuardrailsHttpRequest, GuardrailsTextGenerationParameters, InputWarning,
+        InputWarningReason, TextGenTokenClassificationResults, TokenClassificationResult,
+    },
+    pb::{
+        caikit::runtime::nlp::{TextGenerationTaskRequest, TokenizationTaskRequest},
+        fmaas::{
+            BatchedGenerationRequest, BatchedTokenizeRequest, GenerationRequest, TokenizeRequest,
+        },
+    },
+    Error,
+};
 
+const UNSUITABLE_INPUT_MESSAGE: &str = "Unsuitable input detected. \
+    Please check the detected entities on your input and try again \
+    with the unsuitable input removed.";
 
-// ========================================== Constants and Dummy Variables ==========================================
-const API_PREFIX: &'static str = r#"/api/v1/task"#;
-const UNSUITABLE_INPUT_MESSAGE: &'static str = "Unsuitable input detected. Please check the detected entities on your input and try again with the unsuitable input removed.";
-
-// TODO: Dummy TGIS tokenization response object - replace later
-#[derive(Serialize)]
-pub(crate) struct TokenizeResponse {
-    pub token_count: i32,
-    // ...
+struct Context {
+    config: OrchestratorConfig,
+    generation_client: GenerationClient,
+    chunker_client: NlpClient,
+    detector_client: DetectorClient,
 }
 
-// TODO: Dummy detector response objects - replace later
-#[derive(Serialize)]
-pub(crate) struct DetectorResult {
-    pub start: u32,
-    pub end: u32,
-    pub word: String,
-    pub entity: String,
-    pub entity_group: String,
-    pub score: f32,
-    pub token_count: u32,
-}
-#[derive(Serialize)]
-pub(crate) struct DetectorResponse {
-    pub results: Vec<DetectorResult>,
+/// Handles orchestrator tasks.
+pub struct Orchestrator {
+    ctx: Arc<Context>,
 }
 
-const DUMMY_RESPONSE: [&'static str; 9] = ["This", "is", "very", "good", "news,", "streaming", "is", "working", "!"];
-
-// ========================================== Handler functions ==========================================
-
-// This is designed to be boot-time validation and does not have to persist here
-// The results should get processed before tasks are called to raise an error for config
-pub fn preprocess_detector_map(detector_map: DetectorMap) -> Result<(HashMap<String, String>, HashMap<String, Result<ChunkerConfig, ErrorResponse>>), ErrorResponse> {
-    // Map detectors to respective chunkers
-    let chunkers: HashMap<String, ChunkerConfig> = detector_map.chunkers;
-    let detectors: HashMap<String, DetectorConfig> = detector_map.detectors;
-
-    let mut detector_chunker_map: HashMap<String, String> = HashMap::new();
-    let mut chunker_map: HashMap<String, Result<ChunkerConfig, ErrorResponse>> = HashMap::new();
-    for (detector_name, detector_config) in detectors.into_iter() {
-        let chunker_name: String = detector_config.chunker.to_string();
-        let result: Result<ChunkerConfig, ErrorResponse> = match chunkers.get(&chunker_name) {
-            Some(&v) => Ok(v),
-            None => Err(ErrorResponse{error: format!("Detector {detector_name} not configured correctly")})
-        };
-        chunker_map.insert(chunker_name, result);
-        // TODO: chunker_name can't be reused
-        detector_chunker_map.insert(detector_name, detector_config.chunker.to_string());
+impl Orchestrator {
+    pub async fn new(config: OrchestratorConfig) -> Result<Self, Error> {
+        let (generation_client, chunker_client, detector_client) = create_clients(&config).await?;
+        let ctx = Arc::new(Context {
+            config,
+            generation_client,
+            chunker_client,
+            detector_client,
+        });
+        Ok(Self { ctx })
     }
-    Ok((detector_chunker_map, chunker_map))
-}
 
-// ========================================== Dummy Tasks ==========================================
-
-// API calls - do not have to actually live here
-
-// Unary TGIS call - first pass will be through caikit-nlp
-async fn tgis_unary_call(model_id: String, text: String, text_gen_params: Option<GuardrailsTextGenerationParameters>) -> GeneratedTextResult {
-    // Expect only one text here
-    let token_info: GeneratedToken = GeneratedToken {
-        text: "hi".to_string(),
-        logprob: Some(0.53),
-        rank: Some(1),
-    };
-    GeneratedTextResult {
-        input_token_count: 1,
-        generated_tokens: Some(1),
-        generated_text: "hi".to_string(),
-        finish_reason: Some(FinishReason::MaxTokens),
-        seed: Some(42),
-        tokens: Some(vec![token_info.clone()]),
-        input_tokens: Some(vec![token_info.clone()]),
-    }
-}
-
-// Server streaming TGIS call - first pass will be through caikit-nlp
-async fn tgis_stream_call(
-    Json(text): Json<String>,
-    text_gen_params: Option<GuardrailsTextGenerationParameters>,
-    on_message_callback: impl Fn(GeneratedTextStreamResult) -> Event,
-) -> impl Stream<Item = Result<Event, Infallible>> {
-    let mut dummy_response_iterator = DUMMY_RESPONSE.iter();
-
-    let mut input_token_count: i32 = 0;
-    let token_info: GeneratedToken = GeneratedToken {
-        text: "hi".to_string(),
-        logprob: Some(0.53),
-        rank: Some(1),
-    };
-
-    let stream = async_stream::stream! {
-        // Server sending event stream
-        while let Some(&token) = dummy_response_iterator.next() {
-            let details: TokenStreamDetails = TokenStreamDetails {
-                finish_reason:FinishReason::MaxTokens.into(),
-                seed: Some(42),
-                input_token_count,
-                generated_tokens: Some(20),
-            };
-            let stream_token = GeneratedTextStreamResult {
-                generated_text: token.to_string(),
-                details: Some(details),
-                input_tokens: Some(vec![token_info.clone()]),
-                tokens: Some(vec![token_info.clone()]),
-            };
-            input_token_count += 1;
-            let event = on_message_callback(stream_token);
-            yield Ok(event);
-        }
-    };
-    stream
-}
-
-// Unary TGIS tokenize call
-async fn tokenize_unary_call(model_id: String, texts: Vec<String>) -> TokenizeResponse {
-    let mut tokenize_requests: Vec<TokenizeRequest> = vec![];
-    for text in texts.iter() {
-        let tokenize_request: TokenizeRequest = TokenizeRequest { text: text.to_string() };
-        tokenize_requests.push(tokenize_request);
-    };
-
-    // Structs have to be filled in, so default to no truncation or extra return fields
-    let request: BatchedTokenizeRequest = BatchedTokenizeRequest {
-        model_id,
-        requests: tokenize_requests,
-        return_tokens: false,
-        return_offsets: false,
-        truncate_input_tokens: 0,
-    };
-    TokenizeResponse {
-        token_count: 9
-    }
-}
-
-// Unary chunker call
-async fn chunker_unary_call(model_id: String, text: String) -> TokenizationResults {
-    // unary under the hood
-    let token_0 = Token {
-        start: 0,
-        end: 4,
-        text: "This".to_string(),
-    };
-    let token_1 = Token {
-        start: 5,
-        end: 7,
-        text: "is".to_string(),
-    };
-    TokenizationResults {
-        results: vec![token_0, token_1],
-        token_count: 2,
-    }
-}
-
-// Bidirectional streaming chunker call
-async fn chunker_stream_call(model_id: String, texts: Vec<String>, on_message_callback: impl Fn(TokenizationStreamResult) -> Event) -> impl Stream<Item = Result<Event, Infallible>> {
-    let token_0 = Token {
-        start: 0,
-        end: 4,
-        text: "This".to_string(),
-    };
-    let token_1 = Token {
-        start: 5,
-        end: 7,
-        text: "is".to_string(),
-    };
-    let token_vec = vec![token_0, token_1];
-    let mut dummy_response_iterator = DUMMY_RESPONSE.iter();
-
-    let stream = async_stream::stream! {
-        // Server sending event stream
-        while let Some(&token) = dummy_response_iterator.next() {
-            let stream_token = TokenizationStreamResult {
-                results: token_vec.clone(),
-                processed_index: 1, 
-                start_index: 0,
-                token_count: 2,
-            };
-            let event = on_message_callback(stream_token);
-            yield Ok(event);
-        }
-    };
-    stream
-}
-
-// Unary detector call
-// Token classification result vector used for now but expecting more generic DetectorResponse in the future
-// Assume processing on batch (multiple strings) can at least happen
-async fn detector_call(detector_id: String, inputs: Vec<String>) -> Vec<TokenClassificationResult> {
-    // Might need some routing/extra endpoint info to begin with
-    let result: TokenClassificationResult = TokenClassificationResult {
-        start: 0,
-        end: 3,
-        word: "moo".to_owned(),
-        entity: "cow".to_owned(),
-        entity_group: "cow".to_owned(),
-        token_count: Some(1),
-        score: 0.5,
-    };
-    vec![result]
-}
-
-// Orchestrator internal logic
-
-fn slice_input(mut user_input: Vec<String>, payload: GuardrailsHttpRequest) -> Vec<String>{
-    if let Some(input_masks) = payload.guardrail_config.unwrap().input.unwrap().masks {
-        let user_input_vec = user_input[0].chars().collect::<Vec<_>>();
-        // Extra work for codepoint slicing in Rust
-        user_input = vec![];
-        for (start, end) in input_masks {
-            let mask_string: String = user_input_vec[start..end].iter().cloned().collect::<String>();
-            user_input.push(mask_string);
-        }
-    }
-    user_input
-}
-
-async fn unary_chunk_and_detection(
-    detectors_models: HashMap<String, HashMap<String, String>>,
-    chunker_map: &HashMap<String, String>,
-    chunker_config_map: &HashMap<String, Result<ChunkerConfig, ErrorResponse>>,
-    texts: Vec<String>,
-) -> Vec<TokenClassificationResult> {
-    // input_detectors_models: model_name: {param: value}
-    // Future - parallelize calls
-    let mut detector_responses = Vec::new();
-    for detector_id in detectors_models.keys() {
-        if let Some(chunker_id) = chunker_map.get(detector_id){
-            for text in texts.iter() {
-                // TODO: Get config/type for chunker call
-                let tokenization_results = chunker_unary_call(chunker_id.to_string(), text.to_string()).await;
-                // Optimize later - chunkers would always be called even if multiple detectors had same chunker
-                let mut texts: Vec<String> = Vec::new();
-                for token in tokenization_results.results.iter() {
-                    texts.push(token.text.to_string())
+    pub async fn handle_classification_with_gen(
+        &self,
+        task: ClassificationWithGenTask,
+    ) -> Result<ClassifiedGeneratedTextResult, Error> {
+        info!(?task, "handling task");
+        let ctx = self.ctx.clone();
+        tokio::spawn(async move {
+            let masks = task
+                .guardrails_config
+                .input
+                .as_ref()
+                .and_then(|input| input.masks.clone());
+            let input_detectors = task.guardrails_config.input.and_then(|input| input.models);
+            let output_detectors = task
+                .guardrails_config
+                .output
+                .and_then(|output| output.models);
+            // Do input detections
+            let input_detections = if let Some(detectors) = input_detectors {
+                let detections =
+                    chunk_and_detect(ctx.clone(), detectors, task.inputs.clone(), masks).await?;
+                if detections.is_empty() {
+                    None
+                } else {
+                    Some(detections)
                 }
-                let detector_response = detector_call(detector_id.to_string(), texts).await;
-                detector_responses.extend(detector_response)
+            } else {
+                None
+            };
+            debug!(?input_detections);
+            if input_detections.is_some() {
+                // Detected HAP/PII
+                // Do tokenization to get input_token_count
+                let (input_token_count, _tokens) =
+                    tokenize(ctx.clone(), task.model_id.clone(), task.inputs.clone()).await?;
+                // Send result with input detections
+                Ok(ClassifiedGeneratedTextResult {
+                    input_token_count: input_token_count as i32,
+                    token_classification_results: TextGenTokenClassificationResults {
+                        input: input_detections,
+                        output: None,
+                    },
+                    warnings: Some(vec![InputWarning {
+                        id: Some(InputWarningReason::UnsuitableInput),
+                        message: Some(UNSUITABLE_INPUT_MESSAGE.to_string()),
+                    }]),
+                    ..Default::default()
+                })
+            } else {
+                // No HAP/PII detected
+                // Do text generation
+                let mut generation_results = generate(
+                    ctx.clone(),
+                    task.model_id.clone(),
+                    task.inputs.clone(),
+                    task.text_gen_parameters.clone(),
+                )
+                .await?;
+                debug!(?generation_results);
+                // Do output detections
+                let output_detections = if let Some(detectors) = output_detectors {
+                    let generated_text = generation_results
+                        .generated_text
+                        .clone()
+                        .unwrap_or_default();
+                    let detections =
+                        chunk_and_detect(ctx.clone(), detectors, generated_text, None).await?;
+                    if detections.is_empty() {
+                        None
+                    } else {
+                        Some(detections)
+                    }
+                } else {
+                    None
+                };
+                debug!(?output_detections);
+                if output_detections.is_some() {
+                    generation_results.token_classification_results.output = output_detections;
+                }
+                Ok(generation_results)
             }
-        } else {
-            continue;
-        }
+        })
+        .await
+        .unwrap()
     }
-    detector_responses
+
+    pub async fn handle_streaming_classification_with_gen(
+        &self,
+        task: StreamingClassificationWithGenTask,
+    ) -> ReceiverStream<ClassifiedGeneratedTextStreamResult> {
+        info!(?task, "handling task");
+        todo!()
+    }
 }
 
-// ========================================== Main ==========================================
+async fn chunk_and_detect(
+    ctx: Arc<Context>,
+    detectors: HashMap<String, DetectorParams>,
+    text: String,
+    masks: Option<Vec<(usize, usize)>>,
+) -> Result<Vec<TokenClassificationResult>, Error> {
+    // TODO: propogate errors
+    // Apply masks
+    let text_with_offsets = masks
+        .map(|masks| apply_masks(&text, masks))
+        .unwrap_or(vec![(0, text)]);
+    // Do chunking
+    let chunker_ids = detectors
+        .keys()
+        .map(|detector_id| ctx.config.get_chunker_id(detector_id))
+        .collect::<Vec<_>>();
+    let chunks = chunk(ctx.clone(), chunker_ids, text_with_offsets).await?;
+    // Do detections
+    let detections = try_join_all(
+        detectors
+            .into_iter()
+            .map(|(detector_id, detector_params)| {
+                let ctx = ctx.clone();
+                let detector_id = detector_id.clone();
+                let detector_params = detector_params.clone();
+                let chunker_id = ctx.config.get_chunker_id(&detector_id);
+                let chunks = chunks.get(&chunker_id).unwrap().clone();
+                // Spawn detection tasks for detector chunks
+                tokio::spawn(async move {
+                    handle_detection_task(ctx, detector_id, detector_params, chunks)
+                        .await
+                        .unwrap()
+                })
+            })
+            .collect::<Vec<_>>(),
+    )
+    .await
+    .unwrap()
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>();
+    Ok(detections)
+}
 
-// In the future probably create DAG/list of tasks to be invoked
-pub async fn do_tasks(payload: GuardrailsHttpRequest, detector_hashmaps: (HashMap<String, String>, HashMap<String, Result<ChunkerConfig, ErrorResponse>>), streaming: bool) {
-    // TODO: is clone() needed for every payload use? Otherwise move errors since payload has String
+async fn chunk(
+    ctx: Arc<Context>,
+    chunker_ids: Vec<String>,
+    text_with_offsets: Vec<(usize, String)>,
+) -> Result<HashMap<String, Vec<Chunk>>, Error> {
+    // TODO: propogate errors
+    let chunks = try_join_all(
+        chunker_ids
+            .into_iter()
+            .map(|chunker_id| {
+                let ctx = ctx.clone();
+                let text_with_offsets = text_with_offsets.clone();
+                tokio::spawn(async move {
+                    handle_chunk_task(ctx, chunker_id, text_with_offsets)
+                        .await
+                        .unwrap()
+                })
+            })
+            .collect::<Vec<_>>(),
+    )
+    .await
+    .unwrap()
+    .into_iter()
+    .collect::<HashMap<_, _>>();
+    Ok(chunks)
+}
 
-    // LLM / text generation model
-    let model_id: String = payload.clone().model_id;
+async fn handle_chunk_task(
+    ctx: Arc<Context>,
+    chunker_id: String,
+    text_with_offsets: Vec<(usize, String)>,
+) -> Result<(String, Vec<Chunk>), Error> {
+    // TODO: propogate errors
+    let chunks = stream::iter(text_with_offsets)
+        .map(|(offset, text)| {
+            let ctx = ctx.clone();
+            let chunker_id = chunker_id.clone();
+            tokio::spawn(async move {
+                let request = TokenizationTaskRequest { text };
+                debug!(
+                    %chunker_id,
+                    ?request,
+                    "sending chunker request"
+                );
+                ctx.chunker_client
+                    .tokenization_task_predict(&chunker_id, request)
+                    .await
+                    .unwrap()
+                    .results
+                    .into_iter()
+                    .map(|token| Chunk {
+                        offset,
+                        text: token.text,
+                    })
+                    .collect::<Vec<_>>()
+            })
+        })
+        .buffer_unordered(5)
+        .collect::<Vec<_>>()
+        .await
+        .into_iter()
+        .flat_map(|result| result.unwrap())
+        .collect::<Vec<_>>();
+    Ok((chunker_id, chunks))
+}
 
-    // Original user input text, initialized as vector for type
-    // consistency if masks are supplied
-    let mut user_input: Vec<String> = vec![payload.clone().inputs];
+async fn handle_detection_task(
+    ctx: Arc<Context>,
+    detector_id: String,
+    detector_params: DetectorParams,
+    chunks: Vec<Chunk>,
+) -> Result<Vec<TokenClassificationResult>, Error> {
+    // TODO: propogate errors
+    let detections = stream::iter(chunks)
+        .map(|chunk| {
+            let ctx = ctx.clone();
+            let detector_id = detector_id.clone();
+            let detector_params = detector_params.clone();
+            tokio::spawn(async move {
+                let request = DetectorRequest::new(chunk.text.clone(), detector_params);
+                debug!(
+                    %detector_id,
+                    ?request,
+                    "sending detector request"
+                );
+                let response = ctx
+                    .detector_client
+                    .classify(&detector_id, request)
+                    .await
+                    .unwrap();
+                response
+                    .detections
+                    .into_iter()
+                    .map(|detection| {
+                        let mut result: TokenClassificationResult = detection.into();
+                        result.start += chunk.offset as i32;
+                        result.end += chunk.offset as i32;
+                        result
+                    })
+                    .collect::<Vec<_>>()
+            })
+        })
+        .buffer_unordered(5)
+        .collect::<Vec<_>>()
+        .await
+        .into_iter()
+        .flat_map(|result| result.unwrap())
+        .collect::<Vec<_>>();
+    Ok(detections)
+}
 
-    // No guardrail_config specified
-    if payload.guardrail_config.is_none() {
-        // TODO: Just do text gen? Error?
-        // This falls through to text gen today but validation is not done
-    }
-
-    // Slice up if masks are supplied
-    // Whole payload is just passed here to abstract away impl, could be separate task
-    // tracked as part of DAG/list instead of function in the future
-    user_input = slice_input(user_input, payload.clone());
-
-    // Process detector hashmaps
-    let chunker_map: HashMap<String, String> = detector_hashmaps.0;
-    // Should ideally just be HashMap<String, ChunkerConfig> after processing
-    let chunker_config_map: HashMap<String, Result<ChunkerConfig, ErrorResponse>> = detector_hashmaps.1;
-
-    // Check for input detection
-    let input_detectors: Option<HashMap<String, HashMap<String, String>>> = payload.clone().guardrail_config.unwrap().input.unwrap().models;
-    let do_input_detection: bool = input_detectors.is_some();
-    let mut input_detection_response: Vec<TokenClassificationResult> = Vec::new();
-    let mut input_token_count = 0;
-    if do_input_detection {
-        // Input detection tasks - all unary - can abstract this later
-        // TODO: Confirm if tokenize should be happening on original user input
-        // or spliced user input (for masks) - latter today
-        // This separate call would not be necessary if generation is called, since it
-        // provides input_token_count
-        // Add tokenization task to count input tokens - grpc [unary] call
-        let tokenize_response = tokenize_unary_call(model_id.clone(), user_input.clone()).await;
-        input_token_count = tokenize_response.token_count;
-        
-        let input_detector_models: HashMap<String, HashMap<String, String>> = input_detectors.unwrap();
-        // Add detection task for each detector - rest [unary] call
-        // For each detector, add chunker task as precursor - grpc [unary] call
-        input_detection_response = unary_chunk_and_detection(input_detector_models, &chunker_map, &chunker_config_map, user_input.clone()).await;
-    }
-
-    // Response aggregation - could move into task
-    let token_classification_results = TextGenTokenClassificationResults {
-        input: Some(input_detection_response.clone()),
-        output: None,
-    };
-    let mut warnings = None;
-    // Parse input detection results if they do exist
-    if !input_detection_response.clone().is_empty() {
-        warnings = Some(vec![InputWarning {
-            id: Some(InputWarningReason::UnsuitableInput),
-            message: Some(UNSUITABLE_INPUT_MESSAGE.to_string()),
-        }]);
-    };
-    let mut classified_result: ClassifiedGeneratedTextResult = ClassifiedGeneratedTextResult::new(token_classification_results, input_token_count);
-    classified_result.warnings = warnings;
-    // TODO: "break" if input detection - but this fn not responsible for short-circuit
-
-    // Check for output detection
-    let output_detectors: Option<HashMap<String, HashMap<String, String>>> = payload.clone().guardrail_config.unwrap().output.unwrap().models;
-    let do_output_detection: bool = output_detectors.is_some();
-
-    // ============= Unary endpoint =============
-    if !streaming {
-        // Add TGIS generation - grpc [unary] call
-        let tgis_response = tgis_unary_call(model_id.clone(), payload.inputs, payload.text_gen_parameters).await;
-        let mut output_detection_response: Vec<TokenClassificationResult> = Vec::new();
-        if do_output_detection {
-            let output_detector_models: HashMap<String, HashMap<String, String>> = output_detectors.unwrap();
-            // Add detection task for each detector - rest [unary] call
-            // For each detector, add chunker task as precursor - grpc [unary] call
-            output_detection_response = unary_chunk_and_detection(output_detector_models, &chunker_map, &chunker_config_map, user_input.clone()).await;
+async fn tokenize(
+    ctx: Arc<Context>,
+    model_id: String,
+    text: String,
+) -> Result<(u32, Vec<String>), Error> {
+    let generation_client = ctx.generation_client.clone();
+    match generation_client {
+        GenerationClient::Tgis(client) => {
+            let request = BatchedTokenizeRequest {
+                model_id: model_id.clone(),
+                requests: vec![TokenizeRequest { text }],
+                return_tokens: false,
+                return_offsets: false,
+                truncate_input_tokens: 0,
+            };
+            debug!(
+                %model_id,
+                ?request,
+                "sending tokenize request"
+            );
+            let mut response = client.tokenize(request).await?;
+            let response = response.responses.swap_remove(0);
+            Ok((response.token_count, response.tokens))
         }
-        // Response aggregation
-        let output_token_classification_results = TextGenTokenClassificationResults {
-            input: None,
-            output: Some(output_detection_response),
-        };
-        let classified_output_result = ClassifiedGeneratedTextResult {
-            generated_text: Some(tgis_response.generated_text),
-            token_classification_results: output_token_classification_results,
-            finish_reason: tgis_response.finish_reason,
-            generated_token_count: tgis_response.generated_tokens,
-            seed: tgis_response.seed,
-            input_token_count,
-            warnings: None,
-            tokens: tgis_response.tokens,
-            input_tokens: tgis_response.input_tokens,
-        };
-    } else { // ============= Streaming endpoint =============
-        // Add TGIS generation task - grpc [server streaming] call
-        let on_message_callback = |stream_token: GeneratedTextStreamResult| {
-            let event = Event::default();
-            event.json_data(stream_token).unwrap()
-        };
+        GenerationClient::Nlp(_) => unimplemented!(),
+    }
+}
 
-        // Fix payload here
-        let tgis_response_stream =
-            tgis_stream_call(Json(payload.inputs), payload.text_gen_parameters, on_message_callback, ).await;
-
-        if do_output_detection {
-            let output_detector_models: HashMap<String, HashMap<String, String>> = output_detectors.unwrap();
-            // Add detection task for each detector - rest [unary] call
-            // For each detector, add chunker task as precursor - grpc [bidi stream] call
+async fn generate(
+    ctx: Arc<Context>,
+    model_id: String,
+    text: String,
+    params: Option<GuardrailsTextGenerationParameters>,
+) -> Result<ClassifiedGeneratedTextResult, Error> {
+    let generation_client = ctx.generation_client.clone();
+    match generation_client {
+        GenerationClient::Tgis(client) => {
+            let params = params.map(Into::into);
+            let request = BatchedGenerationRequest {
+                model_id: model_id.clone(),
+                prefix_id: None,
+                requests: vec![GenerationRequest { text }],
+                params,
+            };
+            debug!(
+                %model_id,
+                provider = "tgis",
+                ?request,
+                "sending generate request"
+            );
+            let mut response = client.generate(request).await?;
+            let response = response.responses.swap_remove(0);
+            Ok(ClassifiedGeneratedTextResult {
+                generated_text: Some(response.text.clone()),
+                finish_reason: Some(response.stop_reason().into()),
+                generated_token_count: Some(response.generated_token_count as i32),
+                seed: Some(response.seed as i32),
+                input_token_count: response.input_token_count as i32,
+                warnings: None,
+                tokens: if response.tokens.is_empty() {
+                    None
+                } else {
+                    Some(response.tokens.into_iter().map(Into::into).collect())
+                },
+                input_tokens: if response.input_tokens.is_empty() {
+                    None
+                } else {
+                    Some(response.input_tokens.into_iter().map(Into::into).collect())
+                },
+                token_classification_results: TextGenTokenClassificationResults {
+                    input: None,
+                    output: None,
+                },
+            })
         }
-        // Response aggregation task
+        GenerationClient::Nlp(client) => {
+            let request = if let Some(params) = params {
+                TextGenerationTaskRequest {
+                    text,
+                    max_new_tokens: params.max_new_tokens.map(|v| v as i64),
+                    min_new_tokens: params.min_new_tokens.map(|v| v as i64),
+                    truncate_input_tokens: params.truncate_input_tokens.map(|v| v as i64),
+                    decoding_method: params.decoding_method,
+                    top_k: params.top_k.map(|v| v as i64),
+                    top_p: params.top_p,
+                    typical_p: params.typical_p,
+                    temperature: params.temperature,
+                    repetition_penalty: params.repetition_penalty,
+                    max_time: params.max_time,
+                    exponential_decay_length_penalty: params
+                        .exponential_decay_length_penalty
+                        .map(Into::into),
+                    stop_sequences: params.stop_sequences.unwrap_or_default(),
+                    seed: params.seed.map(|v| v as u64),
+                    preserve_input_text: params.preserve_input_text,
+                    input_tokens: params.input_tokens,
+                    generated_tokens: params.generated_tokens,
+                    token_logprobs: params.token_logprobs,
+                    token_ranks: params.token_ranks,
+                }
+            } else {
+                TextGenerationTaskRequest {
+                    text,
+                    ..Default::default()
+                }
+            };
+            debug!(
+                %model_id,
+                provider = "nlp",
+                ?request,
+                "sending generate request"
+            );
+            let response = client
+                .text_generation_task_predict(&model_id, request)
+                .await?;
+            Ok(ClassifiedGeneratedTextResult {
+                generated_text: Some(response.generated_text.clone()),
+                finish_reason: Some(response.finish_reason().into()),
+                generated_token_count: Some(response.generated_tokens as i32),
+                seed: Some(response.seed as i32),
+                input_token_count: response.input_token_count as i32,
+                warnings: None,
+                tokens: if response.tokens.is_empty() {
+                    None
+                } else {
+                    Some(response.tokens.into_iter().map(Into::into).collect())
+                },
+                input_tokens: if response.input_tokens.is_empty() {
+                    None
+                } else {
+                    Some(response.input_tokens.into_iter().map(Into::into).collect())
+                },
+                token_classification_results: TextGenTokenClassificationResults {
+                    input: None,
+                    output: None,
+                },
+            })
+        }
+    }
+}
+
+/// Applies masks to input text, returning (offset, masked_text) pairs.
+fn apply_masks(text: &str, masks: Vec<(usize, usize)>) -> Vec<(usize, String)> {
+    let chars = text.chars().collect::<Vec<_>>();
+    masks
+        .into_iter()
+        .map(|(start, end)| {
+            let masked_text = chars[start..end].iter().cloned().collect();
+            (start, masked_text)
+        })
+        .collect()
+}
+
+async fn create_clients(
+    config: &OrchestratorConfig,
+) -> Result<(GenerationClient, NlpClient, DetectorClient), Error> {
+    // TODO: create better solution for routers
+    let generation_client = match config.generation.provider {
+        GenerationProvider::Tgis => {
+            let client = TgisClient::new(
+                clients::DEFAULT_TGIS_PORT,
+                &[("tgis-router".to_string(), config.generation.service.clone())],
+            )
+            .await?;
+            GenerationClient::Tgis(client)
+        }
+        GenerationProvider::Nlp => {
+            let client = NlpClient::new(
+                clients::DEFAULT_CAIKIT_NLP_PORT,
+                &[("tgis-router".to_string(), config.generation.service.clone())],
+            )
+            .await?;
+            GenerationClient::Nlp(client)
+        }
+    };
+    // TODO: simplify all of this
+    let chunker_config = config
+        .chunkers
+        .iter()
+        .map(|(chunker_id, config)| (chunker_id.clone(), config.service.clone()))
+        .collect::<Vec<_>>();
+    let chunker_client = NlpClient::new(clients::DEFAULT_CAIKIT_NLP_PORT, &chunker_config).await?;
+
+    let detector_config = config
+        .detectors
+        .iter()
+        .map(|(detector_id, config)| (detector_id.clone(), config.service.clone()))
+        .collect::<Vec<_>>();
+    let detector_client =
+        DetectorClient::new(clients::DEFAULT_DETECTOR_PORT, &detector_config).await?;
+
+    Ok((generation_client, chunker_client, detector_client))
+}
+
+#[derive(Debug, Clone)]
+struct Chunk {
+    pub offset: usize,
+    pub text: String,
+}
+
+#[derive(Debug)]
+pub struct ClassificationWithGenTask {
+    pub model_id: String,
+    pub inputs: String,
+    pub guardrails_config: GuardrailsConfig,
+    pub text_gen_parameters: Option<GuardrailsTextGenerationParameters>,
+}
+
+impl ClassificationWithGenTask {
+    pub fn new(request: GuardrailsHttpRequest) -> Self {
+        Self {
+            model_id: request.model_id,
+            inputs: request.inputs,
+            guardrails_config: request.guardrail_config.unwrap_or_default(),
+            text_gen_parameters: request.text_gen_parameters,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct StreamingClassificationWithGenTask {
+    pub model_id: String,
+    pub inputs: String,
+    pub guardrails_config: GuardrailsConfig,
+    pub text_gen_parameters: Option<GuardrailsTextGenerationParameters>,
+}
+
+impl StreamingClassificationWithGenTask {
+    pub fn new(request: GuardrailsHttpRequest) -> Self {
+        Self {
+            model_id: request.model_id,
+            inputs: request.inputs,
+            guardrails_config: request.guardrail_config.unwrap_or_default(),
+            text_gen_parameters: request.text_gen_parameters,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_apply_masks() {
+        let text = "I want this sentence. I don't want this sentence. I want this sentence too.";
+        let masks: Vec<(usize, usize)> = vec![(0, 21), (50, 75)];
+        let text_with_offsets = apply_masks(text, masks);
+        let expected_text_with_offsets = vec![
+            (0, "I want this sentence.".to_string()),
+            (50, "I want this sentence too.".to_string()),
+        ];
+        assert_eq!(text_with_offsets, expected_text_with_offsets)
     }
 }

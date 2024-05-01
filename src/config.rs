@@ -1,116 +1,169 @@
-// Module for defining structure for detector map config and its utilities
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+};
 
-use std::{collections::HashMap, path::Path};
+use serde::Deserialize;
+use tracing::debug;
 
-
-
-use serde::{Deserialize, Serialize};
-
-
-#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
-pub struct ServiceAddr {
+#[derive(Debug, Clone, Deserialize)]
+pub struct ServiceConfig {
     pub hostname: String,
     pub port: Option<u16>,
-    pub tls_enabled: bool,
-    pub tls_cert_path: Option<String>,
-    pub tls_key_path: Option<String>,
-    pub tls_ca_path: Option<String>
+    pub tls: Option<Tls>,
 }
 
-impl ServiceAddr {
-    #[allow(clippy::new_without_default)]
-    pub fn new(hostname: String, tls_enabled: bool, ) -> ServiceAddr {
-        ServiceAddr {
+impl ServiceConfig {
+    pub fn new(hostname: String, port: Option<u16>, tls: Option<Tls>) -> Self {
+        ServiceConfig {
             hostname,
-            port: None,
-            tls_enabled,
-            tls_cert_path: None,
-            tls_key_path: None,
-            tls_ca_path: None
+            port,
+            tls,
         }
     }
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+pub enum Tls {
+    Name(String),
+    Config(TlsConfig),
+}
 
-#[derive(Copy, Serialize, Deserialize, PartialEq, Debug, Clone)]
+#[derive(Debug, Clone, Deserialize)]
+pub struct TlsConfig {
+    pub cert_path: Option<PathBuf>,
+    pub key_path: Option<PathBuf>,
+    pub client_ca_cert_path: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum GenerationProvider {
+    Tgis,
+    Nlp,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct GenerationConfig {
+    pub provider: GenerationProvider,
+    pub service: ServiceConfig,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum ChunkerType {
-    #[serde(rename = "SENTENCE")]
     Sentence,
-    #[serde(rename = "ALL")]
-    All
+    All,
 }
 
-#[derive(Copy, Clone, Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct ChunkerConfig {
-    pub r#type: ChunkerType
+    pub r#type: ChunkerType,
+    pub service: ServiceConfig,
 }
 
-#[derive(Clone, Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct DetectorConfig {
-    pub service_config: ServiceAddr,
-    pub config: HashMap<String, String>, // arbitrary keys and values
-    pub chunker: String // chunker id
+    pub service: ServiceConfig,
+    pub chunker_id: String,
+    //pub config: HashMap<String, String>,
 }
 
-/*
-chunkers:
-    sentence-en: # chunker-id
-        type: Sentence
-    sentence-ja: # chunker-id
-        type: Sentence
-detectors:
-    hap-en:
-        service_config:
-            endpoint: localhost
-            port: 8080
-            tls: false
-        config:
-            foo: bar
-        chunker: sentence-en
-
-*/
-#[derive(Clone, Serialize, Deserialize, PartialEq, Debug)]
-pub struct DetectorMap {
-    pub chunkers:  HashMap<String, ChunkerConfig>,
-    pub detectors: HashMap<String, DetectorConfig>
-}
-
-
-/*
-
-tgis_config:
-    hostname: foo.com
-    port: 8080
-    tls_enabled: false
-detector_config:
-    chunkers:
-        sentence-en: # chunker-id
-            type: Sentence
-        sentence-ja: # chunker-id
-            type: Sentence
-    detectors:
-        hap-en:
-            service_config:
-                endpoint: localhost
-                port: 8080
-                tls_enabled: false
-            config:
-                foo: bar
-            chunker: sentence-en
-*/
-#[derive(Clone, Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct OrchestratorConfig {
-    // pub tgis_config: ServiceAddr,
-    pub caikit_nlp_config: ServiceAddr,
-    pub detector_config: DetectorMap
+    pub generation: GenerationConfig,
+    pub chunkers: HashMap<String, ChunkerConfig>,
+    pub detectors: HashMap<String, DetectorConfig>,
+    pub tls: HashMap<String, TlsConfig>,
 }
 
 impl OrchestratorConfig {
-    pub fn load(path: impl AsRef<Path>) -> Self {
-        let s = std::fs::read_to_string(path).expect("Failed to load detector map config");
-        // implicit return here
-        serde_yml::from_str(&s).expect("Invalid detector map config")
+    pub async fn load(path: impl AsRef<Path>) -> Self {
+        let s = tokio::fs::read_to_string(path)
+            .await
+            .expect("Failed to load orchestrator config");
+        let mut config: OrchestratorConfig =
+            serde_yml::from_str(&s).expect("Invalid orchestrator config");
+        // Map tls name to tls config
+        // TODO: do this cleaner
+        let tls_configs = &config.tls;
+        config.generation.service =
+            service_tls_name_to_config(tls_configs, config.generation.service);
+        config.chunkers = config
+            .chunkers
+            .into_iter()
+            .map(|(name, mut config)| {
+                config.service = service_tls_name_to_config(tls_configs, config.service);
+                (name, config)
+            })
+            .collect::<HashMap<_, _>>();
+        config.detectors = config
+            .detectors
+            .into_iter()
+            .map(|(name, mut config)| {
+                config.service = service_tls_name_to_config(tls_configs, config.service);
+                (name, config)
+            })
+            .collect::<HashMap<_, _>>();
+        debug!(?config, "loaded orchestrator config");
+        config
+    }
+
+    fn _validate(&self) {
+        todo!()
+    }
+
+    pub fn get_chunker_id(&self, detector_id: &str) -> String {
+        self.detectors.get(detector_id).unwrap().chunker_id.clone()
     }
 }
 
+fn service_tls_name_to_config(
+    tls_configs: &HashMap<String, TlsConfig>,
+    mut service: ServiceConfig,
+) -> ServiceConfig {
+    if let Some(Tls::Name(name)) = &service.tls {
+        let tls_config = tls_configs.get(name).unwrap().clone(); // TODO: handle error
+        service.tls = Some(Tls::Config(tls_config))
+    }
+    service
+}
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::Error;
+
+    #[test]
+    fn test_deserialize_config() -> Result<(), Error> {
+        let s = r#"
+generation:
+    provider: tgis
+    service:
+        hostname: localhost
+        port: 8000
+chunkers:
+    sentence-en:
+        type: sentence
+        service:
+            hostname: localhost
+            port: 9000
+    sentence-ja:
+        type: sentence
+        service:
+            hostname: localhost
+            port: 9000
+detectors:
+    hap-en:
+        service:
+            hostname: localhost
+            port: 9000
+        chunker_id: sentence-en
+        config: {}
+        "#;
+        let config: OrchestratorConfig = serde_yml::from_str(s)?;
+        assert!(config.chunkers.len() == 2 && config.detectors.len() == 1);
+        Ok(())
+    }
+}
