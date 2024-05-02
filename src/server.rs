@@ -15,7 +15,6 @@ use tokio::{net::TcpListener, signal};
 use tracing::info;
 
 use crate::{
-    clients,
     config::OrchestratorConfig,
     models,
     orchestrator::{ClassificationWithGenTask, Orchestrator, StreamingClassificationWithGenTask},
@@ -128,27 +127,4 @@ async fn shutdown_signal() {
     }
 
     info!("signal received, starting graceful shutdown");
-}
-
-// TODO: create better errors and properly convert
-impl From<Error> for (StatusCode, Json<String>) {
-    fn from(value: Error) -> Self {
-        use Error::*;
-        match value {
-            ClientError(error) => match error {
-                clients::Error::ModelNotFound(message) => {
-                    (StatusCode::UNPROCESSABLE_ENTITY, Json(message))
-                }
-                clients::Error::ReqwestError(error) => {
-                    (StatusCode::INTERNAL_SERVER_ERROR, Json(error.to_string()))
-                }
-                clients::Error::TonicError(error) => {
-                    (StatusCode::INTERNAL_SERVER_ERROR, Json(error.to_string()))
-                }
-                clients::Error::IoError(_) => todo!(),
-            },
-            IoError(_) => todo!(),
-            YamlError(_) => todo!(),
-        }
-    }
 }
