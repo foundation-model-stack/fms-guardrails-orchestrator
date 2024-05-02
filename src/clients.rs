@@ -78,8 +78,9 @@ pub async fn create_http_clients(
             let mut builder = reqwest::ClientBuilder::new();
             if let Some(Tls::Config(tls_config)) = &service_config.tls {
                 let cert_path = tls_config.cert_path.as_ref().unwrap().as_path();
-                let cert_pem = tokio::fs::read(cert_path).await?;
-                //let key_pem = tokio::fs::read(key_path).await?;
+                let cert_pem = tokio::fs::read(cert_path).await.unwrap_or_else(|error| {
+                    panic!("error reading cert from {cert_path:?}: {error}")
+                });
                 let identity = reqwest::Identity::from_pem(&cert_pem)?;
                 builder = builder.use_rustls_tls().identity(identity);
             }
@@ -106,13 +107,21 @@ async fn create_grpc_clients<C>(
             let client_tls_config = if let Some(Tls::Config(tls_config)) = &service_config.tls {
                 let cert_path = tls_config.cert_path.as_ref().unwrap().as_path();
                 let key_path = tls_config.key_path.as_ref().unwrap().as_path();
-                let cert_pem = tokio::fs::read(cert_path).await?;
-                let key_pem = tokio::fs::read(key_path).await?;
+                let cert_pem = tokio::fs::read(cert_path)
+                    .await
+                    .unwrap_or_else(|error| panic!("error reading cert from {cert_path:?}: {error}"));
+                let key_pem = tokio::fs::read(key_path)
+                    .await
+                    .unwrap_or_else(|error| panic!("error reading key from {key_path:?}: {error}"));
                 let identity = tonic::transport::Identity::from_pem(cert_pem, key_pem);
                 let mut client_tls_config =
                     tonic::transport::ClientTlsConfig::new().identity(identity);
                 if let Some(client_ca_cert_path) = &tls_config.client_ca_cert_path {
-                    let client_ca_cert_pem = tokio::fs::read(client_ca_cert_path).await?;
+                    let client_ca_cert_pem = tokio::fs::read(client_ca_cert_path)
+                        .await
+                        .unwrap_or_else(|error| {
+                            panic!("error reading client ca cert from {client_ca_cert_path:?}: {error}")
+                        });
                     client_tls_config = client_tls_config.ca_certificate(
                         tonic::transport::Certificate::from_pem(client_ca_cert_pem),
                     );
