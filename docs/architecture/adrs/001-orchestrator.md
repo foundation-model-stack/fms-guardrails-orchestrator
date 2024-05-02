@@ -31,7 +31,7 @@ Note: Consequences are not their own separate section because there are many dec
     2. For the streaming endpoint/case, the orchestrator will stream back frames based on what all requested detectors have processed. 
         1. Consequence: If any requested detector requires a whole document to be processed, the orchestrator will not return results to the end user until the whole document is processed (i.e. result looks unary).
 4. The orchestrator will not do routing.
-    1. For both chunkers and detectors, the orchestrator will only take chunker or detector IDs and types and request the router component for information on (1) whether the chunker / detector is available and (2) where to send the request to and get results from chunker / detector. 
+    1. For all of chunkers, detectors, and text generation models, the orchestrator will only take IDs and types, then request the router component for information on (1) whether the chunker / detector / text generation model is available and (2) where to send the request to and get results from chunker / detector / text generation model.
     2. Configuration for which type of chunk (e.g. token, sentence, whole document) will be maintained by an end user or an operator deploying all components (orchestrator, chunker, detectors).
         1. This can be a simple configmap read not maintained by the orchestrator. Importantly, there is no in-memory registration.
         2. This will have to be updated when any new detector server or chunker is added.
@@ -52,7 +52,7 @@ Note: The orchestrator will provide an API for detectors, but detector implement
 1. Detectors will be REST servers.
 2. The detector API will be unary only i.e. not require streaming or handle streaming requests.
     1. Each detector will be able to select its "chunking policy" from a configured/pluggable registry in the orchestrator (token, sentence, paragraph, whole-doc initially).
-    2. Consequence: The detector API will be simpler than if the detector server(s) are expected to do input buffering and chunking and output streams. Individual(s)/team(s) contributing detector(s) will not be responsible for this logic.
+    2. Consequence: The detector API will be simpler than if the detector server(s) are expected to do input buffering and chunking and output streams. Individual(s)/team(s) contributing detector(s) will not be responsible for this logic. This will likely allow integration of more detectors more easily.
 3. In the case where the end user invokes a streaming implementation through the orchestrator, the text passed from chunkers to detectors will be assumed to be directly concatenable for tracking purposes, like streamed text generation server results.
     1. Consequence: Detectors that will be affected e.g. by whitespace surrounding chunks like sentences must account for this.
 4. The presence of any results from a detector will be assumed to be the “results” returned to the end user. “results” is in quotes since this information will be potentially combined (but importantly, not changed!) with text generation server result information by the orchestrator.
