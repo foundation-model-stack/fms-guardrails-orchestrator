@@ -22,7 +22,7 @@ detectors:
             hostname: https://localhost/api/v1/detector
             port: 9000
             tls: caikit
-        chunker_id: en-regex
+        chunker_id: en_regex
         config: {}
 tls:
     caikit:
