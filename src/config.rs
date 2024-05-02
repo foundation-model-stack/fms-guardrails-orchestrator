@@ -80,11 +80,14 @@ pub struct OrchestratorConfig {
 
 impl OrchestratorConfig {
     pub async fn load(path: impl AsRef<Path>) -> Self {
+        let path = path.as_ref();
         let s = tokio::fs::read_to_string(path)
             .await
-            .expect("Failed to load orchestrator config");
-        let mut config: OrchestratorConfig =
-            serde_yml::from_str(&s).expect("Invalid orchestrator config");
+            .unwrap_or_else(|error| {
+                panic!("failed to read orchestrator config from {path:?}: {error}")
+            });
+        let mut config: OrchestratorConfig = serde_yml::from_str(&s)
+            .unwrap_or_else(|error| panic!("invalid orchestrator config: {error}"));
         // Map tls name to tls config
         // TODO: do this cleaner
         let tls_configs = &config.tls;
