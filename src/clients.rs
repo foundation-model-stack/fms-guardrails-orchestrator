@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use std::collections::HashMap;
 
 use futures::future::try_join_all;
@@ -50,10 +51,6 @@ impl HttpClient {
 
     pub fn base_url(&self) -> &Url {
         &self.base_url
-    }
-
-    pub fn client(&self) -> reqwest::Client {
-        self.client.clone()
     }
 }
 

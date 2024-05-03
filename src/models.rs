@@ -29,19 +29,6 @@ pub struct GuardrailsHttpRequest {
     pub text_gen_parameters: Option<GuardrailsTextGenerationParameters>,
 }
 
-impl GuardrailsHttpRequest {
-    /// Creates a user request with text generation model ID and input text
-    #[allow(clippy::new_without_default)]
-    pub fn new(model_id: String, inputs: String) -> GuardrailsHttpRequest {
-        GuardrailsHttpRequest {
-            model_id,
-            inputs,
-            guardrail_config: None,
-            text_gen_parameters: None,
-        }
-    }
-}
-
 /// Configuration of guardrails models for either or both input to a text generation model
 /// (e.g. user prompt) and output of a text generation model
 #[derive(
@@ -262,28 +249,6 @@ pub struct ClassifiedGeneratedTextResult {
     pub input_tokens: Option<Vec<GeneratedToken>>,
 }
 
-impl ClassifiedGeneratedTextResult {
-    /// Creates a classification result on text produced by a text generation model
-    /// with given token classification results and token count
-    #[allow(clippy::new_without_default)]
-    pub fn new(
-        token_classification_results: TextGenTokenClassificationResults,
-        input_token_count: i32,
-    ) -> ClassifiedGeneratedTextResult {
-        ClassifiedGeneratedTextResult {
-            generated_text: None,
-            token_classification_results,
-            finish_reason: None,
-            generated_token_count: None,
-            seed: None,
-            input_token_count,
-            warnings: None,
-            tokens: None,
-            input_tokens: None,
-        }
-    }
-}
-
 /// Streaming classification result on text produced by a text generation model, containing
 /// information from the original text generation output as well as the result of
 /// classification on the generated text. Also indicates where in stream is processed.
@@ -343,31 +308,6 @@ pub struct ClassifiedGeneratedTextStreamResult {
     pub start_index: i32,
 }
 
-impl ClassifiedGeneratedTextStreamResult {
-    /// Creates a stream classification result on text produced by a text generation model
-    /// with given token classification results and token count and starting stream index
-    #[allow(clippy::new_without_default)]
-    pub fn new(
-        token_classification_results: TextGenTokenClassificationResults,
-        input_token_count: i32,
-        start_index: i32,
-    ) -> ClassifiedGeneratedTextStreamResult {
-        ClassifiedGeneratedTextStreamResult {
-            generated_text: None,
-            token_classification_results,
-            finish_reason: None,
-            generated_token_count: None,
-            seed: None,
-            input_token_count,
-            warnings: None,
-            tokens: None,
-            input_tokens: None,
-            processed_index: None,
-            start_index,
-        }
-    }
-}
-
 /// Results of classification on input to a text generation model (e.g. user prompt)
 /// or output of a text generation model
 #[derive(
@@ -384,18 +324,6 @@ pub struct TextGenTokenClassificationResults {
     #[serde(rename = "output")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub output: Option<Vec<TokenClassificationResult>>,
-}
-
-impl TextGenTokenClassificationResults {
-    /// Creates results of classification on input to a text generation model (e.g. user prompt)
-    /// and/or output of a text generation model
-    #[allow(clippy::new_without_default)]
-    pub fn new() -> TextGenTokenClassificationResults {
-        TextGenTokenClassificationResults {
-            input: None,
-            output: None,
-        }
-    }
 }
 
 /// Single token classification result

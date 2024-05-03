@@ -73,26 +73,6 @@ pub struct Detection {
     pub score: f64,
 }
 
-impl Detection {
-    pub fn new(
-        start: usize,
-        end: usize,
-        text: String,
-        detection: String,
-        detection_type: String,
-        score: f64,
-    ) -> Self {
-        Self {
-            start,
-            end,
-            text,
-            detection,
-            detection_type,
-            score,
-        }
-    }
-}
-
 #[derive(Clone, Default, Debug, PartialEq, Serialize, Deserialize)]
 pub struct DetectorResponse {
     pub detections: Vec<Detection>,

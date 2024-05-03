@@ -1,11 +1,11 @@
-#![allow(clippy::iter_kv_map)]
+#![allow(clippy::iter_kv_map, clippy::enum_variant_names)]
 
 use axum::{http::StatusCode, Json};
 
-pub mod clients;
-pub mod config;
-pub mod models;
-pub mod orchestrator;
+mod clients;
+mod config;
+mod models;
+mod orchestrator;
 mod pb;
 pub mod server;
 

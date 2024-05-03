@@ -13,16 +13,6 @@ pub struct ServiceConfig {
     pub tls: Option<Tls>,
 }
 
-impl ServiceConfig {
-    pub fn new(hostname: String, port: Option<u16>, tls: Option<Tls>) -> Self {
-        ServiceConfig {
-            hostname,
-            port,
-            tls,
-        }
-    }
-}
-
 #[derive(Debug, Clone, Deserialize)]
 #[serde(untagged)]
 pub enum Tls {
@@ -57,6 +47,7 @@ pub enum ChunkerType {
     All,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Deserialize)]
 pub struct ChunkerConfig {
     pub r#type: ChunkerType,

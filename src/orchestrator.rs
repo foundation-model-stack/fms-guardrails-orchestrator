@@ -523,6 +523,7 @@ impl ClassificationWithGenTask {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub struct StreamingClassificationWithGenTask {
     pub model_id: String,
