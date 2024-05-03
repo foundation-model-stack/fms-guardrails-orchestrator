@@ -1,25 +1,25 @@
-# Meant to be read by orchestrator!!
-# tgis_config:
-#     hostname: localhost
-#     port: 8033
-#     tls_enabled: false
-caikit_nlp_config:
-    hostname: localhost
-    port: 8033
-    tls_enabled: false
-detector_config:
-    chunkers:
-        sentence-en: # chunker-id
-            type: SENTENCE
-        sentence-ja: # chunker-id
-            type: SENTENCE
-    detectors:
-        hap-en:
-            service_config:
-                hostname: localhost
-                port: 8080
-                tls_enabled: false
-            config:
-                foo: bar
-            chunker: sentence-en
-
+generation:
+    provider: tgis # tgis or nlp
+    service:
+        hostname: localhost
+        port: 8033
+chunkers:
+    en_regex:
+        type: sentence
+        service:
+            hostname: localhost
+            port: 8085
+            tls: caikit
+detectors:
+    hap-en:
+        service:
+            hostname: https://localhost/api/v1/detector
+            port: 8080
+            tls: caikit
+        chunker_id: en_regex
+        config: {}
+tls:
+    caikit:
+        cert_path: /path/to/tls.crt
+        key_path: /path/to/tls.key
+        client_ca_cert_path: /path/to/ca.crt
