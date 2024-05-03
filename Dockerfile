@@ -1,52 +1,56 @@
-## Global Args #################################################################
-ARG BASE_UBI_IMAGE_TAG=9.3
+ARG UBI_MINIMAL_BASE_IMAGE=registry.access.redhat.com/ubi9/ubi-minimal
+ARG UBI_BASE_IMAGE_TAG=latest
 ARG PROTOC_VERSION=26.0
 
-## Base ########################################################################
-FROM --platform=linux/amd64 registry.access.redhat.com/ubi9/ubi:${BASE_UBI_IMAGE_TAG} as base
-
-RUN dnf remove -y --disableplugin=subscription-manager \
-        subscription-manager \
-    && dnf install -y make compat-openssl11 \
-        procps \
-    && dnf clean all
-
-ENV LANG=C.UTF-8 \
-    LC_ALL=C.UTF-8
-
-## Build #######################################################################
-FROM rust:1-bullseye as build
+## Rust builder ################################################################
+# Specific debian version so that compatible glibc version is used
+FROM rust:1.77-bullseye as rust-builder
 ARG PROTOC_VERSION
 
-COPY build.rs Cargo.toml LICENSE /app/
-COPY protos/ /app/protos
-COPY src/ /app/src
+ENV CARGO_REGISTRIES_CRATES_IO_PROTOCOL=sparse
 
-# Install protoc
+# Install protoc, no longer included in prost crate
 RUN cd /tmp && \
     curl -L -O https://github.com/protocolbuffers/protobuf/releases/download/v${PROTOC_VERSION}/protoc-${PROTOC_VERSION}-linux-x86_64.zip && \
     unzip protoc-*.zip -d /usr/local && rm protoc-*.zip
 
 WORKDIR /app
 
+COPY rust-toolchain.toml rust-toolchain.toml
+
+RUN rustup component add rustfmt
+
+## Orchestrator builder #########################################################
+FROM rust-builder as fms-orchestr8-builder
+
+COPY build.rs *.toml LICENSE /app
+COPY config/ /app/config
+COPY protos/ /app/protos
+COPY src/ /app/src
+
+WORKDIR /app
+
+# TODO: Make releases via cargo-release
 RUN cargo install --root /app/ --path .
 
-## Release #####################################################################
-FROM base
 
-COPY config/ /app/config
+## Release Image ################################################################
 
-RUN useradd -u 2000 orchestr8 -m -g 0
+FROM ${UBI_MINIMAL_BASE_IMAGE}:${UBI_BASE_IMAGE_TAG}
 
-ENV HOME=/home/orchestr8 \
-    ORCHESTRATOR_CONFIG=/app/config/config.yaml
+COPY --from=fms-orchestr8-builder /app/bin/ /app/bin/
+COPY config /app/config
 
-RUN chmod -R g+rwx ${HOME}
+RUN microdnf install -y --disableplugin=subscription-manager shadow-utils && \
+    microdnf clean all --disableplugin=subscription-manager
 
-COPY --from=build /app/bin/fms-orchestr8 /app/bin/fms-orchestr8
-COPY config /config
+RUN groupadd --system orchestr8 --gid 1001 && \
+    adduser --system --uid 1001 --gid 0 --groups orchestr8 \
+    --create-home --home-dir /app --shell /sbin/nologin \
+    --comment "FMS Orchestrator User" orchestr8
 
-# Run as non-root user by default
 USER orchestr8
+
+ENV ORCHESTRATOR_CONFIG /app/config/config.yaml
 
 CMD /app/bin/fms-orchestr8
