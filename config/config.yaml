@@ -10,22 +10,16 @@ chunkers:
             hostname: localhost
             port: 8085
             tls: caikit
-    en_syntax_izumo:
-        type: sentence
-        service:
-            hostname: localhost
-            port: 8085
-            tls: caikit
 detectors:
     hap-en:
         service:
             hostname: https://localhost/api/v1/detector
-            port: 9000
+            port: 8080
             tls: caikit
         chunker_id: en_regex
         config: {}
 tls:
     caikit:
-        cert_path: /path/to/caikit/tls.crt
-        key_path: /path/to/caikit/tls.key
-        client_ca_cert_path: /path/to/caikit/ca.crt
+        cert_path: /path/to/tls.crt
+        key_path: /path/to/tls.key
+        client_ca_cert_path: /path/to/ca.crt
