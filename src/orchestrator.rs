@@ -321,8 +321,9 @@ async fn tokenize(
             };
             debug!(
                 %model_id,
+                provider = "tgis",
                 ?request,
-                "sending tokenize request to Tgis"
+                "sending tokenize request"
             );
             let mut response = client.tokenize(request).await?;
             let response = response.responses.swap_remove(0);
@@ -337,7 +338,12 @@ async fn tokenize(
                 "sending tokenize request"
             );
             let response = client.tokenization_task_predict(&model_id, request).await?;
-            Ok((response.token_count as u32, response.results.into_iter().map(|token| {token.text}).collect::<Vec<_>>()))
+            let tokens = response
+                .results
+                .into_iter()
+                .map(|token| token.text)
+                .collect::<Vec<_>>();
+            Ok((response.token_count as u32, tokens))
         }
     }
 }
