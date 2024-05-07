@@ -321,6 +321,7 @@ async fn tokenize(
             };
             debug!(
                 %model_id,
+                provider = "tgis",
                 ?request,
                 "sending tokenize request"
             );
@@ -328,7 +329,22 @@ async fn tokenize(
             let response = response.responses.swap_remove(0);
             Ok((response.token_count, response.tokens))
         }
-        GenerationClient::Nlp(_) => unimplemented!(),
+        GenerationClient::Nlp(client) => {
+            let request = TokenizationTaskRequest {text};
+            debug!(
+                %model_id,
+                provider = "nlp",
+                ?request,
+                "sending tokenize request"
+            );
+            let response = client.tokenization_task_predict(&model_id, request).await?;
+            let tokens = response
+                .results
+                .into_iter()
+                .map(|token| token.text)
+                .collect::<Vec<_>>();
+            Ok((response.token_count as u32, tokens))
+        }
     }
 }
 
