@@ -332,8 +332,9 @@ async fn tokenize(
             let request = TokenizationTaskRequest {text};
             debug!(
                 %model_id,
+                provider = "nlp",
                 ?request,
-                "sending tokenize request to NLP"
+                "sending tokenize request"
             );
             let response = client.tokenization_task_predict(&model_id, request).await?;
             Ok((response.token_count as u32, response.results.into_iter().map(|token| {token.text}).collect::<Vec<_>>()))
