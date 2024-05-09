@@ -64,7 +64,7 @@ impl Orchestrator {
             request_id = ?task.request_id,
             model_id = %task.model_id,
             config = ?task.guardrails_config,
-            "handling task"
+            "handling unary task"
         );
         let ctx = self.ctx.clone();
         tokio::spawn(async move {
@@ -149,7 +149,7 @@ impl Orchestrator {
             request_id = ?task.request_id,
             model_id = %task.model_id,
             config = ?task.guardrails_config,
-            "handling task"
+            "handling streaming task"
         );
         todo!()
     }
