@@ -236,7 +236,7 @@ async fn handle_chunk_task(
         .map(|(offset, text)| {
             let ctx = ctx.clone();
             let chunker_id = chunker_id.clone();
-            tokio::spawn(async move {
+            async move {
                 let request = TokenizationTaskRequest { text };
                 debug!(
                     %chunker_id,
@@ -254,13 +254,13 @@ async fn handle_chunk_task(
                         text: token.text,
                     })
                     .collect::<Vec<_>>()
-            })
+            }
         })
         .buffer_unordered(5)
         .collect::<Vec<_>>()
         .await
         .into_iter()
-        .flat_map(|result| result.unwrap())
+        .flatten()
         .collect::<Vec<_>>();
     Ok((chunker_id, chunks))
 }
@@ -278,7 +278,7 @@ async fn handle_detection_task(
             let ctx = ctx.clone();
             let detector_id = detector_id.clone();
             let detector_params = detector_params.clone();
-            tokio::spawn(async move {
+            async move {
                 let request = DetectorRequest::new(chunk.text.clone(), detector_params);
                 debug!(
                     %detector_id,
@@ -300,13 +300,13 @@ async fn handle_detection_task(
                         result
                     })
                     .collect::<Vec<_>>()
-            })
+            }
         })
         .buffer_unordered(5)
         .collect::<Vec<_>>()
         .await
         .into_iter()
-        .flat_map(|result| result.unwrap())
+        .flatten()
         .collect::<Vec<_>>();
     Ok(detections)
 }
