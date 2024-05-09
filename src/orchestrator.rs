@@ -170,25 +170,24 @@ async fn chunk(
     text_with_offsets: Vec<(usize, String)>,
 ) -> Result<HashMap<String, Vec<Chunk>>, Error> {
     // TODO: propogate errors
-    let chunks = try_join_all(
-        chunker_ids
-            .into_iter()
-            .map(|chunker_id| {
-                let ctx = ctx.clone();
-                let text_with_offsets = text_with_offsets.clone();
-                tokio::spawn(async move {
-                    handle_chunk_task(ctx, chunker_id, text_with_offsets)
-                        .await
-                        .unwrap()
-                })
+    let tasks = chunker_ids
+        .into_iter()
+        .map(|chunker_id| {
+            let ctx = ctx.clone();
+            let text_with_offsets = text_with_offsets.clone();
+            tokio::spawn(async move {
+                handle_chunk_task(ctx, chunker_id, text_with_offsets)
+                    .await
+                    .unwrap()
             })
-            .collect::<Vec<_>>(),
-    )
-    .await
-    .unwrap()
-    .into_iter()
-    .collect::<HashMap<_, _>>();
-    Ok(chunks)
+        })
+        .collect::<Vec<_>>();
+    let results = try_join_all(tasks)
+        .await
+        .unwrap()
+        .into_iter()
+        .collect::<HashMap<_, _>>();
+    Ok(results)
 }
 
 async fn detect(
