@@ -54,6 +54,7 @@ impl Orchestrator {
         Ok(Self { ctx })
     }
 
+    /// Handles unary tasks.
     pub async fn handle_classification_with_gen(
         &self,
         task: ClassificationWithGenTask,
@@ -133,6 +134,7 @@ impl Orchestrator {
         .unwrap()
     }
 
+    /// Handles streaming tasks.
     pub async fn handle_streaming_classification_with_gen(
         &self,
         task: StreamingClassificationWithGenTask,
@@ -142,6 +144,7 @@ impl Orchestrator {
     }
 }
 
+/// Executes chunking and detection steps.
 async fn chunk_and_detect(
     ctx: Arc<Context>,
     detectors: &HashMap<String, DetectorParams>,
@@ -153,17 +156,19 @@ async fn chunk_and_detect(
     let text_with_offsets = masks
         .map(|masks| apply_masks(&text, masks))
         .unwrap_or(vec![(0, text)]);
-    // Do chunking
+    // Create a list of required chunkers
     let chunker_ids = detectors
         .keys()
         .map(|detector_id| ctx.config.get_chunker_id(detector_id))
         .collect::<Vec<_>>();
+    // Spawn chunking tasks, returning a map of chunker_id->chunks.
     let chunks = chunk(ctx.clone(), chunker_ids, text_with_offsets).await?;
-    // Do detections
+    // Spawn detection tasks
     let detections = detect(ctx.clone(), detectors, chunks).await?;
     Ok(detections)
 }
 
+/// Spawns chunking tasks for each chunker.
 async fn chunk(
     ctx: Arc<Context>,
     chunker_ids: Vec<String>,
@@ -190,6 +195,7 @@ async fn chunk(
     Ok(results)
 }
 
+/// Spawns detection tasks for each detector.
 async fn detect(
     ctx: Arc<Context>,
     detectors: &HashMap<String, DetectorParams>,
@@ -219,6 +225,7 @@ async fn detect(
     Ok(results)
 }
 
+/// Sends a buffered, concurrent stream of requests to a chunker service.
 async fn handle_chunk_task(
     ctx: Arc<Context>,
     chunker_id: String,
@@ -258,6 +265,7 @@ async fn handle_chunk_task(
     Ok((chunker_id, chunks))
 }
 
+/// Sends a buffered, concurrent stream of requests to a detector service.
 async fn handle_detection_task(
     ctx: Arc<Context>,
     detector_id: String,
@@ -303,6 +311,7 @@ async fn handle_detection_task(
     Ok(detections)
 }
 
+/// Sends tokenize request to a generation service.
 async fn tokenize(
     ctx: Arc<Context>,
     model_id: String,
@@ -347,6 +356,7 @@ async fn tokenize(
     }
 }
 
+/// Sends generate request to a generation service.
 async fn generate(
     ctx: Arc<Context>,
     model_id: String,
