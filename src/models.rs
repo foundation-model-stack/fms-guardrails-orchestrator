@@ -46,6 +46,22 @@ pub struct GuardrailsConfig {
     pub output: Option<GuardrailsConfigOutput>,
 }
 
+impl GuardrailsConfig {
+    pub fn input_masks(&self) -> Option<&[(usize, usize)]> {
+        self.input.as_ref().and_then(|input| input.masks.as_deref())
+    }
+
+    pub fn input_detectors(&self) -> Option<&HashMap<String, DetectorParams>> {
+        self.input.as_ref().and_then(|input| input.models.as_ref())
+    }
+
+    pub fn output_detectors(&self) -> Option<&HashMap<String, DetectorParams>> {
+        self.output
+            .as_ref()
+            .and_then(|output| output.models.as_ref())
+    }
+}
+
 /// Configuration for detection on input to a text generation model (e.g. user prompt)
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, validator::Validate)]
 pub struct GuardrailsConfigInput {

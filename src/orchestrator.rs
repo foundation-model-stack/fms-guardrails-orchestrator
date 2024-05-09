@@ -61,16 +61,9 @@ impl Orchestrator {
         info!(?task, "handling task");
         let ctx = self.ctx.clone();
         tokio::spawn(async move {
-            let masks = task
-                .guardrails_config
-                .input
-                .as_ref()
-                .and_then(|input| input.masks.clone());
-            let input_detectors = task.guardrails_config.input.and_then(|input| input.models);
-            let output_detectors = task
-                .guardrails_config
-                .output
-                .and_then(|output| output.models);
+            let masks = task.guardrails_config.input_masks();
+            let input_detectors = task.guardrails_config.input_detectors();
+            let output_detectors = task.guardrails_config.output_detectors();
             // Do input detections
             let input_detections = if let Some(detectors) = input_detectors {
                 let detections =
@@ -151,9 +144,9 @@ impl Orchestrator {
 
 async fn chunk_and_detect(
     ctx: Arc<Context>,
-    detectors: HashMap<String, DetectorParams>,
+    detectors: &HashMap<String, DetectorParams>,
     text: String,
-    masks: Option<Vec<(usize, usize)>>,
+    masks: Option<&[(usize, usize)]>,
 ) -> Result<Vec<TokenClassificationResult>, Error> {
     // TODO: propogate errors
     // Apply masks
@@ -169,7 +162,7 @@ async fn chunk_and_detect(
     // Do detections
     let detections = try_join_all(
         detectors
-            .into_iter()
+            .iter()
             .map(|(detector_id, detector_params)| {
                 let ctx = ctx.clone();
                 let detector_id = detector_id.clone();
@@ -330,7 +323,7 @@ async fn tokenize(
             Ok((response.token_count, response.tokens))
         }
         GenerationClient::Nlp(client) => {
-            let request = TokenizationTaskRequest {text};
+            let request = TokenizationTaskRequest { text };
             debug!(
                 %model_id,
                 provider = "nlp",
@@ -462,13 +455,13 @@ async fn generate(
 }
 
 /// Applies masks to input text, returning (offset, masked_text) pairs.
-fn apply_masks(text: &str, masks: Vec<(usize, usize)>) -> Vec<(usize, String)> {
+fn apply_masks(text: &str, masks: &[(usize, usize)]) -> Vec<(usize, String)> {
     let chars = text.chars().collect::<Vec<_>>();
     masks
-        .into_iter()
+        .iter()
         .map(|(start, end)| {
-            let masked_text = chars[start..end].iter().cloned().collect();
-            (start, masked_text)
+            let masked_text = chars[*start..*end].iter().cloned().collect();
+            (*start, masked_text)
         })
         .collect()
 }
@@ -567,7 +560,7 @@ mod tests {
     fn test_apply_masks() {
         let text = "I want this sentence. I don't want this sentence. I want this sentence too.";
         let masks: Vec<(usize, usize)> = vec![(0, 21), (50, 75)];
-        let text_with_offsets = apply_masks(text, masks);
+        let text_with_offsets = apply_masks(text, &masks);
         let expected_text_with_offsets = vec![
             (0, "I want this sentence.".to_string()),
             (50, "I want this sentence too.".to_string()),
