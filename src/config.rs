@@ -155,6 +155,7 @@ detectors:
             port: 9000
         chunker_id: sentence-en
         config: {}
+tls: {}
         "#;
         let config: OrchestratorConfig = serde_yml::from_str(s)?;
         assert!(config.chunkers.len() == 2 && config.detectors.len() == 1);

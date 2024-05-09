@@ -13,6 +13,7 @@ use axum::{
 use futures::StreamExt;
 use tokio::{net::TcpListener, signal};
 use tracing::info;
+use uuid::Uuid;
 
 use crate::{
     config::OrchestratorConfig,
@@ -77,7 +78,8 @@ async fn classification_with_gen(
     State(state): State<Arc<ServerState>>,
     Json(request): Json<models::GuardrailsHttpRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<String>)> {
-    let task = ClassificationWithGenTask::new(request);
+    let request_id = Uuid::new_v4();
+    let task = ClassificationWithGenTask::new(request_id, request);
     match state
         .orchestrator
         .handle_classification_with_gen(task)
@@ -92,7 +94,8 @@ async fn stream_classification_with_gen(
     State(state): State<Arc<ServerState>>,
     Json(request): Json<models::GuardrailsHttpRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<String>)> {
-    let task = StreamingClassificationWithGenTask::new(request);
+    let request_id = Uuid::new_v4();
+    let task = StreamingClassificationWithGenTask::new(request_id, request);
     let response_stream = state
         .orchestrator
         .handle_streaming_classification_with_gen(task)

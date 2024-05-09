@@ -6,6 +6,7 @@ use futures::{
 };
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{debug, info};
+use uuid::Uuid;
 
 use crate::{
     clients::{
@@ -54,23 +55,22 @@ impl Orchestrator {
         Ok(Self { ctx })
     }
 
+    /// Handles unary tasks.
     pub async fn handle_classification_with_gen(
         &self,
         task: ClassificationWithGenTask,
     ) -> Result<ClassifiedGeneratedTextResult, Error> {
-        info!(?task, "handling task");
+        info!(
+            request_id = ?task.request_id,
+            model_id = %task.model_id,
+            config = ?task.guardrails_config,
+            "handling unary task"
+        );
         let ctx = self.ctx.clone();
         tokio::spawn(async move {
-            let masks = task
-                .guardrails_config
-                .input
-                .as_ref()
-                .and_then(|input| input.masks.clone());
-            let input_detectors = task.guardrails_config.input.and_then(|input| input.models);
-            let output_detectors = task
-                .guardrails_config
-                .output
-                .and_then(|output| output.models);
+            let masks = task.guardrails_config.input_masks();
+            let input_detectors = task.guardrails_config.input_detectors();
+            let output_detectors = task.guardrails_config.output_detectors();
             // Do input detections
             let input_detections = if let Some(detectors) = input_detectors {
                 let detections =
@@ -140,86 +140,103 @@ impl Orchestrator {
         .unwrap()
     }
 
+    /// Handles streaming tasks.
     pub async fn handle_streaming_classification_with_gen(
         &self,
         task: StreamingClassificationWithGenTask,
     ) -> ReceiverStream<ClassifiedGeneratedTextStreamResult> {
-        info!(?task, "handling task");
+        info!(
+            request_id = ?task.request_id,
+            model_id = %task.model_id,
+            config = ?task.guardrails_config,
+            "handling streaming task"
+        );
         todo!()
     }
 }
 
+/// Executes chunking and detection steps.
 async fn chunk_and_detect(
     ctx: Arc<Context>,
-    detectors: HashMap<String, DetectorParams>,
+    detectors: &HashMap<String, DetectorParams>,
     text: String,
-    masks: Option<Vec<(usize, usize)>>,
+    masks: Option<&[(usize, usize)]>,
 ) -> Result<Vec<TokenClassificationResult>, Error> {
     // TODO: propogate errors
     // Apply masks
     let text_with_offsets = masks
         .map(|masks| apply_masks(&text, masks))
         .unwrap_or(vec![(0, text)]);
-    // Do chunking
+    // Create a list of required chunkers
     let chunker_ids = detectors
         .keys()
         .map(|detector_id| ctx.config.get_chunker_id(detector_id))
         .collect::<Vec<_>>();
+    // Spawn chunking tasks, returning a map of chunker_id->chunks.
     let chunks = chunk(ctx.clone(), chunker_ids, text_with_offsets).await?;
-    // Do detections
-    let detections = try_join_all(
-        detectors
-            .into_iter()
-            .map(|(detector_id, detector_params)| {
-                let ctx = ctx.clone();
-                let detector_id = detector_id.clone();
-                let detector_params = detector_params.clone();
-                let chunker_id = ctx.config.get_chunker_id(&detector_id);
-                let chunks = chunks.get(&chunker_id).unwrap().clone();
-                // Spawn detection tasks for detector chunks
-                tokio::spawn(async move {
-                    handle_detection_task(ctx, detector_id, detector_params, chunks)
-                        .await
-                        .unwrap()
-                })
-            })
-            .collect::<Vec<_>>(),
-    )
-    .await
-    .unwrap()
-    .into_iter()
-    .flatten()
-    .collect::<Vec<_>>();
+    // Spawn detection tasks
+    let detections = detect(ctx.clone(), detectors, chunks).await?;
     Ok(detections)
 }
 
+/// Spawns chunking tasks for each chunker.
 async fn chunk(
     ctx: Arc<Context>,
     chunker_ids: Vec<String>,
     text_with_offsets: Vec<(usize, String)>,
 ) -> Result<HashMap<String, Vec<Chunk>>, Error> {
     // TODO: propogate errors
-    let chunks = try_join_all(
-        chunker_ids
-            .into_iter()
-            .map(|chunker_id| {
-                let ctx = ctx.clone();
-                let text_with_offsets = text_with_offsets.clone();
-                tokio::spawn(async move {
-                    handle_chunk_task(ctx, chunker_id, text_with_offsets)
-                        .await
-                        .unwrap()
-                })
+    let tasks = chunker_ids
+        .into_iter()
+        .map(|chunker_id| {
+            let ctx = ctx.clone();
+            let text_with_offsets = text_with_offsets.clone();
+            tokio::spawn(async move {
+                handle_chunk_task(ctx, chunker_id, text_with_offsets)
+                    .await
+                    .unwrap()
             })
-            .collect::<Vec<_>>(),
-    )
-    .await
-    .unwrap()
-    .into_iter()
-    .collect::<HashMap<_, _>>();
-    Ok(chunks)
+        })
+        .collect::<Vec<_>>();
+    let results = try_join_all(tasks)
+        .await
+        .unwrap()
+        .into_iter()
+        .collect::<HashMap<_, _>>();
+    Ok(results)
 }
 
+/// Spawns detection tasks for each detector.
+async fn detect(
+    ctx: Arc<Context>,
+    detectors: &HashMap<String, DetectorParams>,
+    chunks: HashMap<String, Vec<Chunk>>,
+) -> Result<Vec<TokenClassificationResult>, Error> {
+    let tasks = detectors
+        .iter()
+        .map(|(detector_id, detector_params)| {
+            let ctx = ctx.clone();
+            let detector_id = detector_id.clone();
+            let detector_params = detector_params.clone();
+            let chunker_id = ctx.config.get_chunker_id(&detector_id);
+            let chunks = chunks.get(&chunker_id).unwrap().clone();
+            tokio::spawn(async move {
+                handle_detection_task(ctx, detector_id, detector_params, chunks)
+                    .await
+                    .unwrap()
+            })
+        })
+        .collect::<Vec<_>>();
+    let results = try_join_all(tasks)
+        .await
+        .unwrap()
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>();
+    Ok(results)
+}
+
+/// Sends a buffered, concurrent stream of requests to a chunker service.
 async fn handle_chunk_task(
     ctx: Arc<Context>,
     chunker_id: String,
@@ -230,7 +247,7 @@ async fn handle_chunk_task(
         .map(|(offset, text)| {
             let ctx = ctx.clone();
             let chunker_id = chunker_id.clone();
-            tokio::spawn(async move {
+            async move {
                 let request = TokenizationTaskRequest { text };
                 debug!(
                     %chunker_id,
@@ -248,17 +265,18 @@ async fn handle_chunk_task(
                         text: token.text,
                     })
                     .collect::<Vec<_>>()
-            })
+            }
         })
         .buffer_unordered(5)
         .collect::<Vec<_>>()
         .await
         .into_iter()
-        .flat_map(|result| result.unwrap())
+        .flatten()
         .collect::<Vec<_>>();
     Ok((chunker_id, chunks))
 }
 
+/// Sends a buffered, concurrent stream of requests to a detector service.
 async fn handle_detection_task(
     ctx: Arc<Context>,
     detector_id: String,
@@ -271,7 +289,7 @@ async fn handle_detection_task(
             let ctx = ctx.clone();
             let detector_id = detector_id.clone();
             let detector_params = detector_params.clone();
-            tokio::spawn(async move {
+            async move {
                 let request = DetectorRequest::new(chunk.text.clone(), detector_params);
                 debug!(
                     %detector_id,
@@ -293,17 +311,18 @@ async fn handle_detection_task(
                         result
                     })
                     .collect::<Vec<_>>()
-            })
+            }
         })
         .buffer_unordered(5)
         .collect::<Vec<_>>()
         .await
         .into_iter()
-        .flat_map(|result| result.unwrap())
+        .flatten()
         .collect::<Vec<_>>();
     Ok(detections)
 }
 
+/// Sends tokenize request to a generation service.
 async fn tokenize(
     ctx: Arc<Context>,
     model_id: String,
@@ -330,7 +349,7 @@ async fn tokenize(
             Ok((response.token_count, response.tokens))
         }
         GenerationClient::Nlp(client) => {
-            let request = TokenizationTaskRequest {text};
+            let request = TokenizationTaskRequest { text };
             debug!(
                 %model_id,
                 provider = "nlp",
@@ -348,6 +367,7 @@ async fn tokenize(
     }
 }
 
+/// Sends generate request to a generation service.
 async fn generate(
     ctx: Arc<Context>,
     model_id: String,
@@ -462,13 +482,13 @@ async fn generate(
 }
 
 /// Applies masks to input text, returning (offset, masked_text) pairs.
-fn apply_masks(text: &str, masks: Vec<(usize, usize)>) -> Vec<(usize, String)> {
+fn apply_masks(text: &str, masks: &[(usize, usize)]) -> Vec<(usize, String)> {
     let chars = text.chars().collect::<Vec<_>>();
     masks
-        .into_iter()
+        .iter()
         .map(|(start, end)| {
-            let masked_text = chars[start..end].iter().cloned().collect();
-            (start, masked_text)
+            let masked_text = chars[*start..*end].iter().cloned().collect();
+            (*start, masked_text)
         })
         .collect()
 }
@@ -522,6 +542,7 @@ struct Chunk {
 
 #[derive(Debug)]
 pub struct ClassificationWithGenTask {
+    pub request_id: Uuid,
     pub model_id: String,
     pub inputs: String,
     pub guardrails_config: GuardrailsConfig,
@@ -529,8 +550,9 @@ pub struct ClassificationWithGenTask {
 }
 
 impl ClassificationWithGenTask {
-    pub fn new(request: GuardrailsHttpRequest) -> Self {
+    pub fn new(request_id: Uuid, request: GuardrailsHttpRequest) -> Self {
         Self {
+            request_id,
             model_id: request.model_id,
             inputs: request.inputs,
             guardrails_config: request.guardrail_config.unwrap_or_default(),
@@ -542,6 +564,7 @@ impl ClassificationWithGenTask {
 #[allow(dead_code)]
 #[derive(Debug)]
 pub struct StreamingClassificationWithGenTask {
+    pub request_id: Uuid,
     pub model_id: String,
     pub inputs: String,
     pub guardrails_config: GuardrailsConfig,
@@ -549,8 +572,9 @@ pub struct StreamingClassificationWithGenTask {
 }
 
 impl StreamingClassificationWithGenTask {
-    pub fn new(request: GuardrailsHttpRequest) -> Self {
+    pub fn new(request_id: Uuid, request: GuardrailsHttpRequest) -> Self {
         Self {
+            request_id,
             model_id: request.model_id,
             inputs: request.inputs,
             guardrails_config: request.guardrail_config.unwrap_or_default(),
@@ -567,7 +591,7 @@ mod tests {
     fn test_apply_masks() {
         let text = "I want this sentence. I don't want this sentence. I want this sentence too.";
         let masks: Vec<(usize, usize)> = vec![(0, 21), (50, 75)];
-        let text_with_offsets = apply_masks(text, masks);
+        let text_with_offsets = apply_masks(text, &masks);
         let expected_text_with_offsets = vec![
             (0, "I want this sentence.".to_string()),
             (50, "I want this sentence too.".to_string()),
