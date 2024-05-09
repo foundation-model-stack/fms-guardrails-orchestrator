@@ -6,6 +6,7 @@ use futures::{
 };
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{debug, info};
+use uuid::Uuid;
 
 use crate::{
     clients::{
@@ -59,7 +60,12 @@ impl Orchestrator {
         &self,
         task: ClassificationWithGenTask,
     ) -> Result<ClassifiedGeneratedTextResult, Error> {
-        info!(?task, "handling task");
+        info!(
+            request_id = ?task.request_id,
+            model_id = %task.model_id,
+            config = ?task.guardrails_config,
+            "handling task"
+        );
         let ctx = self.ctx.clone();
         tokio::spawn(async move {
             let masks = task.guardrails_config.input_masks();
@@ -139,7 +145,12 @@ impl Orchestrator {
         &self,
         task: StreamingClassificationWithGenTask,
     ) -> ReceiverStream<ClassifiedGeneratedTextStreamResult> {
-        info!(?task, "handling task");
+        info!(
+            request_id = ?task.request_id,
+            model_id = %task.model_id,
+            config = ?task.guardrails_config,
+            "handling task"
+        );
         todo!()
     }
 }
@@ -531,6 +542,7 @@ struct Chunk {
 
 #[derive(Debug)]
 pub struct ClassificationWithGenTask {
+    pub request_id: Uuid,
     pub model_id: String,
     pub inputs: String,
     pub guardrails_config: GuardrailsConfig,
@@ -538,8 +550,9 @@ pub struct ClassificationWithGenTask {
 }
 
 impl ClassificationWithGenTask {
-    pub fn new(request: GuardrailsHttpRequest) -> Self {
+    pub fn new(request_id: Uuid, request: GuardrailsHttpRequest) -> Self {
         Self {
+            request_id,
             model_id: request.model_id,
             inputs: request.inputs,
             guardrails_config: request.guardrail_config.unwrap_or_default(),
@@ -551,6 +564,7 @@ impl ClassificationWithGenTask {
 #[allow(dead_code)]
 #[derive(Debug)]
 pub struct StreamingClassificationWithGenTask {
+    pub request_id: Uuid,
     pub model_id: String,
     pub inputs: String,
     pub guardrails_config: GuardrailsConfig,
@@ -558,8 +572,9 @@ pub struct StreamingClassificationWithGenTask {
 }
 
 impl StreamingClassificationWithGenTask {
-    pub fn new(request: GuardrailsHttpRequest) -> Self {
+    pub fn new(request_id: Uuid, request: GuardrailsHttpRequest) -> Self {
         Self {
+            request_id,
             model_id: request.model_id,
             inputs: request.inputs,
             guardrails_config: request.guardrail_config.unwrap_or_default(),
