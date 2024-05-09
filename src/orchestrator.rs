@@ -160,29 +160,7 @@ async fn chunk_and_detect(
         .collect::<Vec<_>>();
     let chunks = chunk(ctx.clone(), chunker_ids, text_with_offsets).await?;
     // Do detections
-    let detections = try_join_all(
-        detectors
-            .iter()
-            .map(|(detector_id, detector_params)| {
-                let ctx = ctx.clone();
-                let detector_id = detector_id.clone();
-                let detector_params = detector_params.clone();
-                let chunker_id = ctx.config.get_chunker_id(&detector_id);
-                let chunks = chunks.get(&chunker_id).unwrap().clone();
-                // Spawn detection tasks for detector chunks
-                tokio::spawn(async move {
-                    handle_detection_task(ctx, detector_id, detector_params, chunks)
-                        .await
-                        .unwrap()
-                })
-            })
-            .collect::<Vec<_>>(),
-    )
-    .await
-    .unwrap()
-    .into_iter()
-    .flatten()
-    .collect::<Vec<_>>();
+    let detections = detect(ctx.clone(), detectors, chunks).await?;
     Ok(detections)
 }
 
@@ -211,6 +189,35 @@ async fn chunk(
     .into_iter()
     .collect::<HashMap<_, _>>();
     Ok(chunks)
+}
+
+async fn detect(
+    ctx: Arc<Context>,
+    detectors: &HashMap<String, DetectorParams>,
+    chunks: HashMap<String, Vec<Chunk>>,
+) -> Result<Vec<TokenClassificationResult>, Error> {
+    let tasks = detectors
+        .iter()
+        .map(|(detector_id, detector_params)| {
+            let ctx = ctx.clone();
+            let detector_id = detector_id.clone();
+            let detector_params = detector_params.clone();
+            let chunker_id = ctx.config.get_chunker_id(&detector_id);
+            let chunks = chunks.get(&chunker_id).unwrap().clone();
+            tokio::spawn(async move {
+                handle_detection_task(ctx, detector_id, detector_params, chunks)
+                    .await
+                    .unwrap()
+            })
+        })
+        .collect::<Vec<_>>();
+    let results = try_join_all(tasks)
+        .await
+        .unwrap()
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>();
+    Ok(results)
 }
 
 async fn handle_chunk_task(
