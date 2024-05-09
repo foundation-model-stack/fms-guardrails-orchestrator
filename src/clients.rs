@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-use std::collections::HashMap;
+use std::{collections::HashMap, time::Duration};
 
 use futures::future::try_join_all;
 use ginepro::LoadBalancedChannel;
@@ -19,6 +19,8 @@ pub use nlp::NlpClient;
 pub const DEFAULT_TGIS_PORT: u16 = 8033;
 pub const DEFAULT_CAIKIT_NLP_PORT: u16 = 8085;
 pub const DEFAULT_DETECTOR_PORT: u16 = 8080;
+const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
+const DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -72,7 +74,9 @@ pub async fn create_http_clients(
             let port = service_config.port.unwrap_or(default_port);
             let mut base_url = Url::parse(&service_config.hostname).unwrap();
             base_url.set_port(Some(port)).unwrap();
-            let mut builder = reqwest::ClientBuilder::new();
+            let mut builder = reqwest::ClientBuilder::new()
+                .connect_timeout(DEFAULT_CONNECT_TIMEOUT)
+                .timeout(DEFAULT_REQUEST_TIMEOUT);
             if let Some(Tls::Config(tls_config)) = &service_config.tls {
                 let cert_path = tls_config.cert_path.as_ref().unwrap().as_path();
                 let cert_pem = tokio::fs::read(cert_path).await.unwrap_or_else(|error| {
@@ -100,7 +104,9 @@ async fn create_grpc_clients<C>(
             let mut builder = LoadBalancedChannel::builder((
                 service_config.hostname.clone(),
                 service_config.port.unwrap_or(default_port),
-            ));
+            ))
+            .connect_timeout(DEFAULT_CONNECT_TIMEOUT)
+            .timeout(DEFAULT_REQUEST_TIMEOUT);
             let client_tls_config = if let Some(Tls::Config(tls_config)) = &service_config.tls {
                 let cert_path = tls_config.cert_path.as_ref().unwrap().as_path();
                 let key_path = tls_config.key_path.as_ref().unwrap().as_path();
