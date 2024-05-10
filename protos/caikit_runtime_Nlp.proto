@@ -83,7 +83,6 @@
  /*-- SERVICES ----------------------------------------------------------------*/
 
  service NlpService {
-   rpc BidiStreamingTokenizationTaskPredict(stream caikit.runtime.Nlp.BidiStreamingTokenizationTaskRequest) returns (stream caikit_data_model.nlp.TokenizationStreamResult);
    rpc ServerStreamingTextGenerationTaskPredict(caikit.runtime.Nlp.ServerStreamingTextGenerationTaskRequest) returns (stream caikit_data_model.nlp.GeneratedTextStreamResult);
    rpc TextGenerationTaskPredict(caikit.runtime.Nlp.TextGenerationTaskRequest) returns (caikit_data_model.nlp.GeneratedTextResult);
    rpc TokenizationTaskPredict(caikit.runtime.Nlp.TokenizationTaskRequest) returns (caikit_data_model.nlp.TokenizationResults);

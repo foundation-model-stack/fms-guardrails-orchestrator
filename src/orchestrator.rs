@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 use crate::{
     clients::{
-        self, detector::DetectorRequest, DetectorClient, GenerationClient, NlpClient, TgisClient,
+        self, detector::DetectorRequest, ChunkerClient, DetectorClient, GenerationClient, NlpClient, TgisClient,
     },
     config::{GenerationProvider, OrchestratorConfig},
     models::{
@@ -19,6 +19,7 @@ use crate::{
         InputWarningReason, TextGenTokenClassificationResults, TokenClassificationResult,
     },
     pb::{
+        caikit::runtime::chunkers::TokenizationTaskRequest as ChunkersTokenizationTaskRequest,
         caikit::runtime::nlp::{TextGenerationTaskRequest, TokenizationTaskRequest},
         fmaas::{
             BatchedGenerationRequest, BatchedTokenizeRequest, GenerationRequest, TokenizeRequest,
@@ -34,7 +35,7 @@ const UNSUITABLE_INPUT_MESSAGE: &str = "Unsuitable input detected. \
 struct Context {
     config: OrchestratorConfig,
     generation_client: GenerationClient,
-    chunker_client: NlpClient,
+    chunker_client: ChunkerClient,
     detector_client: DetectorClient,
 }
 
@@ -248,7 +249,7 @@ async fn handle_chunk_task(
             let ctx = ctx.clone();
             let chunker_id = chunker_id.clone();
             async move {
-                let request = TokenizationTaskRequest { text };
+                let request = ChunkersTokenizationTaskRequest { text };
                 debug!(
                     %chunker_id,
                     ?request,
@@ -495,7 +496,7 @@ fn apply_masks(text: &str, masks: &[(usize, usize)]) -> Vec<(usize, String)> {
 
 async fn create_clients(
     config: &OrchestratorConfig,
-) -> Result<(GenerationClient, NlpClient, DetectorClient), Error> {
+) -> Result<(GenerationClient, ChunkerClient, DetectorClient), Error> {
     // TODO: create better solution for routers
     let generation_client = match config.generation.provider {
         GenerationProvider::Tgis => {
@@ -521,7 +522,7 @@ async fn create_clients(
         .iter()
         .map(|(chunker_id, config)| (chunker_id.clone(), config.service.clone()))
         .collect::<Vec<_>>();
-    let chunker_client = NlpClient::new(clients::DEFAULT_CAIKIT_NLP_PORT, &chunker_config).await?;
+    let chunker_client = ChunkerClient::new(clients::DEFAULT_CHUNKER_PORT, &chunker_config).await?;
 
     let detector_config = config
         .detectors
