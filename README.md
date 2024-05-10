@@ -1,4 +1,4 @@
-# FMS Orchestr8
+# FMS Guardrails Orchestrator
 
 Orchestrator server for invocation of detectors on text generation input and output [name subject to change]
 
@@ -15,7 +15,7 @@ cargo install --path .
 
 To run the server locally:
 ```sh
-cargo run --bin fms-orchestr8
+cargo run --bin fms-guardrails-orchestr8
 ```
 
 To run tests:

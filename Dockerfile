@@ -21,7 +21,7 @@ COPY rust-toolchain.toml rust-toolchain.toml
 RUN rustup component add rustfmt
 
 ## Orchestrator builder #########################################################
-FROM rust-builder as fms-orchestr8-builder
+FROM rust-builder as fms-guardrails-orchestr8-builder
 
 COPY build.rs *.toml LICENSE /app
 COPY config/ /app/config
@@ -38,7 +38,7 @@ RUN cargo install --root /app/ --path .
 
 FROM ${UBI_MINIMAL_BASE_IMAGE}:${UBI_BASE_IMAGE_TAG}
 
-COPY --from=fms-orchestr8-builder /app/bin/ /app/bin/
+COPY --from=fms-guardrails-orchestr8-builder /app/bin/ /app/bin/
 COPY config /app/config
 
 RUN microdnf install -y --disableplugin=subscription-manager shadow-utils && \
@@ -53,4 +53,4 @@ USER orchestr8
 
 ENV ORCHESTRATOR_CONFIG /app/config/config.yaml
 
-CMD /app/bin/fms-orchestr8
+CMD /app/bin/fms-guardrails-orchestr8

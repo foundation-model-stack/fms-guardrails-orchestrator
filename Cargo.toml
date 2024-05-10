@@ -1,5 +1,5 @@
 [package]
-name = "fms-orchestr8"
+name = "fms-guardrails-orchestr8"
 version = "0.1.0"
 edition = "2021"
 authors = ["Evaline Ju", "Gaurav Kumbhat", "Dan Clark"]
@@ -10,7 +10,7 @@ build = "build.rs"
 path = "src/lib.rs"
 
 [[bin]]
-name = "fms-orchestr8"
+name = "fms-guardrails-orchestr8"
 path = "src/main.rs"
 
 [dependencies]

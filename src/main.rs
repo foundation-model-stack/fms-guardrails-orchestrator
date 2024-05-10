@@ -4,7 +4,7 @@ use std::{
 };
 
 use clap::Parser;
-use fms_orchestr8::server;
+use fms_guardrails_orchestr8::server;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 #[derive(Parser, Debug)]
