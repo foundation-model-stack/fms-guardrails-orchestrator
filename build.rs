@@ -9,6 +9,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .include_file("mod.rs")
         .compile(
             &[
+                "protos/caikit_runtime_Chunkers.proto",
                 "protos/caikit_runtime_Nlp.proto",
                 "protos/generation.proto",
                 "protos/caikit_data_model_caikit_nlp.proto",

@@ -10,14 +10,12 @@ use super::{create_grpc_clients, Error};
 use crate::{
     config::ServiceConfig,
     pb::{
-        caikit::runtime::nlp::{
-            nlp_service_client::NlpServiceClient,
-            ServerStreamingTextGenerationTaskRequest, TextGenerationTaskRequest,
-            TokenClassificationTaskRequest, TokenizationTaskRequest,
+        caikit::runtime::chunkers::{
+            chunkers_service_client::ChunkersServiceClient, BidiStreamingTokenizationTaskRequest,
+            TokenizationTaskRequest,
         },
         caikit_data_model::nlp::{
-            GeneratedTextResult, GeneratedTextStreamResult, TokenClassificationResults,
-            TokenizationResults,
+            TokenizationResults, TokenizationStreamResult,
         },
     },
 };
@@ -25,17 +23,17 @@ use crate::{
 const MODEL_ID_HEADER_NAME: &str = "mm-model-id";
 
 #[derive(Clone)]
-pub struct NlpClient {
-    clients: HashMap<String, NlpServiceClient<LoadBalancedChannel>>,
+pub struct ChunkerClient {
+    clients: HashMap<String, ChunkersServiceClient<LoadBalancedChannel>>,
 }
 
-impl NlpClient {
+impl ChunkerClient {
     pub async fn new(default_port: u16, config: &[(String, ServiceConfig)]) -> Result<Self, Error> {
-        let clients = create_grpc_clients(default_port, config, NlpServiceClient::new).await?;
+        let clients = create_grpc_clients(default_port, config, ChunkersServiceClient::new).await?;
         Ok(Self { clients })
     }
 
-    fn client(&self, model_id: &str) -> Result<NlpServiceClient<LoadBalancedChannel>, Error> {
+    fn client(&self, model_id: &str) -> Result<ChunkersServiceClient<LoadBalancedChannel>, Error> {
         Ok(self
             .clients
             .get(model_id)
@@ -56,41 +54,15 @@ impl NlpClient {
             .into_inner())
     }
 
-    pub async fn token_classification_task_predict(
+    pub async fn bidi_streaming_tokenization_task_predict(
         &self,
         model_id: &str,
-        request: TokenClassificationTaskRequest,
-    ) -> Result<TokenClassificationResults, Error> {
-        let request = request_with_model_id(request, model_id);
-        Ok(self
-            .client(model_id)?
-            .token_classification_task_predict(request)
-            .await?
-            .into_inner())
-    }
-
-    pub async fn text_generation_task_predict(
-        &self,
-        model_id: &str,
-        request: TextGenerationTaskRequest,
-    ) -> Result<GeneratedTextResult, Error> {
-        let request = request_with_model_id(request, model_id);
-        Ok(self
-            .client(model_id)?
-            .text_generation_task_predict(request)
-            .await?
-            .into_inner())
-    }
-
-    pub async fn server_streaming_text_generation_task_predict(
-        &self,
-        model_id: &str,
-        request: ServerStreamingTextGenerationTaskRequest,
-    ) -> Result<ReceiverStream<GeneratedTextStreamResult>, Error> {
+        request: Pin<Box<dyn Stream<Item = BidiStreamingTokenizationTaskRequest> + Send + 'static>>,
+    ) -> Result<ReceiverStream<TokenizationStreamResult>, Error> {
         let request = request_with_model_id(request, model_id);
         let mut response_stream = self
             .client(model_id)?
-            .server_streaming_text_generation_task_predict(request)
+            .bidi_streaming_tokenization_task_predict(request)
             .await?
             .into_inner();
         let (tx, rx) = mpsc::channel(128);
@@ -101,6 +73,7 @@ impl NlpClient {
         });
         Ok(ReceiverStream::new(rx))
     }
+
 }
 
 fn request_with_model_id<T>(request: T, model_id: &str) -> Request<T> {
