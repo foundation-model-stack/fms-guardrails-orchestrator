@@ -12,12 +12,6 @@
 
  /*-- MESSAGES ----------------------------------------------------------------*/
 
- message BidiStreamingTokenizationTaskRequest {
-
-   /*-- fields --*/
-   string text_stream = 1;
- }
-
  message ServerStreamingTextGenerationTaskRequest {
 
    /*-- fields --*/
