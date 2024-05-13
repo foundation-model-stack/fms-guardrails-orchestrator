@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 
+use anyhow::{Context, Error};
 use serde::{Deserialize, Serialize};
 
-use super::{create_http_clients, Error, HttpClient};
+use super::{create_http_clients, HttpClient};
 use crate::config::ServiceConfig;
 
 const DETECTOR_ID_HEADER_NAME: &str = "detector-id";
@@ -23,7 +24,7 @@ impl DetectorClient {
         Ok(self
             .clients
             .get(model_id)
-            .ok_or_else(|| Error::ModelNotFound(model_id.into()))?
+            .context(format!("model not found, model_id={model_id}"))?
             .clone())
     }
 

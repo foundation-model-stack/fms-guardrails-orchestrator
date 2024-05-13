@@ -1,25 +1,25 @@
 use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 
+use anyhow::Error;
 use axum::{
     extract::State,
     http::StatusCode,
     response::{
         sse::{Event, KeepAlive, Sse},
-        IntoResponse,
+        IntoResponse, Response,
     },
     routing::{get, post},
     Json, Router,
 };
 use futures::StreamExt;
 use tokio::{net::TcpListener, signal};
-use tracing::info;
+use tracing::{error, info};
 use uuid::Uuid;
 
 use crate::{
     config::OrchestratorConfig,
     models,
     orchestrator::{ClassificationWithGenTask, Orchestrator, StreamingClassificationWithGenTask},
-    Error,
 };
 
 const API_PREFIX: &str = r#"/api/v1/task"#;
@@ -77,7 +77,7 @@ async fn health() -> Result<(), ()> {
 async fn classification_with_gen(
     State(state): State<Arc<ServerState>>,
     Json(request): Json<models::GuardrailsHttpRequest>,
-) -> Result<impl IntoResponse, (StatusCode, Json<String>)> {
+) -> Result<impl IntoResponse, ServerError> {
     let request_id = Uuid::new_v4();
     let task = ClassificationWithGenTask::new(request_id, request);
     match state
@@ -86,14 +86,17 @@ async fn classification_with_gen(
         .await
     {
         Ok(response) => Ok(Json(response).into_response()),
-        Err(error) => Err(error.into()),
+        Err(error) => {
+            error!(%request_id, "{error:#}");
+            Err(error.into())
+        }
     }
 }
 
 async fn stream_classification_with_gen(
     State(state): State<Arc<ServerState>>,
     Json(request): Json<models::GuardrailsHttpRequest>,
-) -> Result<impl IntoResponse, (StatusCode, Json<String>)> {
+) -> Result<impl IntoResponse, ServerError> {
     let request_id = Uuid::new_v4();
     let task = StreamingClassificationWithGenTask::new(request_id, request);
     let response_stream = state
@@ -130,4 +133,26 @@ async fn shutdown_signal() {
     }
 
     info!("signal received, starting graceful shutdown");
+}
+
+pub struct ServerError(anyhow::Error);
+
+impl IntoResponse for ServerError {
+    fn into_response(self) -> Response {
+        let code = StatusCode::INTERNAL_SERVER_ERROR;
+        let error = serde_json::json!({
+            "code": code.as_u16(),
+            "message": self.0.to_string(),
+        });
+        (code, Json(error)).into_response()
+    }
+}
+
+impl<E> From<E> for ServerError
+where
+    E: Into<anyhow::Error>,
+{
+    fn from(err: E) -> Self {
+        Self(err.into())
+    }
 }

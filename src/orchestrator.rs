@@ -1,5 +1,6 @@
 use std::{collections::HashMap, sync::Arc};
 
+use anyhow::{Context as _, Error};
 use futures::{
     future::try_join_all,
     stream::{self, StreamExt},
@@ -26,7 +27,6 @@ use crate::{
             BatchedGenerationRequest, BatchedTokenizeRequest, GenerationRequest, TokenizeRequest,
         },
     },
-    Error,
 };
 
 const UNSUITABLE_INPUT_MESSAGE: &str = "Unsuitable input detected. \
@@ -138,8 +138,7 @@ impl Orchestrator {
                 Ok(generation_results)
             }
         })
-        .await
-        .unwrap()
+        .await?
     }
 
     /// Handles streaming tasks.
@@ -164,7 +163,6 @@ async fn chunk_and_detect(
     text: String,
     masks: Option<&[(usize, usize)]>,
 ) -> Result<Vec<TokenClassificationResult>, Error> {
-    // TODO: propogate errors
     // Apply masks
     let text_with_offsets = masks
         .map(|masks| apply_masks(&text, masks))
@@ -172,8 +170,14 @@ async fn chunk_and_detect(
     // Create a list of required chunkers
     let chunker_ids = detectors
         .keys()
-        .map(|detector_id| ctx.config.get_chunker_id(detector_id))
-        .collect::<Vec<_>>();
+        .map(|detector_id| {
+            let chunker_id = ctx
+                .config
+                .get_chunker_id(detector_id)
+                .context(format!("detector not found, detector_id={detector_id}"))?;
+            Ok::<String, Error>(chunker_id)
+        })
+        .collect::<Result<Vec<_>, Error>>()?;
     // Spawn chunking tasks, returning a map of chunker_id->chunks.
     let chunks = chunk(ctx.clone(), chunker_ids, text_with_offsets).await?;
     // Spawn detection tasks
@@ -187,24 +191,18 @@ async fn chunk(
     chunker_ids: Vec<String>,
     text_with_offsets: Vec<(usize, String)>,
 ) -> Result<HashMap<String, Vec<Chunk>>, Error> {
-    // TODO: propogate errors
     let tasks = chunker_ids
         .into_iter()
         .map(|chunker_id| {
             let ctx = ctx.clone();
             let text_with_offsets = text_with_offsets.clone();
-            tokio::spawn(async move {
-                handle_chunk_task(ctx, chunker_id, text_with_offsets)
-                    .await
-                    .unwrap()
-            })
+            tokio::spawn(async move { handle_chunk_task(ctx, chunker_id, text_with_offsets).await })
         })
         .collect::<Vec<_>>();
     let results = try_join_all(tasks)
-        .await
-        .unwrap()
+        .await?
         .into_iter()
-        .collect::<HashMap<_, _>>();
+        .collect::<Result<HashMap<_, _>, Error>>()?;
     Ok(results)
 }
 
@@ -220,18 +218,20 @@ async fn detect(
             let ctx = ctx.clone();
             let detector_id = detector_id.clone();
             let detector_params = detector_params.clone();
-            let chunker_id = ctx.config.get_chunker_id(&detector_id);
+            let chunker_id = ctx
+                .config
+                .get_chunker_id(&detector_id)
+                .context(format!("detector not found, detector_id={detector_id}"))?;
             let chunks = chunks.get(&chunker_id).unwrap().clone();
-            tokio::spawn(async move {
-                handle_detection_task(ctx, detector_id, detector_params, chunks)
-                    .await
-                    .unwrap()
-            })
+            Ok(tokio::spawn(async move {
+                handle_detection_task(ctx, detector_id, detector_params, chunks).await
+            }))
         })
-        .collect::<Vec<_>>();
+        .collect::<Result<Vec<_>, Error>>()?;
     let results = try_join_all(tasks)
-        .await
-        .unwrap()
+        .await?
+        .into_iter()
+        .collect::<Result<Vec<_>, Error>>()?
         .into_iter()
         .flatten()
         .collect::<Vec<_>>();
@@ -244,7 +244,6 @@ async fn handle_chunk_task(
     chunker_id: String,
     text_with_offsets: Vec<(usize, String)>,
 ) -> Result<(String, Vec<Chunk>), Error> {
-    // TODO: propogate errors
     let chunks = stream::iter(text_with_offsets)
         .map(|(offset, text)| {
             let ctx = ctx.clone();
@@ -256,22 +255,32 @@ async fn handle_chunk_task(
                     ?request,
                     "sending chunker request"
                 );
-                ctx.chunker_client
+                let response = ctx
+                    .chunker_client
                     .tokenization_task_predict(&chunker_id, request)
                     .await
-                    .unwrap()
+                    .with_context(|| format!("chunker request failed, chunker_id={chunker_id}"))?;
+                debug!(
+                    %chunker_id,
+                    ?response,
+                    "received chunker response"
+                );
+                let results = response
                     .results
                     .into_iter()
                     .map(|token| Chunk {
                         offset,
                         text: token.text,
                     })
-                    .collect::<Vec<_>>()
+                    .collect::<Vec<_>>();
+                Ok::<Vec<Chunk>, Error>(results)
             }
         })
         .buffer_unordered(5)
         .collect::<Vec<_>>()
         .await
+        .into_iter()
+        .collect::<Result<Vec<_>, Error>>()?
         .into_iter()
         .flatten()
         .collect::<Vec<_>>();
@@ -285,7 +294,6 @@ async fn handle_detection_task(
     detector_params: DetectorParams,
     chunks: Vec<Chunk>,
 ) -> Result<Vec<TokenClassificationResult>, Error> {
-    // TODO: propogate errors
     let detections = stream::iter(chunks)
         .map(|chunk| {
             let ctx = ctx.clone();
@@ -302,8 +310,15 @@ async fn handle_detection_task(
                     .detector_client
                     .classify(&detector_id, request)
                     .await
-                    .unwrap();
-                response
+                    .with_context(|| {
+                        format!("detector request failed, detector_id={detector_id}")
+                    })?;
+                debug!(
+                    %detector_id,
+                    ?response,
+                    "received detector response"
+                );
+                let results = response
                     .detections
                     .into_iter()
                     .map(|detection| {
@@ -312,12 +327,15 @@ async fn handle_detection_task(
                         result.end += chunk.offset as i32;
                         result
                     })
-                    .collect::<Vec<_>>()
+                    .collect::<Vec<_>>();
+                Ok::<Vec<TokenClassificationResult>, Error>(results)
             }
         })
         .buffer_unordered(5)
         .collect::<Vec<_>>()
         .await
+        .into_iter()
+        .collect::<Result<Vec<_>, Error>>()?
         .into_iter()
         .flatten()
         .collect::<Vec<_>>();
@@ -346,7 +364,16 @@ async fn tokenize(
                 ?request,
                 "sending tokenize request"
             );
-            let mut response = client.tokenize(request).await?;
+            let mut response = client
+                .tokenize(request)
+                .await
+                .with_context(|| format!("tokenize request failed, model_id={model_id}"))?;
+            debug!(
+                %model_id,
+                provider = "tgis",
+                ?response,
+                "received tokenize response"
+            );
             let response = response.responses.swap_remove(0);
             Ok((response.token_count, response.tokens))
         }
@@ -359,6 +386,12 @@ async fn tokenize(
                 "sending tokenize request"
             );
             let response = client.tokenization_task_predict(&model_id, request).await?;
+            debug!(
+                %model_id,
+                provider = "nlp",
+                ?response,
+                "received tokenize response"
+            );
             let tokens = response
                 .results
                 .into_iter()
@@ -392,7 +425,15 @@ async fn generate(
                 ?request,
                 "sending generate request"
             );
-            let mut response = client.generate(request).await?;
+            let mut response = client.generate(request).await.with_context(|| {
+                format!("generate request failed, model_id={model_id}, provider=tgis")
+            })?;
+            debug!(
+                %model_id,
+                provider = "tgis",
+                ?response,
+                "received generate response"
+            );
             let response = response.responses.swap_remove(0);
             Ok(ClassifiedGeneratedTextResult {
                 generated_text: Some(response.text.clone()),
@@ -456,7 +497,16 @@ async fn generate(
             );
             let response = client
                 .text_generation_task_predict(&model_id, request)
-                .await?;
+                .await
+                .with_context(|| {
+                    format!("generate request failed, model_id={model_id}, provider=nlp")
+                })?;
+            debug!(
+                %model_id,
+                provider = "nlp",
+                ?response,
+                "received generate response"
+            );
             Ok(ClassifiedGeneratedTextResult {
                 generated_text: Some(response.generated_text.clone()),
                 finish_reason: Some(response.finish_reason().into()),

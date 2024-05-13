@@ -1,12 +1,13 @@
 use std::{collections::HashMap, pin::Pin};
 
+use anyhow::{Context, Error};
 use futures::{Stream, StreamExt};
 use ginepro::LoadBalancedChannel;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::Request;
 
-use super::{create_grpc_clients, Error};
+use super::create_grpc_clients;
 use crate::{
     config::ServiceConfig,
     pb::{
@@ -35,7 +36,7 @@ impl ChunkerClient {
         Ok(self
             .clients
             .get(model_id)
-            .ok_or_else(|| Error::ModelNotFound(model_id.into()))?
+            .context(format!("model not found, model_id={model_id}"))?
             .clone())
     }
 

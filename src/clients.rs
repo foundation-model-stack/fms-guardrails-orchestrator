@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 use std::{collections::HashMap, time::Duration};
 
+use anyhow::{Context, Error};
 use futures::future::try_join_all;
 use ginepro::LoadBalancedChannel;
 use url::Url;
@@ -25,18 +26,6 @@ pub const DEFAULT_CHUNKER_PORT: u16 = 8085;
 pub const DEFAULT_DETECTOR_PORT: u16 = 8080;
 const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 const DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
-
-#[derive(Debug, thiserror::Error)]
-pub enum Error {
-    #[error("model not found: {0}")]
-    ModelNotFound(String),
-    #[error(transparent)]
-    ReqwestError(#[from] reqwest::Error),
-    #[error(transparent)]
-    TonicError(#[from] tonic::Status),
-    #[error(transparent)]
-    IoError(#[from] std::io::Error),
-}
 
 #[derive(Clone)]
 pub enum GenerationClient {
@@ -89,7 +78,11 @@ pub async fn create_http_clients(
                 let identity = reqwest::Identity::from_pem(&cert_pem)?;
                 builder = builder.use_rustls_tls().identity(identity);
             }
-            let client = builder.build()?;
+            let client = builder.build().with_context(|| {
+                format!(
+                    "error creating http client, name={name}, service_config={service_config:?}"
+                )
+            })?;
             let client = HttpClient::new(base_url, client);
             Ok((name.clone(), client)) as Result<(String, HttpClient), Error>
         })
@@ -140,7 +133,7 @@ async fn create_grpc_clients<C>(
             if let Some(client_tls_config) = client_tls_config {
                 builder = builder.with_tls(client_tls_config);
             }
-            let channel = builder.channel().await.unwrap(); // TODO: handle error
+            let channel = builder.channel().await.with_context(|| format!("error creating grpc client, name={name}, service_config={service_config:?}"))?;
             Ok((name.clone(), new(channel))) as Result<(String, C), Error>
         })
         .collect::<Vec<_>>();
