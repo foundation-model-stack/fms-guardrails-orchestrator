@@ -10,7 +10,8 @@ use uuid::Uuid;
 
 use crate::{
     clients::{
-        self, detector::DetectorRequest, ChunkerClient, DetectorClient, GenerationClient, NlpClient, TgisClient,
+        self, detector::DetectorRequest, ChunkerClient, DetectorClient, GenerationClient,
+        NlpClient, TgisClient,
     },
     config::{GenerationProvider, OrchestratorConfig},
     models::{

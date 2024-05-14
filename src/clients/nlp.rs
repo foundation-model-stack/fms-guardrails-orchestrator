@@ -1,6 +1,6 @@
-use std::{collections::HashMap, pin::Pin};
+use std::collections::HashMap;
 
-use futures::{Stream, StreamExt};
+use futures::StreamExt;
 use ginepro::LoadBalancedChannel;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
@@ -11,9 +11,8 @@ use crate::{
     config::ServiceConfig,
     pb::{
         caikit::runtime::nlp::{
-            nlp_service_client::NlpServiceClient,
-            ServerStreamingTextGenerationTaskRequest, TextGenerationTaskRequest,
-            TokenClassificationTaskRequest, TokenizationTaskRequest,
+            nlp_service_client::NlpServiceClient, ServerStreamingTextGenerationTaskRequest,
+            TextGenerationTaskRequest, TokenClassificationTaskRequest, TokenizationTaskRequest,
         },
         caikit_data_model::nlp::{
             GeneratedTextResult, GeneratedTextStreamResult, TokenClassificationResults,
