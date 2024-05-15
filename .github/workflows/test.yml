@@ -9,6 +9,7 @@ on:
 env:
   CARGO_TERM_COLOR: always
   TEST_IMAGE_NAME: "orchestr8-tests:0"
+  LINT_IMAGE_NAME: "orchestr8-lint:0"
 
 jobs:
   build:
@@ -17,7 +18,8 @@ jobs:
       packages: write
       contents: read
     env:
-      CACHE_IMAGE: "ghcr.io/foundation-model-stack/fms-guardrails-orchestrator:test-cache"
+      CACHE_TEST_IMAGE: "ghcr.io/foundation-model-stack/fms-guardrails-orchestrator:test-cache"
+      CACHE_LINT_IMAGE: "ghcr.io/foundation-model-stack/fms-guardrails-orchestrator:lint-cache"
       CACHE_REGISTRY: "ghcr.io"
 
     steps:
@@ -46,23 +48,34 @@ jobs:
           if [ "${{ github.event_name }}" == "pull_request" ]
           then
               #CACHE_TO="type=gha,mode=min"
-              CACHE_TO="type=inline"
+              CACHE_TEST_TO="type=inline"
+              CACHE_LINT_TO="type=inline"
           else
-              CACHE_TO="type=registry,ref=${{ env.CACHE_IMAGE }},mode=max"
+              CACHE_TEST_TO="type=registry,ref=${{ env.CACHE_TEST_IMAGE }},mode=max"
+              CACHE_LINT_TO="type=registry,ref=${{ env.CACHE_LINT_IMAGE }},mode=max"
           fi
-          echo "CACHE_TO=$CACHE_TO" >> $GITHUB_ENV
+          echo "CACHE_TEST_TO=$CACHE_TEST_TO" >> $GITHUB_ENV
+          echo "CACHE_LINT_TO=$CACHE_LINT_TO" >> $GITHUB_ENV
+      - name: Check formatting
+        run: cargo fmt -- -check
       - name: Test
         uses: docker/build-push-action@v5
         with:
           context: .
           target: tests
           tags: ${{ env.TEST_IMAGE_NAME }}
-          cache-from: type=registry,ref=${{ env.CACHE_IMAGE }}
-          cache-to: ${{ env.CACHE_TO }}
+          cache-from: type=registry,ref=${{ env.CACHE_TEST_IMAGE }}
+          cache-to: ${{ env.CACHE_TEST_TO }}
           push: false
           platforms: linux/amd64
       - name: Lint with clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
-      - name: Check formatting
-        run: cargo fmt -- -check
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          target: lint
+          tags: ${{ env.LINT_IMAGE_NAME }}
+          cache-from: type=registry,ref=${{ env.CACHE_LINT_IMAGE }}
+          cache-to: ${{ env.CACHE_LINT_TO }}
+          push: false
+          platforms: linux/amd64
      
