@@ -10,6 +10,7 @@ env:
   CARGO_TERM_COLOR: always
   TEST_IMAGE_NAME: "orchestr8-tests:0"
   LINT_IMAGE_NAME: "orchestr8-lint:0"
+  FMT_IMAGE_NAME: "orchestr8-fmt:0"
 
 jobs:
   build:
@@ -20,6 +21,7 @@ jobs:
     env:
       CACHE_TEST_IMAGE: "ghcr.io/foundation-model-stack/fms-guardrails-orchestrator:test-cache"
       CACHE_LINT_IMAGE: "ghcr.io/foundation-model-stack/fms-guardrails-orchestrator:lint-cache"
+      CACHE_FMT_IMAGE: "ghcr.io/foundation-model-stack/fms-guardrails-orchestrator:fmt-cache"
       CACHE_REGISTRY: "ghcr.io"
 
     steps:
@@ -50,14 +52,15 @@ jobs:
               #CACHE_TO="type=gha,mode=min"
               CACHE_TEST_TO="type=inline"
               CACHE_LINT_TO="type=inline"
+              CACHE_FMT_TO="type=inline"
           else
               CACHE_TEST_TO="type=registry,ref=${{ env.CACHE_TEST_IMAGE }},mode=max"
               CACHE_LINT_TO="type=registry,ref=${{ env.CACHE_LINT_IMAGE }},mode=max"
+              CACHE_FMT_TO="type=registry,ref=${{ env.CACHE_FMT_IMAGE }},mode=max"
           fi
           echo "CACHE_TEST_TO=$CACHE_TEST_TO" >> $GITHUB_ENV
           echo "CACHE_LINT_TO=$CACHE_LINT_TO" >> $GITHUB_ENV
-      - name: Check formatting
-        run: cargo fmt --check
+          echo "CACHE_FMT_TO=$CACHE_FMT_TO" >> $GITHUB_ENV
       - name: Test
         uses: docker/build-push-action@v5
         with:
@@ -78,4 +81,13 @@ jobs:
           cache-to: ${{ env.CACHE_LINT_TO }}
           push: false
           platforms: linux/amd64
-     
+      - name: Format
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          target: format
+          tags: ${{ env.FMT_IMAGE_NAME }}
+          cache-from: type=registry,ref=${{ env.CACHE_FMT_IMAGE }}
+          cache-to: ${{ env.CACHE_FMT_TO }}
+          push: false
+          platforms: linux/amd64
