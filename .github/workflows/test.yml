@@ -57,7 +57,7 @@ jobs:
           echo "CACHE_TEST_TO=$CACHE_TEST_TO" >> $GITHUB_ENV
           echo "CACHE_LINT_TO=$CACHE_LINT_TO" >> $GITHUB_ENV
       - name: Check formatting
-        run: cargo fmt -- -check
+        run: cargo fmt --check
       - name: Test
         uses: docker/build-push-action@v5
         with:
