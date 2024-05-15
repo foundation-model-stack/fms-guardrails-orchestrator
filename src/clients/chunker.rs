@@ -14,9 +14,7 @@ use crate::{
             chunkers_service_client::ChunkersServiceClient, BidiStreamingTokenizationTaskRequest,
             TokenizationTaskRequest,
         },
-        caikit_data_model::nlp::{
-            TokenizationResults, TokenizationStreamResult,
-        },
+        caikit_data_model::nlp::{TokenizationResults, TokenizationStreamResult},
     },
 };
 
@@ -73,7 +71,6 @@ impl ChunkerClient {
         });
         Ok(ReceiverStream::new(rx))
     }
-
 }
 
 fn request_with_model_id<T>(request: T, model_id: &str) -> Request<T> {
