@@ -37,9 +37,13 @@ RUN cargo install --root /app/ --path .
 FROM fms-guardrails-orchestr8-builder as tests
 RUN cargo test
 
-## Lint stage ##################################################################
+## Lint stage ###################################################################
 FROM fms-guardrails-orchestr8-builder as lint
 RUN cargo clippy --all-targets --all-features -- -D warnings
+
+## Formatting check stage #######################################################
+FROM fms-guardrails-orchestr8-builder as format
+RUN cargo fmt --check
 
 ## Release Image ################################################################
 
