@@ -33,10 +33,21 @@ WORKDIR /app
 # TODO: Make releases via cargo-release
 RUN cargo install --root /app/ --path .
 
+## Tests stage ##################################################################
+FROM fms-guardrails-orchestr8-builder as tests
+RUN cargo test
+
+## Lint stage ###################################################################
+FROM fms-guardrails-orchestr8-builder as lint
+RUN cargo clippy --all-targets --all-features -- -D warnings
+
+## Formatting check stage #######################################################
+FROM fms-guardrails-orchestr8-builder as format
+RUN cargo fmt --check
 
 ## Release Image ################################################################
 
-FROM ${UBI_MINIMAL_BASE_IMAGE}:${UBI_BASE_IMAGE_TAG}
+FROM ${UBI_MINIMAL_BASE_IMAGE}:${UBI_BASE_IMAGE_TAG} as fms-guardrails-orchestr8-release
 
 COPY --from=fms-guardrails-orchestr8-builder /app/bin/ /app/bin/
 COPY config /app/config
