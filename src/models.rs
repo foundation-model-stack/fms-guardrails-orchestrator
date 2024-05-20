@@ -1,8 +1,8 @@
 #![allow(unused_qualifications)]
 
-use std::collections::HashMap;
-
 use crate::pb;
+use std::collections::HashMap;
+use std::ops::Range;
 
 pub type DetectorParams = HashMap<String, serde_json::Value>;
 
@@ -68,8 +68,14 @@ impl GuardrailsConfig {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct SpanContext {
+    pub(crate) span_range: Range<usize>,
+}
+
 /// Configuration for detection on input to a text generation model (e.g. user prompt)
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, garde::Validate)]
+#[garde(context(SpanContext))]
 pub struct GuardrailsConfigInput {
     /// Map of model name to model specific parameters
     #[serde(rename = "models")]
@@ -80,9 +86,45 @@ pub struct GuardrailsConfigInput {
     /// to spans of input text on which to run input detection
     #[serde(rename = "masks")]
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[garde(skip)] // TODO: custom
+    #[garde(inner(inner(custom(custom_validate_fn))))] // evaluate span portion
     pub masks: Option<Vec<(usize, usize)>>,
 }
+
+fn custom_validate_fn(v: &(usize, usize), args: &SpanContext) -> garde::Result {
+    let span_start = &v.0;
+    let span_end = &v.1;
+    let contains_span_start = args
+        .span_range
+        .contains(span_start)
+        .then_some(())
+        .ok_or_else(|| garde::Error::new(format!("span start {span_start} is out of range")));
+
+    let contains_span_end = args
+        .span_range
+        .contains(span_end)
+        .then_some(())
+        .ok_or_else(|| garde::Error::new(format!("span end {span_end} is out of range")));
+
+    match (contains_span_start, contains_span_end) {
+        (Ok(()), Ok(())) => Ok(()),
+        (Err(e1), Ok(())) => Err(e1),
+        (Ok(()), Err(e2)) => Err(e2),
+        (Err(e1), Err(e2)) => Err(e1), // Show at least one error
+        _ => Err(garde::Error::new("Error validating spans")),
+    }
+}
+
+// fn custom_validate_fn(value: &Vec<(usize, usize)>, context: &Context) -> garde::Result {
+//     // if value.is_none() {
+//     //     return Ok(());
+//     // }
+//     for (span_start, span_end) in value.into_iter() {
+//         if (*span_start < 0) || (*span_end < 0) {
+//             return Err(garde::Error::new("span_start {} or span_end {} < 0"));
+//         }
+//     }
+//     Ok(())
+// }
 
 /// Configuration for detection on output of a text generation model
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, garde::Validate)]
