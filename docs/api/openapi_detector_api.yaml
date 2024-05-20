@@ -1,10 +1,12 @@
 openapi: 3.0.1
 info:
-  title: Detector API
+  title: Detector API (WIP)
   version: 0.1.0
 paths:
   /api/v1/detector:
     post:
+      tags:
+        - Detector API
       operationId: detector_unary_handler_api_v1_detector_post
       parameters:
       - example: profanity.detector.v1-en
