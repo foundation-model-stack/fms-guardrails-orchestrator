@@ -1,12 +1,13 @@
+pub mod errors;
 use std::{collections::HashMap, sync::Arc};
 
-use anyhow::{Context as _, Error};
+pub use errors::Error;
 use futures::{
     future::try_join_all,
     stream::{self, StreamExt},
 };
 use tokio_stream::wrappers::ReceiverStream;
-use tracing::{debug, info};
+use tracing::{debug, error, info};
 use uuid::Uuid;
 
 use crate::{
@@ -21,8 +22,10 @@ use crate::{
         InputWarningReason, TextGenTokenClassificationResults, TokenClassificationResult,
     },
     pb::{
-        caikit::runtime::chunkers::TokenizationTaskRequest as ChunkersTokenizationTaskRequest,
-        caikit::runtime::nlp::{TextGenerationTaskRequest, TokenizationTaskRequest},
+        caikit::runtime::{
+            chunkers::TokenizationTaskRequest as ChunkersTokenizationTaskRequest,
+            nlp::{TextGenerationTaskRequest, TokenizationTaskRequest},
+        },
         fmaas::{
             BatchedGenerationRequest, BatchedTokenizeRequest, GenerationRequest, TokenizeRequest,
         },
@@ -47,7 +50,7 @@ pub struct Orchestrator {
 
 impl Orchestrator {
     pub async fn new(config: OrchestratorConfig) -> Result<Self, Error> {
-        let (generation_client, chunker_client, detector_client) = create_clients(&config).await?;
+        let (generation_client, chunker_client, detector_client) = create_clients(&config).await;
         let ctx = Arc::new(Context {
             config,
             generation_client,
@@ -69,7 +72,7 @@ impl Orchestrator {
             "handling unary task"
         );
         let ctx = self.ctx.clone();
-        tokio::spawn(async move {
+        let task_handle = tokio::spawn(async move {
             let masks = task.guardrails_config.input_masks();
             let input_detectors = task.guardrails_config.input_detectors();
             let output_detectors = task.guardrails_config.output_detectors();
@@ -137,8 +140,20 @@ impl Orchestrator {
                 }
                 Ok(generation_results)
             }
-        })
-        .await?
+        });
+        match task_handle.await {
+            Ok(Ok(result)) => Ok(result),
+            Ok(Err(error)) => {
+                error!(request_id = ?task.request_id, %error, "unary task failed");
+                Err(error)
+            }
+            Err(error) => {
+                // Task failed due to cancellation or panic
+                let error = error.into();
+                error!(request_id = ?task.request_id, %error, "unary task failed");
+                Err(error)
+            }
+        }
     }
 
     /// Handles streaming tasks.
@@ -171,10 +186,12 @@ async fn chunk_and_detect(
     let chunker_ids = detectors
         .keys()
         .map(|detector_id| {
-            let chunker_id = ctx
-                .config
-                .get_chunker_id(detector_id)
-                .context(format!("detector not found, detector_id={detector_id}"))?;
+            let chunker_id =
+                ctx.config
+                    .get_chunker_id(detector_id)
+                    .ok_or_else(|| Error::InvalidDetectorId {
+                        detector_id: detector_id.clone(),
+                    })?;
             Ok::<String, Error>(chunker_id)
         })
         .collect::<Result<Vec<_>, Error>>()?;
@@ -218,10 +235,11 @@ async fn detect(
             let ctx = ctx.clone();
             let detector_id = detector_id.clone();
             let detector_params = detector_params.clone();
-            let chunker_id = ctx
-                .config
-                .get_chunker_id(&detector_id)
-                .context(format!("detector not found, detector_id={detector_id}"))?;
+            let chunker_id = ctx.config.get_chunker_id(&detector_id).ok_or_else(|| {
+                Error::InvalidDetectorId {
+                    detector_id: detector_id.clone(),
+                }
+            })?;
             let chunks = chunks.get(&chunker_id).unwrap().clone();
             Ok(tokio::spawn(async move {
                 handle_detection_task(ctx, detector_id, detector_params, chunks).await
@@ -259,7 +277,10 @@ async fn handle_chunk_task(
                     .chunker_client
                     .tokenization_task_predict(&chunker_id, request)
                     .await
-                    .with_context(|| format!("chunker request failed, chunker_id={chunker_id}"))?;
+                    .map_err(|error| Error::ChunkerRequestFailed {
+                        chunker_id: chunker_id.clone(),
+                        error,
+                    })?;
                 debug!(
                     %chunker_id,
                     ?response,
@@ -310,8 +331,9 @@ async fn handle_detection_task(
                     .detector_client
                     .classify(&detector_id, request)
                     .await
-                    .with_context(|| {
-                        format!("detector request failed, detector_id={detector_id}")
+                    .map_err(|error| Error::DetectorRequestFailed {
+                        detector_id: detector_id.clone(),
+                        error,
                     })?;
                 debug!(
                     %detector_id,
@@ -364,10 +386,14 @@ async fn tokenize(
                 ?request,
                 "sending tokenize request"
             );
-            let mut response = client
-                .tokenize(request)
-                .await
-                .with_context(|| format!("tokenize request failed, model_id={model_id}"))?;
+            let mut response =
+                client
+                    .tokenize(request)
+                    .await
+                    .map_err(|error| Error::TokenizeRequestFailed {
+                        model_id: model_id.clone(),
+                        error,
+                    })?;
             debug!(
                 %model_id,
                 provider = "tgis",
@@ -385,7 +411,13 @@ async fn tokenize(
                 ?request,
                 "sending tokenize request"
             );
-            let response = client.tokenization_task_predict(&model_id, request).await?;
+            let response = client
+                .tokenization_task_predict(&model_id, request)
+                .await
+                .map_err(|error| Error::TokenizeRequestFailed {
+                    model_id: model_id.clone(),
+                    error,
+                })?;
             debug!(
                 %model_id,
                 provider = "nlp",
@@ -425,9 +457,14 @@ async fn generate(
                 ?request,
                 "sending generate request"
             );
-            let mut response = client.generate(request).await.with_context(|| {
-                format!("generate request failed, model_id={model_id}, provider=tgis")
-            })?;
+            let mut response =
+                client
+                    .generate(request)
+                    .await
+                    .map_err(|error| Error::GenerateRequestFailed {
+                        model_id: model_id.clone(),
+                        error,
+                    })?;
             debug!(
                 %model_id,
                 provider = "tgis",
@@ -498,8 +535,9 @@ async fn generate(
             let response = client
                 .text_generation_task_predict(&model_id, request)
                 .await
-                .with_context(|| {
-                    format!("generate request failed, model_id={model_id}, provider=nlp")
+                .map_err(|error| Error::GenerateRequestFailed {
+                    model_id: model_id.clone(),
+                    error,
                 })?;
             debug!(
                 %model_id,
@@ -547,7 +585,7 @@ fn apply_masks(text: &str, masks: &[(usize, usize)]) -> Vec<(usize, String)> {
 
 async fn create_clients(
     config: &OrchestratorConfig,
-) -> Result<(GenerationClient, ChunkerClient, DetectorClient), Error> {
+) -> (GenerationClient, ChunkerClient, DetectorClient) {
     // TODO: create better solution for routers
     let generation_client = match config.generation.provider {
         GenerationProvider::Tgis => {
@@ -555,7 +593,7 @@ async fn create_clients(
                 clients::DEFAULT_TGIS_PORT,
                 &[("tgis-router".to_string(), config.generation.service.clone())],
             )
-            .await?;
+            .await;
             GenerationClient::Tgis(client)
         }
         GenerationProvider::Nlp => {
@@ -563,7 +601,7 @@ async fn create_clients(
                 clients::DEFAULT_CAIKIT_NLP_PORT,
                 &[("tgis-router".to_string(), config.generation.service.clone())],
             )
-            .await?;
+            .await;
             GenerationClient::Nlp(client)
         }
     };
@@ -573,7 +611,7 @@ async fn create_clients(
         .iter()
         .map(|(chunker_id, config)| (chunker_id.clone(), config.service.clone()))
         .collect::<Vec<_>>();
-    let chunker_client = ChunkerClient::new(clients::DEFAULT_CHUNKER_PORT, &chunker_config).await?;
+    let chunker_client = ChunkerClient::new(clients::DEFAULT_CHUNKER_PORT, &chunker_config).await;
 
     let detector_config = config
         .detectors
@@ -581,9 +619,9 @@ async fn create_clients(
         .map(|(detector_id, config)| (detector_id.clone(), config.service.clone()))
         .collect::<Vec<_>>();
     let detector_client =
-        DetectorClient::new(clients::DEFAULT_DETECTOR_PORT, &detector_config).await?;
+        DetectorClient::new(clients::DEFAULT_DETECTOR_PORT, &detector_config).await;
 
-    Ok((generation_client, chunker_client, detector_client))
+    (generation_client, chunker_client, detector_client)
 }
 
 #[derive(Debug, Clone)]

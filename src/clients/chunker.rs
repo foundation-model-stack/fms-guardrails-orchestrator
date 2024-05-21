@@ -1,13 +1,12 @@
 use std::{collections::HashMap, pin::Pin};
 
-use anyhow::{Context, Error};
 use futures::{Stream, StreamExt};
 use ginepro::LoadBalancedChannel;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::Request;
 
-use super::create_grpc_clients;
+use super::{create_grpc_clients, Error};
 use crate::{
     config::ServiceConfig,
     pb::{
@@ -27,16 +26,18 @@ pub struct ChunkerClient {
 }
 
 impl ChunkerClient {
-    pub async fn new(default_port: u16, config: &[(String, ServiceConfig)]) -> Result<Self, Error> {
-        let clients = create_grpc_clients(default_port, config, ChunkersServiceClient::new).await?;
-        Ok(Self { clients })
+    pub async fn new(default_port: u16, config: &[(String, ServiceConfig)]) -> Self {
+        let clients = create_grpc_clients(default_port, config, ChunkersServiceClient::new).await;
+        Self { clients }
     }
 
     fn client(&self, model_id: &str) -> Result<ChunkersServiceClient<LoadBalancedChannel>, Error> {
         Ok(self
             .clients
             .get(model_id)
-            .context(format!("model not found, model_id={model_id}"))?
+            .ok_or_else(|| Error::InvalidModelId {
+                model_id: model_id.to_string(),
+            })?
             .clone())
     }
 

@@ -1,9 +1,9 @@
 #![allow(dead_code)]
 use std::{collections::HashMap, time::Duration};
 
-use anyhow::{Context, Error};
-use futures::future::try_join_all;
+use futures::future::join_all;
 use ginepro::LoadBalancedChannel;
+use reqwest::StatusCode;
 use url::Url;
 
 use crate::config::{ServiceConfig, Tls};
@@ -26,6 +26,54 @@ pub const DEFAULT_CHUNKER_PORT: u16 = 8085;
 pub const DEFAULT_DETECTOR_PORT: u16 = 8080;
 const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 const DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Client errors.
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    #[error("{}", .0.message())]
+    Grpc(#[from] tonic::Status),
+    #[error("{0}")]
+    Http(#[from] reqwest::Error),
+    #[error("invalid model id: {model_id}")]
+    InvalidModelId { model_id: String },
+}
+
+impl Error {
+    /// Returns status code.
+    pub fn status_code(&self) -> StatusCode {
+        use tonic::Code::*;
+        match self {
+            // Return equivalent http status code for grpc status code
+            Error::Grpc(error) => match error.code() {
+                InvalidArgument => StatusCode::BAD_REQUEST,
+                Internal => StatusCode::INTERNAL_SERVER_ERROR,
+                NotFound => StatusCode::NOT_FOUND,
+                DeadlineExceeded => StatusCode::REQUEST_TIMEOUT,
+                Unimplemented => StatusCode::NOT_IMPLEMENTED,
+                Unauthenticated => StatusCode::UNAUTHORIZED,
+                PermissionDenied => StatusCode::FORBIDDEN,
+                Ok => StatusCode::OK,
+                _ => StatusCode::INTERNAL_SERVER_ERROR,
+            },
+            // Return http status code for error responses
+            // and 500 for other errors
+            Error::Http(error) => match error.status() {
+                Some(code) => code,
+                None => StatusCode::INTERNAL_SERVER_ERROR,
+            },
+            // Return 422 for invalid model id
+            Error::InvalidModelId { .. } => StatusCode::UNPROCESSABLE_ENTITY,
+        }
+    }
+
+    /// Returns true for validation-type errors (400/422) and false for other types.
+    pub fn is_validation_error(&self) -> bool {
+        matches!(
+            self.status_code(),
+            StatusCode::BAD_REQUEST | StatusCode::UNPROCESSABLE_ENTITY
+        )
+    }
+}
 
 #[derive(Clone)]
 pub enum GenerationClient {
@@ -60,7 +108,7 @@ impl std::ops::Deref for HttpClient {
 pub async fn create_http_clients(
     default_port: u16,
     config: &[(String, ServiceConfig)],
-) -> Result<HashMap<String, HttpClient>, Error> {
+) -> HashMap<String, HttpClient> {
     let clients = config
         .iter()
         .map(|(name, service_config)| async move {
@@ -75,26 +123,25 @@ pub async fn create_http_clients(
                 let cert_pem = tokio::fs::read(cert_path).await.unwrap_or_else(|error| {
                     panic!("error reading cert from {cert_path:?}: {error}")
                 });
-                let identity = reqwest::Identity::from_pem(&cert_pem)?;
+                let identity = reqwest::Identity::from_pem(&cert_pem)
+                    .unwrap_or_else(|error| panic!("error creating identity: {error}"));
                 builder = builder.use_rustls_tls().identity(identity);
             }
-            let client = builder.build().with_context(|| {
-                format!(
-                    "error creating http client, name={name}, service_config={service_config:?}"
-                )
-            })?;
+            let client = builder
+                .build()
+                .unwrap_or_else(|error| panic!("error creating http client for {name}: {error}"));
             let client = HttpClient::new(base_url, client);
-            Ok((name.clone(), client)) as Result<(String, HttpClient), Error>
+            (name.clone(), client)
         })
         .collect::<Vec<_>>();
-    Ok(try_join_all(clients).await?.into_iter().collect())
+    join_all(clients).await.into_iter().collect()
 }
 
 async fn create_grpc_clients<C>(
     default_port: u16,
     config: &[(String, ServiceConfig)],
     new: fn(LoadBalancedChannel) -> C,
-) -> Result<HashMap<String, C>, Error> {
+) -> HashMap<String, C> {
     let clients = config
         .iter()
         .map(|(name, service_config)| async move {
@@ -133,9 +180,9 @@ async fn create_grpc_clients<C>(
             if let Some(client_tls_config) = client_tls_config {
                 builder = builder.with_tls(client_tls_config);
             }
-            let channel = builder.channel().await.with_context(|| format!("error creating grpc client, name={name}, service_config={service_config:?}"))?;
-            Ok((name.clone(), new(channel))) as Result<(String, C), Error>
+            let channel = builder.channel().await.unwrap_or_else(|error| panic!("error creating grpc client for {name}: {error}"));
+            (name.clone(), new(channel))
         })
         .collect::<Vec<_>>();
-    Ok(try_join_all(clients).await?.into_iter().collect())
+    join_all(clients).await.into_iter().collect()
 }

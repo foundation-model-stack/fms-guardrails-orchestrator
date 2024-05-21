@@ -1,9 +1,8 @@
 use std::collections::HashMap;
 
-use anyhow::{Context, Error};
 use serde::{Deserialize, Serialize};
 
-use super::{create_http_clients, HttpClient};
+use super::{create_http_clients, Error, HttpClient};
 use crate::config::ServiceConfig;
 
 const DETECTOR_ID_HEADER_NAME: &str = "detector-id";
@@ -14,17 +13,18 @@ pub struct DetectorClient {
 }
 
 impl DetectorClient {
-    pub async fn new(default_port: u16, config: &[(String, ServiceConfig)]) -> Result<Self, Error> {
-        let clients: HashMap<String, HttpClient> =
-            create_http_clients(default_port, config).await?;
-        Ok(Self { clients })
+    pub async fn new(default_port: u16, config: &[(String, ServiceConfig)]) -> Self {
+        let clients: HashMap<String, HttpClient> = create_http_clients(default_port, config).await;
+        Self { clients }
     }
 
     fn client(&self, model_id: &str) -> Result<HttpClient, Error> {
         Ok(self
             .clients
             .get(model_id)
-            .context(format!("model not found, model_id={model_id}"))?
+            .ok_or_else(|| Error::InvalidModelId {
+                model_id: model_id.to_string(),
+            })?
             .clone())
     }
 
