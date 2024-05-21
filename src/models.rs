@@ -742,3 +742,62 @@ impl From<ExponentialDecayLengthPenalty>
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_upfront_validate() {
+        // Expected OK case
+        let request = GuardrailsHttpRequest {
+            model_id: "model".to_string(),
+            inputs: "The cow jumped over the moon!".to_string(),
+            guardrail_config: Some(GuardrailsConfig {
+                input: Some(GuardrailsConfigInput {
+                    masks: Some(vec![(5, 8)]),
+                    models: Some(HashMap::new()),
+                }),
+                output: Some(GuardrailsConfigOutput {
+                    models: Some(HashMap::new()),
+                }),
+            }),
+            text_gen_parameters: None,
+        };
+        assert!(request.upfront_validate().is_ok());
+
+        // Mask span beyond inputs
+        let request = GuardrailsHttpRequest {
+            model_id: "model".to_string(),
+            inputs: "short".to_string(),
+            guardrail_config: Some(GuardrailsConfig {
+                input: Some(GuardrailsConfigInput {
+                    masks: Some(vec![(0, 12)]),
+                    models: Some(HashMap::new()),
+                }),
+                output: Some(GuardrailsConfigOutput {
+                    models: Some(HashMap::new()),
+                }),
+            }),
+            text_gen_parameters: None,
+        };
+        assert!(request.upfront_validate().is_err());
+
+        // Mask span end less than span start
+        let request = GuardrailsHttpRequest {
+            model_id: "model".to_string(),
+            inputs: "This is ignored anyway!".to_string(),
+            guardrail_config: Some(GuardrailsConfig {
+                input: Some(GuardrailsConfigInput {
+                    masks: Some(vec![(12, 8)]),
+                    models: Some(HashMap::new()),
+                }),
+                output: Some(GuardrailsConfigOutput {
+                    models: Some(HashMap::new()),
+                }),
+            }),
+            text_gen_parameters: None,
+        };
+        assert!(request.upfront_validate().is_err());
+    }
+}
