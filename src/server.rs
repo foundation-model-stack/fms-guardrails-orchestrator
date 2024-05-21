@@ -11,7 +11,6 @@ use axum::{
     Json, Router,
 };
 use futures::StreamExt;
-use garde::Validate;
 use tokio::{net::TcpListener, signal};
 use tracing::{error, info};
 use uuid::Uuid;
@@ -84,7 +83,7 @@ async fn classification_with_gen(
 ) -> Result<impl IntoResponse, Error> {
     let request_id = Uuid::new_v4();
     // Upfront request validation
-    if let Err(e) = request.validate(&()) {
+    if let Err(e) = request.upfront_validate() {
         return Err((StatusCode::BAD_REQUEST, Json(e.to_string())));
     };
     let task = ClassificationWithGenTask::new(request_id, request);
