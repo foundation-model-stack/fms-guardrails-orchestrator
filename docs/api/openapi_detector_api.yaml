@@ -1,142 +1,587 @@
 openapi: 3.0.1
 info:
-  title: Detector API (WIP)
-  version: 0.1.0
+  title: Detectors API (WIP)
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0.html
+  version: 0.0.1
 paths:
-  /api/v1/detector:
+  /api/v1/text/content:
     post:
-      tags:
-        - Detector API
-      operationId: detector_unary_handler_api_v1_detector_post
+      summary: Text Content Analysis Unary Handler
+      description: >-
+        Detectors that work on content text, be it user prompt or generated
+        text. Generally classification type detectors qualify for this. <br>
+        - HAP <br>
+        - PII <br>
+        - Prompt injection/Jailbreak <br>
+      operationId: text_content_analysis_unary_handler
       parameters:
-      - example: profanity.detector.v1-en
-        in: header
-        name: detector-id
-        required: true
-        schema:
-          title: Detector-Id
-          type: string
+        - name: detector-id
+          in: header
+          required: true
+          schema:
+            type: string
+            title: Detector-Id
+          example: dummy-en-pii-v1
       requestBody:
+        required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/DetectorHttpRequest'
-        required: true
+              $ref: '#/components/schemas/TextAnalysisHttpRequest'
       responses:
         '200':
+          description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/DetectorResponseList'
-          description: Successful Response
+                type: array
+                items:
+                  $ref: '#/components/schemas/TextAnalysisResponse'
+                title: >-
+                  Response Text Content Analysis Unary Handler Api V1 Text
+                  Content Post
+                example:
+                - start: 15
+                  end: 25
+                  detection_type: pii
+                  detection: EmailAddress
+                  score: 0.99
+                - start: 105
+                  end: 116
+                  detection_type: pii
+                  detection: SocialSecurity
+                  score: 0.99
+        '404':
+          description: Resource Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '422':
+          description: Validation Error
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/text/generation:
+    post:
+      summary: Generation Analysis Unary Handler
+      description: >-
+        Detectors that run on prompt and text generation output.  <br>
+        - Answer relevance <br>
+        - Faithfulness <br>
+      operationId: generation_analysis_unary_handler
+      parameters:
+        - name: detector-id
+          in: header
+          required: true
+          schema:
+            type: string
+            title: Detector-Id
+          example: dummy-en-answer-relevance-v1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenerationAnalysisHttpRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/GenerationAnalysisResponse'
+                title: >-
+                  Response Generation Analysis Unary Handler Api V1 Text
+                  Generation Post
+                example:
+                  - detection: relevant
+                    detection_type: answer_relevance
+                    score: 0.89
+        '404':
+          description: Resource Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
           description: Validation Error
-      summary: Detector Unary Handler
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/text/context/chat:
+    post:
+      summary: Chat Analysis Unary Handler
+      description: >-
+        Detectors that work on analysis chat history and provide detections <br>
+        - Egregious conversation detector <br>
+      operationId: chat_analysis_unary_handler_api_v1_text_context_chat_post
+      parameters:
+        - name: detector-id
+          in: header
+          required: false
+          schema:
+            type: string
+            default: dummy-en-chat-v1
+            title: Detector-Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatAnalysisHttpRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ChatAnalysisResponse'
+                title: >-
+                  Response Chat Analysis Unary Handler Api V1 Text Context Chat
+                  Post
+                example:
+                  - detection: quantity_1
+                    detection_type: egregious
+                    score: 0.68
+                  - detection: quantity_2
+                    detection_type: egregious
+                    score: 0.79
+        '404':
+          description: Resource Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/text/context/doc:
+    post:
+      summary: Context Analysis Unary Handler
+      description: >-
+        Detectors that work on a context based inputs.<br>
+        - Context relevance <br>
+        - Faithfulness / Groundedness <br>
+      operationId: context_analysis_unary_handler_api_v1_text_context_doc_post
+      parameters:
+        - name: detector-id
+          in: header
+          required: true
+          schema:
+            type: string
+            title: Detector-Id
+          example: dummy-en-context-relevance-v1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContextAnalysisHttpRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ContextAnalysisResponse'
+                title: >-
+                  Response Context Analysis Unary Handler Api V1 Text Context
+                  Doc Post
+                example:
+                  - detection: "relevant"
+                    detection_type: "context_relevance"
+                    score: 0.99
+        '404':
+          description: Resource Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
 components:
   schemas:
-    DetectorHttpRequest:
+    ChatAnalysisHttpRequest:
       properties:
-        text:
-          example: This is my amazing prompt
-          title: Text
-          type: string
-        parameters:
-          additionalProperties:
-            anyOf:
-            - items:
-                type: object
-              type: array
-            - type: boolean
-            - type: number
-            - type: integer
-            - type: object
-            - type: string
-          example:
-            threshold: 0.8
-          title: Parameters
-          type: object
-      required:
-      - text
-      - parameters
-      title: DetectorHttpRequest
-      type: object
-    DetectorResponse:
-      properties:
-        start:
-          example: 0
-          title: Start
-          type: integer
-        end:
-          example: 10
-          title: End
-          type: integer
-        text:
-          example: my bad text
-          title: Text
-          type: string
-        detection:
-          example: has_HAP
-          title: Detection
-          type: string
-        detection_type:
-          example: hap
-          title: Detection Type
-          type: string
-        score:
-          example: 0.5
-          title: Score
-          type: number
-      required:
-      - start
-      - end
-      - text
-      - detection
-      - detection_type
-      - score
-      title: DetectorResponse
-      type: object
-    DetectorResponseList:
-      properties:
-        detections:
+        chat_history:
           items:
-            $ref: '#/components/schemas/DetectorResponse'
-          title: Detections
+            $ref: '#/components/schemas/Message'
           type: array
-      required:
-      - detections
-      title: DetectorResponseList
+          title: Chat History
+          example:
+            - content: You are a helpful assistant.
+              role: system
+            - content: Hi, is this powered by siri or alexa?
+              role: user
+            - content: Better, it's watsonx
+              role: assistant
+            - content: This is awesome!
+              role: user
       type: object
+      required:
+        - chat_history
+      title: ChatAnalysisHttpRequest
+    ChatAnalysisResponse:
+      properties:
+        detection:
+          type: string
+          title: Detection
+          example: quantity_1
+        detection_type:
+          type: string
+          title: Detection Type
+          example: context_relevance
+        score:
+          type: number
+          title: Score
+          example: 0.684
+        evidences:
+          anyOf:
+            - $ref: '#/components/schemas/EvidenceObj'
+          description: Optional field providing evidences for the provided detection
+      type: object
+      required:
+        - detection
+        - detection_type
+        - score
+      title: ChatAnalysisResponse
+    ContextAnalysisHttpRequest:
+      properties:
+        prompt:
+          type: string
+          title: Prompt
+          example: What is the name of the solar powered car race held every two years?
+        context_type:
+          allOf:
+            - $ref: '#/components/schemas/ContextType'
+          example: url
+        context:
+          anyOf:
+            - items:
+                type: string
+              type: array
+          title: Context
+          description: URLs of the content to be used
+          example:
+            - https://en.wikipedia.org/wiki/IBM
+            - https://research.ibm.com/
+      type: object
+      required:
+        - prompt
+        - context_type
+        - context
+      title: ContextAnalysisHttpRequest
+    ContextAnalysisResponse:
+      properties:
+        detection:
+          type: string
+          title: Detection
+          example: relevant
+        detection_type:
+          type: string
+          title: Detection Type
+          example: context_relevance
+        score:
+          type: number
+          title: Score
+          example: 0.5
+        evidences:
+          anyOf:
+            - $ref: '#/components/schemas/EvidenceObj'
+          description: Optional field providing evidences for the provided detection
+      type: object
+      required:
+        - detection
+        - detection_type
+        - score
+      title: ContextAnalysisResponse
+    ContextType:
+      type: string
+      enum:
+        - url
+        - chunks
+        - document
+      title: ContextType
+      description: >-
+        A collection of name/value pairs.
+
+        Access them by:
+
+        - attribute access::
+
+        >>> ContextType.url <ContextType.url: 'url'>
+
+        - value lookup:
+
+        >>> ContextType('url') <ContextType.url: 'url'>
+
+        - name lookup:
+
+        >>> ContextType['url'] <ContextType.url: 'url'>
+
+        Enumerations can be iterated over, and know how many members they have:
+
+        >>> len(ContextType) 3
+
+        >>> list(ContextType) [<ContextType.url: 'url'>, <ContextType.chunks:
+        'chunks'>, <ContextType.document: 'document'>]
+
+        Methods can be added to enumerations, and members can have their own
+        attributes -- see the documentation for details.
+    Evidence:
+      properties:
+        source:
+          type: string
+          title: Source
+          description: source of the evidence, it can be url of the evidence etc
+          example: https://en.wikipedia.org/wiki/IBM
+      type: object
+      required:
+        - source
+      title: Evidence
+    EvidenceObj:
+      properties:
+        type:
+          allOf:
+            - $ref: '#/components/schemas/EvidenceType'
+          description: >-
+            Type field signifying the type of evidence provided. Example url,
+            title etc
+          example: url
+        evidence:
+          allOf:
+            - $ref: '#/components/schemas/Evidence'
+          description: >-
+            Evidence object, currently only containing source, but in future can
+            contain other optional arguments like id, etc
+          example:
+            source: https://en.wikipedia.org/wiki/IBM
+      type: object
+      required:
+        - type
+      title: EvidenceObj
+    EvidenceType:
+      type: string
+      enum:
+        - url
+        - title
+      title: EvidenceType
+      description: >-
+        A collection of name/value pairs.
+
+        Access them by:
+
+        - attribute access::
+
+        >>> EvidenceType.url <EvidenceType.url: 'url'>
+
+        - value lookup:
+
+        >>> EvidenceType('url') <EvidenceType.url: 'url'>
+
+        - name lookup:
+
+        >>> EvidenceType['url'] <EvidenceType.url: 'url'>
+
+        Enumerations can be iterated over, and know how many members they have:
+
+        >>> len(EvidenceType) 2
+
+        >>> list(EvidenceType) [<EvidenceType.url: 'url'>, <EvidenceType.title:
+        'title'>]
+
+        Methods can be added to enumerations, and members can have their own
+        attributes -- see the documentation for details.
+    GenerationAnalysisHttpRequest:
+      properties:
+        prompt:
+          type: string
+          title: Prompt
+          description: prompt is the user input to the LLM
+          example: This is my amazing prompt
+        generated_text:
+          type: string
+          title: Generated Text
+          description: Generated response from the LLM
+          example: Some text generated by an LLM
+      type: object
+      required:
+        - prompt
+        - generated_text
+      title: GenerationAnalysisHttpRequest
+    GenerationAnalysisResponse:
+      properties:
+        detection:
+          type: string
+          title: Detection
+          example: foo
+        detection_type:
+          type: string
+          title: Detection Type
+          example: bar
+        score:
+          type: number
+          title: Score
+          example: 0.5
+        evidences:
+          anyOf:
+            - $ref: '#/components/schemas/EvidenceObj'
+          description: Optional field providing evidences for the provided detection
+      type: object
+      required:
+        - detection
+        - detection_type
+        - score
+      title: GenerationAnalysisResponse
     HTTPValidationError:
       properties:
         detail:
           items:
             $ref: '#/components/schemas/ValidationError'
-          title: Detail
           type: array
-      title: HTTPValidationError
+          title: Detail
       type: object
+      title: HTTPValidationError
+    Error:
+      type: object
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+      required:
+        - code
+        - message
+    Message:
+      properties:
+        role:
+          allOf:
+            - $ref: '#/components/schemas/RoleEnum'
+          description: 'Who wrote the message: [<enum ''RoleEnum''>]'
+        content:
+          type: string
+          title: Content
+          description: The text of the message
+      type: object
+      required:
+        - role
+        - content
+      title: Message
+    RoleEnum:
+      type: string
+      enum:
+        - system
+        - assistant
+        - user
+      title: RoleEnum
+      description: >-
+        A collection of name/value pairs.
+
+        Access them by:
+
+        - attribute access::
+
+        >>> RoleEnum.system <RoleEnum.system: 'system'>
+
+        - value lookup:
+
+        >>> RoleEnum('system') <RoleEnum.system: 'system'>
+
+        - name lookup:
+
+        >>> RoleEnum['system'] <RoleEnum.system: 'system'>
+
+        Enumerations can be iterated over, and know how many members they have:
+
+        >>> len(RoleEnum) 3
+
+        >>> list(RoleEnum) [<RoleEnum.system: 'system'>, <RoleEnum.assistant:
+        'assistant'>, <RoleEnum.user: 'user'>]
+
+        Methods can be added to enumerations, and members can have their own
+        attributes -- see the documentation for details.
+    TextAnalysisHttpRequest:
+      properties:
+        content:
+          type: string
+          title: Content
+          example: >-
+            Your email is test@ibm.com! Only the next instance of email will be
+            processed. test@ibm.com. Your SSN is 123-45-6789.
+      type: object
+      required:
+        - content
+      title: TextAnalysisHttpRequest
+    TextAnalysisResponse:
+      properties:
+        start:
+          type: integer
+          title: Start
+          example: 14
+        end:
+          type: integer
+          title: End
+          example: 26
+        detection:
+          type: string
+          title: Detection
+          example: Net.EmailAddress
+        detection_type:
+          type: string
+          title: Detection Type
+          example: pii
+        score:
+          type: number
+          title: Score
+          example: 0.8
+        evidences:
+          anyOf:
+            - $ref: '#/components/schemas/EvidenceObj'
+          description: Optional field providing evidences for the provided detection
+      type: object
+      required:
+        - start
+        - end
+        - detection
+        - detection_type
+        - score
+      title: TextAnalysisResponse
     ValidationError:
       properties:
         loc:
           items:
             anyOf:
-            - type: string
-            - type: integer
-          title: Location
+              - type: string
+              - type: integer
           type: array
+          title: Location
         msg:
+          type: string
           title: Message
-          type: string
         type:
-          title: Error Type
           type: string
-      required:
-      - loc
-      - msg
-      - type
-      title: ValidationError
+          title: Error Type
       type: object
+      required:
+        - loc
+        - msg
+        - type
+      title: ValidationError
