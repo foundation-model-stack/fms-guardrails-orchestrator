@@ -38,7 +38,7 @@ impl NlpClient {
         Ok(self
             .clients
             .get(model_id)
-            .ok_or_else(|| Error::InvalidModelId {
+            .ok_or_else(|| Error::ModelNotFound {
                 model_id: model_id.to_string(),
             })?
             .clone())

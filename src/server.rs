@@ -136,21 +136,32 @@ async fn shutdown_signal() {
 }
 
 /// High-level errors to return to clients.
-/// Validation errors are forwarded from downstream clients.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("{0}")]
-    ValidationError(String),
+    Validation(String),
+    #[error("{0}")]
+    NotFound(String),
     #[error("unexpected error occured while processing request")]
-    UnexpectedError,
+    Unexpected,
 }
 
 impl From<orchestrator::Error> for Error {
     fn from(error: orchestrator::Error) -> Self {
-        if error.is_validation_error() {
-            Self::ValidationError(error.to_string())
-        } else {
-            Self::UnexpectedError
+        use orchestrator::Error::*;
+        match error {
+            DetectorNotFound { .. } => Self::NotFound(error.to_string()),
+            DetectorRequestFailed { error, .. }
+            | ChunkerRequestFailed { error, .. }
+            | GenerateRequestFailed { error, .. }
+            | TokenizeRequestFailed { error, .. } => match error.status_code() {
+                StatusCode::BAD_REQUEST | StatusCode::UNPROCESSABLE_ENTITY => {
+                    Self::Validation(error.to_string())
+                }
+                StatusCode::NOT_FOUND => Self::NotFound(error.to_string()),
+                _ => Self::Unexpected,
+            },
+            _ => Self::Unexpected,
         }
     }
 }
@@ -159,12 +170,13 @@ impl IntoResponse for Error {
     fn into_response(self) -> Response {
         use Error::*;
         let (code, message) = match self {
-            ValidationError(_) => (StatusCode::UNPROCESSABLE_ENTITY, self.to_string()),
-            UnexpectedError => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
+            Validation(_) => (StatusCode::UNPROCESSABLE_ENTITY, self.to_string()),
+            NotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
+            Unexpected => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
         };
         let error = serde_json::json!({
             "code": code.as_u16(),
-            "message": message,
+            "details": message,
         });
         (code, Json(error)).into_response()
     }

@@ -189,7 +189,7 @@ async fn chunk_and_detect(
             let chunker_id =
                 ctx.config
                     .get_chunker_id(detector_id)
-                    .ok_or_else(|| Error::InvalidDetectorId {
+                    .ok_or_else(|| Error::DetectorNotFound {
                         detector_id: detector_id.clone(),
                     })?;
             Ok::<String, Error>(chunker_id)
@@ -235,11 +235,12 @@ async fn detect(
             let ctx = ctx.clone();
             let detector_id = detector_id.clone();
             let detector_params = detector_params.clone();
-            let chunker_id = ctx.config.get_chunker_id(&detector_id).ok_or_else(|| {
-                Error::InvalidDetectorId {
-                    detector_id: detector_id.clone(),
-                }
-            })?;
+            let chunker_id =
+                ctx.config
+                    .get_chunker_id(&detector_id)
+                    .ok_or_else(|| Error::DetectorNotFound {
+                        detector_id: detector_id.clone(),
+                    })?;
             let chunks = chunks.get(&chunker_id).unwrap().clone();
             Ok(tokio::spawn(async move {
                 handle_detection_task(ctx, detector_id, detector_params, chunks).await

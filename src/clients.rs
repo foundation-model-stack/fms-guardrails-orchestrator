@@ -34,8 +34,8 @@ pub enum Error {
     Grpc(#[from] tonic::Status),
     #[error("{0}")]
     Http(#[from] reqwest::Error),
-    #[error("invalid model id: {model_id}")]
-    InvalidModelId { model_id: String },
+    #[error("model not found: {model_id}")]
+    ModelNotFound { model_id: String },
 }
 
 impl Error {
@@ -61,17 +61,9 @@ impl Error {
                 Some(code) => code,
                 None => StatusCode::INTERNAL_SERVER_ERROR,
             },
-            // Return 422 for invalid model id
-            Error::InvalidModelId { .. } => StatusCode::UNPROCESSABLE_ENTITY,
+            // Return 404 for model not found
+            Error::ModelNotFound { .. } => StatusCode::NOT_FOUND,
         }
-    }
-
-    /// Returns true for validation-type errors (400/422) and false for other types.
-    pub fn is_validation_error(&self) -> bool {
-        matches!(
-            self.status_code(),
-            StatusCode::BAD_REQUEST | StatusCode::UNPROCESSABLE_ENTITY
-        )
     }
 }
 
