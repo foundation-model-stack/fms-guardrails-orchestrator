@@ -108,8 +108,10 @@ impl OrchestratorConfig {
         todo!()
     }
 
-    pub fn get_chunker_id(&self, detector_id: &str) -> String {
-        self.detectors.get(detector_id).unwrap().chunker_id.clone()
+    pub fn get_chunker_id(&self, detector_id: &str) -> Option<String> {
+        self.detectors
+            .get(detector_id)
+            .map(|detector_config| detector_config.chunker_id.clone())
     }
 }
 
@@ -126,8 +128,9 @@ fn service_tls_name_to_config(
 
 #[cfg(test)]
 mod tests {
+    use anyhow::Error;
+
     use super::*;
-    use crate::Error;
 
     #[test]
     fn test_deserialize_config() -> Result<(), Error> {

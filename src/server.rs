@@ -5,21 +5,22 @@ use axum::{
     http::StatusCode,
     response::{
         sse::{Event, KeepAlive, Sse},
-        IntoResponse,
+        IntoResponse, Response,
     },
     routing::{get, post},
     Json, Router,
 };
 use futures::StreamExt;
 use tokio::{net::TcpListener, signal};
-use tracing::info;
+use tracing::{error, info};
 use uuid::Uuid;
 
 use crate::{
     config::OrchestratorConfig,
     models,
-    orchestrator::{ClassificationWithGenTask, Orchestrator, StreamingClassificationWithGenTask},
-    Error,
+    orchestrator::{
+        self, ClassificationWithGenTask, Orchestrator, StreamingClassificationWithGenTask,
+    },
 };
 
 const API_PREFIX: &str = r#"/api/v1/task"#;
@@ -59,7 +60,9 @@ pub async fn run(
         )
         .with_state(shared_state);
 
-    let listener = TcpListener::bind(&http_addr).await?;
+    let listener = TcpListener::bind(&http_addr)
+        .await
+        .unwrap_or_else(|_| panic!("failed to bind to {http_addr}"));
     let server =
         axum::serve(listener, app.into_make_service()).with_graceful_shutdown(shutdown_signal());
 
@@ -77,7 +80,7 @@ async fn health() -> Result<(), ()> {
 async fn classification_with_gen(
     State(state): State<Arc<ServerState>>,
     Json(request): Json<models::GuardrailsHttpRequest>,
-) -> Result<impl IntoResponse, (StatusCode, Json<String>)> {
+) -> Result<impl IntoResponse, Error> {
     let request_id = Uuid::new_v4();
     let task = ClassificationWithGenTask::new(request_id, request);
     match state
@@ -93,7 +96,7 @@ async fn classification_with_gen(
 async fn stream_classification_with_gen(
     State(state): State<Arc<ServerState>>,
     Json(request): Json<models::GuardrailsHttpRequest>,
-) -> Result<impl IntoResponse, (StatusCode, Json<String>)> {
+) -> Result<impl IntoResponse, Error> {
     let request_id = Uuid::new_v4();
     let task = StreamingClassificationWithGenTask::new(request_id, request);
     let response_stream = state
@@ -130,4 +133,51 @@ async fn shutdown_signal() {
     }
 
     info!("signal received, starting graceful shutdown");
+}
+
+/// High-level errors to return to clients.
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    #[error("{0}")]
+    Validation(String),
+    #[error("{0}")]
+    NotFound(String),
+    #[error("unexpected error occured while processing request")]
+    Unexpected,
+}
+
+impl From<orchestrator::Error> for Error {
+    fn from(error: orchestrator::Error) -> Self {
+        use orchestrator::Error::*;
+        match error {
+            DetectorNotFound { .. } => Self::NotFound(error.to_string()),
+            DetectorRequestFailed { error, .. }
+            | ChunkerRequestFailed { error, .. }
+            | GenerateRequestFailed { error, .. }
+            | TokenizeRequestFailed { error, .. } => match error.status_code() {
+                StatusCode::BAD_REQUEST | StatusCode::UNPROCESSABLE_ENTITY => {
+                    Self::Validation(error.to_string())
+                }
+                StatusCode::NOT_FOUND => Self::NotFound(error.to_string()),
+                _ => Self::Unexpected,
+            },
+            _ => Self::Unexpected,
+        }
+    }
+}
+
+impl IntoResponse for Error {
+    fn into_response(self) -> Response {
+        use Error::*;
+        let (code, message) = match self {
+            Validation(_) => (StatusCode::UNPROCESSABLE_ENTITY, self.to_string()),
+            NotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
+            Unexpected => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
+        };
+        let error = serde_json::json!({
+            "code": code.as_u16(),
+            "details": message,
+        });
+        (code, Json(error)).into_response()
+    }
 }

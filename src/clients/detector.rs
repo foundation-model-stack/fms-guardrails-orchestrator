@@ -13,17 +13,18 @@ pub struct DetectorClient {
 }
 
 impl DetectorClient {
-    pub async fn new(default_port: u16, config: &[(String, ServiceConfig)]) -> Result<Self, Error> {
-        let clients: HashMap<String, HttpClient> =
-            create_http_clients(default_port, config).await?;
-        Ok(Self { clients })
+    pub async fn new(default_port: u16, config: &[(String, ServiceConfig)]) -> Self {
+        let clients: HashMap<String, HttpClient> = create_http_clients(default_port, config).await;
+        Self { clients }
     }
 
     fn client(&self, model_id: &str) -> Result<HttpClient, Error> {
         Ok(self
             .clients
             .get(model_id)
-            .ok_or_else(|| Error::ModelNotFound(model_id.into()))?
+            .ok_or_else(|| Error::ModelNotFound {
+                model_id: model_id.to_string(),
+            })?
             .clone())
     }
 
