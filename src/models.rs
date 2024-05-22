@@ -781,7 +781,30 @@ mod tests {
             }),
             text_gen_parameters: None,
         };
-        assert!(request.upfront_validate().is_err());
+        let result = request.upfront_validate();
+        assert!(result.is_err());
+        let error = result.unwrap_err().to_string();
+        assert!(error.contains("model_id: length is lower than 1"));
+
+        // No models on input - garde validation case
+        let request = GuardrailsHttpRequest {
+            model_id: "model".to_string(),
+            inputs: "short".to_string(),
+            guardrail_config: Some(GuardrailsConfig {
+                input: Some(GuardrailsConfigInput {
+                    masks: Some(vec![]),
+                    models: None,
+                }),
+                output: Some(GuardrailsConfigOutput {
+                    models: Some(HashMap::new()),
+                }),
+            }),
+            text_gen_parameters: None,
+        };
+        let result = request.upfront_validate();
+        assert!(result.is_err());
+        let error = result.unwrap_err().to_string();
+        assert!(error.contains("guardrail_config.input.models: not set"));
 
         // Mask span beyond inputs
         let request = GuardrailsHttpRequest {
@@ -798,7 +821,10 @@ mod tests {
             }),
             text_gen_parameters: None,
         };
-        assert!(request.upfront_validate().is_err());
+        let result = request.upfront_validate();
+        assert!(result.is_err());
+        let error = result.unwrap_err().to_string();
+        assert!(error.contains("invalid masks"));
 
         // Mask span end less than span start
         let request = GuardrailsHttpRequest {
@@ -815,6 +841,9 @@ mod tests {
             }),
             text_gen_parameters: None,
         };
-        assert!(request.upfront_validate().is_err());
+        let result = request.upfront_validate();
+        assert!(result.is_err());
+        let error = result.unwrap_err().to_string();
+        assert!(error.contains("invalid masks"));
     }
 }
