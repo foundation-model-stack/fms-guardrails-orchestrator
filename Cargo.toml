@@ -18,7 +18,7 @@ anyhow = "1.0.83"
 axum = { version = "0.7.5", features = ["json"] }
 clap = { version = "4.5.3", features = ["derive", "env"] }
 futures = "0.3.30"
-garde = { version = "0.18.0", features = ["full"] }
+garde = { version = "0.18.0", features = ["full"] } # For API validation
 ginepro = "0.7.2"
 mio = "0.8.11"
 prost = "0.12.3"
@@ -35,7 +35,6 @@ tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["json", "env-filter"] }
 url = "2.5.0"
 uuid = { version = "1.8.0", features = ["v4", "fast-rng"] }
-validator = { version = "0.18.1", features = ["derive"] } # For API validation
 
 [build-dependencies]
 tonic-build = "0.11.0"
