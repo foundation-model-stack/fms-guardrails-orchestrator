@@ -656,7 +656,7 @@ impl From<GuardrailsTextGenerationParameters> for pb::fmaas::Parameters {
             include_stop_sequence: None,
         };
         let response = pb::fmaas::ResponseOptions {
-            input_text: false, // missing?
+            input_text: value.preserve_input_text.unwrap_or_default(),
             generated_tokens: value.generated_tokens.unwrap_or_default(),
             input_tokens: value.input_tokens.unwrap_or_default(),
             token_logprobs: value.token_logprobs.unwrap_or_default(),
