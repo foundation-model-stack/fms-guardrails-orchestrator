@@ -71,7 +71,7 @@ paths:
       description: >-
         Detectors that run on prompt and text generation output.  <br>
         - Answer relevance <br>
-        - Faithfulness <br>
+        - Factuality <br>
       operationId: generation_analysis_unary_handler
       parameters:
         - name: detector-id
@@ -171,7 +171,7 @@ paths:
     post:
       summary: Context Analysis Unary Handler
       description: >-
-        Detectors that work on a context based inputs.<br>
+        Detectors that work on a context created by document(s).<br>
         - Context relevance <br>
         - Faithfulness / Groundedness <br>
       operationId: context_analysis_unary_handler_api_v1_text_context_doc_post
