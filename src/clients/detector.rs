@@ -82,8 +82,8 @@ pub struct DetectorResponse {
 impl From<Detection> for crate::models::TokenClassificationResult {
     fn from(value: Detection) -> Self {
         Self {
-            start: value.start as i32,
-            end: value.end as i32,
+            start: value.start as u32,
+            end: value.end as u32,
             word: value.text,
             entity: value.detection,
             entity_group: value.detection_type,

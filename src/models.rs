@@ -1,46 +1,43 @@
 #![allow(unused_qualifications)]
 
-use garde::Validate;
-
 use crate::{pb, server};
 use std::collections::HashMap;
 
 pub type DetectorParams = HashMap<String, serde_json::Value>;
 
 /// User request to orchestrator
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, garde::Validate)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct GuardrailsHttpRequest {
     /// Text generation model ID
     #[serde(rename = "model_id")]
-    #[garde(length(min = 1))]
     pub model_id: String,
 
     /// User prompt/input text to a text generation model
     #[serde(rename = "inputs")]
-    #[garde(length(min = 1))]
     pub inputs: String,
 
     /// Configuration of guardrails models for either or both input to a text generation model
     /// (e.g. user prompt) and output of a text generation model
     #[serde(rename = "guardrail_config")]
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[garde(dive)]
     pub guardrail_config: Option<GuardrailsConfig>,
 
     /// Parameters for text generation
     #[serde(rename = "text_gen_parameters")]
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[garde(dive)]
     pub text_gen_parameters: Option<GuardrailsTextGenerationParameters>,
 }
 
 impl GuardrailsHttpRequest {
     /// Upfront validation of user request
-    pub fn upfront_validate(&self) -> Result<(), server::Error> {
-        // Invoke garde validation for various fields
-        if let Err(e) = self.validate(&()) {
-            return Err(server::Error::Validation(e.to_string()));
-        };
+    pub fn validate(&self) -> Result<(), server::Error> {
+        // Validate required parameters
+        if self.model_id.is_empty() {
+            return Err(server::Error::Validation("`model_id` is required".into()));
+        }
+        if self.inputs.is_empty() {
+            return Err(server::Error::Validation("`inputs` is required".into()));
+        }
         // Validate masks
         let input_range = 0..self.inputs.len();
         let input_masks = self
@@ -60,20 +57,16 @@ impl GuardrailsHttpRequest {
 
 /// Configuration of guardrails models for either or both input to a text generation model
 /// (e.g. user prompt) and output of a text generation model
-#[derive(
-    Default, Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, garde::Validate,
-)]
+#[derive(Default, Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct GuardrailsConfig {
     /// Configuration for detection on input to a text generation model (e.g. user prompt)
     #[serde(rename = "input")]
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[garde(dive)]
     pub input: Option<GuardrailsConfigInput>,
 
     /// Configuration for detection on output of a text generation model
     #[serde(rename = "output")]
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[garde(dive)]
     pub output: Option<GuardrailsConfigOutput>,
 }
 
@@ -83,69 +76,64 @@ impl GuardrailsConfig {
     }
 
     pub fn input_detectors(&self) -> Option<&HashMap<String, DetectorParams>> {
-        self.input.as_ref().and_then(|input| input.models.as_ref())
+        self.input
+            .as_ref()
+            .and_then(|input| Some(input.models))
+            .as_ref()
     }
 
     pub fn output_detectors(&self) -> Option<&HashMap<String, DetectorParams>> {
         self.output
             .as_ref()
-            .and_then(|output| output.models.as_ref())
+            .and_then(|output| Some(output.models))
+            .as_ref()
     }
 }
 
 /// Configuration for detection on input to a text generation model (e.g. user prompt)
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, garde::Validate)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct GuardrailsConfigInput {
     /// Map of model name to model specific parameters
     #[serde(rename = "models")]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[garde(required)] // input field must have `models`
-    pub models: Option<HashMap<String, DetectorParams>>,
+    pub models: HashMap<String, DetectorParams>,
     /// Vector of spans are in the form of (span_start, span_end) corresponding
     /// to spans of input text on which to run input detection
     #[serde(rename = "masks")]
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[garde(skip)] // Separate validation will happen
     pub masks: Option<Vec<(usize, usize)>>,
 }
 
 /// Configuration for detection on output of a text generation model
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, garde::Validate)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct GuardrailsConfigOutput {
     /// Map of model name to model specific parameters
     #[serde(rename = "models")]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[garde(required)] // output field must have `models`
-    pub models: Option<HashMap<String, DetectorParams>>,
+    pub models: HashMap<String, DetectorParams>,
 }
 
 /// Parameters for text generation, ref. <https://github.com/IBM/text-generation-inference/blob/main/proto/generation.proto>
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, garde::Validate)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct GuardrailsTextGenerationParameters {
     // Leave most validation of parameters to downstream text generation servers
     /// Maximum number of new tokens to generate
     #[serde(rename = "max_new_tokens")]
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[garde(range(min = 0))]
-    pub max_new_tokens: Option<i32>,
+    pub max_new_tokens: Option<u32>,
 
     /// Minimum number of new tokens to generate
     #[serde(rename = "min_new_tokens")]
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[garde(range(min = 0))]
-    pub min_new_tokens: Option<i32>,
+    pub min_new_tokens: Option<u32>,
 
     /// Truncate to this many input tokens for generation
     #[serde(rename = "truncate_input_tokens")]
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[garde(range(min = 0))]
-    pub truncate_input_tokens: Option<i32>,
+    pub truncate_input_tokens: Option<u32>,
 
     /// The high level decoding strategy for picking
     /// tokens during text generation
     #[serde(rename = "decoding_method")]
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[garde(skip)]
     pub decoding_method: Option<String>,
 
     /// Number of highest probability vocabulary tokens to keep for top-k-filtering.
@@ -153,15 +141,13 @@ pub struct GuardrailsTextGenerationParameters {
     /// only the top_k most likely tokens are considered as candidates for the next generated token.
     #[serde(rename = "top_k")]
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[garde(skip)]
-    pub top_k: Option<i32>,
+    pub top_k: Option<u32>,
 
     /// Similar to top_k except the candidates to generate the next token are the
     /// most likely tokens with probabilities that add up to at least top_p.
     /// Also known as nucleus sampling. A value of 1.0 is equivalent to disabled.
     #[serde(rename = "top_p")]
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[garde(skip)]
     pub top_p: Option<f64>,
 
     /// Local typicality measures how similar the conditional probability of
@@ -170,7 +156,6 @@ pub struct GuardrailsTextGenerationParameters {
     /// already generated
     #[serde(rename = "typical_p")]
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[garde(skip)]
     pub typical_p: Option<f64>,
 
     /// A value used to modify the next-token probabilities in sampling mode.
@@ -179,89 +164,76 @@ pub struct GuardrailsTextGenerationParameters {
     /// resulting in "more random" output. A value of 1.0 has no effect.
     #[serde(rename = "temperature")]
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[garde(range(min = 0.0))]
     pub temperature: Option<f64>,
 
     /// Represents the penalty for penalizing tokens that have already been generated
     /// or belong to the context. The value 1.0 means that there is no penalty.
     #[serde(rename = "repetition_penalty")]
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[garde(skip)]
     pub repetition_penalty: Option<f64>,
 
     /// Time limit in milliseconds for text generation to complete
     #[serde(rename = "max_time")]
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[garde(skip)]
     pub max_time: Option<f64>,
 
     /// Parameters to exponentially increase the likelihood of the text generation
     /// terminating once a specified number of tokens have been generated.
     #[serde(rename = "exponential_decay_length_penalty")]
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[garde(skip)]
     pub exponential_decay_length_penalty: Option<ExponentialDecayLengthPenalty>,
 
     /// One or more strings which will cause the text generation to stop if/when
     /// they are produced as part of the output.
     #[serde(rename = "stop_sequences")]
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[garde(skip)]
     pub stop_sequences: Option<Vec<String>>,
 
     /// Random seed used for text generation
     #[serde(rename = "seed")]
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[garde(skip)]
-    pub seed: Option<i32>,
+    pub seed: Option<u32>,
 
     /// Whether or not to include input text
     #[serde(rename = "preserve_input_text")]
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[garde(skip)]
     pub preserve_input_text: Option<bool>,
 
     /// Whether or not to include input text
     #[serde(rename = "input_tokens")]
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[garde(skip)]
     pub input_tokens: Option<bool>,
 
     /// Whether or not to include list of individual generated tokens
     #[serde(rename = "generated_tokens")]
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[garde(skip)]
     pub generated_tokens: Option<bool>,
 
     /// Whether or not to include logprob for each returned token
     /// Applicable only if generated_tokens == true and/or input_tokens == true
     #[serde(rename = "token_logprobs")]
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[garde(skip)]
     pub token_logprobs: Option<bool>,
 
     /// Whether or not to include rank of each returned token
     /// Applicable only if generated_tokens == true and/or input_tokens == true
     #[serde(rename = "token_ranks")]
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[garde(skip)]
     pub token_ranks: Option<bool>,
 }
 
 /// Parameters to exponentially increase the likelihood of the text generation
 /// terminating once a specified number of tokens have been generated.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, garde::Validate)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ExponentialDecayLengthPenalty {
     /// Start the decay after this number of tokens have been generated
     #[serde(rename = "start_index")]
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[garde(range(min = 0))]
-    pub start_index: Option<i32>,
+    pub start_index: Option<u32>,
 
     /// Factor of exponential decay
     #[serde(rename = "decay_factor")]
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[garde(skip)]
     pub decay_factor: Option<f64>,
 }
 
@@ -289,16 +261,16 @@ pub struct ClassifiedGeneratedTextResult {
     /// Length of sequence of generated tokens
     #[serde(rename = "generated_token_count")]
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub generated_token_count: Option<i32>,
+    pub generated_token_count: Option<u32>,
 
     /// Random seed used for text generation
     #[serde(rename = "seed")]
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub seed: Option<i32>,
+    pub seed: Option<u32>,
 
     /// Length of input
     #[serde(rename = "input_token_count")]
-    pub input_token_count: i32,
+    pub input_token_count: u32,
 
     /// Vector of warnings on input detection
     #[serde(rename = "warnings")]
@@ -339,16 +311,16 @@ pub struct ClassifiedGeneratedTextStreamResult {
     /// Length of sequence of generated tokens
     #[serde(rename = "generated_token_count")]
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub generated_token_count: Option<i32>,
+    pub generated_token_count: Option<u32>,
 
     /// Random seed used for text generation
     #[serde(rename = "seed")]
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub seed: Option<i32>,
+    pub seed: Option<u32>,
 
     /// Length of input
     #[serde(rename = "input_token_count")]
-    pub input_token_count: i32,
+    pub input_token_count: u32,
 
     /// Vector of warnings on input detection
     #[serde(rename = "warnings")]
@@ -368,11 +340,11 @@ pub struct ClassifiedGeneratedTextStreamResult {
     /// Result index up to which text is processed
     #[serde(rename = "processed_index")]
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub processed_index: Option<i32>,
+    pub processed_index: Option<u32>,
 
     /// Result start index for processed text
     #[serde(rename = "start_index")]
-    pub start_index: i32,
+    pub start_index: u32,
 }
 
 /// Results of classification on input to a text generation model (e.g. user prompt)
@@ -401,11 +373,11 @@ pub struct TextGenTokenClassificationResults {
 pub struct TokenClassificationResult {
     /// Beginning/start offset of token
     #[serde(rename = "start")]
-    pub start: i32,
+    pub start: u32,
 
     /// End offset of token
     #[serde(rename = "end")]
-    pub end: i32,
+    pub end: u32,
 
     /// Text referenced by token
     #[serde(rename = "word")]
@@ -426,7 +398,7 @@ pub struct TokenClassificationResult {
     /// Length of tokens in the text
     #[serde(rename = "token_count")]
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub token_count: Option<i32>,
+    pub token_count: Option<u32>,
 }
 
 /// Enumeration of reasons why text generation stopped
@@ -503,7 +475,7 @@ pub struct GeneratedToken {
     /// One-based rank relative to other tokens
     #[serde(rename = "rank")]
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub rank: Option<i32>,
+    pub rank: Option<u32>,
 }
 
 /// Result of a text generation model
@@ -526,12 +498,12 @@ pub struct GeneratedTextResult {
 
     /// Length of input
     #[serde(rename = "input_token_count")]
-    pub input_token_count: i32,
+    pub input_token_count: u32,
 
     /// Random seed used for text generation
     #[serde(rename = "seed")]
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub seed: Option<i32>,
+    pub seed: Option<u32>,
 
     /// Individual generated tokens and associated details, if requested
     #[serde(rename = "tokens")]
@@ -556,16 +528,16 @@ pub struct TokenStreamDetails {
     /// Length of sequence of generated tokens
     #[serde(rename = "generated_tokens")]
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub generated_tokens: Option<i32>,
+    pub generated_tokens: Option<u32>,
 
     /// Random seed used for text generation
     #[serde(rename = "seed")]
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub seed: Option<i32>,
+    pub seed: Option<u32>,
 
     /// Length of input
     #[serde(rename = "input_token_count")]
-    pub input_token_count: i32,
+    pub input_token_count: u32,
 }
 
 /// Streaming result of a text generation model
@@ -595,7 +567,7 @@ pub struct GeneratedTextStreamResult {
 impl From<ExponentialDecayLengthPenalty> for pb::fmaas::decoding_parameters::LengthPenalty {
     fn from(value: ExponentialDecayLengthPenalty) -> Self {
         Self {
-            start_index: value.start_index.unwrap_or_default() as u32,
+            start_index: value.start_index.unwrap_or_default(),
             decay_factor: value.decay_factor.unwrap_or_default() as f32,
         }
     }
@@ -608,14 +580,14 @@ impl From<GuardrailsTextGenerationParameters> for pb::fmaas::Parameters {
         let method = pb::fmaas::DecodingMethod::from_str_name(&decoding_method).unwrap_or_default();
         let sampling = pb::fmaas::SamplingParameters {
             temperature: value.temperature.unwrap_or_default() as f32,
-            top_k: value.top_k.unwrap_or_default() as u32,
+            top_k: value.top_k.unwrap_or_default(),
             top_p: value.top_p.unwrap_or_default() as f32,
             typical_p: value.typical_p.unwrap_or_default() as f32,
             seed: value.seed.map(|v| v as u64),
         };
         let stopping = pb::fmaas::StoppingCriteria {
-            max_new_tokens: value.max_new_tokens.unwrap_or_default() as u32,
-            min_new_tokens: value.min_new_tokens.unwrap_or_default() as u32,
+            max_new_tokens: value.max_new_tokens.unwrap_or_default(),
+            min_new_tokens: value.min_new_tokens.unwrap_or_default(),
             time_limit_millis: value.max_time.unwrap_or_default() as u32,
             stop_sequences: value.stop_sequences.unwrap_or_default(),
             include_stop_sequence: None,
@@ -632,7 +604,7 @@ impl From<GuardrailsTextGenerationParameters> for pb::fmaas::Parameters {
             repetition_penalty: value.repetition_penalty.unwrap_or_default() as f32,
             length_penalty: value.exponential_decay_length_penalty.map(Into::into),
         };
-        let truncate_input_tokens = value.truncate_input_tokens.unwrap_or_default() as u32;
+        let truncate_input_tokens = value.truncate_input_tokens.unwrap_or_default();
         Self {
             method: method as i32,
             sampling: Some(sampling),
@@ -666,7 +638,7 @@ impl From<pb::fmaas::TokenInfo> for GeneratedToken {
         Self {
             text: value.text,
             logprob: Some(value.logprob as f64),
-            rank: Some(value.rank as i32),
+            rank: Some(value.rank as u32),
         }
     }
 }
@@ -676,7 +648,7 @@ impl From<pb::caikit_data_model::nlp::GeneratedToken> for GeneratedToken {
         Self {
             text: value.text,
             logprob: Some(value.logprob),
-            rank: Some(value.rank as i32),
+            rank: Some(value.rank as u32),
         }
     }
 }
@@ -731,7 +703,7 @@ mod tests {
         };
         assert!(request.upfront_validate().is_ok());
 
-        // No model ID - garde validation case
+        // No model ID
         let request = GuardrailsHttpRequest {
             model_id: "".to_string(),
             inputs: "short".to_string(),
@@ -749,9 +721,9 @@ mod tests {
         let result = request.upfront_validate();
         assert!(result.is_err());
         let error = result.unwrap_err().to_string();
-        assert!(error.contains("model_id: length is lower than 1"));
+        assert!(error.contains("`model_id` is required"));
 
-        // No models on input - garde validation case
+        // No models on input
         let request = GuardrailsHttpRequest {
             model_id: "model".to_string(),
             inputs: "short".to_string(),
@@ -768,8 +740,6 @@ mod tests {
         };
         let result = request.upfront_validate();
         assert!(result.is_err());
-        let error = result.unwrap_err().to_string();
-        assert!(error.contains("guardrail_config.input.models: not set"));
 
         // Mask span beyond inputs
         let request = GuardrailsHttpRequest {
