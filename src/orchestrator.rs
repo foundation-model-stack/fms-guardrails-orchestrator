@@ -184,7 +184,7 @@ async fn chunk_and_detect(
     let text_with_offsets = match masks {
         None | Some([]) => vec![(0, text)],
         Some(masks) => apply_masks(&text, masks),
-        };
+    };
     // Create a list of required chunkers
     let chunker_ids = detectors
         .keys()
