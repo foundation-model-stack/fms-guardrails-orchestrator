@@ -142,13 +142,15 @@ impl Orchestrator {
             }
         });
         match task_handle.await {
+            // Task completed successfully
             Ok(Ok(result)) => Ok(result),
+            // Task failed, return error propagated from child task that failed
             Ok(Err(error)) => {
                 error!(request_id = ?task.request_id, %error, "unary task failed");
                 Err(error)
             }
+            // Task cancelled or panicked
             Err(error) => {
-                // Task failed due to cancellation or panic
                 let error = error.into();
                 error!(request_id = ?task.request_id, %error, "unary task failed");
                 Err(error)
