@@ -84,7 +84,7 @@ async fn classification_with_gen(
     let request_id = Uuid::new_v4();
     // Upfront request validation
     if let Err(e) = request.upfront_validate() {
-        return Err((StatusCode::BAD_REQUEST, Json(e.to_string())));
+        return Err(e.into());
     };
     let task = ClassificationWithGenTask::new(request_id, request);
     match state

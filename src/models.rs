@@ -2,7 +2,7 @@
 
 use garde::Validate;
 
-use crate::pb;
+use crate::{pb, server};
 use std::collections::HashMap;
 
 pub type DetectorParams = HashMap<String, serde_json::Value>;
@@ -36,11 +36,10 @@ pub struct GuardrailsHttpRequest {
 
 impl GuardrailsHttpRequest {
     /// Upfront validation of user request
-    // TODO: Change to validation error when present
-    pub fn upfront_validate(&self) -> Result<(), crate::Error> {
+    pub fn upfront_validate(&self) -> Result<(), server::Error> {
         // Invoke garde validation for various fields
         if let Err(e) = self.validate(&()) {
-            return Err(crate::Error::ValidationError(e.to_string())); // TODO: update on presence of validation error
+            return Err(server::Error::Validation(e.to_string()));
         };
         // Validate masks
         let input_range = 0..self.inputs.len();
@@ -52,8 +51,7 @@ impl GuardrailsHttpRequest {
             if !input_masks.iter().all(|(start, end)| {
                 input_range.contains(start) && input_range.contains(end) && start < end
             }) {
-                return Err(crate::Error::ValidationError("invalid masks".into()));
-                // TODO: update on presence of validation error
+                return Err(server::Error::Validation("invalid masks".into()));
             }
         }
         Ok(())
@@ -593,39 +591,6 @@ pub struct GeneratedTextStreamResult {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub input_tokens: Option<Vec<GeneratedToken>>,
 }
-
-// TODO: The below errors follow FastAPI concepts esp. for loc
-// It may be worth revisiting if the orchestrator without FastAPI
-// should be using these error types
-
-/// HTTP validation error
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[cfg_attr(feature = "conversion", derive(frunk::LabelledGeneric))]
-pub struct HttpValidationError {
-    #[serde(rename = "detail")]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub detail: Option<Vec<ValidationError>>,
-}
-
-/// Validation error
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[cfg_attr(feature = "conversion", derive(frunk::LabelledGeneric))]
-pub struct ValidationError {
-    #[serde(rename = "loc")]
-    pub loc: Vec<LocationInner>,
-
-    /// Error message
-    #[serde(rename = "msg")]
-    pub msg: String,
-
-    /// Error type
-    #[serde(rename = "type")]
-    pub r#type: String,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[cfg_attr(feature = "conversion", derive(frunk::LabelledGeneric))]
-pub struct LocationInner {}
 
 impl From<ExponentialDecayLengthPenalty> for pb::fmaas::decoding_parameters::LengthPenalty {
     fn from(value: ExponentialDecayLengthPenalty) -> Self {
