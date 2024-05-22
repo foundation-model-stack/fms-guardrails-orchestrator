@@ -181,9 +181,10 @@ async fn chunk_and_detect(
     masks: Option<&[(usize, usize)]>,
 ) -> Result<Vec<TokenClassificationResult>, Error> {
     // Apply masks
-    let text_with_offsets = masks
-        .map(|masks| apply_masks(&text, masks))
-        .unwrap_or(vec![(0, text)]);
+    let text_with_offsets = match masks {
+        None | Some([]) => vec![(0, text)],
+        Some(masks) => apply_masks(&text, masks),
+        };
     // Create a list of required chunkers
     let chunker_ids = detectors
         .keys()
