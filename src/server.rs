@@ -83,9 +83,7 @@ async fn classification_with_gen(
 ) -> Result<impl IntoResponse, Error> {
     let request_id = Uuid::new_v4();
     // Upfront request validation
-    if let Err(e) = request.upfront_validate() {
-        return Err(e.into());
-    };
+    request.upfront_validate()?;
     let task = ClassificationWithGenTask::new(request_id, request);
     match state
         .orchestrator
