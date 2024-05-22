@@ -96,7 +96,7 @@ impl Orchestrator {
                     tokenize(ctx.clone(), task.model_id.clone(), task.inputs.clone()).await?;
                 // Send result with input detections
                 Ok(ClassifiedGeneratedTextResult {
-                    input_token_count: input_token_count as u32,
+                    input_token_count,
                     token_classification_results: TextGenTokenClassificationResults {
                         input: input_detections,
                         output: None,

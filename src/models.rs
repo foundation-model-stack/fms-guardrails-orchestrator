@@ -76,17 +76,11 @@ impl GuardrailsConfig {
     }
 
     pub fn input_detectors(&self) -> Option<&HashMap<String, DetectorParams>> {
-        self.input
-            .as_ref()
-            .and_then(|input| Some(input.models))
-            .as_ref()
+        self.input.as_ref().map(|input| &input.models)
     }
 
     pub fn output_detectors(&self) -> Option<&HashMap<String, DetectorParams>> {
-        self.output
-            .as_ref()
-            .and_then(|output| Some(output.models))
-            .as_ref()
+        self.output.as_ref().map(|output| &output.models)
     }
 }
 
@@ -638,7 +632,7 @@ impl From<pb::fmaas::TokenInfo> for GeneratedToken {
         Self {
             text: value.text,
             logprob: Some(value.logprob as f64),
-            rank: Some(value.rank as u32),
+            rank: Some(value.rank),
         }
     }
 }
@@ -685,7 +679,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_upfront_validate() {
+    fn test_validate() {
         // Expected OK case
         let request = GuardrailsHttpRequest {
             model_id: "model".to_string(),
@@ -693,15 +687,15 @@ mod tests {
             guardrail_config: Some(GuardrailsConfig {
                 input: Some(GuardrailsConfigInput {
                     masks: Some(vec![(5, 8)]),
-                    models: Some(HashMap::new()),
+                    models: HashMap::new(),
                 }),
                 output: Some(GuardrailsConfigOutput {
-                    models: Some(HashMap::new()),
+                    models: HashMap::new(),
                 }),
             }),
             text_gen_parameters: None,
         };
-        assert!(request.upfront_validate().is_ok());
+        assert!(request.validate().is_ok());
 
         // No model ID
         let request = GuardrailsHttpRequest {
@@ -710,36 +704,38 @@ mod tests {
             guardrail_config: Some(GuardrailsConfig {
                 input: Some(GuardrailsConfigInput {
                     masks: Some(vec![]),
-                    models: Some(HashMap::new()),
+                    models: HashMap::new(),
                 }),
                 output: Some(GuardrailsConfigOutput {
-                    models: Some(HashMap::new()),
+                    models: HashMap::new(),
                 }),
             }),
             text_gen_parameters: None,
         };
-        let result = request.upfront_validate();
+        let result = request.validate();
         assert!(result.is_err());
         let error = result.unwrap_err().to_string();
         assert!(error.contains("`model_id` is required"));
 
-        // No models on input
+        // No inputs
         let request = GuardrailsHttpRequest {
             model_id: "model".to_string(),
-            inputs: "short".to_string(),
+            inputs: "".to_string(),
             guardrail_config: Some(GuardrailsConfig {
                 input: Some(GuardrailsConfigInput {
-                    masks: Some(vec![]),
-                    models: None,
+                    masks: None,
+                    models: HashMap::new(),
                 }),
                 output: Some(GuardrailsConfigOutput {
-                    models: Some(HashMap::new()),
+                    models: HashMap::new(),
                 }),
             }),
             text_gen_parameters: None,
         };
-        let result = request.upfront_validate();
+        let result = request.validate();
         assert!(result.is_err());
+        let error = result.unwrap_err().to_string();
+        assert!(error.contains("`inputs` is required"));
 
         // Mask span beyond inputs
         let request = GuardrailsHttpRequest {
@@ -748,15 +744,15 @@ mod tests {
             guardrail_config: Some(GuardrailsConfig {
                 input: Some(GuardrailsConfigInput {
                     masks: Some(vec![(0, 12)]),
-                    models: Some(HashMap::new()),
+                    models: HashMap::new(),
                 }),
                 output: Some(GuardrailsConfigOutput {
-                    models: Some(HashMap::new()),
+                    models: HashMap::new(),
                 }),
             }),
             text_gen_parameters: None,
         };
-        let result = request.upfront_validate();
+        let result = request.validate();
         assert!(result.is_err());
         let error = result.unwrap_err().to_string();
         assert!(error.contains("invalid masks"));
@@ -768,15 +764,15 @@ mod tests {
             guardrail_config: Some(GuardrailsConfig {
                 input: Some(GuardrailsConfigInput {
                     masks: Some(vec![(12, 8)]),
-                    models: Some(HashMap::new()),
+                    models: HashMap::new(),
                 }),
                 output: Some(GuardrailsConfigOutput {
-                    models: Some(HashMap::new()),
+                    models: HashMap::new(),
                 }),
             }),
             text_gen_parameters: None,
         };
-        let result = request.upfront_validate();
+        let result = request.validate();
         assert!(result.is_err());
         let error = result.unwrap_err().to_string();
         assert!(error.contains("invalid masks"));
