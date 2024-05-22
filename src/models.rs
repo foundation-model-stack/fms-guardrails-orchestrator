@@ -766,6 +766,23 @@ mod tests {
         };
         assert!(request.upfront_validate().is_ok());
 
+        // No model ID - garde validation case
+        let request = GuardrailsHttpRequest {
+            model_id: "".to_string(),
+            inputs: "short".to_string(),
+            guardrail_config: Some(GuardrailsConfig {
+                input: Some(GuardrailsConfigInput {
+                    masks: Some(vec![]),
+                    models: Some(HashMap::new()),
+                }),
+                output: Some(GuardrailsConfigOutput {
+                    models: Some(HashMap::new()),
+                }),
+            }),
+            text_gen_parameters: None,
+        };
+        assert!(request.upfront_validate().is_err());
+
         // Mask span beyond inputs
         let request = GuardrailsHttpRequest {
             model_id: "model".to_string(),
