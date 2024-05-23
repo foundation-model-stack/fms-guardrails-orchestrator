@@ -58,7 +58,9 @@ pub struct ChunkerConfig {
 pub struct DetectorConfig {
     pub service: ServiceConfig,
     pub chunker_id: String,
+    // Put threshold here _in_ config -> need to change type
     //pub config: HashMap<String, String>,
+    // or threshold could be at this level but then would have to be optional
 }
 
 #[derive(Debug, Clone, Deserialize)]

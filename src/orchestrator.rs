@@ -236,6 +236,7 @@ async fn detect(
         .map(|(detector_id, detector_params)| {
             let ctx = ctx.clone();
             let detector_id = detector_id.clone();
+            // Use default threshold here (from ctx?/detector config?) if not present in detector_params
             let detector_params = detector_params.clone();
             let chunker_id =
                 ctx.config
@@ -343,6 +344,7 @@ async fn handle_detection_task(
                     ?response,
                     "received detector response"
                 );
+                // Filter results based on threshold (if applicable) here
                 let results = response
                     .detections
                     .into_iter()
