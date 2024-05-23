@@ -478,9 +478,9 @@ async fn generate(
             Ok(ClassifiedGeneratedTextResult {
                 generated_text: Some(response.text.clone()),
                 finish_reason: Some(response.stop_reason().into()),
-                generated_token_count: Some(response.generated_token_count as u32),
+                generated_token_count: Some(response.generated_token_count),
                 seed: Some(response.seed as u32),
-                input_token_count: response.input_token_count as u32,
+                input_token_count: response.input_token_count,
                 warnings: None,
                 tokens: if response.tokens.is_empty() {
                     None
