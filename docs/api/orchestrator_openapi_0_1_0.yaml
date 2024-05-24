@@ -23,12 +23,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ClassifiedGeneratedTextResult'
+        '404':
+          description: Resource Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                $ref: '#/components/schemas/Error'
   /api/v1/task/server-streaming-classification-with-text-generation:
     post:
       tags:
@@ -49,12 +55,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ClassifiedGeneratedTextStreamResult'
+        '404':
+          description: Resource Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                $ref: '#/components/schemas/Error'
 components:
   schemas:
     ClassifiedGeneratedTextResult:
@@ -156,6 +168,16 @@ components:
       required: ["input_token_count", "token_classification_results", "start_index"]
       type: object
       title: ClassifiedGeneratedTextStreamResult
+    Error:
+      type: object
+      properties:
+        code:
+          type: string
+        details:
+          type: string
+      required:
+        - code
+        - details
     ExponentialDecayLengthPenalty:
       properties:
         start_index:
@@ -299,15 +321,6 @@ components:
       additionalProperties: false
       type: object
       title: GuardrailsTextGenerationParameters
-    HTTPValidationError:
-      properties:
-        detail:
-          items:
-            $ref: '#/components/schemas/ValidationError'
-          type: array
-          title: Detail
-      type: object
-      title: HTTPValidationError
     InputWarning:
       properties:
         id:
@@ -368,24 +381,3 @@ components:
       required: ["start", "end", "word", "entity", "entity_group", "score"]
       type: object
       title: TokenClassificationResult
-    ValidationError:
-      properties:
-        loc:
-          items:
-            anyOf:
-              - type: string
-              - type: integer
-          type: array
-          title: Location
-        msg:
-          type: string
-          title: Message
-        type:
-          type: string
-          title: Error Type
-      type: object
-      required:
-        - loc
-        - msg
-        - type
-      title: ValidationError
