@@ -6,6 +6,8 @@ use std::{
 use serde::Deserialize;
 use tracing::debug;
 
+/// Configuration for service needed for
+/// orchestrator to communicate with it
 #[derive(Debug, Clone, Deserialize)]
 pub struct ServiceConfig {
     pub hostname: String,
@@ -13,6 +15,7 @@ pub struct ServiceConfig {
     pub tls: Option<Tls>,
 }
 
+/// TLS provider
 #[derive(Debug, Clone, Deserialize)]
 #[serde(untagged)]
 pub enum Tls {
@@ -20,6 +23,7 @@ pub enum Tls {
     Config(TlsConfig),
 }
 
+/// Client TLS configuration
 #[derive(Debug, Clone, Deserialize)]
 pub struct TlsConfig {
     pub cert_path: Option<PathBuf>,
@@ -27,6 +31,7 @@ pub struct TlsConfig {
     pub client_ca_cert_path: Option<PathBuf>,
 }
 
+/// Generation service provider
 #[derive(Debug, Clone, Copy, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum GenerationProvider {
@@ -34,12 +39,16 @@ pub enum GenerationProvider {
     Nlp,
 }
 
+/// Generate service configuration
 #[derive(Debug, Clone, Deserialize)]
 pub struct GenerationConfig {
+    /// Generation service provider
     pub provider: GenerationProvider,
+    /// Generation service connection information
     pub service: ServiceConfig,
 }
 
+/// Chunker parser type
 #[derive(Debug, Clone, Copy, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ChunkerType {
@@ -47,31 +56,50 @@ pub enum ChunkerType {
     All,
 }
 
+/// Configuration for each chunker
 #[allow(dead_code)]
 #[derive(Debug, Clone, Deserialize)]
 pub struct ChunkerConfig {
+    /// Chunker type
     pub r#type: ChunkerType,
+    /// Chunker service connection information
     pub service: ServiceConfig,
 }
 
+/// Configuration parameters applicable to each detector
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct DetectorConfigParams {
+    /// Default threshold with which to filter detector results by score
+    pub default_threshold: Option<f32>,
+}
+
+/// Configuration for each detector
 #[derive(Debug, Clone, Deserialize)]
 pub struct DetectorConfig {
+    /// Detector service connection information
     pub service: ServiceConfig,
+    /// ID of chunker that this detector will use
     pub chunker_id: String,
-    // Put threshold here _in_ config -> need to change type
-    //pub config: HashMap<String, String>,
-    // or threshold could be at this level but then would have to be optional
+    /// Optional detector configuration parameters
+    pub config: Option<DetectorConfigParams>,
 }
 
+/// Overall orchestrator server configuration
 #[derive(Debug, Clone, Deserialize)]
 pub struct OrchestratorConfig {
+    /// Generation service and associated configuration
     pub generation: GenerationConfig,
+    /// Chunker services and associated configurations
     pub chunkers: HashMap<String, ChunkerConfig>,
+    /// Detector services and associated configurations
     pub detectors: HashMap<String, DetectorConfig>,
+    /// Map of TLS connections, allowing reuse across services
+    /// that may require the same TLS information
     pub tls: HashMap<String, TlsConfig>,
 }
 
 impl OrchestratorConfig {
+    /// Load overall orchestrator server configuration
     pub async fn load(path: impl AsRef<Path>) -> Self {
         let path = path.as_ref();
         let s = tokio::fs::read_to_string(path)
@@ -110,6 +138,7 @@ impl OrchestratorConfig {
         todo!()
     }
 
+    /// Get ID of chunker associated with a particular detector
     pub fn get_chunker_id(&self, detector_id: &str) -> Option<String> {
         self.detectors
             .get(detector_id)
