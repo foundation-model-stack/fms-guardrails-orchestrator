@@ -144,6 +144,16 @@ impl OrchestratorConfig {
             .get(detector_id)
             .map(|detector_config| detector_config.chunker_id.clone())
     }
+
+    /// Get default threshold of a particular detector
+    pub fn get_default_threshold(&self, detector_id: &str) -> Option<f32> {
+        self.detectors.get(detector_id).and_then(|detector_config| {
+            detector_config
+                .config
+                .as_ref()
+                .and_then(|config| config.default_threshold)
+        })
+    }
 }
 
 fn service_tls_name_to_config(
