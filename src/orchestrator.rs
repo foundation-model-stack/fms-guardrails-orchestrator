@@ -294,7 +294,7 @@ async fn handle_chunk_task(
                     .results
                     .into_iter()
                     .map(|token| Chunk {
-                        offset,
+                        offset: offset + token.start as usize,
                         text: token.text,
                     })
                     .collect::<Vec<_>>();
