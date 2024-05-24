@@ -36,6 +36,8 @@ Note: Consequences are not their own separate section because there are many dec
         1. This can be a simple configmap read not maintained by the orchestrator. Importantly, there is no in-memory registration.
         2. This will have to be updated when any new detector server or chunker is added.
         3. Consequence: The orchestrator absolves responsibility of language detection via the model ID paradigm i.e. every detector ID will supply a corresponding chunker ID in the configuration. Thus on request, an end user has to use detector ID(s) appropriate to the language they are expecting (whether on the user prompt or generated text).
+4. The orchestrator will be responsible for filtering/thresholding results from individual detectors. For now, default thresholds will be tracked in the configuration of detector servers read by the orchestrator.
+    1. Besides potential filtering of individual results, any results from a detector will be assumed to be the “results” returned to the end user. “results” is in quotes since this information will be potentially combined with text generation server result information by the orchestrator, but importantly the results themselves (such as scores or texts) will not be altered by the orchestrator.
 
 ### Chunker
 Note: The orchestrator will provide an API for chunkers, but chunker implementations will not be provided with the orchestrator. The following decisions are decisions that allow the orchestrator to work with chunker(s).
@@ -55,8 +57,6 @@ Note: The orchestrator will provide an API for detectors, but detector implement
     2. Consequence: The detector API will be simpler than if the detector server(s) are expected to do input buffering and chunking and output streams. Individual(s)/team(s) contributing detector(s) will not be responsible for this logic. This will likely allow integration of more detectors more easily.
 3. In the case where the end user invokes a streaming implementation through the orchestrator, the text passed from chunkers to detectors will be assumed to be directly concatenable for tracking purposes, like streamed text generation server results.
     1. Consequence: Detectors that will be affected e.g. by whitespace surrounding chunks like sentences must account for this.
-4. The presence of any results from a detector will be assumed to be the “results” returned to the end user. “results” is in quotes since this information will be potentially combined (but importantly, not changed!) with text generation server result information by the orchestrator.
-    1. Any filtering/thresholding will have to be done by individual detector servers and not by the orchestrator. Default parameters here such as default thresholds will also be established and tracked by individual detector servers.
 
 
 ## Status
