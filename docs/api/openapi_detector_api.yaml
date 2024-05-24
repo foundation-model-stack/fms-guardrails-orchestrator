@@ -509,7 +509,7 @@ components:
           title: Contents
           description: >-
             Field allowing users to provide list of documents for analysis. Note, results of this endpoint will contain
-            analysis / detection of each of the provided document in the order they are present in `contents` object.
+            analysis / detection of each of the provided documents in the order they are present in the `contents` object.
           items:
             type: string
             example: >-
