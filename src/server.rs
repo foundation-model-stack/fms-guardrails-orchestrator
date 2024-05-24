@@ -183,3 +183,9 @@ impl IntoResponse for Error {
         (code, Json(error)).into_response()
     }
 }
+
+impl From<models::ValidationError> for Error {
+    fn from(value: models::ValidationError) -> Self {
+        Self::Validation(value.to_string())
+    }
+}
