@@ -188,7 +188,8 @@ detectors:
             hostname: localhost
             port: 9000
         chunker_id: sentence-en
-        config: {}
+        config:
+            default_threshold: 0.5
 tls: {}
         "#;
         let config: OrchestratorConfig = serde_yml::from_str(s)?;
