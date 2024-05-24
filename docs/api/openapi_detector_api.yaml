@@ -6,7 +6,7 @@ info:
     url: https://www.apache.org/licenses/LICENSE-2.0.html
   version: 0.0.1
 paths:
-  /api/v1/text/content:
+  /api/v1/text/contents:
     post:
       summary: Text Content Analysis Unary Handler
       description: >-
@@ -26,7 +26,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/TextAnalysisHttpRequest'
+              $ref: '#/components/schemas/ContentAnalysisHttpRequest'
       responses:
         '200':
           description: Successful Response
@@ -35,21 +35,22 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/TextAnalysisResponse'
+                  $ref: '#/components/schemas/ContentsAnalysisResponse'
                 title: >-
                   Response Text Content Analysis Unary Handler Api V1 Text
                   Content Post
                 example:
-                - start: 15
-                  end: 25
-                  detection_type: pii
-                  detection: EmailAddress
-                  score: 0.99
-                - start: 105
-                  end: 116
-                  detection_type: pii
-                  detection: SocialSecurity
-                  score: 0.99
+                - 
+                  - start: 15
+                    end: 25
+                    detection_type: pii
+                    detection: EmailAddress
+                    score: 0.99
+                  - start: 105
+                    end: 116
+                    detection_type: pii
+                    detection: SocialSecurity
+                    score: 0.99
         '404':
           description: Resource Not Found
           content:
@@ -501,19 +502,25 @@ components:
 
         Methods can be added to enumerations, and members can have their own
         attributes -- see the documentation for details.
-    TextAnalysisHttpRequest:
+    ContentAnalysisHttpRequest:
       properties:
-        content:
-          type: string
-          title: Content
-          example: >-
-            Your email is test@ibm.com! Only the next instance of email will be
-            processed. test@ibm.com. Your SSN is 123-45-6789.
+        contents:
+          type: array
+          title: Contents
+          items:
+            type: string
+            example: >-
+              Your email is test@ibm.com! Only the next instance of email will be
+              processed. test@ibm.com. Your SSN is 123-45-6789.
       type: object
       required:
-        - content
+        - contents
       title: TextAnalysisHttpRequest
-    TextAnalysisResponse:
+    ContentsAnalysisResponse:
+      type: array
+      items:
+        $ref: '#/components/schemas/ContentAnalysisResponse'
+    ContentAnalysisResponse:
       properties:
         start:
           type: integer
