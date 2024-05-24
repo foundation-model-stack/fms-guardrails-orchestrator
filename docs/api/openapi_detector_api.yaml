@@ -518,7 +518,7 @@ components:
       type: object
       required:
         - contents
-      title: TextAnalysisHttpRequest
+      title: ContentAnalysisHttpRequest
     ContentsAnalysisResponse:
       type: array
       items:
@@ -556,4 +556,4 @@ components:
         - detection
         - detection_type
         - score
-      title: TextAnalysisResponse
+      title: ContentAnalysisResponse
