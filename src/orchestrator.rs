@@ -96,7 +96,7 @@ impl Orchestrator {
                     tokenize(ctx.clone(), task.model_id.clone(), task.inputs.clone()).await?;
                 // Send result with input detections
                 Ok(ClassifiedGeneratedTextResult {
-                    input_token_count: input_token_count as i32,
+                    input_token_count,
                     token_classification_results: TextGenTokenClassificationResults {
                         input: input_detections,
                         output: None,
@@ -349,8 +349,8 @@ async fn handle_detection_task(
                     .into_iter()
                     .map(|detection| {
                         let mut result: TokenClassificationResult = detection.into();
-                        result.start += chunk.offset as i32;
-                        result.end += chunk.offset as i32;
+                        result.start += chunk.offset as u32;
+                        result.end += chunk.offset as u32;
                         result
                     })
                     .collect::<Vec<_>>();
@@ -479,9 +479,9 @@ async fn generate(
             Ok(ClassifiedGeneratedTextResult {
                 generated_text: Some(response.text.clone()),
                 finish_reason: Some(response.stop_reason().into()),
-                generated_token_count: Some(response.generated_token_count as i32),
-                seed: Some(response.seed as i32),
-                input_token_count: response.input_token_count as i32,
+                generated_token_count: Some(response.generated_token_count),
+                seed: Some(response.seed as u32),
+                input_token_count: response.input_token_count,
                 warnings: None,
                 tokens: if response.tokens.is_empty() {
                     None
@@ -552,9 +552,9 @@ async fn generate(
             Ok(ClassifiedGeneratedTextResult {
                 generated_text: Some(response.generated_text.clone()),
                 finish_reason: Some(response.finish_reason().into()),
-                generated_token_count: Some(response.generated_tokens as i32),
-                seed: Some(response.seed as i32),
-                input_token_count: response.input_token_count as i32,
+                generated_token_count: Some(response.generated_tokens as u32),
+                seed: Some(response.seed as u32),
+                input_token_count: response.input_token_count as u32,
                 warnings: None,
                 tokens: if response.tokens.is_empty() {
                     None

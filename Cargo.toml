@@ -34,7 +34,6 @@ tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["json", "env-filter"] }
 url = "2.5.0"
 uuid = { version = "1.8.0", features = ["v4", "fast-rng"] }
-validator = { version = "0.18.1", features = ["derive"] } # For API validation
 
 [build-dependencies]
 tonic-build = "0.11.0"
