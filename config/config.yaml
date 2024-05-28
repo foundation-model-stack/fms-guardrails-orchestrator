@@ -18,7 +18,7 @@ detectors:
             tls: caikit
         chunker_id: en_regex
         config:
-            detector_threshold: 0.5
+            default_threshold: 0.5
 tls:
     caikit:
         cert_path: /path/to/tls.crt
