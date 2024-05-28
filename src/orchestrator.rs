@@ -237,8 +237,13 @@ async fn detect(
         .map(|(detector_id, detector_params)| {
             let ctx = ctx.clone();
             let detector_id = detector_id.clone();
-            // Use default threshold here (from ctx?/detector config?) if not present in detector_params
-            let detector_params = detector_params.clone();
+            let mut detector_params = detector_params.clone();
+            if let Some(default_threshold) = ctx.config.get_default_threshold(&detector_id) {
+                // Use a default threshold if threshold is not provided by the user
+                detector_params
+                    .entry("threshold".into())
+                    .or_insert(default_threshold.into());
+            }
             let chunker_id =
                 ctx.config
                     .get_chunker_id(&detector_id)
@@ -326,6 +331,9 @@ async fn handle_detection_task(
             let detector_id = detector_id.clone();
             let detector_params = detector_params.clone();
             async move {
+                // NOTE: The detector request is expected to change and not actually
+                // take parameters. However, any parameters will be ignored for now
+                // ref. https://github.com/foundation-model-stack/fms-guardrails-orchestrator/issues/37
                 let request = DetectorRequest::new(chunk.text.clone(), detector_params);
                 debug!(
                     %detector_id,
