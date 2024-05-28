@@ -334,7 +334,7 @@ async fn handle_detection_task(
                 // NOTE: The detector request is expected to change and not actually
                 // take parameters. However, any parameters will be ignored for now
                 // ref. https://github.com/foundation-model-stack/fms-guardrails-orchestrator/issues/37
-                let request = DetectorRequest::new(chunk.text.clone(), detector_params);
+                let request = DetectorRequest::new(chunk.text.clone(), detector_params.clone());
                 debug!(
                     %detector_id,
                     ?request,
@@ -357,11 +357,20 @@ async fn handle_detection_task(
                 let results = response
                     .detections
                     .into_iter()
-                    .map(|detection| {
+                    .filter_map(|detection| {
                         let mut result: TokenClassificationResult = detection.into();
                         result.start += chunk.offset as u32;
                         result.end += chunk.offset as u32;
-                        result
+                        if let Some(threshold_value) = detector_params.get("threshold") {
+                            if let Some(threshold) = threshold_value.as_f64() {
+                                if result.score >= threshold {
+                                    return Some(result);
+                                }
+                            }
+                        } else {
+                            return Some(result);
+                        }
+                        None
                     })
                     .collect::<Vec<_>>();
                 Ok::<Vec<TokenClassificationResult>, Error>(results)
