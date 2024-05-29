@@ -361,16 +361,12 @@ async fn handle_detection_task(
                         let mut result: TokenClassificationResult = detection.into();
                         result.start += chunk.offset as u32;
                         result.end += chunk.offset as u32;
-                        if let Some(threshold_value) = detector_params.get("threshold") {
-                            if let Some(threshold) = threshold_value.as_f64() {
-                                if result.score >= threshold {
-                                    return Some(result);
-                                }
-                            }
+                        let threshold = detector_params.get("threshold").and_then(|v| v.as_f64());
+                        if threshold.is_some_and(|value| result.score < value) {
+                            None
                         } else {
-                            return Some(result);
+                            Some(result)
                         }
-                        None
                     })
                     .collect::<Vec<_>>();
                 Ok::<Vec<TokenClassificationResult>, Error>(results)
