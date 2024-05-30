@@ -1,8 +1,12 @@
 #![allow(unused_qualifications)]
 
-use crate::{pb, server};
+use crate::pb;
 use std::collections::HashMap;
 
+// TODO: When detector API is updated, consider if fields
+// like 'threshold' can be named options instead of the
+// use a generic HashMap with Values here
+// ref. https://github.com/foundation-model-stack/fms-guardrails-orchestrator/issues/37
 pub type DetectorParams = HashMap<String, serde_json::Value>;
 
 /// User request to orchestrator
@@ -28,15 +32,23 @@ pub struct GuardrailsHttpRequest {
     pub text_gen_parameters: Option<GuardrailsTextGenerationParameters>,
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum ValidationError {
+    #[error("`{0}` is required")]
+    Required(String),
+    #[error("{0}")]
+    Invalid(String),
+}
+
 impl GuardrailsHttpRequest {
     /// Upfront validation of user request
-    pub fn validate(&self) -> Result<(), server::Error> {
+    pub fn validate(&self) -> Result<(), ValidationError> {
         // Validate required parameters
         if self.model_id.is_empty() {
-            return Err(server::Error::Validation("`model_id` is required".into()));
+            return Err(ValidationError::Required("model_id".into()));
         }
         if self.inputs.is_empty() {
-            return Err(server::Error::Validation("`inputs` is required".into()));
+            return Err(ValidationError::Required("inputs".into()));
         }
         // Validate masks
         let input_range = 0..self.inputs.len();
@@ -48,7 +60,7 @@ impl GuardrailsHttpRequest {
             if !input_masks.iter().all(|(start, end)| {
                 input_range.contains(start) && input_range.contains(end) && start < end
             }) {
-                return Err(server::Error::Validation("invalid masks".into()));
+                return Err(ValidationError::Invalid("invalid masks".into()));
             }
         }
         Ok(())
