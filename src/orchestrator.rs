@@ -238,21 +238,19 @@ async fn detect(
             let ctx = ctx.clone();
             let detector_id = detector_id.clone();
             let detector_params = detector_params.clone();
+            // Get the detector config
+            let detector_config =
+                ctx.config
+                    .detectors
+                    .get(&detector_id)
+                    .ok_or_else(|| Error::DetectorNotFound {
+                        detector_id: detector_id.clone(),
+                    })?;
             // Get the default threshold to use if threshold is not provided by the user
-            let default_threshold =
-                ctx.config
-                    .get_default_threshold(&detector_id)
-                    .ok_or_else(|| Error::DetectorNotFound {
-                        detector_id: detector_id.clone(),
-                    })?;
+            let default_threshold = detector_config.default_threshold;
             // Get chunker for detector
-            let chunker_id =
-                ctx.config
-                    .get_chunker_id(&detector_id)
-                    .ok_or_else(|| Error::DetectorNotFound {
-                        detector_id: detector_id.clone(),
-                    })?;
-            let chunks = chunks.get(&chunker_id).unwrap().clone();
+            let chunker_id = detector_config.chunker_id.as_str();
+            let chunks = chunks.get(chunker_id).unwrap().clone();
             Ok(tokio::spawn(async move {
                 handle_detection_task(ctx, detector_id, default_threshold, detector_params, chunks)
                     .await
