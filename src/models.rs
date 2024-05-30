@@ -3,6 +3,10 @@
 use crate::pb;
 use std::collections::HashMap;
 
+// TODO: When detector API is updated, consider if fields
+// like 'threshold' can be named options instead of the
+// use a generic HashMap with Values here
+// ref. https://github.com/foundation-model-stack/fms-guardrails-orchestrator/issues/37
 pub type DetectorParams = HashMap<String, serde_json::Value>;
 
 /// User request to orchestrator

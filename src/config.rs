@@ -66,13 +66,6 @@ pub struct ChunkerConfig {
     pub service: ServiceConfig,
 }
 
-/// Configuration parameters applicable to each detector
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
-pub struct DetectorConfigParams {
-    /// Default threshold with which to filter detector results by score
-    pub default_threshold: Option<f32>,
-}
-
 /// Configuration for each detector
 #[derive(Debug, Clone, Deserialize)]
 pub struct DetectorConfig {
@@ -80,8 +73,8 @@ pub struct DetectorConfig {
     pub service: ServiceConfig,
     /// ID of chunker that this detector will use
     pub chunker_id: String,
-    /// Optional detector configuration parameters
-    pub config: Option<DetectorConfigParams>,
+    /// Default threshold with which to filter detector results by score
+    pub default_threshold: f32,
 }
 
 /// Overall orchestrator server configuration
@@ -147,12 +140,9 @@ impl OrchestratorConfig {
 
     /// Get default threshold of a particular detector
     pub fn get_default_threshold(&self, detector_id: &str) -> Option<f32> {
-        self.detectors.get(detector_id).and_then(|detector_config| {
-            detector_config
-                .config
-                .as_ref()
-                .and_then(|config| config.default_threshold)
-        })
+        self.detectors
+            .get(detector_id)
+            .map(|detector_config| detector_config.default_threshold)
     }
 }
 
@@ -198,8 +188,7 @@ detectors:
             hostname: localhost
             port: 9000
         chunker_id: sentence-en
-        config:
-            default_threshold: 0.5
+        default_threshold: 0.5
 tls: {}
         "#;
         let config: OrchestratorConfig = serde_yml::from_str(s)?;
