@@ -258,9 +258,9 @@ components:
       title: ChatAnalysisResponse
     ContextAnalysisHttpRequest:
       properties:
-        prompt:
+        content:
           type: string
-          title: Prompt
+          title: Content
           example: What is the name of the solar powered car race held every two years?
         context_type:
           allOf:
