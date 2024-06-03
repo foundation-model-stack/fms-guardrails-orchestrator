@@ -172,7 +172,7 @@ components:
       type: object
       properties:
         code:
-          type: string
+          type: number
         details:
           type: string
       required:
