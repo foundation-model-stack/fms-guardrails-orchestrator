@@ -308,7 +308,7 @@ async fn handle_chunk_task(
                 Ok::<Vec<Chunk>, Error>(results)
             }
         })
-        .buffer_unordered(5)
+        .buffered(5)
         .collect::<Vec<_>>()
         .await
         .into_iter()
@@ -373,7 +373,7 @@ async fn handle_detection_task(
                 Ok::<Vec<TokenClassificationResult>, Error>(results)
             }
         })
-        .buffer_unordered(5)
+        .buffered(5)
         .collect::<Vec<_>>()
         .await
         .into_iter()

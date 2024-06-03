@@ -50,16 +50,11 @@ impl DetectorClient {
 #[derive(Clone, Default, Debug, PartialEq, Serialize, Deserialize)]
 pub struct DetectorRequest {
     pub text: String,
-    pub parameters: Option<HashMap<String, serde_json::Value>>,
+    pub parameters: HashMap<String, serde_json::Value>,
 }
 
 impl DetectorRequest {
     pub fn new(text: String, parameters: HashMap<String, serde_json::Value>) -> Self {
-        let parameters = if parameters.is_empty() {
-            None
-        } else {
-            Some(parameters)
-        };
         Self { text, parameters }
     }
 }
