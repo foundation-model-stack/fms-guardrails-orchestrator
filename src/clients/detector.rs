@@ -106,7 +106,7 @@ pub struct ContentAnalysisResponse {
     pub evidences: Option<Vec<EvidenceObj>>,
 }
 
-// impl From<Detection> for crate::models::TokenClassificationResult {
+// impl From<ContentAnalysisResponse> for crate::models::TokenClassificationResult {
 //     fn from(value: ContentAnalysisResponse) -> Self {
 //         Self {
 //             start: value.start as u32,
