@@ -248,7 +248,9 @@ components:
           example: 0.684
         evidences:
           anyOf:
-            - $ref: '#/components/schemas/EvidenceObj'
+            - items:
+                $ref: '#/components/schemas/EvidenceObj'
+              type: array
           description: Optional field providing evidences for the provided detection
       type: object
       required:
@@ -298,7 +300,9 @@ components:
           example: 0.5
         evidences:
           anyOf:
-            - $ref: '#/components/schemas/EvidenceObj'
+            - items:
+                $ref: '#/components/schemas/EvidenceObj'
+              type: array
           description: Optional field providing evidences for the provided detection
       type: object
       required:
@@ -436,7 +440,9 @@ components:
           example: 0.5
         evidences:
           anyOf:
-            - $ref: '#/components/schemas/EvidenceObj'
+            - items:
+                $ref: '#/components/schemas/EvidenceObj'
+              type: array
           description: Optional field providing evidences for the provided detection
       type: object
       required:
@@ -547,7 +553,9 @@ components:
           example: 0.8
         evidences:
           anyOf:
-            - $ref: '#/components/schemas/EvidenceObj'
+            - items:
+                $ref: '#/components/schemas/EvidenceObj'
+              type: array
           description: Optional field providing evidences for the provided detection
       type: object
       required:
