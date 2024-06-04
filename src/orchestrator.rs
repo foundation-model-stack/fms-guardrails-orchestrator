@@ -324,7 +324,7 @@ async fn handle_chunk_task(
     Ok((chunker_id, chunks))
 }
 
-/// Sends a buffered, concurrent stream of requests to a detector service.
+/// Sends a content analysis request to a detector service.
 async fn handle_content_analysis_task(
     ctx: Arc<Context>,
     detector_id: String,
@@ -596,6 +596,7 @@ async fn generate(
     }
 }
 
+/// Get codepoints of text between start and end indices
 fn index_codepoints(text: &str, start: usize, end: usize) -> String {
     let chars = text.chars().collect::<Vec<_>>();
     chars[start..end].iter().cloned().collect()
