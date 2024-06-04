@@ -47,7 +47,9 @@ impl DetectorClient {
     }
 }
 
-/// Results of this request will contain analysis / detection of each of the provided documents in the order they are present in the `contents` object.
+/// Request for text content analysis
+/// Results of this request will contain analysis / detection of each of the provided documents
+/// in the order they are present in the `contents` object.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ContentAnalysisRequest {
     /// Field allowing users to provide list of documents for analysis
@@ -86,16 +88,22 @@ pub struct EvidenceObj {
     pub evidence: Option<Evidence>,
 }
 
+/// Response of text content analysis endpoint
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ContentAnalysisResponse {
+    /// Start index of detection
     pub start: usize,
+    /// End index of detection
     pub end: usize,
+    /// Relevant detection class
     pub detection: String,
+    /// Detection type or aggregate detection label
     pub detection_type: String,
+    /// Score of detection
     pub score: f64,
-    // TODO: confirm plurality
+    /// Optional, any applicable evidences for detection
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub evidences: Option<EvidenceObj>,
+    pub evidences: Option<Vec<EvidenceObj>>,
 }
 
 // impl From<Detection> for crate::models::TokenClassificationResult {
