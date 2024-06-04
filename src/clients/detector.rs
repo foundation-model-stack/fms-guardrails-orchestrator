@@ -105,17 +105,3 @@ pub struct ContentAnalysisResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub evidences: Option<Vec<EvidenceObj>>,
 }
-
-// impl From<ContentAnalysisResponse> for crate::models::TokenClassificationResult {
-//     fn from(value: ContentAnalysisResponse) -> Self {
-//         Self {
-//             start: value.start as u32,
-//             end: value.end as u32,
-//             word: value.text, // where to get this now??
-//             entity: value.detection,
-//             entity_group: value.detection_type,
-//             score: value.score,
-//             token_count: None,
-//         }
-//     }
-// }
