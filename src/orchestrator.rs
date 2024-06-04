@@ -334,9 +334,8 @@ async fn handle_content_analysis_task(
 ) -> Result<Vec<TokenClassificationResult>, Error> {
     // Texts in each chunk are aggregated to be sent as a batch to the detector
     let chunk_texts = chunks
-        .clone()
-        .into_iter()
-        .map(|chunk| chunk.text)
+        .iter()
+        .map(|chunk| chunk.text.clone())
         .collect::<Vec<_>>();
     let detector_id = detector_id.clone();
     let ctx = ctx.clone();
@@ -360,7 +359,7 @@ async fn handle_content_analysis_task(
         "received detector response"
     );
     let mut all_results = Vec::<TokenClassificationResult>::new();
-    for (chunk, chunk_response) in chunks.clone().iter().zip(response.iter()) {
+    for (chunk, chunk_response) in chunks.iter().zip(response.iter()) {
         // Filter results based on threshold (if applicable) here
         let results = chunk_response
             .iter()
@@ -371,8 +370,8 @@ async fn handle_content_analysis_task(
                     // Contents analysis API does not directly return the text,
                     // so this has to be taken from the original chunk text
                     word: index_codepoints(&chunk.text, detection.start, detection.end),
-                    entity: detection.detection.to_string(),
-                    entity_group: detection.detection_type.to_string(),
+                    entity: detection.detection.clone(),
+                    entity_group: detection.detection_type.clone(),
                     score: detection.score,
                     token_count: None,
                 };
