@@ -362,19 +362,12 @@ async fn handle_content_analysis_task(
     for (chunk, chunk_response) in chunks.iter().zip(response.iter()) {
         // Filter results based on threshold (if applicable) here
         let results = chunk_response
-            .iter()
+            .clone()
+            .into_iter()
             .filter_map(|detection| {
-                let mut result: TokenClassificationResult = TokenClassificationResult {
-                    start: detection.start as u32,
-                    end: detection.end as u32,
-                    // Contents analysis API does not directly return the text,
-                    // so this has to be taken from the original chunk text
-                    word: index_codepoints(&chunk.text, detection.start, detection.end),
-                    entity: detection.detection.clone(),
-                    entity_group: detection.detection_type.clone(),
-                    score: detection.score,
-                    token_count: None,
-                };
+                let mut result: TokenClassificationResult = detection.into();
+                result.word =
+                    index_codepoints(&chunk.text, result.start as usize, result.end as usize);
                 result.start += chunk.offset as u32;
                 result.end += chunk.offset as u32;
                 let threshold = detector_params
