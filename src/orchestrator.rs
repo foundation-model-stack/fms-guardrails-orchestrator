@@ -12,8 +12,9 @@ use uuid::Uuid;
 
 use crate::{
     clients::{
-        self, detector::DetectorRequest, ChunkerClient, DetectorClient, GenerationClient,
-        NlpClient, TgisClient,
+        self,
+        detector::{ContentAnalysisRequest, DetectorRequest},
+        ChunkerClient, DetectorClient, GenerationClient, NlpClient, TgisClient,
     },
     config::{GenerationProvider, OrchestratorConfig},
     models::{
@@ -232,31 +233,36 @@ async fn detect(
     detectors: &HashMap<String, DetectorParams>,
     chunks: HashMap<String, Vec<Chunk>>,
 ) -> Result<Vec<TokenClassificationResult>, Error> {
-    let tasks = detectors
-        .iter()
-        .map(|(detector_id, detector_params)| {
-            let ctx = ctx.clone();
-            let detector_id = detector_id.clone();
-            let detector_params = detector_params.clone();
-            // Get the detector config
-            let detector_config =
-                ctx.config
-                    .detectors
-                    .get(&detector_id)
-                    .ok_or_else(|| Error::DetectorNotFound {
+    let tasks =
+        detectors
+            .iter()
+            .map(|(detector_id, detector_params)| {
+                let ctx = ctx.clone();
+                let detector_id = detector_id.clone();
+                let detector_params = detector_params.clone();
+                // Get the detector config
+                let detector_config = ctx.config.detectors.get(&detector_id).ok_or_else(|| {
+                    Error::DetectorNotFound {
                         detector_id: detector_id.clone(),
-                    })?;
-            // Get the default threshold to use if threshold is not provided by the user
-            let default_threshold = detector_config.default_threshold;
-            // Get chunker for detector
-            let chunker_id = detector_config.chunker_id.as_str();
-            let chunks = chunks.get(chunker_id).unwrap().clone();
-            Ok(tokio::spawn(async move {
-                handle_detection_task(ctx, detector_id, default_threshold, detector_params, chunks)
+                    }
+                })?;
+                // Get the default threshold to use if threshold is not provided by the user
+                let default_threshold = detector_config.default_threshold;
+                // Get chunker for detector
+                let chunker_id = detector_config.chunker_id.as_str();
+                let chunks = chunks.get(chunker_id).unwrap().clone();
+                Ok(tokio::spawn(async move {
+                    handle_content_analysis_task(
+                        ctx,
+                        detector_id,
+                        default_threshold,
+                        detector_params,
+                        chunks,
+                    )
                     .await
-            }))
-        })
-        .collect::<Result<Vec<_>, Error>>()?;
+                }))
+            })
+            .collect::<Result<Vec<_>, Error>>()?;
     let results = try_join_all(tasks)
         .await?
         .into_iter()
@@ -320,7 +326,7 @@ async fn handle_chunk_task(
 }
 
 /// Sends a buffered, concurrent stream of requests to a detector service.
-async fn handle_detection_task(
+async fn handle_content_analysis_task(
     ctx: Arc<Context>,
     detector_id: String,
     default_threshold: f32,
@@ -333,10 +339,8 @@ async fn handle_detection_task(
             let detector_id = detector_id.clone();
             let detector_params = detector_params.clone();
             async move {
-                // NOTE: The detector request is expected to change and not actually
-                // take parameters. Any parameters will be ignored for now
-                // ref. https://github.com/foundation-model-stack/fms-guardrails-orchestrator/issues/37
-                let request = DetectorRequest::new(chunk.text.clone(), detector_params.clone());
+                // TODO: change to batch - assume this is faster?
+                let request = ContentAnalysisRequest::new(vec![chunk.text.clone()]);
                 debug!(
                     %detector_id,
                     ?request,
@@ -344,7 +348,7 @@ async fn handle_detection_task(
                 );
                 let response = ctx
                     .detector_client
-                    .classify(&detector_id, request)
+                    .analyze_contents(&detector_id, request)
                     .await
                     .map_err(|error| Error::DetectorRequestFailed {
                         detector_id: detector_id.clone(),
@@ -356,13 +360,14 @@ async fn handle_detection_task(
                     "received detector response"
                 );
                 // Filter results based on threshold (if applicable) here
+                // TODO: update this processing
                 let results = response
-                    .detections
                     .into_iter()
                     .filter_map(|detection| {
                         let mut result: TokenClassificationResult = detection.into();
                         result.start += chunk.offset as u32;
                         result.end += chunk.offset as u32;
+                        // Codepoint text munging
                         let threshold = detector_params
                             .get("threshold")
                             .and_then(|v| v.as_f64())

@@ -28,11 +28,11 @@ impl DetectorClient {
             .clone())
     }
 
-    pub async fn classify(
+    pub async fn analyze_contents(
         &self,
         model_id: &str,
-        request: DetectorRequest,
-    ) -> Result<DetectorResponse, Error> {
+        request: ContentAnalysisRequest,
+    ) -> Result<Vec<Vec<ContentAnalysisResponse>>, Error> {
         let client = self.client(model_id)?;
         let url = client.base_url().as_str();
         let response = client
@@ -47,43 +47,67 @@ impl DetectorClient {
     }
 }
 
-#[derive(Clone, Default, Debug, PartialEq, Serialize, Deserialize)]
-pub struct DetectorRequest {
-    pub text: String,
-    pub parameters: HashMap<String, serde_json::Value>,
+/// Results of this request will contain analysis / detection of each of the provided documents in the order they are present in the `contents` object.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ContentAnalysisRequest {
+    /// Field allowing users to provide list of documents for analysis
+    pub contents: Vec<String>,
 }
 
-impl DetectorRequest {
-    pub fn new(text: String, parameters: HashMap<String, serde_json::Value>) -> Self {
-        Self { text, parameters }
+impl ContentAnalysisRequest {
+    pub fn new(contents: Vec<String>) -> ContentAnalysisRequest {
+        ContentAnalysisRequest { contents }
     }
 }
 
-#[derive(Clone, Default, Debug, PartialEq, Serialize, Deserialize)]
-pub struct Detection {
+/// Evidence type
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum EvidenceType {
+    Url,
+    Title,
+}
+
+/// Source of the evidence e.g. url
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Evidence {
+    /// Evidence source
+    pub source: String,
+}
+
+/// Evidence in response
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct EvidenceObj {
+    /// Type field signifying the type of evidence provided
+    #[serde(rename = "type")]
+    pub r#type: EvidenceType,
+    /// Evidence currently only containing source
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub evidence: Option<Evidence>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ContentAnalysisResponse {
     pub start: usize,
     pub end: usize,
-    pub text: String,
     pub detection: String,
     pub detection_type: String,
     pub score: f64,
+    // TODO: confirm plurality
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub evidences: Option<EvidenceObj>,
 }
 
-#[derive(Clone, Default, Debug, PartialEq, Serialize, Deserialize)]
-pub struct DetectorResponse {
-    pub detections: Vec<Detection>,
-}
-
-impl From<Detection> for crate::models::TokenClassificationResult {
-    fn from(value: Detection) -> Self {
-        Self {
-            start: value.start as u32,
-            end: value.end as u32,
-            word: value.text,
-            entity: value.detection,
-            entity_group: value.detection_type,
-            score: value.score,
-            token_count: None,
-        }
-    }
-}
+// impl From<Detection> for crate::models::TokenClassificationResult {
+//     fn from(value: ContentAnalysisResponse) -> Self {
+//         Self {
+//             start: value.start as u32,
+//             end: value.end as u32,
+//             word: value.text, // where to get this now??
+//             entity: value.detection,
+//             entity_group: value.detection_type,
+//             score: value.score,
+//             token_count: None,
+//         }
+//     }
+// }
