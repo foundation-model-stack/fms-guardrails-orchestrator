@@ -12,7 +12,7 @@ use uuid::Uuid;
 
 use crate::{
     clients::{
-        self, detector::DetectorRequest, ChunkerClient, DetectorClient, GenerationClient,
+        self, detector::ContentAnalysisRequest, ChunkerClient, DetectorClient, GenerationClient,
         NlpClient, TgisClient,
     },
     config::{GenerationProvider, OrchestratorConfig},
@@ -198,7 +198,7 @@ async fn chunk_and_detect(
             Ok::<String, Error>(chunker_id)
         })
         .collect::<Result<Vec<_>, Error>>()?;
-    // Spawn chunking tasks, returning a map of chunker_id->chunks.
+    // Spawn chunking tasks, returning a map of chunker_id->chunks
     let chunks = chunk(ctx.clone(), chunker_ids, text_with_offsets).await?;
     // Spawn detection tasks
     let detections = detect(ctx.clone(), detectors, chunks).await?;
@@ -319,7 +319,7 @@ async fn handle_chunk_task(
     Ok((chunker_id, chunks))
 }
 
-/// Sends a buffered, concurrent stream of requests to a detector service.
+/// Sends a request to a detector service.
 async fn handle_detection_task(
     ctx: Arc<Context>,
     detector_id: String,
@@ -327,61 +327,49 @@ async fn handle_detection_task(
     detector_params: DetectorParams,
     chunks: Vec<Chunk>,
 ) -> Result<Vec<TokenClassificationResult>, Error> {
-    let detections = stream::iter(chunks)
-        .map(|chunk| {
-            let ctx = ctx.clone();
-            let detector_id = detector_id.clone();
-            let detector_params = detector_params.clone();
-            async move {
-                // NOTE: The detector request is expected to change and not actually
-                // take parameters. Any parameters will be ignored for now
-                // ref. https://github.com/foundation-model-stack/fms-guardrails-orchestrator/issues/37
-                let request = DetectorRequest::new(chunk.text.clone(), detector_params.clone());
-                debug!(
-                    %detector_id,
-                    ?request,
-                    "sending detector request"
-                );
-                let response = ctx
-                    .detector_client
-                    .classify(&detector_id, request)
-                    .await
-                    .map_err(|error| Error::DetectorRequestFailed {
-                        detector_id: detector_id.clone(),
-                        error,
-                    })?;
-                debug!(
-                    %detector_id,
-                    ?response,
-                    "received detector response"
-                );
-                // Filter results based on threshold (if applicable) here
-                let results = response
-                    .detections
-                    .into_iter()
-                    .filter_map(|detection| {
-                        let mut result: TokenClassificationResult = detection.into();
-                        result.start += chunk.offset as u32;
-                        result.end += chunk.offset as u32;
-                        let threshold = detector_params
-                            .get("threshold")
-                            .and_then(|v| v.as_f64())
-                            .unwrap_or(default_threshold as f64);
-                        (result.score >= threshold).then_some(result)
-                    })
-                    .collect::<Vec<_>>();
-                Ok::<Vec<TokenClassificationResult>, Error>(results)
-            }
-        })
-        .buffered(5)
-        .collect::<Vec<_>>()
+    let detector_id = detector_id.clone();
+    let threshold = detector_params
+        .get("threshold")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(default_threshold as f64);
+    let contents = chunks.iter().map(|chunk| chunk.text.clone()).collect();
+    let request = ContentAnalysisRequest::new(contents);
+    debug!(
+        %detector_id,
+        ?request,
+        "sending detector request"
+    );
+    let response = ctx
+        .detector_client
+        .text_contents(&detector_id, request)
         .await
+        .map_err(|error| Error::DetectorRequestFailed {
+            detector_id: detector_id.clone(),
+            error,
+        })?;
+    debug!(
+        %detector_id,
+        ?response,
+        "received detector response"
+    );
+    let results = chunks
         .into_iter()
-        .collect::<Result<Vec<_>, Error>>()?
-        .into_iter()
-        .flatten()
+        .zip(response)
+        .flat_map(|(chunk, response)| {
+            response
+                .into_iter()
+                .filter_map(|resp| {
+                    let mut result: TokenClassificationResult = resp.into();
+                    result.word =
+                        index_codepoints(&chunk.text, result.start as usize, result.end as usize);
+                    result.start += chunk.offset as u32;
+                    result.end += chunk.offset as u32;
+                    (result.score >= threshold).then_some(result)
+                })
+                .collect::<Vec<_>>()
+        })
         .collect::<Vec<_>>();
-    Ok(detections)
+    Ok::<Vec<TokenClassificationResult>, Error>(results)
 }
 
 /// Sends tokenize request to a generation service.
@@ -591,6 +579,12 @@ async fn generate(
     }
 }
 
+/// Get codepoints of text between start and end indices
+fn index_codepoints(text: &str, start: usize, end: usize) -> String {
+    let chars = text.chars().collect::<Vec<_>>();
+    chars[start..end].iter().collect()
+}
+
 /// Applies masks to input text, returning (offset, masked_text) pairs.
 fn apply_masks(text: &str, masks: &[(usize, usize)]) -> Vec<(usize, String)> {
     let chars = text.chars().collect::<Vec<_>>();
@@ -707,5 +701,13 @@ mod tests {
             (50, "I want this sentence too.".to_string()),
         ];
         assert_eq!(text_with_offsets, expected_text_with_offsets)
+    }
+
+    #[test]
+    fn test_index_codepoints() {
+        let s = "Hello world";
+        assert_eq!(index_codepoints(s, 0, 5), "Hello");
+        let s = "哈囉世界";
+        assert_eq!(index_codepoints(s, 3, 4), "界");
     }
 }

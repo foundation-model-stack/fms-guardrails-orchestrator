@@ -13,7 +13,7 @@ chunkers:
 detectors:
     hap-en:
         service:
-            hostname: https://localhost/api/v1/detector
+            hostname: https://localhost/api/v1/text/contents # full url / endpoint currently expected
             port: 8080
             tls: caikit
         chunker_id: en_regex
