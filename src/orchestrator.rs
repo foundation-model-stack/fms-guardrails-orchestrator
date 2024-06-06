@@ -328,10 +328,7 @@ async fn handle_detection_task(
     chunks: Vec<Chunk>,
 ) -> Result<Vec<TokenClassificationResult>, Error> {
     let detector_id = detector_id.clone();
-    let threshold = detector_params
-        .get("threshold")
-        .and_then(|v| v.as_f64())
-        .unwrap_or(default_threshold as f64);
+    let threshold = detector_params.threshold.unwrap_or(default_threshold);
     let contents = chunks.iter().map(|chunk| chunk.text.clone()).collect();
     let request = ContentAnalysisRequest::new(contents);
     debug!(
@@ -364,7 +361,7 @@ async fn handle_detection_task(
                         index_codepoints(&chunk.text, result.start as usize, result.end as usize);
                     result.start += chunk.offset as u32;
                     result.end += chunk.offset as u32;
-                    (result.score >= threshold).then_some(result)
+                    (result.score >= threshold as f64).then_some(result)
                 })
                 .collect::<Vec<_>>()
         })
