@@ -232,36 +232,31 @@ async fn detect(
     detectors: &HashMap<String, DetectorParams>,
     chunks: HashMap<String, Vec<Chunk>>,
 ) -> Result<Vec<TokenClassificationResult>, Error> {
-    let tasks =
-        detectors
-            .iter()
-            .map(|(detector_id, detector_params)| {
-                let ctx = ctx.clone();
-                let detector_id = detector_id.clone();
-                let detector_params = detector_params.clone();
-                // Get the detector config
-                let detector_config = ctx.config.detectors.get(&detector_id).ok_or_else(|| {
-                    Error::DetectorNotFound {
+    let tasks = detectors
+        .iter()
+        .map(|(detector_id, detector_params)| {
+            let ctx = ctx.clone();
+            let detector_id = detector_id.clone();
+            let detector_params = detector_params.clone();
+            // Get the detector config
+            let detector_config =
+                ctx.config
+                    .detectors
+                    .get(&detector_id)
+                    .ok_or_else(|| Error::DetectorNotFound {
                         detector_id: detector_id.clone(),
-                    }
-                })?;
-                // Get the default threshold to use if threshold is not provided by the user
-                let default_threshold = detector_config.default_threshold;
-                // Get chunker for detector
-                let chunker_id = detector_config.chunker_id.as_str();
-                let chunks = chunks.get(chunker_id).unwrap().clone();
-                Ok(tokio::spawn(async move {
-                    handle_content_analysis_task(
-                        ctx,
-                        detector_id,
-                        default_threshold,
-                        detector_params,
-                        chunks,
-                    )
+                    })?;
+            // Get the default threshold to use if threshold is not provided by the user
+            let default_threshold = detector_config.default_threshold;
+            // Get chunker for detector
+            let chunker_id = detector_config.chunker_id.as_str();
+            let chunks = chunks.get(chunker_id).unwrap().clone();
+            Ok(tokio::spawn(async move {
+                handle_detection_task(ctx, detector_id, default_threshold, detector_params, chunks)
                     .await
-                }))
-            })
-            .collect::<Result<Vec<_>, Error>>()?;
+            }))
+        })
+        .collect::<Result<Vec<_>, Error>>()?;
     let results = try_join_all(tasks)
         .await?
         .into_iter()
@@ -324,22 +319,21 @@ async fn handle_chunk_task(
     Ok((chunker_id, chunks))
 }
 
-/// Sends a content analysis request to a detector service.
-async fn handle_content_analysis_task(
+/// Sends a request to a detector service.
+async fn handle_detection_task(
     ctx: Arc<Context>,
     detector_id: String,
     default_threshold: f32,
     detector_params: DetectorParams,
     chunks: Vec<Chunk>,
 ) -> Result<Vec<TokenClassificationResult>, Error> {
-    // Texts in each chunk are aggregated to be sent as a batch to the detector
-    let chunk_texts = chunks
-        .iter()
-        .map(|chunk| chunk.text.clone())
-        .collect::<Vec<_>>();
     let detector_id = detector_id.clone();
-    let ctx = ctx.clone();
-    let request = ContentAnalysisRequest::new(chunk_texts);
+    let threshold = detector_params
+        .get("threshold")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(default_threshold as f64);
+    let contents = chunks.iter().map(|chunk| chunk.text.clone()).collect();
+    let request = ContentAnalysisRequest::new(contents);
     debug!(
         %detector_id,
         ?request,
@@ -347,7 +341,7 @@ async fn handle_content_analysis_task(
     );
     let response = ctx
         .detector_client
-        .analyze_contents(&detector_id, request)
+        .text_contents(&detector_id, request)
         .await
         .map_err(|error| Error::DetectorRequestFailed {
             detector_id: detector_id.clone(),
@@ -358,28 +352,24 @@ async fn handle_content_analysis_task(
         ?response,
         "received detector response"
     );
-    let mut all_results = Vec::<TokenClassificationResult>::new();
-    for (chunk, chunk_response) in chunks.iter().zip(response.iter()) {
-        // Filter results based on threshold (if applicable) here
-        let results = chunk_response
-            .clone()
-            .into_iter()
-            .filter_map(|detection| {
-                let mut result: TokenClassificationResult = detection.into();
-                result.word =
-                    index_codepoints(&chunk.text, result.start as usize, result.end as usize);
-                result.start += chunk.offset as u32;
-                result.end += chunk.offset as u32;
-                let threshold = detector_params
-                    .get("threshold")
-                    .and_then(|v| v.as_f64())
-                    .unwrap_or(default_threshold as f64);
-                (result.score >= threshold).then_some(result)
-            })
-            .collect::<Vec<_>>();
-        all_results.extend(results);
-    }
-    Ok::<Vec<TokenClassificationResult>, Error>(all_results)
+    let results = chunks
+        .into_iter()
+        .zip(response)
+        .flat_map(|(chunk, response)| {
+            response
+                .into_iter()
+                .filter_map(|resp| {
+                    let mut result: TokenClassificationResult = resp.into();
+                    result.word =
+                        index_codepoints(&chunk.text, result.start as usize, result.end as usize);
+                    result.start += chunk.offset as u32;
+                    result.end += chunk.offset as u32;
+                    (result.score >= threshold).then_some(result)
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    Ok::<Vec<TokenClassificationResult>, Error>(results)
 }
 
 /// Sends tokenize request to a generation service.
@@ -592,7 +582,7 @@ async fn generate(
 /// Get codepoints of text between start and end indices
 fn index_codepoints(text: &str, start: usize, end: usize) -> String {
     let chars = text.chars().collect::<Vec<_>>();
-    chars[start..end].iter().cloned().collect()
+    chars[start..end].iter().collect()
 }
 
 /// Applies masks to input text, returning (offset, masked_text) pairs.
@@ -711,5 +701,13 @@ mod tests {
             (50, "I want this sentence too.".to_string()),
         ];
         assert_eq!(text_with_offsets, expected_text_with_offsets)
+    }
+
+    #[test]
+    fn test_index_codepoints() {
+        let s = "Hello world";
+        assert_eq!(index_codepoints(s, 0, 5), "Hello");
+        let s = "哈囉世界";
+        assert_eq!(index_codepoints(s, 3, 4), "界");
     }
 }

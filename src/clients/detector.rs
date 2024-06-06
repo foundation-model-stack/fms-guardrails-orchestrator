@@ -28,7 +28,7 @@ impl DetectorClient {
             .clone())
     }
 
-    pub async fn analyze_contents(
+    pub async fn text_contents(
         &self,
         model_id: &str,
         request: ContentAnalysisRequest,
