@@ -111,7 +111,7 @@ impl From<ContentAnalysisResponse> for crate::models::TokenClassificationResult 
         Self {
             start: value.start as u32,
             end: value.end as u32,
-            word: "".to_string(), // Expected to be filled in
+            word: "".to_string(), // TODO: fill in when provided in the detector API in the next iteration
             entity: value.detection,
             entity_group: value.detection_type,
             score: value.score,
