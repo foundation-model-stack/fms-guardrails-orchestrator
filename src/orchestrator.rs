@@ -689,6 +689,28 @@ impl StreamingClassificationWithGenTask {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{
+        models::FinishReason,
+        pb::fmaas::{
+            BatchedGenerationRequest, BatchedGenerationResponse, GenerationResponse, StopReason,
+        },
+    };
+
+    async fn get_test_context(
+        gen_client: GenerationClient,
+        chunker_client: Option<ChunkerClient>,
+        detector_client: Option<DetectorClient>,
+    ) -> Context {
+        let chunker_client = chunker_client.unwrap_or_default();
+        let detector_client = detector_client.unwrap_or_default();
+
+        Context {
+            generation_client: gen_client,
+            chunker_client,
+            detector_client,
+            config: OrchestratorConfig::default(),
+        }
+    }
 
     #[test]
     fn test_apply_masks() {
@@ -708,5 +730,63 @@ mod tests {
         assert_eq!(slice_codepoints(s, 0, 5), "Hello");
         let s = "哈囉世界";
         assert_eq!(slice_codepoints(s, 3, 4), "界");
+    }
+
+    // Test for TGIS generation with default parameter
+    #[tokio::test]
+    async fn test_tgis_generate_with_default_params() {
+        // Initialize a mock object from `TgisClient`
+        let mut mock_client = TgisClient::faux();
+
+        let sample_text = String::from("sample text");
+        let text_gen_model_id = String::from("test-llm-id-1");
+
+        let generation_response = GenerationResponse {
+            text: String::from("sample response worked"),
+            stop_reason: StopReason::EosToken.into(),
+            stop_sequence: String::from("\n"),
+            generated_token_count: 3,
+            seed: 7,
+            ..Default::default()
+        };
+
+        let client_generation_response = BatchedGenerationResponse {
+            responses: [generation_response].to_vec(),
+        };
+
+        let expected_generate_req_args = BatchedGenerationRequest {
+            model_id: text_gen_model_id.clone(),
+            prefix_id: None,
+            requests: [GenerationRequest {
+                text: sample_text.clone(),
+            }]
+            .to_vec(),
+            params: None,
+        };
+
+        let expected_generate_response = ClassifiedGeneratedTextResult {
+            generated_text: Some(client_generation_response.responses[0].text.clone()),
+            finish_reason: Some(FinishReason::EosToken),
+            generated_token_count: Some(3),
+            seed: Some(7),
+            ..Default::default()
+        };
+
+        // Construct a behavior for the mock object
+        faux::when!(mock_client.generate(expected_generate_req_args))
+            .once() // TODO: Add with_args
+            .then_return(Ok(client_generation_response));
+
+        let mock_generation_client = GenerationClient::Tgis(mock_client.clone());
+
+        let ctx: Context = get_test_context(mock_generation_client, None, None).await;
+
+        // Test request formulation and response processing is as expected
+        assert_eq!(
+            generate(ctx.into(), text_gen_model_id, sample_text, None)
+                .await
+                .unwrap(),
+            expected_generate_response
+        );
     }
 }
