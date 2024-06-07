@@ -7,6 +7,7 @@ use crate::config::ServiceConfig;
 
 const DETECTOR_ID_HEADER_NAME: &str = "detector-id";
 
+#[cfg_attr(test, derive(Default))]
 #[derive(Clone)]
 pub struct DetectorClient {
     clients: HashMap<String, HttpClient>,

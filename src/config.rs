@@ -8,7 +8,7 @@ use tracing::debug;
 
 /// Configuration for service needed for
 /// orchestrator to communicate with it
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize)]
 pub struct ServiceConfig {
     pub hostname: String,
     pub port: Option<u16>,
@@ -16,7 +16,7 @@ pub struct ServiceConfig {
 }
 
 /// TLS provider
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 #[serde(untagged)]
 pub enum Tls {
     Name(String),
@@ -24,7 +24,7 @@ pub enum Tls {
 }
 
 /// Client TLS configuration
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize)]
 pub struct TlsConfig {
     pub cert_path: Option<PathBuf>,
     pub key_path: Option<PathBuf>,
@@ -32,7 +32,7 @@ pub struct TlsConfig {
 }
 
 /// Generation service provider
-#[derive(Debug, Clone, Copy, Deserialize)]
+#[derive(Clone, Copy, Debug, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum GenerationProvider {
     Tgis,
@@ -40,7 +40,7 @@ pub enum GenerationProvider {
 }
 
 /// Generate service configuration
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize)]
 pub struct GenerationConfig {
     /// Generation service provider
     pub provider: GenerationProvider,
@@ -49,7 +49,7 @@ pub struct GenerationConfig {
 }
 
 /// Chunker parser type
-#[derive(Debug, Clone, Copy, Deserialize)]
+#[derive(Clone, Copy, Debug, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ChunkerType {
     Sentence,
@@ -58,7 +58,7 @@ pub enum ChunkerType {
 
 /// Configuration for each chunker
 #[allow(dead_code)]
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize)]
 pub struct ChunkerConfig {
     /// Chunker type
     pub r#type: ChunkerType,
@@ -67,7 +67,7 @@ pub struct ChunkerConfig {
 }
 
 /// Configuration for each detector
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize)]
 pub struct DetectorConfig {
     /// Detector service connection information
     pub service: ServiceConfig,
@@ -78,7 +78,8 @@ pub struct DetectorConfig {
 }
 
 /// Overall orchestrator server configuration
-#[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(test, derive(Default))]
+#[derive(Clone, Debug, Deserialize)]
 pub struct OrchestratorConfig {
     /// Generation service and associated configuration
     pub generation: GenerationConfig,
@@ -151,6 +152,24 @@ fn service_tls_name_to_config(
 }
 
 #[cfg(test)]
+impl Default for Tls {
+    fn default() -> Self {
+        Tls::Name("dummy_tls".to_string())
+    }
+}
+
+impl Default for GenerationProvider {
+    fn default() -> Self {
+        GenerationProvider::Tgis
+    }
+}
+
+impl Default for ChunkerType {
+    fn default() -> Self {
+        ChunkerType::Sentence
+    }
+}
+
 mod tests {
     use anyhow::Error;
 
