@@ -587,11 +587,10 @@ fn slice_codepoints(text: &str, start: usize, end: usize) -> String {
 
 /// Applies masks to input text, returning (offset, masked_text) pairs.
 fn apply_masks(text: &str, masks: &[(usize, usize)]) -> Vec<(usize, String)> {
-    let chars = text.chars().collect::<Vec<_>>();
     masks
         .iter()
         .map(|(start, end)| {
-            let masked_text = chars[*start..*end].iter().cloned().collect();
+            let masked_text = slice_codepoints(text, *start, *end);
             (*start, masked_text)
         })
         .collect()
