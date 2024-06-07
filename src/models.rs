@@ -7,7 +7,7 @@ use std::collections::HashMap;
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DetectorParams {
     /// Threshold with which to filter detector results by score
-    pub threshold: Option<f32>,
+    pub threshold: Option<f64>,
 }
 
 /// User request to orchestrator

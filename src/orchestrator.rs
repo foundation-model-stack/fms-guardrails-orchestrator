@@ -323,7 +323,7 @@ async fn handle_chunk_task(
 async fn handle_detection_task(
     ctx: Arc<Context>,
     detector_id: String,
-    default_threshold: f32,
+    default_threshold: f64,
     detector_params: DetectorParams,
     chunks: Vec<Chunk>,
 ) -> Result<Vec<TokenClassificationResult>, Error> {
@@ -361,7 +361,7 @@ async fn handle_detection_task(
                         index_codepoints(&chunk.text, result.start as usize, result.end as usize);
                     result.start += chunk.offset as u32;
                     result.end += chunk.offset as u32;
-                    (result.score >= threshold as f64).then_some(result)
+                    (result.score >= threshold).then_some(result)
                 })
                 .collect::<Vec<_>>()
         })
