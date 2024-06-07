@@ -755,7 +755,7 @@ mod tests {
             responses: [generation_response].to_vec(),
         };
 
-        let expected_generate_req_args: BatchedGenerationRequest = BatchedGenerationRequest {
+        let expected_generate_req_args = BatchedGenerationRequest {
             model_id: text_gen_model_id.clone(),
             prefix_id: None,
             requests: [GenerationRequest {
