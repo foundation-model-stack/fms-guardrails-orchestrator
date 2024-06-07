@@ -80,7 +80,7 @@ pub struct DetectorConfig {
     /// ID of chunker that this detector will use
     pub chunker_id: String,
     /// Default threshold with which to filter detector results by score
-    pub default_threshold: f32,
+    pub default_threshold: f64,
 }
 
 /// Overall orchestrator server configuration

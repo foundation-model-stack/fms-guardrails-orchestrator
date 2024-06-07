@@ -323,15 +323,12 @@ async fn handle_chunk_task(
 async fn handle_detection_task(
     ctx: Arc<Context>,
     detector_id: String,
-    default_threshold: f32,
+    default_threshold: f64,
     detector_params: DetectorParams,
     chunks: Vec<Chunk>,
 ) -> Result<Vec<TokenClassificationResult>, Error> {
     let detector_id = detector_id.clone();
-    let threshold = detector_params
-        .get("threshold")
-        .and_then(|v| v.as_f64())
-        .unwrap_or(default_threshold as f64);
+    let threshold = detector_params.threshold.unwrap_or(default_threshold);
     let contents = chunks.iter().map(|chunk| chunk.text.clone()).collect();
     let request = ContentAnalysisRequest::new(contents);
     debug!(
