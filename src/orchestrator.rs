@@ -361,7 +361,7 @@ async fn handle_detection_task(
                 .filter_map(|resp| {
                     let mut result: TokenClassificationResult = resp.into();
                     result.word =
-                        index_codepoints(&chunk.text, result.start as usize, result.end as usize);
+                        slice_codepoints(&chunk.text, result.start as usize, result.end as usize);
                     result.start += chunk.offset as u32;
                     result.end += chunk.offset as u32;
                     (result.score >= threshold).then_some(result)
@@ -579,10 +579,10 @@ async fn generate(
     }
 }
 
-/// Get codepoints of text between start and end indices
-fn index_codepoints(text: &str, start: usize, end: usize) -> String {
-    let chars = text.chars().collect::<Vec<_>>();
-    chars[start..end].iter().collect()
+/// Slices chars between start and end indices.
+fn slice_codepoints(text: &str, start: usize, end: usize) -> String {
+    let len = end - start;
+    text.chars().skip(start).take(len).collect()
 }
 
 /// Applies masks to input text, returning (offset, masked_text) pairs.
@@ -704,10 +704,10 @@ mod tests {
     }
 
     #[test]
-    fn test_index_codepoints() {
+    fn test_slice_codepoints() {
         let s = "Hello world";
-        assert_eq!(index_codepoints(s, 0, 5), "Hello");
+        assert_eq!(slice_codepoints(s, 0, 5), "Hello");
         let s = "哈囉世界";
-        assert_eq!(index_codepoints(s, 3, 4), "界");
+        assert_eq!(slice_codepoints(s, 3, 4), "界");
     }
 }
