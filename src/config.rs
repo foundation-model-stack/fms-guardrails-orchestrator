@@ -32,15 +32,18 @@ pub struct TlsConfig {
 }
 
 /// Generation service provider
+#[cfg_attr(test, derive(Default))]
 #[derive(Clone, Copy, Debug, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum GenerationProvider {
+    #[cfg_attr(test, default)]
     Tgis,
     Nlp,
 }
 
 /// Generate service configuration
-#[derive(Clone, Debug, Default, Deserialize)]
+#[cfg_attr(test, derive(Default))]
+#[derive(Clone, Debug, Deserialize)]
 pub struct GenerationConfig {
     /// Generation service provider
     pub provider: GenerationProvider,
@@ -49,16 +52,19 @@ pub struct GenerationConfig {
 }
 
 /// Chunker parser type
+#[cfg_attr(test, derive(Default))]
 #[derive(Clone, Copy, Debug, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ChunkerType {
+    #[cfg_attr(test, default)]
     Sentence,
     All,
 }
 
 /// Configuration for each chunker
+#[cfg_attr(test, derive(Default))]
 #[allow(dead_code)]
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct ChunkerConfig {
     /// Chunker type
     pub r#type: ChunkerType,
@@ -158,18 +164,7 @@ impl Default for Tls {
     }
 }
 
-impl Default for GenerationProvider {
-    fn default() -> Self {
-        GenerationProvider::Tgis
-    }
-}
-
-impl Default for ChunkerType {
-    fn default() -> Self {
-        ChunkerType::Sentence
-    }
-}
-
+#[cfg(test)]
 mod tests {
     use anyhow::Error;
 

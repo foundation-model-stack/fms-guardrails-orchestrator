@@ -702,14 +702,13 @@ mod tests {
         chunker_client: Option<ChunkerClient>,
         detector_client: Option<DetectorClient>,
     ) -> Context {
-
-        let chunker_client = chunker_client.unwrap_or(ChunkerClient::default());
-        let detector_client = detector_client.unwrap_or(DetectorClient::default());
+        let chunker_client = chunker_client.unwrap_or_default();
+        let detector_client = detector_client.unwrap_or_default();
 
         Context {
             generation_client: gen_client,
-            chunker_client: chunker_client,
-            detector_client: detector_client,
+            chunker_client,
+            detector_client,
             config: OrchestratorConfig::default(),
         }
     }
@@ -733,7 +732,7 @@ mod tests {
         let s = "哈囉世界";
         assert_eq!(index_codepoints(s, 3, 4), "界");
     }
-    
+
     // Test for TGIS generation with default parameter
     #[tokio::test]
     async fn test_tgis_generate_with_default_params() {
@@ -741,14 +740,16 @@ mod tests {
         let mut mock_client = TgisClient::faux();
 
         let sample_text = String::from("sample text");
-        let text_gen_model_id = "test-llm-id-1".to_string();
+        let text_gen_model_id = String::from("test-llm-id-1");
 
-        let mut generation_response = GenerationResponse::default();
-        generation_response.text = "sample response worked".to_string();
-        generation_response.stop_reason = StopReason::EosToken.into();
-        generation_response.stop_sequence = String::from("\n");
-        generation_response.generated_token_count = 3;
-        generation_response.seed = 7;
+        let generation_response = GenerationResponse {
+            text: String::from("sample response worked"),
+            stop_reason: StopReason::EosToken.into(),
+            stop_sequence: String::from("\n"),
+            generated_token_count: 3,
+            seed: 7,
+            ..Default::default()
+        };
 
         let client_generation_response = BatchedGenerationResponse {
             responses: [generation_response].to_vec(),
@@ -764,12 +765,13 @@ mod tests {
             params: None,
         };
 
-        let mut expected_generate_response = ClassifiedGeneratedTextResult::default();
-        expected_generate_response.generated_text =
-            Some(client_generation_response.responses[0].text.clone());
-        expected_generate_response.finish_reason = Some(FinishReason::EosToken);
-        expected_generate_response.generated_token_count = Some(3);
-        expected_generate_response.seed = Some(7);
+        let expected_generate_response = ClassifiedGeneratedTextResult {
+            generated_text: Some(client_generation_response.responses[0].text.clone()),
+            finish_reason: Some(FinishReason::EosToken),
+            generated_token_count: Some(3),
+            seed: Some(7),
+            ..Default::default()
+        };
 
         // Construct a behavior for the mock object
         faux::when!(mock_client.generate(expected_generate_req_args))
@@ -780,7 +782,7 @@ mod tests {
 
         let ctx: Context = get_test_context(mock_generation_client, None, None).await;
 
-        // Test request formulation
+        // Test request formulation and response processing is as expected
         assert_eq!(
             generate(ctx.into(), text_gen_model_id, sample_text, None)
                 .await
