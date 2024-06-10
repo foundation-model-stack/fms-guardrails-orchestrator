@@ -50,14 +50,12 @@ pub async fn run(
         .unwrap_or_else(|_| panic!("failed to bind to {health_http_addr}"));
     let health_server = axum::serve(listener, health_app.into_make_service())
         .with_graceful_shutdown(shutdown_signal());
-
     info!(
         "HTTP health server started on port {}",
         health_http_addr.port()
     );
-    health_server.await.expect("HTTP health server crashed!");
 
-    // Build and await on the main HTTP server
+    // Main HTTP server
     let app = Router::new()
         .route(
             &format!("{}/classification-with-text-generation", API_PREFIX),
@@ -71,17 +69,21 @@ pub async fn run(
             post(stream_classification_with_gen),
         )
         .with_state(shared_state);
-
-    // Main HTTP server
     let listener = TcpListener::bind(&http_addr)
         .await
         .unwrap_or_else(|_| panic!("failed to bind to {http_addr}"));
     let server =
         axum::serve(listener, app.into_make_service()).with_graceful_shutdown(shutdown_signal());
-
     info!("HTTP server started on port {}", http_addr.port());
-    server.await.expect("HTTP server crashed!");
-    info!("HTTP server shutdown complete");
+
+    // Launch each app as a separate task
+    let health_handle =
+        tokio::task::spawn(async { health_server.await.expect("HTTP health server crashed!") });
+    let handle = tokio::task::spawn(async { server.await.expect("HTTP server crashed!") });
+    let (health_res, res) = tokio::join!(health_handle, handle);
+    health_res.unwrap();
+    res.unwrap();
+    info!("Shutdown complete for HTTP servers");
     Ok(())
 }
 
