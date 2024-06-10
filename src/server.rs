@@ -33,6 +33,7 @@ pub struct ServerState {
 /// Run the orchestrator server
 pub async fn run(
     http_addr: SocketAddr,
+    health_http_addr: SocketAddr,
     _tls_cert_path: Option<PathBuf>,
     _tls_key_path: Option<PathBuf>,
     _tls_client_ca_cert_path: Option<PathBuf>,
@@ -42,11 +43,22 @@ pub async fn run(
     let orchestrator = Orchestrator::new(config).await?;
     let shared_state = Arc::new(ServerState { orchestrator });
 
-    // TODO: configure server TLS
+    // Separate HTTP health server without TLS for probes
+    let health_app: Router = Router::new().route("/health", get(health));
+    let listener = TcpListener::bind(&health_http_addr)
+        .await
+        .unwrap_or_else(|_| panic!("failed to bind to {health_http_addr}"));
+    let health_server = axum::serve(listener, health_app.into_make_service())
+        .with_graceful_shutdown(shutdown_signal());
 
-    // Build and await on the HTTP server
+    info!(
+        "HTTP health server started on port {}",
+        health_http_addr.port()
+    );
+    health_server.await.expect("HTTP health server crashed!");
+
+    // Build and await on the main HTTP server
     let app = Router::new()
-        .route("/health", get(health))
         .route(
             &format!("{}/classification-with-text-generation", API_PREFIX),
             post(classification_with_gen),
@@ -60,6 +72,7 @@ pub async fn run(
         )
         .with_state(shared_state);
 
+    // Main HTTP server
     let listener = TcpListener::bind(&http_addr)
         .await
         .unwrap_or_else(|_| panic!("failed to bind to {http_addr}"));

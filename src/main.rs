@@ -12,6 +12,8 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilte
 struct Args {
     #[clap(default_value = "8033", long, env)]
     http_port: u16,
+    #[clap(default_value = "8034", long, env)]
+    health_http_port: u16,
     #[clap(long, env)]
     json_output: bool,
     #[clap(default_value = "config/config.yaml", long, env)]
@@ -27,6 +29,13 @@ struct Args {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
 
+    if args.tls_key_path.is_some() != args.tls_cert_path.is_some() {
+        panic!("tls: must provide both cert and key")
+    }
+    if args.tls_client_ca_cert_path.is_some() && args.tls_cert_path.is_none() {
+        panic!("tls: cannot provide client ca cert without keypair")
+    }
+
     let filter = EnvFilter::try_from_default_env()
         .unwrap_or(EnvFilter::new("INFO"))
         .add_directive("ginepro=info".parse().unwrap());
@@ -35,7 +44,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    let http_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), args.http_port);
+    let http_addr: SocketAddr =
+        SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), args.http_port);
+    let health_http_addr: SocketAddr =
+        SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), args.health_http_port);
 
     // Launch Tokio runtime
     tokio::runtime::Builder::new_multi_thread()
@@ -45,6 +57,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .block_on(async {
             server::run(
                 http_addr,
+                health_http_addr,
                 args.tls_cert_path,
                 args.tls_key_path,
                 args.tls_client_ca_cert_path,
