@@ -23,14 +23,14 @@ ginepro = "0.7.2"
 mio = "0.8.11"
 prost = "0.12.3"
 reqwest = { version = "0.12.4", features = ["blocking", "rustls-tls", "json"] }
-rustls-pemfile = "2.1.2"
+rustls = "0.23.9"
+rustls-pemfile = "2.1.0"
 rustls-webpki = "0.102.2"
 serde = { version = "1.0.200", features = ["derive"] }
 serde_json = "1.0.116"
 serde_yml = "0.0.5"
 thiserror = "1.0.60"
 tokio = { version = "1.37.0", features = ["rt", "rt-multi-thread", "parking_lot", "signal", "sync", "fs"] }
-tokio-rustls = "0.26.0"
 tokio-stream = "0.1.14"
 tonic = { version = "0.11.0", features = ["tls"] }
 tracing = "0.1.40"

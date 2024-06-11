@@ -12,8 +12,10 @@ use axum::{
 };
 use axum_server::tls_rustls::RustlsConfig;
 use futures::StreamExt;
+use rustls::server::WebPkiClientVerifier;
+use rustls::RootCertStore;
+use rustls::ServerConfig;
 use tokio::{net::TcpListener, signal};
-use tokio_rustls::rustls::{server::WebPkiClientVerifier, RootCertStore, ServerConfig};
 use tracing::{error, info};
 use uuid::Uuid;
 use webpki::types::{CertificateDer, PrivateKeyDer};
