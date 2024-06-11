@@ -122,7 +122,6 @@ pub async fn run(
         // TLS
         // Use more low level server configuration than axum
         // Ref. https://github.com/tokio-rs/axum/blob/main/examples/low-level-rustls/src/main.rs
-        // TODO: graceful shutdown is gone
         let tls_acceptor = TlsAcceptor::from(arc_server_config.unwrap());
         let tower_service = app.clone();
         //let tls_acceptor = tls_acceptor.clone();
@@ -154,9 +153,11 @@ pub async fn run(
                 tower_service.clone().call(request)
             });
 
-            let ret = hyper_util::server::conn::auto::Builder::new(TokioExecutor::new())
-                .serve_connection_with_upgrades(stream, hyper_service)
-                .await;
+            // TODO: Not sure this graceful shutdown works
+            let graceful = hyper_util::server::graceful::GracefulShutdown::new();
+            let builder = hyper_util::server::conn::auto::Builder::new(TokioExecutor::new());
+            let conn = builder.serve_connection_with_upgrades(stream, hyper_service);
+            let ret = graceful.watch(conn.into_owned()).await;
 
             if let Err(err) = ret {
                 warn!("error serving connection from {}: {}", addr, err);
