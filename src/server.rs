@@ -1,4 +1,4 @@
-use std::{net::SocketAddr, path::PathBuf, sync::Arc};
+use std::{fs::File, io::BufReader, net::SocketAddr, path::PathBuf, sync::Arc, time::Duration};
 
 use axum::{
     extract::State,
@@ -10,10 +10,13 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
+use axum_server::tls_rustls::RustlsConfig;
 use futures::StreamExt;
 use tokio::{net::TcpListener, signal};
+use tokio_rustls::rustls::{server::WebPkiClientVerifier, RootCertStore, ServerConfig};
 use tracing::{error, info};
 use uuid::Uuid;
+use webpki::types::{CertificateDer, PrivateKeyDer};
 
 use crate::{
     config::OrchestratorConfig,
@@ -34,9 +37,9 @@ pub struct ServerState {
 pub async fn run(
     http_addr: SocketAddr,
     health_http_addr: SocketAddr,
-    _tls_cert_path: Option<PathBuf>,
-    _tls_key_path: Option<PathBuf>,
-    _tls_client_ca_cert_path: Option<PathBuf>,
+    tls_cert_path: Option<PathBuf>,
+    tls_key_path: Option<PathBuf>,
+    tls_client_ca_cert_path: Option<PathBuf>,
     config_path: PathBuf,
 ) -> Result<(), Error> {
     let config = OrchestratorConfig::load(config_path).await;
@@ -49,13 +52,49 @@ pub async fn run(
         .await
         .unwrap_or_else(|_| panic!("failed to bind to {health_http_addr}"));
     let health_server = axum::serve(listener, health_app.into_make_service())
-        .with_graceful_shutdown(shutdown_signal());
+        .with_graceful_shutdown(shutdown_signal(None));
     info!(
         "HTTP health server started on port {}",
         health_http_addr.port()
     );
 
     // Main HTTP server
+    let mut arc_server_config: Option<Arc<ServerConfig>> = None;
+    // Configure TLS if requested
+    if let (Some(cert_path), Some(key_path)) = (tls_cert_path, tls_key_path) {
+        info!("Configuring Server TLS for incoming connections");
+        let server_cert = load_certs(&cert_path);
+        let key = load_private_key(&key_path);
+
+        let client_auth = if tls_client_ca_cert_path.is_some() {
+            info!("Configuring TLS trust certificate (mTLS) for incoming connections");
+            let client_certs = load_certs(tls_client_ca_cert_path.as_ref().unwrap());
+            let mut client_auth_certs = RootCertStore::empty();
+            for client_cert in client_certs {
+                // Should be only one
+                client_auth_certs.add(client_cert).unwrap();
+            }
+            WebPkiClientVerifier::builder(client_auth_certs.into())
+                .build()
+                .unwrap()
+        } else {
+            WebPkiClientVerifier::no_client_auth()
+        };
+        let server_config = ServerConfig::builder()
+            .with_client_cert_verifier(client_auth)
+            .with_single_cert(server_cert, key)
+            .expect("bad server certificate or key");
+        arc_server_config = Some(Arc::new(server_config));
+    } else {
+        info!("HTTP server not configured with TLS")
+    }
+
+    // Handle for shutdown signal ability
+    let handle = axum_server::Handle::new();
+    let shutdown_future = shutdown_signal(Some(handle.clone()));
+    // Separate task for shutdown - is this ideal
+    tokio::spawn(shutdown_future);
+
     let app = Router::new()
         .route(
             &format!("{}/classification-with-text-generation", API_PREFIX),
@@ -69,17 +108,27 @@ pub async fn run(
             post(stream_classification_with_gen),
         )
         .with_state(shared_state);
-    let listener = TcpListener::bind(&http_addr)
-        .await
-        .unwrap_or_else(|_| panic!("failed to bind to {http_addr}"));
-    let server =
-        axum::serve(listener, app.into_make_service()).with_graceful_shutdown(shutdown_signal());
+
+    let server = if arc_server_config.is_some() {
+        // TODO: incompatible ServerConfig :(
+        let tls_config = RustlsConfig::from_config(arc_server_config.unwrap());
+        axum_server::bind_rustls(http_addr, tls_config)
+            .handle(handle)
+            .serve(app.into_make_service())
+            .await
+    } else {
+        axum_server::bind(http_addr)
+            .handle(handle)
+            .serve(app.into_make_service())
+            .await
+    };
+
     info!("HTTP server started on port {}", http_addr.port());
 
     // Launch each app as a separate task
     let health_handle =
         tokio::task::spawn(async { health_server.await.expect("HTTP health server crashed!") });
-    let handle = tokio::task::spawn(async { server.await.expect("HTTP server crashed!") });
+    let handle = tokio::task::spawn(async { server.expect("HTTP server crashed!") });
     let (health_res, res) = tokio::join!(health_handle, handle);
     health_res.unwrap();
     res.unwrap();
@@ -126,7 +175,7 @@ async fn stream_classification_with_gen(
 }
 
 /// Shutdown signal handler
-async fn shutdown_signal() {
+async fn shutdown_signal(handle: Option<axum_server::Handle>) {
     let ctrl_c = async {
         signal::ctrl_c()
             .await
@@ -150,6 +199,39 @@ async fn shutdown_signal() {
     }
 
     info!("signal received, starting graceful shutdown");
+    if let Some(axum_handle) = handle {
+        // TODO: Make configurable
+        axum_handle.graceful_shutdown(Some(Duration::from_secs(10)))
+    }
+}
+
+// Ref. https://github.com/rustls/rustls/blob/main/examples/src/bin/tlsserver-mio.rs
+fn load_certs(filename: &PathBuf) -> Vec<CertificateDer<'static>> {
+    let certfile = File::open(filename).expect("cannot open certificate file");
+    let mut reader = BufReader::new(certfile);
+    rustls_pemfile::certs(&mut reader)
+        .map(|result| result.unwrap())
+        .collect()
+}
+
+fn load_private_key(filename: &PathBuf) -> PrivateKeyDer<'static> {
+    let keyfile = File::open(filename).expect("cannot open private key file");
+    let mut reader = BufReader::new(keyfile);
+
+    loop {
+        match rustls_pemfile::read_one(&mut reader).expect("cannot parse private key .pem file") {
+            Some(rustls_pemfile::Item::Pkcs1Key(key)) => return key.into(),
+            Some(rustls_pemfile::Item::Pkcs8Key(key)) => return key.into(),
+            Some(rustls_pemfile::Item::Sec1Key(key)) => return key.into(),
+            None => break,
+            _ => {}
+        }
+    }
+
+    panic!(
+        "no keys found in {:?} (encrypted keys not supported)",
+        filename
+    );
 }
 
 /// High-level errors to return to clients.
