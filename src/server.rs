@@ -1,7 +1,7 @@
-use std::{fs::File, io::BufReader, net::SocketAddr, path::PathBuf, sync::Arc, time::Duration};
+use std::{fs::File, io::BufReader, net::SocketAddr, path::PathBuf, sync::Arc};
 
 use axum::{
-    extract::State,
+    extract::{Request, State},
     http::StatusCode,
     response::{
         sse::{Event, KeepAlive, Sse},
@@ -10,13 +10,16 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use axum_server::tls_rustls::RustlsConfig;
 use futures::StreamExt;
+use hyper::body::Incoming;
+use hyper_util::rt::{TokioExecutor, TokioIo};
 use rustls::server::WebPkiClientVerifier;
 use rustls::RootCertStore;
 use rustls::ServerConfig;
 use tokio::{net::TcpListener, signal};
-use tracing::{error, info};
+use tokio_rustls::TlsAcceptor;
+use tower_service::Service;
+use tracing::{error, info, warn};
 use uuid::Uuid;
 use webpki::types::{CertificateDer, PrivateKeyDer};
 
@@ -50,11 +53,11 @@ pub async fn run(
 
     // Separate HTTP health server without TLS for probes
     let health_app: Router = Router::new().route("/health", get(health));
-    let listener = TcpListener::bind(&health_http_addr)
+    let health_listener = TcpListener::bind(&health_http_addr)
         .await
         .unwrap_or_else(|_| panic!("failed to bind to {health_http_addr}"));
-    let health_server = axum::serve(listener, health_app.into_make_service())
-        .with_graceful_shutdown(shutdown_signal(None));
+    let health_server = axum::serve(health_listener, health_app.into_make_service())
+        .with_graceful_shutdown(shutdown_signal());
     let health_handle =
         tokio::task::spawn(async { health_server.await.expect("HTTP health server crashed!") });
     info!(
@@ -93,10 +96,8 @@ pub async fn run(
         info!("HTTP server not configured with TLS")
     }
 
-    // Handle for shutdown signal ability
-    let handle = axum_server::Handle::new();
-    let shutdown_future = shutdown_signal(Some(handle.clone()));
-    // Separate task for shutdown - is this ideal
+    let shutdown_future = shutdown_signal();
+    // Separate task for shutdown?
     tokio::spawn(shutdown_future);
 
     let app = Router::new()
@@ -114,20 +115,61 @@ pub async fn run(
         .with_state(shared_state);
 
     // Launch each app as a separate task
+    let listener: TcpListener = TcpListener::bind(&http_addr)
+        .await
+        .unwrap_or_else(|_| panic!("failed to bind to {http_addr}"));
     let handle = if arc_server_config.is_some() {
-        // TODO: incompatible ServerConfig :(
-        let tls_config = RustlsConfig::from_config(arc_server_config.unwrap());
-        let https_server = axum_server::bind_rustls(http_addr, tls_config)
-            .handle(handle)
-            .serve(app.into_make_service());
-        tokio::task::spawn(async { https_server.await.expect("HTTPS server crashed!") })
+        // TLS
+        // Use more low level server configuration than axum
+        // Ref. https://github.com/tokio-rs/axum/blob/main/examples/low-level-rustls/src/main.rs
+        // TODO: graceful shutdown is gone
+        let tls_acceptor = TlsAcceptor::from(arc_server_config.unwrap());
+        let tower_service = app.clone();
+        //let tls_acceptor = tls_acceptor.clone();
+
+        // Wait for new tcp connection
+        let (cnx, addr) = listener.accept().await.unwrap();
+
+        info!("HTTPS server started on port {}", http_addr.port());
+        // TODO: does there need to be a loop here?
+        tokio::spawn(async move {
+            // Wait for tls handshake to happen
+            let Ok(stream) = tls_acceptor.accept(cnx).await else {
+                error!("error during tls handshake connection from {}", addr);
+                return;
+            };
+
+            // Hyper has its own `AsyncRead` and `AsyncWrite` traits and doesn't use tokio.
+            // `TokioIo` converts between them.
+            let stream = TokioIo::new(stream);
+
+            // Hyper also has its own `Service` trait and doesn't use tower. We can use
+            // `hyper::service::service_fn` to create a hyper `Service` that calls our app through
+            // `tower::Service::call`.
+            let hyper_service = hyper::service::service_fn(move |request: Request<Incoming>| {
+                // We have to clone `tower_service` because hyper's `Service` uses `&self` whereas
+                // tower's `Service` requires `&mut self`.
+                //
+                // We don't need to call `poll_ready` since `Router` is always ready.
+                tower_service.clone().call(request)
+            });
+
+            let ret = hyper_util::server::conn::auto::Builder::new(TokioExecutor::new())
+                .serve_connection_with_upgrades(stream, hyper_service)
+                .await;
+
+            if let Err(err) = ret {
+                warn!("error serving connection from {}: {}", addr, err);
+            }
+        })
     } else {
-        let http_server = axum_server::bind(http_addr)
-            .handle(handle)
-            .serve(app.into_make_service());
+        // Non-TLS
+        // Keep simple axum serve call for http version
+        let http_server = axum::serve(listener, app.into_make_service())
+            .with_graceful_shutdown(shutdown_signal());
+        info!("HTTP server started on port {}", http_addr.port());
         tokio::task::spawn(async { http_server.await.expect("HTTP server crashed!") })
     };
-    info!("HTTP server started on port {}", http_addr.port());
 
     let (health_res, res) = tokio::join!(health_handle, handle);
     health_res.unwrap();
@@ -175,7 +217,7 @@ async fn stream_classification_with_gen(
 }
 
 /// Shutdown signal handler
-async fn shutdown_signal(handle: Option<axum_server::Handle>) {
+async fn shutdown_signal() {
     let ctrl_c = async {
         signal::ctrl_c()
             .await
@@ -199,13 +241,10 @@ async fn shutdown_signal(handle: Option<axum_server::Handle>) {
     }
 
     info!("signal received, starting graceful shutdown");
-    if let Some(axum_handle) = handle {
-        // TODO: Make configurable
-        axum_handle.graceful_shutdown(Some(Duration::from_secs(10)))
-    }
 }
 
 // Ref. https://github.com/rustls/rustls/blob/main/examples/src/bin/tlsserver-mio.rs
+/// Load certificates from a file
 fn load_certs(filename: &PathBuf) -> Vec<CertificateDer<'static>> {
     let certfile = File::open(filename).expect("cannot open certificate file");
     let mut reader = BufReader::new(certfile);
@@ -214,6 +253,7 @@ fn load_certs(filename: &PathBuf) -> Vec<CertificateDer<'static>> {
         .collect()
 }
 
+/// Load private key from a file
 fn load_private_key(filename: &PathBuf) -> PrivateKeyDer<'static> {
     let keyfile = File::open(filename).expect("cannot open private key file");
     let mut reader = BufReader::new(keyfile);
