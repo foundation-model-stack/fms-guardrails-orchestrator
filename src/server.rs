@@ -55,6 +55,8 @@ pub async fn run(
         .unwrap_or_else(|_| panic!("failed to bind to {health_http_addr}"));
     let health_server = axum::serve(listener, health_app.into_make_service())
         .with_graceful_shutdown(shutdown_signal(None));
+    let health_handle =
+        tokio::task::spawn(async { health_server.await.expect("HTTP health server crashed!") });
     info!(
         "HTTP health server started on port {}",
         health_http_addr.port()
@@ -111,26 +113,22 @@ pub async fn run(
         )
         .with_state(shared_state);
 
-    let server = if arc_server_config.is_some() {
+    // Launch each app as a separate task
+    let handle = if arc_server_config.is_some() {
         // TODO: incompatible ServerConfig :(
         let tls_config = RustlsConfig::from_config(arc_server_config.unwrap());
-        axum_server::bind_rustls(http_addr, tls_config)
+        let https_server = axum_server::bind_rustls(http_addr, tls_config)
             .handle(handle)
-            .serve(app.into_make_service())
-            .await
+            .serve(app.into_make_service());
+        tokio::task::spawn(async { https_server.await.expect("HTTPS server crashed!") })
     } else {
-        axum_server::bind(http_addr)
+        let http_server = axum_server::bind(http_addr)
             .handle(handle)
-            .serve(app.into_make_service())
-            .await
+            .serve(app.into_make_service());
+        tokio::task::spawn(async { http_server.await.expect("HTTP server crashed!") })
     };
-
     info!("HTTP server started on port {}", http_addr.port());
 
-    // Launch each app as a separate task
-    let health_handle =
-        tokio::task::spawn(async { health_server.await.expect("HTTP health server crashed!") });
-    let handle = tokio::task::spawn(async { server.expect("HTTP server crashed!") });
     let (health_res, res) = tokio::join!(health_handle, handle);
     health_res.unwrap();
     res.unwrap();
