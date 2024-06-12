@@ -65,7 +65,7 @@ pub async fn run(
         health_http_addr.port()
     );
 
-    // Main HTTP server
+    // Main guardrails server
     let mut arc_server_config: Option<Arc<ServerConfig>> = None;
     // Configure TLS if requested
     if let (Some(cert_path), Some(key_path)) = (tls_cert_path, tls_key_path) {
@@ -96,10 +96,6 @@ pub async fn run(
         info!("HTTP server not configured with TLS")
     }
 
-    let shutdown_future = shutdown_signal();
-    // Separate task for shutdown?
-    tokio::spawn(shutdown_future);
-
     let app = Router::new()
         .route(
             &format!("{}/classification-with-text-generation", API_PREFIX),
@@ -120,9 +116,8 @@ pub async fn run(
         .unwrap_or_else(|_| panic!("failed to bind to {http_addr}"));
     let handle = if arc_server_config.is_some() {
         // TLS
-        // Use more low level server configuration than axum
+        // Use more low level server configuration than axum for configurability
         // Ref. https://github.com/tokio-rs/axum/blob/main/examples/low-level-rustls/src/main.rs
-
         info!("HTTPS server started on port {}", http_addr.port());
         let tls_acceptor = TlsAcceptor::from(arc_server_config.unwrap());
         tokio::spawn(async move {
