@@ -122,45 +122,51 @@ pub async fn run(
         // TLS
         // Use more low level server configuration than axum
         // Ref. https://github.com/tokio-rs/axum/blob/main/examples/low-level-rustls/src/main.rs
-        let tls_acceptor = TlsAcceptor::from(arc_server_config.unwrap());
-        let tower_service = app.clone();
-        //let tls_acceptor = tls_acceptor.clone();
-
-        // Wait for new tcp connection
-        let (cnx, addr) = listener.accept().await.unwrap();
 
         info!("HTTPS server started on port {}", http_addr.port());
-        // TODO: does there need to be a loop here?
+        let tls_acceptor = TlsAcceptor::from(arc_server_config.unwrap());
         tokio::spawn(async move {
-            // Wait for tls handshake to happen
-            let Ok(stream) = tls_acceptor.accept(cnx).await else {
-                error!("error during tls handshake connection from {}", addr);
-                return;
-            };
+            loop {
+                let tower_service = app.clone();
+                let tls_acceptor = tls_acceptor.clone();
 
-            // Hyper has its own `AsyncRead` and `AsyncWrite` traits and doesn't use tokio.
-            // `TokioIo` converts between them.
-            let stream = TokioIo::new(stream);
+                // Wait for new tcp connection
+                let (cnx, addr) = listener.accept().await.unwrap();
 
-            // Hyper also has its own `Service` trait and doesn't use tower. We can use
-            // `hyper::service::service_fn` to create a hyper `Service` that calls our app through
-            // `tower::Service::call`.
-            let hyper_service = hyper::service::service_fn(move |request: Request<Incoming>| {
-                // We have to clone `tower_service` because hyper's `Service` uses `&self` whereas
-                // tower's `Service` requires `&mut self`.
-                //
-                // We don't need to call `poll_ready` since `Router` is always ready.
-                tower_service.clone().call(request)
-            });
+                tokio::spawn(async move {
+                    // Wait for tls handshake to happen
+                    let Ok(stream) = tls_acceptor.accept(cnx).await else {
+                        error!("error during tls handshake connection from {}", addr);
+                        return;
+                    };
 
-            // TODO: Not sure this graceful shutdown works
-            let graceful = hyper_util::server::graceful::GracefulShutdown::new();
-            let builder = hyper_util::server::conn::auto::Builder::new(TokioExecutor::new());
-            let conn = builder.serve_connection_with_upgrades(stream, hyper_service);
-            let ret = graceful.watch(conn.into_owned()).await;
+                    // Hyper has its own `AsyncRead` and `AsyncWrite` traits and doesn't use tokio.
+                    // `TokioIo` converts between them.
+                    let stream = TokioIo::new(stream);
 
-            if let Err(err) = ret {
-                warn!("error serving connection from {}: {}", addr, err);
+                    // Hyper also has its own `Service` trait and doesn't use tower. We can use
+                    // `hyper::service::service_fn` to create a hyper `Service` that calls our app through
+                    // `tower::Service::call`.
+                    let hyper_service =
+                        hyper::service::service_fn(move |request: Request<Incoming>| {
+                            // We have to clone `tower_service` because hyper's `Service` uses `&self` whereas
+                            // tower's `Service` requires `&mut self`.
+                            //
+                            // We don't need to call `poll_ready` since `Router` is always ready.
+                            tower_service.clone().call(request)
+                        });
+
+                    // TODO: Not sure this graceful shutdown works
+                    let graceful = hyper_util::server::graceful::GracefulShutdown::new();
+                    let builder =
+                        hyper_util::server::conn::auto::Builder::new(TokioExecutor::new());
+                    let conn = builder.serve_connection_with_upgrades(stream, hyper_service);
+                    let ret = graceful.watch(conn.into_owned()).await;
+
+                    if let Err(err) = ret {
+                        warn!("error serving connection from {}: {}", addr, err);
+                    }
+                });
             }
         })
     } else {
