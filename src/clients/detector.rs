@@ -96,6 +96,8 @@ pub struct ContentAnalysisResponse {
     pub start: usize,
     /// End index of detection
     pub end: usize,
+    /// Text corresponding to detection
+    pub text: String,
     /// Relevant detection class
     pub detection: String,
     /// Detection type or aggregate detection label
@@ -112,7 +114,7 @@ impl From<ContentAnalysisResponse> for crate::models::TokenClassificationResult 
         Self {
             start: value.start as u32,
             end: value.end as u32,
-            word: "".to_string(), // TODO: fill in when provided in the detector API in the next iteration
+            word: value.text,
             entity: value.detection,
             entity_group: value.detection_type,
             score: value.score,

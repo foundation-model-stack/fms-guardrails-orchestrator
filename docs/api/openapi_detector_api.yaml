@@ -44,10 +44,12 @@ paths:
                   - start: 15
                     end: 25
                     detection_type: pii
+                    text: foo@bar.com
                     detection: EmailAddress
                     score: 0.99
                   - start: 105
                     end: 116
+                    text: 123-456-7890
                     detection_type: pii
                     detection: SocialSecurity
                     score: 0.99
@@ -539,6 +541,10 @@ components:
           type: integer
           title: End
           example: 26
+        text:
+          type: string
+          title: Text
+          example: foo@bar.com
         detection:
           type: string
           title: Detection
