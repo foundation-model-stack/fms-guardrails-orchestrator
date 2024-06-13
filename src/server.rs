@@ -66,13 +66,14 @@ pub async fn run(
     );
 
     // Main guardrails server
-    let mut arc_server_config: Option<Arc<ServerConfig>> = None;
     // Configure TLS if requested
+    let mut arc_server_config: Option<Arc<ServerConfig>> = None;
     if let (Some(cert_path), Some(key_path)) = (tls_cert_path, tls_key_path) {
         info!("Configuring Server TLS for incoming connections");
         let server_cert = load_certs(&cert_path);
         let key = load_private_key(&key_path);
 
+        // mTLS
         let client_auth = if tls_client_ca_cert_path.is_some() {
             info!("Configuring TLS trust certificate (mTLS) for incoming connections");
             let client_certs = load_certs(tls_client_ca_cert_path.as_ref().unwrap());
@@ -96,6 +97,7 @@ pub async fn run(
         info!("HTTP server not configured with TLS")
     }
 
+    // Main guardrails server routes
     let app = Router::new()
         .route(
             &format!("{}/classification-with-text-generation", API_PREFIX),
@@ -129,25 +131,19 @@ pub async fn run(
                 let (cnx, addr) = listener.accept().await.unwrap();
 
                 tokio::spawn(async move {
-                    // Wait for tls handshake to happen
+                    // Wait for tls handshake
                     let Ok(stream) = tls_acceptor.accept(cnx).await else {
                         error!("error during tls handshake connection from {}", addr);
                         return;
                     };
 
-                    // Hyper has its own `AsyncRead` and `AsyncWrite` traits and doesn't use tokio.
-                    // `TokioIo` converts between them.
+                    // `TokioIo` converts between Hyper's own `AsyncRead` and `AsyncWrite` traits
                     let stream = TokioIo::new(stream);
 
-                    // Hyper also has its own `Service` trait and doesn't use tower. We can use
-                    // `hyper::service::service_fn` to create a hyper `Service` that calls our app through
-                    // `tower::Service::call`.
                     let hyper_service =
                         hyper::service::service_fn(move |request: Request<Incoming>| {
-                            // We have to clone `tower_service` because hyper's `Service` uses `&self` whereas
-                            // tower's `Service` requires `&mut self`.
-                            //
-                            // We don't need to call `poll_ready` since `Router` is always ready.
+                            // Clone necessary since hyper's `Service` uses `&self` whereas
+                            // tower's `Service` requires `&mut self`
                             tower_service.clone().call(request)
                         });
 
@@ -176,7 +172,7 @@ pub async fn run(
     let (health_res, res) = tokio::join!(health_handle, handle);
     health_res.unwrap();
     res.unwrap();
-    info!("Shutdown complete for HTTP servers");
+    info!("Shutdown complete for servers");
     Ok(())
 }
 
@@ -248,8 +244,8 @@ async fn shutdown_signal() {
 // Ref. https://github.com/rustls/rustls/blob/main/examples/src/bin/tlsserver-mio.rs
 /// Load certificates from a file
 fn load_certs(filename: &PathBuf) -> Vec<CertificateDer<'static>> {
-    let certfile = File::open(filename).expect("cannot open certificate file");
-    let mut reader = BufReader::new(certfile);
+    let cert_file = File::open(filename).expect("cannot open certificate file");
+    let mut reader = BufReader::new(cert_file);
     rustls_pemfile::certs(&mut reader)
         .map(|result| result.unwrap())
         .collect()
@@ -257,8 +253,8 @@ fn load_certs(filename: &PathBuf) -> Vec<CertificateDer<'static>> {
 
 /// Load private key from a file
 fn load_private_key(filename: &PathBuf) -> PrivateKeyDer<'static> {
-    let keyfile = File::open(filename).expect("cannot open private key file");
-    let mut reader = BufReader::new(keyfile);
+    let key_file = File::open(filename).expect("cannot open private key file");
+    let mut reader = BufReader::new(key_file);
 
     loop {
         match rustls_pemfile::read_one(&mut reader).expect("cannot parse private key .pem file") {
