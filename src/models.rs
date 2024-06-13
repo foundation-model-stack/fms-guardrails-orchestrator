@@ -583,7 +583,10 @@ impl From<ExponentialDecayLengthPenalty> for pb::fmaas::decoding_parameters::Len
 impl From<GuardrailsTextGenerationParameters> for pb::fmaas::Parameters {
     // NOTE: types should really be consistent between APIs
     fn from(value: GuardrailsTextGenerationParameters) -> Self {
-        let decoding_method = value.decoding_method.unwrap_or("GREEDY".to_string());
+        let mut decoding_method = value.decoding_method.unwrap_or("GREEDY".to_string());
+        if decoding_method == "SAMPLING" {
+            decoding_method = String::from("SAMPLE");
+        }
         let method = pb::fmaas::DecodingMethod::from_str_name(&decoding_method).unwrap_or_default();
         let sampling = pb::fmaas::SamplingParameters {
             temperature: value.temperature.unwrap_or_default() as f32,
