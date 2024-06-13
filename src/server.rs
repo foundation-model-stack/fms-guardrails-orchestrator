@@ -123,6 +123,9 @@ pub async fn run(
         info!("HTTPS server started on port {}", http_addr.port());
         let tls_acceptor = TlsAcceptor::from(arc_server_config.unwrap());
         tokio::spawn(async move {
+            // TODO: Not sure this graceful shutdown works
+            let graceful = hyper_util::server::graceful::GracefulShutdown::new();
+            let builder = hyper_util::server::conn::auto::Builder::new(TokioExecutor::new());
             loop {
                 let tower_service = app.clone();
                 let tls_acceptor = tls_acceptor.clone();
@@ -130,32 +133,26 @@ pub async fn run(
                 // Wait for new tcp connection
                 let (cnx, addr) = listener.accept().await.unwrap();
 
+                // Wait for tls handshake
+                let Ok(stream) = tls_acceptor.accept(cnx).await else {
+                    error!("error during tls handshake connection from {}", addr);
+                    return;
+                };
+
+                // `TokioIo` converts between Hyper's own `AsyncRead` and `AsyncWrite` traits
+                let stream = TokioIo::new(stream);
+
+                let hyper_service =
+                    hyper::service::service_fn(move |request: Request<Incoming>| {
+                        // Clone necessary since hyper's `Service` uses `&self` whereas
+                        // tower's `Service` requires `&mut self`
+                        tower_service.clone().call(request)
+                    });
+                let conn = builder.serve_connection_with_upgrades(stream, hyper_service);
+                let fut = graceful.watch(conn.into_owned());
                 tokio::spawn(async move {
-                    // Wait for tls handshake
-                    let Ok(stream) = tls_acceptor.accept(cnx).await else {
-                        error!("error during tls handshake connection from {}", addr);
-                        return;
-                    };
-
-                    // `TokioIo` converts between Hyper's own `AsyncRead` and `AsyncWrite` traits
-                    let stream = TokioIo::new(stream);
-
-                    let hyper_service =
-                        hyper::service::service_fn(move |request: Request<Incoming>| {
-                            // Clone necessary since hyper's `Service` uses `&self` whereas
-                            // tower's `Service` requires `&mut self`
-                            tower_service.clone().call(request)
-                        });
-
-                    // TODO: Not sure this graceful shutdown works
-                    let graceful = hyper_util::server::graceful::GracefulShutdown::new();
-                    let builder =
-                        hyper_util::server::conn::auto::Builder::new(TokioExecutor::new());
-                    let conn = builder.serve_connection_with_upgrades(stream, hyper_service);
-                    let ret = graceful.watch(conn.into_owned()).await;
-
-                    if let Err(err) = ret {
-                        warn!("error serving connection from {}: {}", addr, err);
+                    if let Err(e) = fut.await {
+                        warn!("error serving connection from {}: {}", addr, e);
                     }
                 });
             }
