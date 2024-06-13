@@ -281,7 +281,6 @@ pub struct ClassifiedGeneratedTextResult {
 
     /// Vector of warnings on input detection
     #[serde(rename = "warnings")]
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub warnings: Option<Vec<InputWarning>>,
 
     /// Individual generated tokens and associated details, if requested
