@@ -117,7 +117,9 @@ pub async fn create_http_clients(
                 });
                 let identity = reqwest::Identity::from_pem(&cert_pem)
                     .unwrap_or_else(|error| panic!("error parsing cert: {error}"));
-                builder = builder.use_rustls_tls().identity(identity);
+                builder = builder
+                    .danger_accept_invalid_certs(tls_config.self_signed.unwrap_or_default())
+                    .use_rustls_tls().identity(identity);
             }
             let client = builder
                 .build()
