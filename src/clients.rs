@@ -120,28 +120,26 @@ pub async fn create_http_clients(
                     panic!("error reading cert from {cert_path:?}: {error}")
                 }).read_to_end(&mut cert_buf).await.unwrap();
                 
-                if tls_config.key_path.is_some() {
-                    let key_path = tls_config.key_path.as_ref().unwrap().as_path();
+                if let Some(key_path) = &tls_config.key_path {
                     File::open(key_path).await.unwrap_or_else(|error| {
                         panic!("error reading key from {key_path:?}: {error}")
                     }).read_to_end(&mut cert_buf).await.unwrap();
                 }
                 let identity = reqwest::Identity::from_pem(&cert_buf)
-                    .unwrap_or_else(|error| panic!("error parsing cert: {error}"));
+                    .unwrap_or_else(|error| panic!("error parsing bundled client certificate: {error}"));
                 
                 builder = builder
                     .danger_accept_invalid_certs(tls_config.insecure.unwrap_or(false))
                     .use_rustls_tls()
                     .identity(identity);
 
-                if tls_config.client_ca_cert_path.is_some() {
-                    let client_ca_cert_path = tls_config.client_ca_cert_path.as_ref().unwrap().as_path();
+                if let Some(client_ca_cert_path) = &tls_config.client_ca_cert_path {
                     let mut ca_buf = Vec::new();
                     File::open(client_ca_cert_path).await.unwrap_or_else(|error| {
                         panic!("error reading cert from {client_ca_cert_path:?}: {error}")
                     }).read_to_end(&mut ca_buf).await.unwrap();
                     let cacert = reqwest::Certificate::from_pem(&ca_buf)
-                        .unwrap_or_else(|error| panic!("error parsing cert: {error}"));
+                        .unwrap_or_else(|error| panic!("error parsing ca cert: {error}"));
                     builder = builder.add_root_certificate(cacert)
                 }
 
