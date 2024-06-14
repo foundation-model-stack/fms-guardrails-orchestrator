@@ -123,7 +123,7 @@ pub async fn create_http_clients(
                 if tls_config.key_path.is_some() {
                     let key_path = tls_config.key_path.as_ref().unwrap().as_path();
                     File::open(key_path).await.unwrap_or_else(|error| {
-                        panic!("error reading cert from {key_path:?}: {error}")
+                        panic!("error reading key from {key_path:?}: {error}")
                     }).read_to_end(&mut cert_buf).await.unwrap();
                 }
                 let identity = reqwest::Identity::from_pem(&cert_buf)
