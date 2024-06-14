@@ -24,5 +24,10 @@ tls:
         key_path: /path/to/tls.key
         client_ca_cert_path: /path/to/ca.crt
     detector:
-        cert_path: /path/to/client.pem
-        self_signed: true
+        cert_path: /path/to/tls.crt
+        key_path: /path/to/tls.key
+        client_ca_cert_path: /path/to/ca.crt
+        insecure: false
+    detector_bundle_no_ca:
+        cert_path: /path/to/client-bundle.pem
+        insecure: true

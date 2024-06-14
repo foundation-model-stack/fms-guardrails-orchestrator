@@ -29,7 +29,7 @@ pub struct TlsConfig {
     pub cert_path: Option<PathBuf>,
     pub key_path: Option<PathBuf>,
     pub client_ca_cert_path: Option<PathBuf>,
-    pub self_signed: Option<bool>,
+    pub insecure: Option<bool>,
 }
 
 /// Generation service provider
@@ -244,7 +244,7 @@ tls:
     }
 
     #[test]
-    fn test_deserialize_config_detector_tls_self_signed() -> Result<(), Error> {
+    fn test_deserialize_config_detector_tls_insecure() -> Result<(), Error> {
         let s = r#"
 generation:
     provider: tgis
@@ -273,15 +273,15 @@ detectors:
 tls:
     detector:
         cert_path: /certs/client.pem
-        self_signed: true
+        insecure: true
         "#;
         let config: OrchestratorConfig = serde_yml::from_str(s)?;
         assert!(config.chunkers.len() == 2 && config.detectors.len() == 1);
-        assert!(config.tls.len() == 1 && config.tls.get("detector").unwrap().self_signed == Some(true));
+        assert!(
+            config.tls.len() == 1 && config.tls.get("detector").unwrap().insecure == Some(true)
+        );
         Ok(())
     }
 }
 
-
-
-// 
+//

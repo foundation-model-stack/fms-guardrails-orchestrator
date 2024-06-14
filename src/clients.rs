@@ -6,6 +6,9 @@ use ginepro::LoadBalancedChannel;
 use reqwest::StatusCode;
 use url::Url;
 
+use tokio::fs::File;
+use tokio::io::AsyncReadExt;
+
 use crate::config::{ServiceConfig, Tls};
 
 pub mod chunker;
@@ -111,15 +114,37 @@ pub async fn create_http_clients(
                 .connect_timeout(DEFAULT_CONNECT_TIMEOUT)
                 .timeout(DEFAULT_REQUEST_TIMEOUT);
             if let Some(Tls::Config(tls_config)) = &service_config.tls {
+                let mut cert_buf = Vec::new();
                 let cert_path = tls_config.cert_path.as_ref().unwrap().as_path();
-                let cert_pem = tokio::fs::read(cert_path).await.unwrap_or_else(|error| {
+                File::open(cert_path).await.unwrap_or_else(|error| {
                     panic!("error reading cert from {cert_path:?}: {error}")
-                });
-                let identity = reqwest::Identity::from_pem(&cert_pem)
+                }).read_to_end(&mut cert_buf).await.unwrap();
+                
+                if tls_config.key_path.is_some() {
+                    let key_path = tls_config.key_path.as_ref().unwrap().as_path();
+                    File::open(key_path).await.unwrap_or_else(|error| {
+                        panic!("error reading cert from {key_path:?}: {error}")
+                    }).read_to_end(&mut cert_buf).await.unwrap();
+                }
+                let identity = reqwest::Identity::from_pem(&cert_buf)
                     .unwrap_or_else(|error| panic!("error parsing cert: {error}"));
+                
                 builder = builder
-                    .danger_accept_invalid_certs(tls_config.self_signed.unwrap_or_default())
-                    .use_rustls_tls().identity(identity);
+                    .danger_accept_invalid_certs(tls_config.insecure.unwrap_or(false))
+                    .use_rustls_tls()
+                    .identity(identity);
+
+                if tls_config.client_ca_cert_path.is_some() {
+                    let client_ca_cert_path = tls_config.client_ca_cert_path.as_ref().unwrap().as_path();
+                    let mut ca_buf = Vec::new();
+                    File::open(client_ca_cert_path).await.unwrap_or_else(|error| {
+                        panic!("error reading cert from {client_ca_cert_path:?}: {error}")
+                    }).read_to_end(&mut ca_buf).await.unwrap();
+                    let cacert = reqwest::Certificate::from_pem(&ca_buf)
+                        .unwrap_or_else(|error| panic!("error parsing cert: {error}"));
+                    builder = builder.add_root_certificate(cacert)
+                }
+
             }
             let client = builder
                 .build()
