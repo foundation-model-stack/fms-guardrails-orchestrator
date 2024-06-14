@@ -19,7 +19,7 @@ use rustls::ServerConfig;
 use tokio::{net::TcpListener, signal};
 use tokio_rustls::TlsAcceptor;
 use tower_service::Service;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 use webpki::types::{CertificateDer, PrivateKeyDer};
 
@@ -123,7 +123,6 @@ pub async fn run(
         info!("HTTPS server started on port {}", http_addr.port());
         let tls_acceptor = TlsAcceptor::from(arc_server_config.unwrap());
         tokio::spawn(async move {
-            // TODO: Not sure this graceful shutdown works
             let graceful = hyper_util::server::graceful::GracefulShutdown::new();
             let builder = hyper_util::server::conn::auto::Builder::new(TokioExecutor::new());
             let mut signal = std::pin::pin!(shutdown_signal());
@@ -132,7 +131,21 @@ pub async fn run(
                 let tls_acceptor = tls_acceptor.clone();
 
                 // Wait for new tcp connection
-                let (cnx, addr) = listener.accept().await.unwrap();
+                let (cnx, addr) = tokio::select! {
+                    res = listener.accept() => {
+                        match res {
+                            Ok(res) => res,
+                            Err(err) => {
+                                error!("error accepting tcp connection: {err}");
+                                continue;
+                            }
+                        }
+                    }
+                    _ = &mut signal => {
+                        debug!("graceful shutdown signal received");
+                        break;
+                    }
+                };
 
                 // Wait for tls handshake
                 let stream = tokio::select! {
@@ -140,13 +153,13 @@ pub async fn run(
                         match res {
                             Ok(stream) => stream,
                             Err(err) => {
-                                error!("error accepting connection: {err}");
+                                error!("error accepting connection on handshake: {err}");
                                 continue;
                             }
                         }
                     }
                     _ = &mut signal => {
-                        info!("graceful shutdown signal received");
+                        debug!("graceful shutdown signal received");
                         break;
                     }
                 };
@@ -171,10 +184,10 @@ pub async fn run(
 
             tokio::select! {
                 () = graceful.shutdown() => {
-                    info!("Gracefully shutdown!");
+                    debug!("Gracefully shutdown!");
                 },
                 () = tokio::time::sleep(std::time::Duration::from_secs(10)) => {
-                    info!("Waited 10 seconds for graceful shutdown, aborting...");
+                    debug!("Waited 10 seconds for graceful shutdown, aborting...");
                 }
             }
         })
