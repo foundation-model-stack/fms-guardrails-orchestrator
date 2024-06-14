@@ -169,8 +169,6 @@ impl Default for Tls {
 mod tests {
     use anyhow::Error;
 
-    use crate::clients::detector;
-
     use super::*;
 
     #[test]
