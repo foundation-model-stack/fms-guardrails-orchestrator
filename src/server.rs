@@ -47,11 +47,23 @@ pub async fn run(
     tls_client_ca_cert_path: Option<PathBuf>,
     config_path: PathBuf,
 ) -> Result<(), Error> {
+    // Overall, the server setup and run does a couple of steps:
+    // (1) Sets up a HTTP server (without TLS) for the health endpoint
+    // (2) Sets up a HTTP(s) server for the main guardrails endpoints
+    //     (2a) Configures TLS or mTLS depending on certs/key provided
+    //     (2b) Adds server routes
+    //     (2c) Generate the server task based on whether or not TLS is configured
+    // (3) Launch each server as a separate task
+    // NOTE: axum::serve is used for servers without TLS since it is designed to be
+    // simple and not allow for much configuration. To allow for TLS configuration
+    // with rustls, the hyper and tower crates [what axum is built on] had to
+    // be used directly
+
     let config = OrchestratorConfig::load(config_path).await;
     let orchestrator = Orchestrator::new(config).await?;
     let shared_state = Arc::new(ServerState { orchestrator });
 
-    // Separate HTTP health server without TLS for probes
+    // (1) Separate HTTP health server without TLS for probes
     let health_app: Router = Router::new().route("/health", get(health));
     let health_listener = TcpListener::bind(&health_http_addr)
         .await
@@ -65,15 +77,15 @@ pub async fn run(
         health_http_addr.port()
     );
 
-    // Main guardrails server
-    // Configure TLS if requested
+    // (2) Main guardrails server
+    // (2a) Configure TLS if requested
     let mut arc_server_config: Option<Arc<ServerConfig>> = None;
     if let (Some(cert_path), Some(key_path)) = (tls_cert_path, tls_key_path) {
         info!("Configuring Server TLS for incoming connections");
         let server_cert = load_certs(&cert_path);
         let key = load_private_key(&key_path);
 
-        // mTLS
+        // Configure mTLS if client CA is provided
         let client_auth = if tls_client_ca_cert_path.is_some() {
             info!("Configuring TLS trust certificate (mTLS) for incoming connections");
             let client_certs = load_certs(tls_client_ca_cert_path.as_ref().unwrap());
@@ -97,7 +109,7 @@ pub async fn run(
         info!("HTTP server not configured with TLS")
     }
 
-    // Main guardrails server routes
+    // (2b) Add main guardrails server routes
     let app = Router::new()
         .route(
             &format!("{}/classification-with-text-generation", API_PREFIX),
@@ -112,7 +124,7 @@ pub async fn run(
         )
         .with_state(shared_state);
 
-    // Launch each app as a separate task
+    // (2c) Generate main guardrails server handle based on whether TLS is needed
     let listener: TcpListener = TcpListener::bind(&http_addr)
         .await
         .unwrap_or_else(|_| panic!("failed to bind to {http_addr}"));
@@ -200,6 +212,7 @@ pub async fn run(
         tokio::task::spawn(async { http_server.await.expect("HTTP server crashed!") })
     };
 
+    // (3) Launch each server as a separate task
     let (health_res, res) = tokio::join!(health_handle, handle);
     health_res.unwrap();
     res.unwrap();
