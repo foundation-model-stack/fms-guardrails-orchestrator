@@ -28,6 +28,18 @@ To build documenation:
 cargo doc
 ```
 
+If you wish to contribute to the project, make sure you install pre-commit hooks to have automated checks for Rust before every commit (requires [pre-commit](https://pre-commit.com) to be installed in the system).
+
+```
+# You can skip this step if you already have it installed.
+pip install pre-commit
+```
+
+Once you have pre-commit installed, run the following command on the project folder to install the pre-commit hooks:
+```
+pre-commit install
+```
+
 ### Sample requests
 
 1. Guardrails with text generation
