@@ -4,6 +4,7 @@ use std::{collections::HashMap, time::Duration};
 use futures::future::join_all;
 use ginepro::LoadBalancedChannel;
 use reqwest::StatusCode;
+use tracing::debug;
 use url::Url;
 
 use tokio::fs::File;
@@ -139,10 +140,10 @@ pub async fn create_http_clients(
                     panic!("error parsing bundled client certificate: {error}")
                 });
 
-                builder = builder
-                    .danger_accept_invalid_certs(tls_config.insecure.unwrap_or(false))
-                    .use_rustls_tls()
-                    .identity(identity);
+                builder = builder.use_rustls_tls().identity(identity);
+
+                debug!(?tls_config.insecure);
+                builder = builder.danger_accept_invalid_certs(tls_config.insecure.unwrap_or(false));
 
                 if let Some(client_ca_cert_path) = &tls_config.client_ca_cert_path {
                     let ca_cert =

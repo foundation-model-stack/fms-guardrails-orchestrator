@@ -270,7 +270,9 @@ detectors:
         default_threshold: 0.5
 tls:
     detector:
+        client_ca_cert_path: /certs/ca.pem
         cert_path: /certs/client.pem
+        key_path: /certs/client-key.pem
         insecure: true
         "#;
         let config: OrchestratorConfig = serde_yml::from_str(s)?;
