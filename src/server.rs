@@ -1,4 +1,4 @@
-use std::{fs::File, io::BufReader, net::SocketAddr, path::PathBuf, sync::Arc};
+use std::{collections::HashMap, fs::File, io::BufReader, net::SocketAddr, path::PathBuf, sync::Arc};
 
 use axum::{
     extract::{Request, State},
@@ -32,6 +32,9 @@ use crate::{
 };
 
 const API_PREFIX: &str = r#"/api/v1/task"#;
+
+const PACKAGE_VERSION: &str = env!("CARGO_PKG_VERSION");
+const PACKAGE_NAME: &str = env!("CARGO_PKG_NAME");
 
 /// Server shared state
 pub struct ServerState {
@@ -220,9 +223,11 @@ pub async fn run(
     Ok(())
 }
 
-async fn health() -> Result<(), ()> {
+async fn health() -> Result<impl IntoResponse, ()> {
     // TODO: determine how to detect if orchestrator is healthy or not
-    Ok(())
+
+    let info_object = HashMap::from([(PACKAGE_NAME, PACKAGE_VERSION)]);
+    Ok(Json(info_object).into_response())
 }
 
 async fn classification_with_gen(
