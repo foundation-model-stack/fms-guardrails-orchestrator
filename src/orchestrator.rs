@@ -601,7 +601,7 @@ async fn create_clients(
         GenerationProvider::Tgis => {
             let client = TgisClient::new(
                 clients::DEFAULT_TGIS_PORT,
-                &[("tgis-router".to_string(), config.generation.service.clone())],
+                &[("common-router".to_string(), config.generation.service.clone())],
             )
             .await;
             GenerationClient::Tgis(client)
@@ -609,7 +609,7 @@ async fn create_clients(
         GenerationProvider::Nlp => {
             let client = NlpClient::new(
                 clients::DEFAULT_CAIKIT_NLP_PORT,
-                &[("tgis-router".to_string(), config.generation.service.clone())],
+                &[("common-router".to_string(), config.generation.service.clone())],
             )
             .await;
             GenerationClient::Nlp(client)

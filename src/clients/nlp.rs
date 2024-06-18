@@ -34,7 +34,9 @@ impl NlpClient {
         Self { clients }
     }
 
-    fn client(&self, model_id: &str) -> Result<NlpServiceClient<LoadBalancedChannel>, Error> {
+    fn client(&self, _model_id: &str) -> Result<NlpServiceClient<LoadBalancedChannel>, Error> {
+        // NOTE: We currently forward requests to common router, so we use a single client.
+        let model_id = "common-router";
         Ok(self
             .clients
             .get(model_id)

@@ -32,8 +32,8 @@ impl TgisClient {
         &self,
         _model_id: &str,
     ) -> Result<GenerationServiceClient<LoadBalancedChannel>, Error> {
-        // NOTE: We currently forward requests to the tgis-router, so we use a single client.
-        let model_id = "tgis-router";
+        // NOTE: We currently forward requests to the common-router, so we use a single client.
+        let model_id = "common-router";
         Ok(self
             .clients
             .get(model_id)
