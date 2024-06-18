@@ -29,6 +29,7 @@ pub struct TlsConfig {
     pub cert_path: Option<PathBuf>,
     pub key_path: Option<PathBuf>,
     pub client_ca_cert_path: Option<PathBuf>,
+    pub insecure: Option<bool>,
 }
 
 /// Generation service provider
@@ -202,4 +203,85 @@ tls: {}
         assert!(config.chunkers.len() == 2 && config.detectors.len() == 1);
         Ok(())
     }
+
+    #[test]
+    fn test_deserialize_config_detector_tls_signed() -> Result<(), Error> {
+        let s = r#"
+generation:
+    provider: tgis
+    service:
+        hostname: localhost
+        port: 8000
+chunkers:
+    sentence-en:
+        type: sentence
+        service:
+            hostname: localhost
+            port: 9000
+    sentence-ja:
+        type: sentence
+        service:
+            hostname: localhost
+            port: 9000
+detectors:
+    hap:
+        service:
+            hostname: localhost
+            port: 9000
+            tls: detector
+        chunker_id: sentence-en
+        default_threshold: 0.5
+tls:
+    detector:
+        cert_path: /certs/client.pem
+        "#;
+        let config: OrchestratorConfig = serde_yml::from_str(s)?;
+        assert!(config.chunkers.len() == 2 && config.detectors.len() == 1);
+        assert!(config.tls.len() == 1 && config.tls.contains_key("detector"));
+        Ok(())
+    }
+
+    #[test]
+    fn test_deserialize_config_detector_tls_insecure() -> Result<(), Error> {
+        let s = r#"
+generation:
+    provider: tgis
+    service:
+        hostname: localhost
+        port: 8000
+chunkers:
+    sentence-en:
+        type: sentence
+        service:
+            hostname: localhost
+            port: 9000
+    sentence-ja:
+        type: sentence
+        service:
+            hostname: localhost
+            port: 9000
+detectors:
+    hap:
+        service:
+            hostname: localhost
+            port: 9000
+            tls: detector
+        chunker_id: sentence-en
+        default_threshold: 0.5
+tls:
+    detector:
+        client_ca_cert_path: /certs/ca.pem
+        cert_path: /certs/client.pem
+        key_path: /certs/client-key.pem
+        insecure: true
+        "#;
+        let config: OrchestratorConfig = serde_yml::from_str(s)?;
+        assert!(config.chunkers.len() == 2 && config.detectors.len() == 1);
+        assert!(
+            config.tls.len() == 1 && config.tls.get("detector").unwrap().insecure == Some(true)
+        );
+        Ok(())
+    }
 }
+
+//

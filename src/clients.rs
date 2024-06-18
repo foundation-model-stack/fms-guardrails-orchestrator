@@ -4,7 +4,11 @@ use std::{collections::HashMap, time::Duration};
 use futures::future::join_all;
 use ginepro::LoadBalancedChannel;
 use reqwest::StatusCode;
+use tracing::debug;
 use url::Url;
+
+use tokio::fs::File;
+use tokio::io::AsyncReadExt;
 
 use crate::config::{ServiceConfig, Tls};
 
@@ -111,13 +115,47 @@ pub async fn create_http_clients(
                 .connect_timeout(DEFAULT_CONNECT_TIMEOUT)
                 .timeout(DEFAULT_REQUEST_TIMEOUT);
             if let Some(Tls::Config(tls_config)) = &service_config.tls {
+                let mut cert_buf = Vec::new();
                 let cert_path = tls_config.cert_path.as_ref().unwrap().as_path();
-                let cert_pem = tokio::fs::read(cert_path).await.unwrap_or_else(|error| {
-                    panic!("error reading cert from {cert_path:?}: {error}")
+                File::open(cert_path)
+                    .await
+                    .unwrap_or_else(|error| {
+                        panic!("error reading cert from {cert_path:?}: {error}")
+                    })
+                    .read_to_end(&mut cert_buf)
+                    .await
+                    .unwrap();
+
+                if let Some(key_path) = &tls_config.key_path {
+                    File::open(key_path)
+                        .await
+                        .unwrap_or_else(|error| {
+                            panic!("error reading key from {key_path:?}: {error}")
+                        })
+                        .read_to_end(&mut cert_buf)
+                        .await
+                        .unwrap();
+                }
+                let identity = reqwest::Identity::from_pem(&cert_buf).unwrap_or_else(|error| {
+                    panic!("error parsing bundled client certificate: {error}")
                 });
-                let identity = reqwest::Identity::from_pem(&cert_pem)
-                    .unwrap_or_else(|error| panic!("error parsing cert: {error}"));
+
                 builder = builder.use_rustls_tls().identity(identity);
+
+                debug!(?tls_config.insecure);
+                builder = builder.danger_accept_invalid_certs(tls_config.insecure.unwrap_or(false));
+
+                if let Some(client_ca_cert_path) = &tls_config.client_ca_cert_path {
+                    let ca_cert =
+                        tokio::fs::read(client_ca_cert_path)
+                            .await
+                            .unwrap_or_else(|error| {
+                                panic!("error reading cert from {client_ca_cert_path:?}: {error}")
+                            });
+                    let cacert = reqwest::Certificate::from_pem(&ca_cert)
+                        .unwrap_or_else(|error| panic!("error parsing ca cert: {error}"));
+                    builder = builder.add_root_certificate(cacert)
+                }
             }
             let client = builder
                 .build()
