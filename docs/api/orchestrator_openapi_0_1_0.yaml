@@ -67,8 +67,332 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /api/v1/text/task/detection/content:
+    post:
+      tags:
+        - Detection tasks
+      summary: Detection task on input content
+      operationId: >-
+        api_v1_detection_task_content_unary_handler
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DetectionContentRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetectionContentResponse'
+        '404':
+          description: Resource Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/text/task/detection/chat:
+    post:
+      tags:
+        - Detection tasks
+      summary: Detection task on input chat
+      operationId: >-
+        api_v1_detection_task_chat_unary_handler
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DetectionChatRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetectionChatResponse'
+        '404':
+          description: Resource Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/text/task/detection/context-docs:
+    post:
+      tags:
+        - Detection tasks
+      summary: Detection task on input content based on context documents
+      operationId: >-
+        api_v1_detection_task_context_docs_unary_handler
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DetectionContextDocsRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetectionContextDocsResponse'
+        '404':
+          description: Resource Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+   
+  /api/v1/text/task/generation-detection:
+    post:
+      tags:
+        - Detection tasks
+      summary: Generation task performing detection on prompt and generated text
+      operationId: >-
+        api_v1_detection_task_generation_detection_unary_handler
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenerationDetectionRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenerationDetectionResponse'
+        '404':
+          description: Resource Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'              
+                
 components:
   schemas:
+    DetectionContentRequest:
+      properties:
+        detectors:
+          type: object
+          title: Detectors
+          default: {}
+          example: 
+            hap-v1-model-en: {}
+        content:
+          type: string
+          title: Content
+      required: ["detectors", "content"]
+      additionalProperties: false
+      type: object
+      title: Content Detection Request
+    DetectionContentResponse:
+      properties:
+        detections:
+          type: array
+          items:
+            $ref: '#/components/schemas/DetectionContentResponseObject'
+      additionalProperties: false
+      required: ["detections"]
+      type: object
+      title: Content Detection Response
+    DetectionContentResponseObject:
+      properties:
+        start:
+          type: integer
+          title: Start
+        end:
+          type: integer
+          title: End
+        text:
+          type: string
+          title: Text
+        detection_type:
+          type: string
+          title: Detection Type
+        detection:
+          type: string
+          title: Detection
+        score:
+          type: number
+          title: Score
+
+    DetectionChatRequest:
+      properties:
+        detectors:
+          type: object
+          title: Detectors
+          default: {}
+          example: 
+            chat-v1-model-en: {}
+        chat_history:
+          type: array
+          title: ChatHistory
+          default: {}
+          items:
+            $ref: '#/components/schemas/ChatHistoryObject'
+          example:
+            - content: "Hi, is this powered by siri or alexa?"
+              author: "user"
+            - content: "Better, it's watsonx"
+              author: "assistant"
+            - content: "You are a helpful assistant."
+              author: "system"
+      additionalProperties: false
+      required: ["detectors", "chat_history"]
+      type: object
+      title: Chat Detection Request
+    ChatHistoryObject:
+      properties:
+        content:
+          type: string
+          title: Content
+          default: ""
+          example: "Hi I am AI Agent"
+        author:
+          type: string
+          title: Author
+          default: ""
+          example: "assistant"
+    DetectionChatResponse:
+      properties:
+        detections:
+          type: array
+          items:
+            type: object
+            title: DetectionObject
+            properties:
+              detection_type:
+                type: string
+                title: Detection Type
+              detection:
+                type: string
+                title: Detection
+              score:
+                type: number
+                title: Score
+    
+    DetectionContextDocsRequest:
+      properties:
+        detectors:
+          type: object
+          title: Detectors
+          default: {}
+          example: 
+            context-v1-model-en: {}
+        content:
+          type: string
+          title: Content
+          default: ""
+          example: "What is the name of the solar powered car race held every two years?"
+        context_type:
+          type: string
+          title: Context Type
+          default: ""
+          example: "url"
+        context:
+          type: array
+          title: Context
+          default: []
+          items:
+            type: string
+          example:
+            - "https://en.wikipedia.org/wiki/IBM"
+            - "https://research.ibm.com/"
+    DetectionContextDocsResponse:
+      properties:
+        detections:
+          type: array
+          items:
+            type: object
+            title: DetectionObject
+            properties:
+              detection_type:
+                type: string
+                title: Detection Type
+              detection:
+                type: string
+                title: Detection
+              score:
+                type: number
+                title: Score
+            
+    
+    GenerationDetectionRequest:
+      properties:
+        model_id:
+          type: string
+          title: Model Id
+        prompt:
+          type: string
+          title: Prompt
+        detectors:
+          type: object
+          title: Detectors
+          default: {}
+          example: 
+            generation-detection-v1-model-en: {}
+        text_gen_parameters:
+          allOf:
+            - $ref: '#/components/schemas/GuardrailsTextGenerationParameters'
+      type: object
+      required:
+        - model_id
+        - inputs
+      title: Generation-Detection Request
+    GenerationDetectionResponse:
+      properties:
+        generated_text:
+          type: string
+          title: Generated Text
+        detections:
+          type: array
+          items:
+            type: object
+            title: DetectionObject
+            properties:
+              detection_type:
+                type: string
+                title: Detection Type
+              detection:
+                type: string
+                title: Detection
+              score:
+                type: number
+                title: Score
+        input_token_count:
+          type: string
+          title: Input token Count
+            
     ClassifiedGeneratedTextResult:
       properties:
         generated_text:
