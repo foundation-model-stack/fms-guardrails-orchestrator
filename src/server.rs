@@ -128,7 +128,7 @@ pub async fn run(
     let listener: TcpListener = TcpListener::bind(&http_addr)
         .await
         .unwrap_or_else(|_| panic!("failed to bind to {http_addr}"));
-    let handle = if arc_server_config.is_some() {
+    let guardrails_handle = if arc_server_config.is_some() {
         // TLS
         // Use more low level server configuration than axum for configurability
         // Ref. https://github.com/tokio-rs/axum/blob/main/examples/low-level-rustls/src/main.rs
@@ -213,9 +213,9 @@ pub async fn run(
     };
 
     // (3) Launch each server as a separate task
-    let (health_res, res) = tokio::join!(health_handle, handle);
+    let (health_res, guardrails_res) = tokio::join!(health_handle, guardrails_handle);
     health_res.unwrap();
-    res.unwrap();
+    guardrails_res.unwrap();
     info!("Shutdown complete for servers");
     Ok(())
 }
