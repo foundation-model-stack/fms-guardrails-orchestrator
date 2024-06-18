@@ -372,7 +372,7 @@ components:
           allOf:
             - $ref: '#/components/schemas/GuardrailsTextGenerationParameters'
       type: object
-      required: ["model_id", "prompt", "detectors", "text_gen_parameters"]
+      required: ["model_id", "prompt", "detectors"]
       title: Generation-Detection Request
     GenerationDetectionResponse:
       properties:
