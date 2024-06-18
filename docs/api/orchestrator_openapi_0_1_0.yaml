@@ -168,7 +168,7 @@ paths:
   /api/v1/text/task/generation-detection:
     post:
       tags:
-        - Detection tasks
+        - Text Generation with detectors
       summary: Generation task performing detection on prompt and generated text
       operationId: >-
         api_v1_detection_task_generation_detection_unary_handler
@@ -256,7 +256,7 @@ components:
             chat-v1-model-en: {}
         chat_history:
           type: array
-          title: ChatHistory
+          title: Chat History
           default: {}
           items:
             $ref: '#/components/schemas/ChatHistoryObject'
@@ -283,13 +283,15 @@ components:
           title: Author
           default: ""
           example: "assistant"
+      title: Chat History Object
+      required: ["content", "author"]
     DetectionChatResponse:
       properties:
         detections:
           type: array
           items:
             type: object
-            title: DetectionObject
+            title: Detection Object
             properties:
               detection_type:
                 type: string
@@ -300,6 +302,8 @@ components:
               score:
                 type: number
                 title: Score
+      title: Detection Chat Response
+      required: ["detections"]
     
     DetectionContextDocsRequest:
       properties:
@@ -328,13 +332,15 @@ components:
           example:
             - "https://en.wikipedia.org/wiki/IBM"
             - "https://research.ibm.com/"
+      required: ["detectors", "content", "context_type", "context"]
+      title: Detection Context Docs Request
     DetectionContextDocsResponse:
       properties:
         detections:
           type: array
           items:
             type: object
-            title: DetectionObject
+            title: Detection Object
             properties:
               detection_type:
                 type: string
@@ -345,7 +351,8 @@ components:
               score:
                 type: number
                 title: Score
-            
+      required: ["detections"]
+      title: Detection Context Docs Response
     
     GenerationDetectionRequest:
       properties:
@@ -365,9 +372,7 @@ components:
           allOf:
             - $ref: '#/components/schemas/GuardrailsTextGenerationParameters'
       type: object
-      required:
-        - model_id
-        - inputs
+      required: ["model_id", "prompt", "detectors", "text_gen_parameters"]
       title: Generation-Detection Request
     GenerationDetectionResponse:
       properties:
@@ -378,7 +383,7 @@ components:
           type: array
           items:
             type: object
-            title: DetectionObject
+            title: Detection Object
             properties:
               detection_type:
                 type: string
@@ -392,6 +397,8 @@ components:
         input_token_count:
           type: string
           title: Input token Count
+      title: Generation Detection Response
+      required: ["generated_text", "detections"]
             
     ClassifiedGeneratedTextResult:
       properties:
@@ -438,7 +445,7 @@ components:
       additionalProperties: false
       required: ["input_token_count", "token_classification_results"]
       type: object
-      title: ClassifiedGeneratedTextResult
+      title: Classified Generated Text Result
     ClassifiedGeneratedTextStreamResult:
       properties:
         generated_text:
@@ -491,7 +498,7 @@ components:
       additionalProperties: false
       required: ["input_token_count", "token_classification_results", "start_index"]
       type: object
-      title: ClassifiedGeneratedTextStreamResult
+      title: Classified Generated Text Stream Result
     Error:
       type: object
       properties:
@@ -512,7 +519,7 @@ components:
           title: Decay Factor
       additionalProperties: false
       type: object
-      title: ExponentialDecayLengthPenalty
+      title: Exponential Decay Length Penalty
     FinishReason:
       type: string
       enum:
@@ -524,7 +531,7 @@ components:
         - STOP_SEQUENCE
         - TOKEN_LIMIT
         - ERROR
-      title: FinishReason
+      title: Finish Reason
     GeneratedToken:
       properties:
         text:
@@ -541,7 +548,7 @@ components:
       additionalProperties: false
       type: object
       required: ["text"]
-      title: GeneratedToken
+      title: Generated Token
     GuardrailsConfig:
       properties:
         input:
@@ -558,7 +565,7 @@ components:
           default:
             models: {}
       type: object
-      title: GuardrailsConfig
+      title: Guardrails Config
     GuardrailsHttpRequest:
       properties:
         model_id:
@@ -583,7 +590,7 @@ components:
       required:
         - model_id
         - inputs
-      title: GuardrailsHttpRequest
+      title: Guardrails Http Request
     GuardrailsTextGenerationParameters:
       properties:
         max_new_tokens:
@@ -644,7 +651,7 @@ components:
           title: Token Ranks
       additionalProperties: false
       type: object
-      title: GuardrailsTextGenerationParameters
+      title: Guardrails Text Generation Parameters
     InputWarning:
       properties:
         id:
@@ -655,10 +662,10 @@ components:
           title: Message
       additionalProperties: false
       type: object
-      title: InputWarning
+      title: Input Warning
     InputWarningReason:
       enum: [UNSUITABLE_INPUT]
-      title: InputWarningReason
+      title: Input Warning Reason
     TextGenTokenClassificationResults:
     # By default open-api spec consider all fields as optional
       properties:
@@ -676,7 +683,7 @@ components:
           title: Output
       additionalProperties: false
       type: object
-      title: TextGenTokenClassificationResults
+      title: Text Gen Token Classification Results
     TokenClassificationResult:
       properties:
         start:
@@ -704,4 +711,4 @@ components:
       additionalProperties: false
       required: ["start", "end", "word", "entity", "entity_group", "score"]
       type: object
-      title: TokenClassificationResult
+      title: Token Classification Result
