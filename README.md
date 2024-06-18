@@ -9,7 +9,7 @@ Orchestrator server for invocation of detectors on text generation input and out
 Make sure Rust and Cargo are [installed](https://doc.rust-lang.org/cargo/getting-started/installation.html).
 Make sure you install protobuf.
 
-### Instructions for Fedora:
+### Instructions for Fedora
 ```sh
 # Install system dependencies
 sudo dnf install git rustup gcc perl
