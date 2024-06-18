@@ -68,6 +68,12 @@ curl -v -H "Content-Type: application/json" --request POST --data '{"model_id": 
 ```
 3. Health Probe
 ```bash
-curl -v http://localhost:8033/health
+curl -v http://localhost:8034/health
 ```
 
+### Server configuration
+
+Server configuration args can also be provided through environment variables.
+
+- For TLS, provide `TLS_KEY_PATH` and `TLS_CERT_PATH` for paths to the server key and cert respectively.
+- For mTLS, additionally provide `TLS_CLIENT_CA_CERT_PATH` for the path to the client CA (certificate authority).
