@@ -28,6 +28,7 @@ pub const DEFAULT_TGIS_PORT: u16 = 8033;
 pub const DEFAULT_CAIKIT_NLP_PORT: u16 = 8085;
 pub const DEFAULT_CHUNKER_PORT: u16 = 8085;
 pub const DEFAULT_DETECTOR_PORT: u16 = 8080;
+pub const COMMON_ROUTER_KEY: &str = "common-router";
 const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 const DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 

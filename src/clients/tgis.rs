@@ -7,6 +7,7 @@ use tokio_stream::wrappers::ReceiverStream;
 
 use super::{create_grpc_clients, Error};
 use crate::{
+    clients::COMMON_ROUTER_KEY,
     config::ServiceConfig,
     pb::fmaas::{
         generation_service_client::GenerationServiceClient, BatchedGenerationRequest,
@@ -33,7 +34,7 @@ impl TgisClient {
         _model_id: &str,
     ) -> Result<GenerationServiceClient<LoadBalancedChannel>, Error> {
         // NOTE: We currently forward requests to the common-router, so we use a single client.
-        let model_id = "common-router";
+        let model_id = COMMON_ROUTER_KEY;
         Ok(self
             .clients
             .get(model_id)
