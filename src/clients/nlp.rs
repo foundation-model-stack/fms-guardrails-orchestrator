@@ -8,6 +8,7 @@ use tonic::Request;
 
 use super::{create_grpc_clients, Error};
 use crate::{
+    clients::COMMON_ROUTER_KEY,
     config::ServiceConfig,
     pb::{
         caikit::runtime::nlp::{
@@ -34,7 +35,9 @@ impl NlpClient {
         Self { clients }
     }
 
-    fn client(&self, model_id: &str) -> Result<NlpServiceClient<LoadBalancedChannel>, Error> {
+    fn client(&self, _model_id: &str) -> Result<NlpServiceClient<LoadBalancedChannel>, Error> {
+        // NOTE: We currently forward requests to common router, so we use a single client.
+        let model_id = COMMON_ROUTER_KEY;
         Ok(self
             .clients
             .get(model_id)

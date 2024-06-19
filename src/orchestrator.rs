@@ -13,7 +13,7 @@ use uuid::Uuid;
 use crate::{
     clients::{
         self, detector::ContentAnalysisRequest, ChunkerClient, DetectorClient, GenerationClient,
-        NlpClient, TgisClient,
+        NlpClient, TgisClient, COMMON_ROUTER_KEY,
     },
     config::{GenerationProvider, OrchestratorConfig},
     models::{
@@ -601,7 +601,10 @@ async fn create_clients(
         GenerationProvider::Tgis => {
             let client = TgisClient::new(
                 clients::DEFAULT_TGIS_PORT,
-                &[("tgis-router".to_string(), config.generation.service.clone())],
+                &[(
+                    COMMON_ROUTER_KEY.to_string(),
+                    config.generation.service.clone(),
+                )],
             )
             .await;
             GenerationClient::Tgis(client)
@@ -609,7 +612,10 @@ async fn create_clients(
         GenerationProvider::Nlp => {
             let client = NlpClient::new(
                 clients::DEFAULT_CAIKIT_NLP_PORT,
-                &[("tgis-router".to_string(), config.generation.service.clone())],
+                &[(
+                    COMMON_ROUTER_KEY.to_string(),
+                    config.generation.service.clone(),
+                )],
             )
             .await;
             GenerationClient::Nlp(client)
