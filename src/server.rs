@@ -1,4 +1,6 @@
-use std::{collections::HashMap, fs::File, io::BufReader, net::SocketAddr, path::PathBuf, sync::Arc};
+use std::{
+    collections::HashMap, fs::File, io::BufReader, net::SocketAddr, path::PathBuf, sync::Arc,
+};
 
 use axum::{
     extract::{Request, State},
