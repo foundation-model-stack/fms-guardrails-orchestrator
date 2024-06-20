@@ -105,6 +105,8 @@ pub async fn run(
         } else {
             WebPkiClientVerifier::no_client_auth()
         };
+        // A process wide default crypto provider is needed, aws_lc_rs feature is enabled by default
+        let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
         let server_config = ServerConfig::builder()
             .with_client_cert_verifier(client_auth)
             .with_single_cert(server_cert, key)
