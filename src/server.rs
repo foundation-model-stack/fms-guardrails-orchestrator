@@ -90,6 +90,9 @@ pub async fn run(
         let server_cert = load_certs(&cert_path);
         let key = load_private_key(&key_path);
 
+        // A process wide default crypto provider is needed, aws_lc_rs feature is enabled by default
+        let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+
         // Configure mTLS if client CA is provided
         let client_auth = if tls_client_ca_cert_path.is_some() {
             info!("Configuring TLS trust certificate (mTLS) for incoming connections");
@@ -105,8 +108,7 @@ pub async fn run(
         } else {
             WebPkiClientVerifier::no_client_auth()
         };
-        // A process wide default crypto provider is needed, aws_lc_rs feature is enabled by default
-        let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+
         let server_config = ServerConfig::builder()
             .with_client_cert_verifier(client_auth)
             .with_single_cert(server_cert, key)
