@@ -226,8 +226,10 @@ pub async fn run(
 }
 
 async fn health() -> Result<impl IntoResponse, ()> {
-    // TODO: determine how to detect if orchestrator is healthy or not
-
+    // NOTE: we are only adding the package information in the `health` endpoint to have this endpoint
+    // provide a non empty 200 response. If we need to add more information regarding dependencies version
+    // or such things, then we will add another `/info` endpoint accordingly. And those info
+    // should not be added in `health` endpoint`
     let info_object = HashMap::from([(PACKAGE_NAME, PACKAGE_VERSION)]);
     Ok(Json(info_object).into_response())
 }
