@@ -1,4 +1,6 @@
-use std::{fs::File, io::BufReader, net::SocketAddr, path::PathBuf, sync::Arc};
+use std::{
+    collections::HashMap, fs::File, io::BufReader, net::SocketAddr, path::PathBuf, sync::Arc,
+};
 
 use axum::{
     extract::{Request, State},
@@ -32,6 +34,9 @@ use crate::{
 };
 
 const API_PREFIX: &str = r#"/api/v1/task"#;
+
+const PACKAGE_VERSION: &str = env!("CARGO_PKG_VERSION");
+const PACKAGE_NAME: &str = env!("CARGO_PKG_NAME");
 
 /// Server shared state
 pub struct ServerState {
@@ -220,9 +225,13 @@ pub async fn run(
     Ok(())
 }
 
-async fn health() -> Result<(), ()> {
-    // TODO: determine how to detect if orchestrator is healthy or not
-    Ok(())
+async fn health() -> Result<impl IntoResponse, ()> {
+    // NOTE: we are only adding the package information in the `health` endpoint to have this endpoint
+    // provide a non empty 200 response. If we need to add more information regarding dependencies version
+    // or such things, then we will add another `/info` endpoint accordingly. And those info
+    // should not be added in `health` endpoint`
+    let info_object = HashMap::from([(PACKAGE_NAME, PACKAGE_VERSION)]);
+    Ok(Json(info_object).into_response())
 }
 
 async fn classification_with_gen(
