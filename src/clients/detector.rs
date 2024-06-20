@@ -7,12 +7,13 @@ use crate::config::ServiceConfig;
 
 const DETECTOR_ID_HEADER_NAME: &str = "detector-id";
 
-#[cfg_attr(test, derive(Default))]
-#[derive(Clone)]
+#[cfg_attr(test, faux::create)]
+#[derive(Clone, Default)]
 pub struct DetectorClient {
     clients: HashMap<String, HttpClient>,
 }
 
+#[cfg_attr(test, faux::methods)]
 impl DetectorClient {
     pub async fn new(default_port: u16, config: &[(String, ServiceConfig)]) -> Self {
         let clients: HashMap<String, HttpClient> = create_http_clients(default_port, config).await;
@@ -52,6 +53,7 @@ impl DetectorClient {
 /// Results of this request will contain analysis / detection of each of the provided documents
 /// in the order they are present in the `contents` object.
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(test, derive(PartialEq))]
 pub struct ContentAnalysisRequest {
     /// Field allowing users to provide list of documents for analysis
     pub contents: Vec<String>,
@@ -66,6 +68,7 @@ impl ContentAnalysisRequest {
 /// Evidence type
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[cfg_attr(test, derive(PartialEq))]
 pub enum EvidenceType {
     Url,
     Title,
@@ -73,12 +76,14 @@ pub enum EvidenceType {
 
 /// Source of the evidence e.g. url
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(test, derive(PartialEq))]
 pub struct Evidence {
     /// Evidence source
     pub source: String,
 }
 
 /// Evidence in response
+#[cfg_attr(test, derive(PartialEq))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct EvidenceObj {
     /// Type field signifying the type of evidence provided
@@ -90,6 +95,7 @@ pub struct EvidenceObj {
 }
 
 /// Response of text content analysis endpoint
+#[cfg_attr(test, derive(PartialEq))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ContentAnalysisResponse {
     /// Start index of detection
@@ -120,5 +126,39 @@ impl From<ContentAnalysisResponse> for crate::models::TokenClassificationResult 
             score: value.score,
             token_count: None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_text_contents() {
+        let mut mock_client = DetectorClient::faux();
+
+        let request = ContentAnalysisRequest {
+            contents: vec!["My e-mail is me@mail.com".to_string()],
+        };
+        let model_id = "pii";
+
+        let expected_response = vec![vec![ContentAnalysisResponse {
+            start: 13,
+            end: 24,
+            text: "me@mail.com".to_string(),
+            detection: "EmailAddress".to_string(),
+            detection_type: "pii".to_string(),
+            score: 0.8,
+            evidences: vec![].into(),
+        }]];
+
+        faux::when!(mock_client.text_contents(model_id, request.clone()))
+            .once()
+            .then_return(Ok(expected_response.clone()));
+
+        assert_eq!(
+            mock_client.text_contents(model_id, request).await.unwrap(),
+            expected_response
+        );
     }
 }
