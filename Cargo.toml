@@ -24,7 +24,7 @@ hyper-util = { version = "0.1.5", features = ["server-auto", "server-graceful", 
 mio = "0.8.11"
 prost = "0.12.3"
 reqwest = { version = "0.12.4", features = ["blocking", "rustls-tls", "json"] }
-rustls = "0.23.9"
+rustls = {version = "0.23.9", default-features = false, features = ["std"]}
 rustls-pemfile = "2.1.0"
 rustls-webpki = "0.102.2"
 serde = { version = "1.0.200", features = ["derive"] }
