@@ -262,13 +262,19 @@ async fn stream_classification_with_gen(
 ) -> Result<impl IntoResponse, Error> {
     let request_id = Uuid::new_v4();
     let task = StreamingClassificationWithGenTask::new(request_id, request);
-    let response_stream = state
+
+    match state
         .orchestrator
         .handle_streaming_classification_with_gen(task)
         .await
-        .map(|response| Event::default().json_data(response));
-    let sse = Sse::new(response_stream).keep_alive(KeepAlive::default());
-    Ok(sse.into_response())
+    {
+        Ok(response_stream) => {
+            let map = response_stream.map(|response| Event::default().json_data(response));
+            let sse = Sse::new(map).keep_alive(KeepAlive::default());
+            Ok(sse.into_response())
+        }
+        Err(error) => Err(error.into()),
+    }
 }
 
 /// Shutdown signal handler
