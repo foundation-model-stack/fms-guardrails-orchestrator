@@ -1,7 +1,8 @@
 #![allow(unused_qualifications)]
 
-use crate::pb;
 use std::collections::HashMap;
+
+use crate::pb;
 
 /// Parameters relevant to each detector
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -683,6 +684,124 @@ impl From<ExponentialDecayLengthPenalty>
         Self {
             start_index: value.start_index.map(|v| v as i64).unwrap_or_default(),
             decay_factor: value.decay_factor.unwrap_or_default(),
+        }
+    }
+}
+
+impl From<pb::fmaas::GenerationResponse> for ClassifiedGeneratedTextStreamResult {
+    fn from(value: pb::fmaas::GenerationResponse) -> Self {
+        Self {
+            generated_text: Some(value.text.clone()),
+            finish_reason: Some(value.stop_reason().into()),
+            generated_token_count: Some(value.generated_token_count),
+            seed: Some(value.seed as u32),
+            input_token_count: value.input_token_count,
+            warnings: None,
+            tokens: if value.tokens.is_empty() {
+                None
+            } else {
+                Some(value.tokens.into_iter().map(Into::into).collect())
+            },
+            input_tokens: if value.input_tokens.is_empty() {
+                None
+            } else {
+                Some(value.input_tokens.into_iter().map(Into::into).collect())
+            },
+            token_classification_results: TextGenTokenClassificationResults {
+                input: None,
+                output: None,
+            },
+            processed_index: None,
+            start_index: 0,
+        }
+    }
+}
+
+impl From<pb::fmaas::BatchedGenerationResponse> for ClassifiedGeneratedTextResult {
+    fn from(mut value: pb::fmaas::BatchedGenerationResponse) -> Self {
+        let value = value.responses.swap_remove(0);
+        Self {
+            generated_text: Some(value.text.clone()),
+            finish_reason: Some(value.stop_reason().into()),
+            generated_token_count: Some(value.generated_token_count),
+            seed: Some(value.seed as u32),
+            input_token_count: value.input_token_count,
+            warnings: None,
+            tokens: if value.tokens.is_empty() {
+                None
+            } else {
+                Some(value.tokens.into_iter().map(Into::into).collect())
+            },
+            input_tokens: if value.input_tokens.is_empty() {
+                None
+            } else {
+                Some(value.input_tokens.into_iter().map(Into::into).collect())
+            },
+            token_classification_results: TextGenTokenClassificationResults {
+                input: None,
+                output: None,
+            },
+        }
+    }
+}
+
+impl From<pb::caikit_data_model::nlp::GeneratedTextStreamResult>
+    for ClassifiedGeneratedTextStreamResult
+{
+    fn from(value: pb::caikit_data_model::nlp::GeneratedTextStreamResult) -> Self {
+        let details = value.details.as_ref();
+        Self {
+            generated_text: Some(value.generated_text.clone()),
+            finish_reason: details.map(|v| v.finish_reason().into()),
+            generated_token_count: details.map(|v| v.generated_tokens),
+            seed: details.map(|v| v.seed as u32),
+            input_token_count: details
+                .map(|v| v.input_token_count as u32)
+                .unwrap_or_default(), // TODO
+            warnings: None,
+            tokens: if value.tokens.is_empty() {
+                None
+            } else {
+                Some(value.tokens.into_iter().map(Into::into).collect())
+            },
+            input_tokens: if value.input_tokens.is_empty() {
+                None
+            } else {
+                Some(value.input_tokens.into_iter().map(Into::into).collect())
+            },
+            token_classification_results: TextGenTokenClassificationResults {
+                input: None,
+                output: None,
+            },
+            processed_index: None,
+            start_index: 0,
+        }
+    }
+}
+
+impl From<pb::caikit_data_model::nlp::GeneratedTextResult> for ClassifiedGeneratedTextResult {
+    fn from(value: pb::caikit_data_model::nlp::GeneratedTextResult) -> Self {
+        Self {
+            generated_text: Some(value.generated_text.clone()),
+            finish_reason: Some(value.finish_reason().into()),
+            generated_token_count: Some(value.generated_tokens as u32),
+            seed: Some(value.seed as u32),
+            input_token_count: value.input_token_count as u32,
+            warnings: None,
+            tokens: if value.tokens.is_empty() {
+                None
+            } else {
+                Some(value.tokens.into_iter().map(Into::into).collect())
+            },
+            input_tokens: if value.input_tokens.is_empty() {
+                None
+            } else {
+                Some(value.input_tokens.into_iter().map(Into::into).collect())
+            },
+            token_classification_results: TextGenTokenClassificationResults {
+                input: None,
+                output: None,
+            },
         }
     }
 }
