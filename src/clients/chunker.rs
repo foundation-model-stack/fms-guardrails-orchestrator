@@ -3,7 +3,6 @@ use std::{collections::HashMap, pin::Pin};
 use futures::{Stream, StreamExt};
 use ginepro::LoadBalancedChannel;
 use tokio::sync::mpsc;
-use tokio_stream::wrappers::ReceiverStream;
 use tonic::Request;
 
 use super::{create_grpc_clients, Error};
@@ -59,7 +58,7 @@ impl ChunkerClient {
         &self,
         model_id: &str,
         text_stream: Pin<Box<dyn Stream<Item = String> + Send + 'static>>,
-    ) -> Result<ReceiverStream<TokenizationStreamResult>, Error> {
+    ) -> Result<mpsc::Receiver<TokenizationStreamResult>, Error> {
         let request =
             text_stream.map(|text| BidiStreamingTokenizationTaskRequest { text_stream: text });
         let mut response_stream = self
@@ -73,7 +72,7 @@ impl ChunkerClient {
                 let _ = tx.send(message).await;
             }
         });
-        Ok(ReceiverStream::new(rx))
+        Ok(rx)
     }
 }
 
