@@ -45,8 +45,9 @@ impl ChunkerClient {
     pub async fn tokenization_task_predict(
         &self,
         model_id: &str,
-        request: TokenizationTaskRequest,
+        text: String,
     ) -> Result<TokenizationResults, Error> {
+        let request = TokenizationTaskRequest { text };
         let request = request_with_model_id(request, model_id);
         Ok(self
             .client(model_id)?
