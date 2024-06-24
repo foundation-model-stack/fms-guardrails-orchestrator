@@ -48,10 +48,9 @@ impl ChunkerClient {
         text: String,
     ) -> Result<TokenizationResults, Error> {
         let request = TokenizationTaskRequest { text };
-        let request = request_with_model_id(request, model_id);
         Ok(self
             .client(model_id)?
-            .tokenization_task_predict(request)
+            .tokenization_task_predict(request_with_model_id(request, model_id))
             .await?
             .into_inner())
     }
@@ -59,12 +58,13 @@ impl ChunkerClient {
     pub async fn bidi_streaming_tokenization_task_predict(
         &self,
         model_id: &str,
-        request: Pin<Box<dyn Stream<Item = BidiStreamingTokenizationTaskRequest> + Send + 'static>>,
+        text_stream: Pin<Box<dyn Stream<Item = String> + Send + 'static>>,
     ) -> Result<ReceiverStream<TokenizationStreamResult>, Error> {
-        let request = request_with_model_id(request, model_id);
+        let request =
+            text_stream.map(|text| BidiStreamingTokenizationTaskRequest { text_stream: text });
         let mut response_stream = self
             .client(model_id)?
-            .bidi_streaming_tokenization_task_predict(request)
+            .bidi_streaming_tokenization_task_predict(request_with_model_id(request, model_id))
             .await?
             .into_inner();
         let (tx, rx) = mpsc::channel(128);

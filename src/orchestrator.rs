@@ -13,8 +13,8 @@ use uuid::Uuid;
 
 use crate::{
     clients::{
-        self, detector::ContentAnalysisRequest, ChunkerClient, DetectorClient, GenerationClient,
-        NlpClient, TgisClient, COMMON_ROUTER_KEY,
+        self, ChunkerClient, DetectorClient, GenerationClient, NlpClient, TgisClient,
+        COMMON_ROUTER_KEY,
     },
     config::{GenerationProvider, OrchestratorConfig},
     models::{
@@ -291,11 +291,10 @@ async fn detect(
     let detector_id = detector_id.clone();
     let threshold = detector_params.threshold.unwrap_or(default_threshold);
     let contents = chunks.iter().map(|chunk| chunk.text.clone()).collect();
-    let request = ContentAnalysisRequest::new(contents);
-    debug!(%detector_id, ?request, "sending detector request");
+    debug!(%detector_id, ?contents, "sending detector request");
     let response = ctx
         .detector_client
-        .text_contents(&detector_id, request)
+        .text_contents(&detector_id, contents)
         .await
         .map_err(|error| Error::DetectorRequestFailed {
             detector_id: detector_id.clone(),
