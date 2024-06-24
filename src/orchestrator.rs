@@ -22,19 +22,7 @@ use crate::{
         GuardrailsConfig, GuardrailsHttpRequest, GuardrailsTextGenerationParameters, InputWarning,
         InputWarningReason, TextGenTokenClassificationResults, TokenClassificationResult,
     },
-    pb::{
-        caikit::runtime::{
-            chunkers::TokenizationTaskRequest as ChunkersTokenizationTaskRequest,
-            nlp::{
-                ServerStreamingTextGenerationTaskRequest, TextGenerationTaskRequest,
-                TokenizationTaskRequest,
-            },
-        },
-        fmaas::{
-            BatchedGenerationRequest, BatchedTokenizeRequest, GenerationRequest,
-            SingleGenerationRequest, TokenizeRequest,
-        },
-    },
+    pb::caikit::runtime::chunkers::TokenizationTaskRequest as ChunkersTokenizationTaskRequest,
 };
 
 const UNSUITABLE_INPUT_MESSAGE: &str = "Unsuitable input detected. \
@@ -180,13 +168,15 @@ impl Orchestrator {
         > = tokio::spawn(async move {
             // TODO: Do input detections
             // TODO: results will eventually have to be mutable
-            let generation_results = generate_stream(
-                ctx.clone(),
-                task.model_id.clone(),
-                task.inputs.clone(),
-                task.text_gen_parameters.clone(),
-            )
-            .await?;
+            let generation_results = ReceiverStream::new(
+                generate_stream(
+                    ctx.clone(),
+                    task.model_id.clone(),
+                    task.inputs.clone(),
+                    task.text_gen_parameters.clone(),
+                )
+                .await?,
+            );
             debug!(?generation_results);
             // TODO: Do output detections
             Ok(generation_results)
@@ -413,68 +403,13 @@ async fn tokenize(
     model_id: String,
     text: String,
 ) -> Result<(u32, Vec<String>), Error> {
-    let generation_client = ctx.generation_client.clone();
-    match generation_client {
-        GenerationClient::Tgis(client) => {
-            let request = BatchedTokenizeRequest {
-                model_id: model_id.clone(),
-                requests: vec![TokenizeRequest { text }],
-                return_tokens: false,
-                return_offsets: false,
-                truncate_input_tokens: 0,
-            };
-            debug!(
-                %model_id,
-                provider = "tgis",
-                ?request,
-                "sending tokenize request"
-            );
-            let mut response =
-                client
-                    .tokenize(request)
-                    .await
-                    .map_err(|error| Error::TokenizeRequestFailed {
-                        model_id: model_id.clone(),
-                        error,
-                    })?;
-            debug!(
-                %model_id,
-                provider = "tgis",
-                ?response,
-                "received tokenize response"
-            );
-            let response = response.responses.swap_remove(0);
-            Ok((response.token_count, response.tokens))
-        }
-        GenerationClient::Nlp(client) => {
-            let request = TokenizationTaskRequest { text };
-            debug!(
-                %model_id,
-                provider = "nlp",
-                ?request,
-                "sending tokenize request"
-            );
-            let response = client
-                .tokenization_task_predict(&model_id, request)
-                .await
-                .map_err(|error| Error::TokenizeRequestFailed {
-                    model_id: model_id.clone(),
-                    error,
-                })?;
-            debug!(
-                %model_id,
-                provider = "nlp",
-                ?response,
-                "received tokenize response"
-            );
-            let tokens = response
-                .results
-                .into_iter()
-                .map(|token| token.text)
-                .collect::<Vec<_>>();
-            Ok((response.token_count as u32, tokens))
-        }
-    }
+    ctx.generation_client
+        .tokenize(model_id.clone(), text)
+        .await
+        .map_err(|error| Error::TokenizeRequestFailed {
+            model_id: model_id.clone(),
+            error,
+        })
 }
 
 /// Sends generate request to a generation service.
@@ -484,134 +419,13 @@ async fn generate(
     text: String,
     params: Option<GuardrailsTextGenerationParameters>,
 ) -> Result<ClassifiedGeneratedTextResult, Error> {
-    let generation_client = ctx.generation_client.clone();
-    match generation_client {
-        GenerationClient::Tgis(client) => {
-            let params = params.map(Into::into);
-            let request = BatchedGenerationRequest {
-                model_id: model_id.clone(),
-                prefix_id: None,
-                requests: vec![GenerationRequest { text }],
-                params,
-            };
-            debug!(
-                %model_id,
-                provider = "tgis",
-                ?request,
-                "sending generate request"
-            );
-            let mut response =
-                client
-                    .generate(request)
-                    .await
-                    .map_err(|error| Error::GenerateRequestFailed {
-                        model_id: model_id.clone(),
-                        error,
-                    })?;
-            debug!(
-                %model_id,
-                provider = "tgis",
-                ?response,
-                "received generate response"
-            );
-            let response = response.responses.swap_remove(0);
-            Ok(ClassifiedGeneratedTextResult {
-                generated_text: Some(response.text.clone()),
-                finish_reason: Some(response.stop_reason().into()),
-                generated_token_count: Some(response.generated_token_count),
-                seed: Some(response.seed as u32),
-                input_token_count: response.input_token_count,
-                warnings: None,
-                tokens: if response.tokens.is_empty() {
-                    None
-                } else {
-                    Some(response.tokens.into_iter().map(Into::into).collect())
-                },
-                input_tokens: if response.input_tokens.is_empty() {
-                    None
-                } else {
-                    Some(response.input_tokens.into_iter().map(Into::into).collect())
-                },
-                token_classification_results: TextGenTokenClassificationResults {
-                    input: None,
-                    output: None,
-                },
-            })
-        }
-        GenerationClient::Nlp(client) => {
-            let request = if let Some(params) = params {
-                TextGenerationTaskRequest {
-                    text,
-                    max_new_tokens: params.max_new_tokens.map(|v| v as i64),
-                    min_new_tokens: params.min_new_tokens.map(|v| v as i64),
-                    truncate_input_tokens: params.truncate_input_tokens.map(|v| v as i64),
-                    decoding_method: params.decoding_method,
-                    top_k: params.top_k.map(|v| v as i64),
-                    top_p: params.top_p,
-                    typical_p: params.typical_p,
-                    temperature: params.temperature,
-                    repetition_penalty: params.repetition_penalty,
-                    max_time: params.max_time,
-                    exponential_decay_length_penalty: params
-                        .exponential_decay_length_penalty
-                        .map(Into::into),
-                    stop_sequences: params.stop_sequences.unwrap_or_default(),
-                    seed: params.seed.map(|v| v as u64),
-                    preserve_input_text: params.preserve_input_text,
-                    input_tokens: params.input_tokens,
-                    generated_tokens: params.generated_tokens,
-                    token_logprobs: params.token_logprobs,
-                    token_ranks: params.token_ranks,
-                }
-            } else {
-                TextGenerationTaskRequest {
-                    text,
-                    ..Default::default()
-                }
-            };
-            debug!(
-                %model_id,
-                provider = "nlp",
-                ?request,
-                "sending generate request"
-            );
-            let response = client
-                .text_generation_task_predict(&model_id, request)
-                .await
-                .map_err(|error| Error::GenerateRequestFailed {
-                    model_id: model_id.clone(),
-                    error,
-                })?;
-            debug!(
-                %model_id,
-                provider = "nlp",
-                ?response,
-                "received generate response"
-            );
-            Ok(ClassifiedGeneratedTextResult {
-                generated_text: Some(response.generated_text.clone()),
-                finish_reason: Some(response.finish_reason().into()),
-                generated_token_count: Some(response.generated_tokens as u32),
-                seed: Some(response.seed as u32),
-                input_token_count: response.input_token_count as u32,
-                warnings: None,
-                tokens: if response.tokens.is_empty() {
-                    None
-                } else {
-                    Some(response.tokens.into_iter().map(Into::into).collect())
-                },
-                input_tokens: if response.input_tokens.is_empty() {
-                    None
-                } else {
-                    Some(response.input_tokens.into_iter().map(Into::into).collect())
-                },
-                token_classification_results: TextGenTokenClassificationResults {
-                    input: None,
-                    output: None,
-                },
-            })
-        }
-    }
+    ctx.generation_client
+        .generate(model_id.clone(), text, params)
+        .await
+        .map_err(|error| Error::GenerateRequestFailed {
+            model_id: model_id.clone(),
+            error,
+        })
 }
 
 /// Sends generate stream request to a generation service.
@@ -620,151 +434,14 @@ async fn generate_stream(
     model_id: String,
     text: String,
     params: Option<GuardrailsTextGenerationParameters>,
-) -> Result<ReceiverStream<ClassifiedGeneratedTextStreamResult>, Error> {
-    let generation_client = ctx.generation_client.clone();
-    match generation_client {
-        GenerationClient::Tgis(client) => {
-            let params = params.map(Into::into);
-            let request = SingleGenerationRequest {
-                model_id: model_id.clone(),
-                prefix_id: None,
-                request: Some(GenerationRequest { text }),
-                params,
-            };
-            debug!(
-                %model_id,
-                provider = "tgis",
-                ?request,
-                "sending generate stream request"
-            );
-            let mut response_stream = client.generate_stream(request).await.map_err(|error| {
-                Error::GenerateRequestFailed {
-                    model_id: model_id.clone(),
-                    error,
-                }
-            })?;
-            debug!(
-                %model_id,
-                provider = "tgis",
-                ?response_stream,
-                "received generate stream response"
-            );
-            let (tx, rx) = mpsc::channel(128);
-            tokio::spawn(async move {
-                while let Some(response) = response_stream.next().await {
-                    let updated_response = ClassifiedGeneratedTextStreamResult {
-                        generated_text: Some(response.text.clone()),
-                        finish_reason: Some(response.stop_reason().into()),
-                        generated_token_count: Some(response.generated_token_count),
-                        seed: Some(response.seed as u32),
-                        input_token_count: response.input_token_count,
-                        warnings: None,
-                        tokens: if response.tokens.is_empty() {
-                            None
-                        } else {
-                            Some(response.tokens.into_iter().map(Into::into).collect())
-                        },
-                        input_tokens: if response.input_tokens.is_empty() {
-                            None
-                        } else {
-                            Some(response.input_tokens.into_iter().map(Into::into).collect())
-                        },
-                        token_classification_results: TextGenTokenClassificationResults {
-                            input: None,
-                            output: None,
-                        },
-                        processed_index: Some(0), // TODO: keep track of this in default text gen case
-                        start_index: 0, // TODO: keep track of this in default text gen case
-                    };
-                    let _ = tx.send(updated_response).await;
-                }
-            });
-            Ok(ReceiverStream::new(rx))
-        }
-        GenerationClient::Nlp(client) => {
-            let request = if let Some(params) = params {
-                ServerStreamingTextGenerationTaskRequest {
-                    text,
-                    max_new_tokens: params.max_new_tokens.map(|v| v as i64),
-                    min_new_tokens: params.min_new_tokens.map(|v| v as i64),
-                    truncate_input_tokens: params.truncate_input_tokens.map(|v| v as i64),
-                    decoding_method: params.decoding_method,
-                    top_k: params.top_k.map(|v| v as i64),
-                    top_p: params.top_p,
-                    typical_p: params.typical_p,
-                    temperature: params.temperature,
-                    repetition_penalty: params.repetition_penalty,
-                    max_time: params.max_time,
-                    exponential_decay_length_penalty: params
-                        .exponential_decay_length_penalty
-                        .map(Into::into),
-                    stop_sequences: params.stop_sequences.unwrap_or_default(),
-                    seed: params.seed.map(|v| v as u64),
-                    preserve_input_text: params.preserve_input_text,
-                    input_tokens: params.input_tokens,
-                    generated_tokens: params.generated_tokens,
-                    token_logprobs: params.token_logprobs,
-                    token_ranks: params.token_ranks,
-                }
-            } else {
-                ServerStreamingTextGenerationTaskRequest {
-                    text,
-                    ..Default::default()
-                }
-            };
-            debug!(
-                %model_id,
-                provider = "nlp",
-                ?request,
-                "sending generate stream request"
-            );
-            let mut response_stream = client
-                .server_streaming_text_generation_task_predict(&model_id, request)
-                .await
-                .map_err(|error| Error::GenerateRequestFailed {
-                    model_id: model_id.clone(),
-                    error,
-                })?;
-            debug!(
-                %model_id,
-                provider = "nlp",
-                ?response_stream,
-                "received generate stream response"
-            );
-            let (tx, rx) = mpsc::channel(128);
-            tokio::spawn(async move {
-                while let Some(response) = response_stream.next().await {
-                    let details = response.details.unwrap();
-                    let updated_response = ClassifiedGeneratedTextStreamResult {
-                        generated_text: Some(response.generated_text.clone()),
-                        finish_reason: Some(details.finish_reason().into()),
-                        generated_token_count: Some(details.generated_tokens),
-                        seed: Some(details.seed as u32),
-                        input_token_count: details.input_token_count as u32,
-                        warnings: None,
-                        tokens: if response.tokens.is_empty() {
-                            None
-                        } else {
-                            Some(response.tokens.into_iter().map(Into::into).collect())
-                        },
-                        input_tokens: if response.input_tokens.is_empty() {
-                            None
-                        } else {
-                            Some(response.input_tokens.into_iter().map(Into::into).collect())
-                        },
-                        token_classification_results: TextGenTokenClassificationResults {
-                            input: None,
-                            output: None,
-                        },
-                        processed_index: Some(0), // TODO: keep track of this in default text gen case
-                        start_index: 0, // TODO: keep track of this in default text gen case
-                    };
-                    let _ = tx.send(updated_response).await;
-                }
-            });
-            Ok(ReceiverStream::new(rx))
-        }
-    }
+) -> Result<mpsc::Receiver<ClassifiedGeneratedTextStreamResult>, Error> {
+    ctx.generation_client
+        .generate_stream(model_id.clone(), text, params)
+        .await
+        .map_err(|error| Error::GenerateRequestFailed {
+            model_id: model_id.clone(),
+            error,
+        })
 }
 
 /************************** Implementation fns **************************/
@@ -890,7 +567,8 @@ mod tests {
     use crate::{
         models::FinishReason,
         pb::fmaas::{
-            BatchedGenerationRequest, BatchedGenerationResponse, GenerationResponse, StopReason,
+            BatchedGenerationRequest, BatchedGenerationResponse, GenerationRequest,
+            GenerationResponse, StopReason,
         },
     };
 
