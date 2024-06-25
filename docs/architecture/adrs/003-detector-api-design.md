@@ -1,10 +1,10 @@
 # ADR 003: Detector API design
 
-This ADR documents the design and decisions for the detectors APIs published and integrated into orchestrator. This will also serve the basis of expanding or enhanving the detectors API in future.
+This ADR documents the design and decisions for the detectors APIs published and integrated into orchestrator. This will also serve the basis of expanding or enhancing the detectors API in future.
 
 ## Motivation
 
-This orchestrator is designed to work with various detectors. In the realm of guardrails and trustworthy AI, there can be different types of detectors for different use-cases. From orchestrator perpsective, we want to have the ability to work with a lot of those detector and provide coherent interface to users. Thus, there is a need to provide a common API definitions that individual detectors can expose (based on their use-case) and can get consumed by orchestrator without much changes.
+This orchestrator is designed to work with various detectors. In the realm of guardrails and trustworthy AI, there can be different types of detectors for different use-cases. From the orchestrator perspective, we want the ability to work with many detectors and provide coherent interfaces to users. Thus, there is a need to provide common API definitions that individual detectors can expose (based on their use-case) and that can get consumed by the orchestrator without many changes.
 
 ## Decisions
 
@@ -17,24 +17,24 @@ Based on the input requirements, the APIs will be divided into following parts:
 1. Context analysis: This will allow integrations with detectors that require context of a prompt, in forms of URL or documents.
 
 ### Nomenclature
-1. `/text` in the endpoint points to the modality of the input.
-1. Content / Contents: This specify any arbitrary input and in the context of `/text/contents`, it denotes text input. Rational behind this selection:
-    1. Points to generic input, i.e it is not too specific. So the input can be both prompt or LLM generated text.
-    1. Does not have correlated expectation in the output, like if the name was `input`, the  one could expect `output` in response.
-    1. Lines up with how text is refered to as in some of the other open source APIs, specially for chat.
+1. `/text` in the endpoint indicates the modality of the input.
+1. Content / Contents: This specifies any arbitrary input and for the `/text/contents` endpoint, `contents` denotes text input. Rationale behind this selection:
+    1. Generic input, i.e. it is not too specific. So the input can be either prompt or LLM generated text.
+    1. Does not have correlated expectation in the output, like if the name was `input`, then one could expect `output` in response.
+    1. Lines up with how text is referred to as in some of the other open source APIs, specially for chat.
 1. `detector_id`: This refers to an identifier to a deployment, service, or model id of the detector. It is a way to identify a detector from other.
-1. `Context`: Refers to the list of `context_type` objects, in string form allowing user to pass on the context to detectors.
-1. `context_type`: Refers to the type of `Context` provided in the API. It can be one of `url` and `doc`. 
-1. `detection` (in respons object): Name of the detection, like `EmailAddress`
+1. `context`: Refers to the list of `context_type` objects, in string form allowing user to pass on the context to detectors.
+1. `context_type`: Refers to the type of `context` provided in the API. It can be one of `url` and `doc`. 
+1. `detection` (in response object): Name of the detection, like `EmailAddress`
 1. `detection_type`: Type of the detection, like HAP / PII.
-1. `score`: Points to the score returned by the detector. It can be confidence, probability etc.
+1. `score`: Score returned by the detector. It can be confidence, probability etc.
 
 ### Endpoints
 
 1. `/api/v1/text/contents` - Text Analysis.
-    - Providing detector compution on `contents` (list of string).
+    - Providing detector computation on `contents` (list of string).
     - We are accepting list of string here instead of single string (`content`), to allow batch processing by detectors, which often can be more optimized than singular inputs.
-    - Each response in ouput for this endpoint, needs to be in order of the "contents" in input. If there are no detections on any of the inputs, the detector should respond with `[]` response.
+    - Each response in the output for this endpoint needs to be in order, corresponding to the input `contents`. If there are no detections on any of the inputs, the detector should respond with empty `[]` responses.
 1. `/api/v1/text/generation` - Generation Analysis
     - Providing detection computation on both prompt and generated text.
 1. `/api/v1/text/context/chat` - Chat Analysis
@@ -46,9 +46,9 @@ Each of above endpoints will also provide an "evidence" block that will allow fu
 
 ## Consequences
 
-1. Orchestrator will need to integrate all these different endpoints into detector client to provide support for all these.
+1. To support all of these different endpoints, the orchestrator will need to integrate these endpoints in the detector client.
 1. For `contents` API, already implemented orchestrator workflow, would need to be modified to new API.
-1. Each of the detector developer would need to be communicated about new API and its design
+1. Each detector developer would need to know about new detector APIs and their design.
 
 ## Status
 
