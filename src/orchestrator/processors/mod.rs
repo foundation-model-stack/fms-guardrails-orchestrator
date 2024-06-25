@@ -7,10 +7,11 @@ use crate::{
     clients::detector::ContentAnalysisResponse, models::ClassifiedGeneratedTextStreamResult,
 };
 
+/// Processes detection streams.
 #[async_trait]
 pub trait DetectionStreamProcessor: Default {
     async fn process(
         &self,
-        detection_streams: Vec<(String, mpsc::Receiver<Vec<Vec<ContentAnalysisResponse>>>)>,
+        streams: Vec<(String, mpsc::Receiver<Vec<Vec<ContentAnalysisResponse>>>)>,
     ) -> mpsc::Receiver<ClassifiedGeneratedTextStreamResult>;
 }
