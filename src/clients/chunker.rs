@@ -1,14 +1,16 @@
 use std::{collections::HashMap, pin::Pin};
 
-use futures::{Stream, StreamExt};
+use futures::{Future, Stream, StreamExt};
 use ginepro::LoadBalancedChannel;
 use tokio::sync::mpsc;
-use tonic::Request;
+use tokio_stream::wrappers::ReceiverStream;
+use tonic::{Request, Response, Status, Streaming};
 
 use super::{create_grpc_clients, Error};
 use crate::{
     config::ServiceConfig,
     pb::{
+        self,
         caikit::runtime::chunkers::{
             chunkers_service_client::ChunkersServiceClient, BidiStreamingTokenizationTaskRequest,
             TokenizationTaskRequest,
@@ -18,6 +20,9 @@ use crate::{
 };
 
 const MODEL_ID_HEADER_NAME: &str = "mm-model-id";
+
+type StreamingTokenizationResult =
+    Result<Response<Streaming<pb::caikit_data_model::nlp::TokenizationStreamResult>>, Status>;
 
 #[cfg_attr(test, derive(Default))]
 #[derive(Clone)]
@@ -58,21 +63,29 @@ impl ChunkerClient {
         &self,
         model_id: &str,
         text_stream: Pin<Box<dyn Stream<Item = String> + Send + 'static>>,
-    ) -> Result<mpsc::Receiver<TokenizationStreamResult>, Error> {
+    ) -> Result<Pin<Box<dyn Stream<Item = TokenizationStreamResult> + Send>>, Error> {
         let request =
             text_stream.map(|text| BidiStreamingTokenizationTaskRequest { text_stream: text });
-        let mut response_stream = self
-            .client(model_id)?
-            .bidi_streaming_tokenization_task_predict(request_with_model_id(request, model_id))
-            .await?
-            .into_inner();
+        let mut client = self.client(model_id)?;
+
+        // NOTE: this is an ugly workaround to avoid bogus higher-ranked lifetime errors.
+        // See the following tracking issues for additional details.
+        // https://github.com/rust-lang/rust/issues/110338
+        // https://github.com/rust-lang/rust/issues/102211
+        let response_stream_fut: Pin<Box<dyn Future<Output = StreamingTokenizationResult> + Send>> =
+            Box::pin(
+                client.bidi_streaming_tokenization_task_predict(request_with_model_id(
+                    request, model_id,
+                )),
+            );
+        let mut response_stream = response_stream_fut.await?.into_inner();
         let (tx, rx) = mpsc::channel(128);
         tokio::spawn(async move {
             while let Some(Ok(message)) = response_stream.next().await {
                 let _ = tx.send(message).await;
             }
         });
-        Ok(rx)
+        Ok(ReceiverStream::new(rx).boxed())
     }
 }
 

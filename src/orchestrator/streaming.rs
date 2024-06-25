@@ -111,7 +111,7 @@ async fn streaming_output_detection_task(
     let (generation_tx, generation_rx) = broadcast::channel(32);
 
     // Create chunk broadcast streams
-    let chunker_ids = get_chunker_ids(&ctx, detectors)?;
+    let chunker_ids = get_chunker_ids(ctx, detectors)?;
     // Maps chunker_id->chunk_stream
     let chunk_streams = join_all(
         chunker_ids
@@ -139,7 +139,7 @@ async fn streaming_output_detection_task(
 
     // Spawn detector tasks to subscribe to chunker stream,
     // send requests to detector service, and send results to detection stream
-    for (detector_id, _) in detectors {
+    for detector_id in detectors.keys() {
         let ctx = ctx.clone();
         let detector_id = detector_id.to_string();
         let chunker_id = ctx.config.get_chunker_id(&detector_id).unwrap();
@@ -169,7 +169,7 @@ async fn streaming_output_detection_task(
                         })
                         .unwrap();
                     // Send result to detector channel
-                    let _ = detector_tx.send(response);
+                    let _ = detector_tx.send(response).await;
                 }
             }
         });
@@ -243,7 +243,7 @@ async fn chunk_broadcast_stream(
     tokio::spawn({
         let chunk_tx = chunk_tx.clone();
         async move {
-            while let Some(chunk_result) = output_stream.recv().await {
+            while let Some(chunk_result) = output_stream.next().await {
                 let _ = chunk_tx.send(chunk_result);
             }
         }

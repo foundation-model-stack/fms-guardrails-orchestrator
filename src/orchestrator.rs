@@ -1,8 +1,8 @@
 pub mod errors;
 pub use errors::Error;
+pub mod processors;
 pub mod streaming;
 pub mod unary;
-pub mod processors;
 
 use std::{collections::HashMap, sync::Arc};
 
@@ -23,7 +23,7 @@ const UNSUITABLE_INPUT_MESSAGE: &str = "Unsuitable input detected. \
     Please check the detected entities on your input and try again \
     with the unsuitable input removed.";
 
-struct Context {
+pub struct Context {
     config: OrchestratorConfig,
     generation_client: GenerationClient,
     chunker_client: ChunkerClient,
@@ -134,7 +134,7 @@ async fn create_clients(
 }
 
 #[derive(Debug, Clone)]
-struct Chunk {
+pub struct Chunk {
     pub offset: usize,
     pub text: String,
 }
