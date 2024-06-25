@@ -395,8 +395,6 @@ async fn handle_detection_task(
                 .into_iter()
                 .filter_map(|resp| {
                     let mut result: TokenClassificationResult = resp.into();
-                    result.word =
-                        slice_codepoints(&chunk.text, result.start as usize, result.end as usize);
                     result.start += chunk.offset as u32;
                     result.end += chunk.offset as u32;
                     (result.score >= threshold).then_some(result)
