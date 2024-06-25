@@ -2,6 +2,8 @@
 
 This ADR documents the design and decisions for the detectors APIs published and integrated into orchestrator. This will also serve the basis of expanding or enhancing the detectors API in future.
 
+Detector API can be found [at these github pages](https://foundation-model-stack.github.io/fms-guardrails-orchestrator/?urls.primaryName=Detector+API).
+
 ## Motivation
 
 This orchestrator is designed to work with various detectors. In the realm of guardrails and trustworthy AI, there can be different types of detectors for different use-cases. From the orchestrator perspective, we want the ability to work with many detectors and provide coherent interfaces to users. Thus, there is a need to provide common API definitions that individual detectors can expose (based on their use-case) and that can get consumed by the orchestrator without many changes.
