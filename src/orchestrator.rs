@@ -387,6 +387,11 @@ async fn handle_detection_task(
         ?response,
         "received detector response"
     );
+    if chunks.len() != response.len() {
+        return Err(Error::Other(format!(
+            "Detector {detector_id} did not return expected number of responses"
+        )));
+    }
     let results = chunks
         .into_iter()
         .zip(response)
