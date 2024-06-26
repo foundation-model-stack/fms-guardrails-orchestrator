@@ -401,7 +401,7 @@ mod tests {
             .once() // TODO: Add with_args
             .then_return(Ok(client_generation_response));
 
-        let mock_generation_client = GenerationClient::Tgis(mock_client.clone());
+        let mock_generation_client = GenerationClient::tgis(mock_client.clone());
 
         let ctx = Arc::new(get_test_context(mock_generation_client, None, None).await);
 

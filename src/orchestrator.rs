@@ -100,7 +100,7 @@ async fn create_clients(
                 )],
             )
             .await;
-            GenerationClient::Tgis(client)
+            GenerationClient::tgis(client)
         }
         GenerationProvider::Nlp => {
             let client = NlpClient::new(
@@ -111,7 +111,7 @@ async fn create_clients(
                 )],
             )
             .await;
-            GenerationClient::Nlp(client)
+            GenerationClient::nlp(client)
         }
     };
     // TODO: simplify all of this
