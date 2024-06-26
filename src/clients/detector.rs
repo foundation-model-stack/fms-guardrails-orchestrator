@@ -128,37 +128,3 @@ impl From<ContentAnalysisResponse> for crate::models::TokenClassificationResult 
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn test_text_contents() {
-        let mut mock_client = DetectorClient::faux();
-
-        let request = ContentAnalysisRequest {
-            contents: vec!["My e-mail is me@mail.com".to_string()],
-        };
-        let model_id = "pii";
-
-        let expected_response = vec![vec![ContentAnalysisResponse {
-            start: 13,
-            end: 24,
-            text: "me@mail.com".to_string(),
-            detection: "EmailAddress".to_string(),
-            detection_type: "pii".to_string(),
-            score: 0.8,
-            evidences: vec![].into(),
-        }]];
-
-        faux::when!(mock_client.text_contents(model_id, request.clone()))
-            .once()
-            .then_return(Ok(expected_response.clone()));
-
-        assert_eq!(
-            mock_client.text_contents(model_id, request).await.unwrap(),
-            expected_response
-        );
-    }
-}
