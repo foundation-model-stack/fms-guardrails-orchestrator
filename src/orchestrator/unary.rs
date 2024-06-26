@@ -10,12 +10,14 @@ use super::{
     apply_masks, get_chunker_ids, Chunk, ClassificationWithGenTask, Context, Error, Orchestrator,
 };
 use crate::{
+    clients::detector::ContentAnalysisRequest,
     models::{
         ClassifiedGeneratedTextResult, DetectorParams, GuardrailsTextGenerationParameters,
         InputWarning, InputWarningReason, TextGenTokenClassificationResults,
         TokenClassificationResult,
     },
-    orchestrator::{slice_codepoints, UNSUITABLE_INPUT_MESSAGE},
+    orchestrator::UNSUITABLE_INPUT_MESSAGE,
+    pb::caikit::runtime::chunkers,
 };
 
 impl Orchestrator {
@@ -211,10 +213,11 @@ pub async fn detect(
     let detector_id = detector_id.clone();
     let threshold = detector_params.threshold.unwrap_or(default_threshold);
     let contents = chunks.iter().map(|chunk| chunk.text.clone()).collect();
-    debug!(%detector_id, ?contents, "sending detector request");
+    let request = ContentAnalysisRequest::new(contents);
+    debug!(%detector_id, ?request, "sending detector request");
     let response = ctx
         .detector_client
-        .text_contents(&detector_id, contents)
+        .text_contents(&detector_id, request)
         .await
         .map_err(|error| Error::DetectorRequestFailed {
             detector_id: detector_id.clone(),
@@ -229,8 +232,6 @@ pub async fn detect(
                 .into_iter()
                 .filter_map(|resp| {
                     let mut result: TokenClassificationResult = resp.into();
-                    result.word =
-                        slice_codepoints(&chunk.text, result.start as usize, result.end as usize);
                     result.start += chunk.offset as u32;
                     result.end += chunk.offset as u32;
                     (result.score >= threshold).then_some(result)
@@ -248,10 +249,11 @@ pub async fn chunk(
     offset: usize,
     text: String,
 ) -> Result<Vec<Chunk>, Error> {
-    debug!(%chunker_id, "sending chunker request");
+    let request = chunkers::TokenizationTaskRequest { text };
+    debug!(%chunker_id, ?request, "sending chunker request");
     let response = ctx
         .chunker_client
-        .tokenization_task_predict(&chunker_id, text)
+        .tokenization_task_predict(&chunker_id, request)
         .await
         .map_err(|error| Error::ChunkerRequestFailed {
             chunker_id: chunker_id.clone(),

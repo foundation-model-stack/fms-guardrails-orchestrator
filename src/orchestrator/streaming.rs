@@ -7,7 +7,7 @@ use tracing::{debug, info};
 
 use super::{get_chunker_ids, Context, Error, Orchestrator, StreamingClassificationWithGenTask};
 use crate::{
-    clients::detector::ContentAnalysisResponse,
+    clients::detector::{ContentAnalysisRequest, ContentAnalysisResponse},
     models::{
         ClassifiedGeneratedTextStreamResult, DetectorParams, GuardrailsTextGenerationParameters,
         InputWarning, InputWarningReason, TextGenTokenClassificationResults,
@@ -17,7 +17,7 @@ use crate::{
         unary::{input_detection_task, tokenize},
         UNSUITABLE_INPUT_MESSAGE,
     },
-    pb::caikit_data_model::nlp::TokenizationStreamResult,
+    pb::{caikit::runtime::chunkers, caikit_data_model::nlp::TokenizationStreamResult},
 };
 
 impl Orchestrator {
@@ -159,9 +159,10 @@ async fn streaming_output_detection_task(
                         .into_iter()
                         .map(|token| token.text)
                         .collect::<Vec<_>>();
+                    let request = ContentAnalysisRequest::new(contents);
                     let response = ctx
                         .detector_client
-                        .text_contents(&detector_id, contents)
+                        .text_contents(&detector_id, request)
                         .await
                         .map_err(|error| Error::DetectorRequestFailed {
                             detector_id: detector_id.clone(),
@@ -227,7 +228,9 @@ async fn chunk_broadcast_stream(
     let input_stream = BroadcastStream::new(generation_rx)
         .map(|result| {
             let result = result.unwrap();
-            result.generated_text.unwrap_or_default()
+            chunkers::BidiStreamingTokenizationTaskRequest {
+                text_stream: result.generated_text.unwrap_or_default(),
+            }
         })
         .boxed();
     let mut output_stream = ctx

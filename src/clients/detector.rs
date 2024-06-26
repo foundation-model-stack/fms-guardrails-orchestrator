@@ -32,9 +32,8 @@ impl DetectorClient {
     pub async fn text_contents(
         &self,
         model_id: &str,
-        contents: Vec<String>,
+        request: ContentAnalysisRequest,
     ) -> Result<Vec<Vec<ContentAnalysisResponse>>, Error> {
-        let request = ContentAnalysisRequest { contents };
         let client = self.client(model_id)?;
         let url = client.base_url().as_str();
         let response = client

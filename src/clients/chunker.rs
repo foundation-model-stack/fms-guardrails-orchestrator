@@ -10,7 +10,6 @@ use super::{create_grpc_clients, Error};
 use crate::{
     config::ServiceConfig,
     pb::{
-        self,
         caikit::runtime::chunkers::{
             chunkers_service_client::ChunkersServiceClient, BidiStreamingTokenizationTaskRequest,
             TokenizationTaskRequest,
@@ -21,8 +20,7 @@ use crate::{
 
 const MODEL_ID_HEADER_NAME: &str = "mm-model-id";
 
-type StreamingTokenizationResult =
-    Result<Response<Streaming<pb::caikit_data_model::nlp::TokenizationStreamResult>>, Status>;
+type StreamingTokenizationResult = Result<Response<Streaming<TokenizationStreamResult>>, Status>;
 
 #[cfg_attr(test, derive(Default))]
 #[derive(Clone)]
@@ -49,9 +47,8 @@ impl ChunkerClient {
     pub async fn tokenization_task_predict(
         &self,
         model_id: &str,
-        text: String,
+        request: TokenizationTaskRequest,
     ) -> Result<TokenizationResults, Error> {
-        let request = TokenizationTaskRequest { text };
         Ok(self
             .client(model_id)?
             .tokenization_task_predict(request_with_model_id(request, model_id))
@@ -62,20 +59,17 @@ impl ChunkerClient {
     pub async fn bidi_streaming_tokenization_task_predict(
         &self,
         model_id: &str,
-        text_stream: Pin<Box<dyn Stream<Item = String> + Send + 'static>>,
+        request_stream: Pin<Box<dyn Stream<Item = BidiStreamingTokenizationTaskRequest> + Send>>,
     ) -> Result<Pin<Box<dyn Stream<Item = TokenizationStreamResult> + Send>>, Error> {
-        let request =
-            text_stream.map(|text| BidiStreamingTokenizationTaskRequest { text_stream: text });
         let mut client = self.client(model_id)?;
-
         // NOTE: this is an ugly workaround to avoid bogus higher-ranked lifetime errors.
-        // See the following tracking issues for additional details.
+        // See the following tracking issue for additional details.
         // https://github.com/rust-lang/rust/issues/110338
-        // https://github.com/rust-lang/rust/issues/102211
         let response_stream_fut: Pin<Box<dyn Future<Output = StreamingTokenizationResult> + Send>> =
             Box::pin(
                 client.bidi_streaming_tokenization_task_predict(request_with_model_id(
-                    request, model_id,
+                    request_stream,
+                    model_id,
                 )),
             );
         let mut response_stream = response_stream_fut.await?.into_inner();
