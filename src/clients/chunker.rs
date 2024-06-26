@@ -105,14 +105,14 @@ fn request_with_model_id<T>(request: T, model_id: &str) -> Request<T> {
 
 /// Unary tokenization result of the entire doc
 fn tokenize_whole_doc(request: TokenizationTaskRequest) -> TokenizationResults {
-    let token_count = request.text.chars().count();
+    let codepoint_count = request.text.chars().count();
     TokenizationResults {
         results: vec![Token {
             start: 0,
-            end: token_count as i64,
+            end: codepoint_count as i64,
             text: request.text,
         }],
-        token_count: token_count as i64,
+        token_count: 1, // entire doc
     }
 }
 
@@ -123,21 +123,21 @@ fn tokenize_whole_doc(request: TokenizationTaskRequest) -> TokenizationResults {
 async fn bidi_streaming_tokenize_whole_doc(
     mut request: Pin<Box<dyn Stream<Item = BidiStreamingTokenizationTaskRequest> + Send + 'static>>,
 ) -> Result<TokenizationStreamResult, Error> {
-    let mut total_token_count = 0;
+    let mut total_codepoint_count = 0;
     let mut accumulated_text: String = "".to_owned();
     while let Some(stream_request) = request.next().await {
-        let token_count = stream_request.text_stream.chars().count();
-        total_token_count += token_count;
+        let codepoint_count = stream_request.text_stream.chars().count();
+        total_codepoint_count += codepoint_count;
         accumulated_text.push_str(stream_request.text_stream.as_str());
     }
     Ok(TokenizationStreamResult {
         results: vec![Token {
             start: 0,
-            end: total_token_count as i64,
+            end: total_codepoint_count as i64,
             text: accumulated_text,
         }],
-        token_count: total_token_count as i64,
-        processed_index: total_token_count as i64,
+        token_count: 1, // entire doc/stream
+        processed_index: total_codepoint_count as i64,
         start_index: 0,
     })
 }
