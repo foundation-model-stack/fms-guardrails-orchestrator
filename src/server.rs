@@ -260,14 +260,16 @@ async fn stream_classification_with_gen(
 ) -> Result<impl IntoResponse, Error> {
     let request_id = Uuid::new_v4();
     let task = StreamingClassificationWithGenTask::new(request_id, request);
-
     match state
         .orchestrator
         .handle_streaming_classification_with_gen(task)
         .await
     {
         Ok(response_stream) => {
-            let map = response_stream.map(|response| Event::default().json_data(response));
+            let map = response_stream.map(|response| {
+                debug!("message: {response:?}\n");
+                Event::default().json_data(response)
+            });
             let sse = Sse::new(map).keep_alive(KeepAlive::default());
             Ok(sse.into_response())
         }

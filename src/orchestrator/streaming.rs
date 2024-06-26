@@ -39,8 +39,7 @@ impl Orchestrator {
         let input_text = task.inputs;
 
         // Create response channel
-        // TODO: figure out why the buffer is filling while being consumed by client
-        let (response_tx, response_rx) = mpsc::channel(4096);
+        let (response_tx, response_rx) = mpsc::channel(1024);
 
         // Do input detections (unary)
         let masks = task.guardrails_config.input_masks();
@@ -85,14 +84,18 @@ impl Orchestrator {
                     streaming_output_detection_task(&ctx, detectors, processor, generation_stream)
                         .await?;
                 // Forward generation results with detections to response channel
-                while let Some(generation_with_detections_result) = result_rx.recv().await {
-                    let _ = response_tx.send(generation_with_detections_result).await;
-                }
+                tokio::spawn(async move {
+                    while let Some(generation_with_detections_result) = result_rx.recv().await {
+                        let _ = response_tx.send(generation_with_detections_result).await;
+                    }
+                });
             } else {
                 // No output detectors, forward generation results to response channel
-                while let Some(generation_result) = generation_stream.next().await {
-                    let _ = response_tx.send(generation_result).await;
-                }
+                tokio::spawn(async move {
+                    while let Some(generation_result) = generation_stream.next().await {
+                        let _ = response_tx.send(generation_result).await;
+                    }
+                });
             }
         }
         Ok(ReceiverStream::new(response_rx))
