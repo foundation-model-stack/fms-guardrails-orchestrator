@@ -2,8 +2,6 @@ use std::{collections::HashMap, pin::Pin};
 
 use futures::{Future, Stream, StreamExt};
 use ginepro::LoadBalancedChannel;
-use tokio::sync::mpsc;
-use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Request, Response, Status, Streaming};
 
 use super::{create_grpc_clients, Error};
@@ -72,14 +70,12 @@ impl ChunkerClient {
                     model_id,
                 )),
             );
-        let mut response_stream = response_stream_fut.await?.into_inner();
-        let (tx, rx) = mpsc::channel(128);
-        tokio::spawn(async move {
-            while let Some(Ok(message)) = response_stream.next().await {
-                let _ = tx.send(message).await;
-            }
-        });
-        Ok(ReceiverStream::new(rx).boxed())
+        let response_stream = response_stream_fut
+            .await?
+            .into_inner()
+            .map(|resp| resp.unwrap())
+            .boxed();
+        Ok(response_stream)
     }
 }
 

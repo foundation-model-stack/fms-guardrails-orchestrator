@@ -1,5 +1,6 @@
-use futures::StreamExt;
-use tokio::sync::mpsc;
+use std::pin::Pin;
+
+use futures::{Stream, StreamExt};
 use tracing::debug;
 
 use super::{Error, NlpClient, TgisClient};
@@ -141,8 +142,8 @@ impl GenerationClient {
         model_id: String,
         text: String,
         params: Option<GuardrailsTextGenerationParameters>,
-    ) -> Result<mpsc::Receiver<ClassifiedGeneratedTextStreamResult>, Error> {
-        let (tx, rx) = mpsc::channel(128);
+    ) -> Result<Pin<Box<dyn Stream<Item = ClassifiedGeneratedTextStreamResult> + Send>>, Error>
+    {
         match &self.0 {
             GenerationClientInner::Tgis(client) => {
                 let params = params.map(Into::into);
@@ -153,13 +154,12 @@ impl GenerationClient {
                     params,
                 };
                 debug!(%model_id, provider = "tgis", ?request, "sending generate_stream request");
-                let mut response_stream = client.generate_stream(request).await?;
-                tokio::spawn(async move {
-                    while let Some(response) = response_stream.next().await {
-                        let _ = tx.send(response.into()).await;
-                    }
-                });
-                Ok(rx)
+                let response_stream = client
+                    .generate_stream(request)
+                    .await?
+                    .map(|resp| resp.into())
+                    .boxed();
+                Ok(response_stream)
             }
             GenerationClientInner::Nlp(client) => {
                 let request = if let Some(params) = params {
@@ -193,15 +193,12 @@ impl GenerationClient {
                     }
                 };
                 debug!(%model_id, provider = "nlp", ?request, "sending generate_stream request");
-                let mut response_stream = client
+                let response_stream = client
                     .server_streaming_text_generation_task_predict(&model_id, request)
-                    .await?;
-                tokio::spawn(async move {
-                    while let Some(response) = response_stream.next().await {
-                        let _ = tx.send(response.into()).await;
-                    }
-                });
-                Ok(rx)
+                    .await?
+                    .map(|resp| resp.into())
+                    .boxed();
+                Ok(response_stream)
             }
         }
     }

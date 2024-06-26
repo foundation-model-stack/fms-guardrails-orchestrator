@@ -1,6 +1,6 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, pin::Pin, sync::Arc};
 
-use futures::{future::join_all, StreamExt};
+use futures::{future::join_all, Stream, StreamExt};
 use tokio::sync::{broadcast, mpsc};
 use tokio_stream::wrappers::{BroadcastStream, ReceiverStream};
 use tracing::{debug, info};
@@ -39,7 +39,8 @@ impl Orchestrator {
         let input_text = task.inputs;
 
         // Create response channel
-        let (response_tx, response_rx) = mpsc::channel(32);
+        // TODO: figure out why the buffer is filling while being consumed by client
+        let (response_tx, response_rx) = mpsc::channel(4096);
 
         // Do input detections (unary)
         let masks = task.guardrails_config.input_masks();
@@ -89,7 +90,7 @@ impl Orchestrator {
                 }
             } else {
                 // No output detectors, forward generation results to response channel
-                while let Some(generation_result) = generation_stream.recv().await {
+                while let Some(generation_result) = generation_stream.next().await {
                     let _ = response_tx.send(generation_result).await;
                 }
             }
@@ -105,10 +106,10 @@ async fn streaming_output_detection_task(
     ctx: &Arc<Context>,
     detectors: &HashMap<String, DetectorParams>,
     processor: impl DetectionStreamProcessor,
-    mut generation_stream: mpsc::Receiver<ClassifiedGeneratedTextStreamResult>,
+    mut generation_stream: Pin<Box<dyn Stream<Item = ClassifiedGeneratedTextStreamResult> + Send>>,
 ) -> Result<mpsc::Receiver<ClassifiedGeneratedTextStreamResult>, Error> {
     // Create generation broadcast stream
-    let (generation_tx, generation_rx) = broadcast::channel(32);
+    let (generation_tx, generation_rx) = broadcast::channel(1024);
 
     // Create chunk broadcast streams
     let chunker_ids = get_chunker_ids(ctx, detectors)?;
@@ -144,7 +145,7 @@ async fn streaming_output_detection_task(
         let detector_id = detector_id.to_string();
         let chunker_id = ctx.config.get_chunker_id(&detector_id).unwrap();
         // Create detection stream
-        let (detector_tx, detector_rx) = mpsc::channel(32);
+        let (detector_tx, detector_rx) = mpsc::channel(1024);
         // Subscribe to chunk broadcast stream
         let mut chunk_rx = chunk_streams.get(&chunker_id).unwrap().0.subscribe();
         // Spawn detector task
@@ -181,7 +182,7 @@ async fn streaming_output_detection_task(
     tokio::spawn({
         let generation_tx = generation_tx.clone();
         async move {
-            while let Some(result) = generation_stream.recv().await {
+            while let Some(result) = generation_stream.next().await {
                 let _ = generation_tx.send(result);
             }
         }
@@ -201,7 +202,7 @@ async fn generate_stream(
     model_id: String,
     text: String,
     params: Option<GuardrailsTextGenerationParameters>,
-) -> Result<mpsc::Receiver<ClassifiedGeneratedTextStreamResult>, Error> {
+) -> Result<Pin<Box<dyn Stream<Item = ClassifiedGeneratedTextStreamResult> + Send>>, Error> {
     ctx.generation_client
         .generate_stream(model_id.clone(), text, params)
         .await
@@ -242,7 +243,7 @@ async fn chunk_broadcast_stream(
             error,
         })?;
     // Spawn task to consume output stream forward to broadcast channel
-    let (chunk_tx, chunk_rx) = broadcast::channel(32);
+    let (chunk_tx, chunk_rx) = broadcast::channel(1024);
     tokio::spawn({
         let chunk_tx = chunk_tx.clone();
         async move {

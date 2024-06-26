@@ -1,9 +1,7 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, pin::Pin};
 
-use futures::StreamExt;
+use futures::{Stream, StreamExt};
 use ginepro::LoadBalancedChannel;
-use tokio::sync::mpsc;
-use tokio_stream::wrappers::ReceiverStream;
 use tonic::Request;
 
 use super::{create_grpc_clients, Error};
@@ -90,20 +88,16 @@ impl NlpClient {
         &self,
         model_id: &str,
         request: ServerStreamingTextGenerationTaskRequest,
-    ) -> Result<ReceiverStream<GeneratedTextStreamResult>, Error> {
+    ) -> Result<Pin<Box<dyn Stream<Item = GeneratedTextStreamResult> + Send>>, Error> {
         let request = request_with_model_id(request, model_id);
-        let mut response_stream = self
+        let response_stream = self
             .client(model_id)?
             .server_streaming_text_generation_task_predict(request)
             .await?
-            .into_inner();
-        let (tx, rx) = mpsc::channel(128);
-        tokio::spawn(async move {
-            while let Some(Ok(message)) = response_stream.next().await {
-                let _ = tx.send(message).await;
-            }
-        });
-        Ok(ReceiverStream::new(rx))
+            .into_inner()
+            .map(|resp| resp.unwrap())
+            .boxed();
+        Ok(response_stream)
     }
 }
 
