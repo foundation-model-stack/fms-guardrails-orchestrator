@@ -991,7 +991,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_handle_detection_task() {
+    async fn test_handle_detection_task_with_detection() {
         let mock_generation_client = GenerationClient::Tgis(TgisClient::faux());
         let mut mock_detector_client = DetectorClient::faux();
 
@@ -1030,6 +1030,48 @@ mod tests {
             score: 0.8,
             evidences: Some(vec![]),
         }]]));
+
+        let ctx: Context =
+            get_test_context(mock_generation_client, None, Some(mock_detector_client)).await;
+
+        assert_eq!(
+            handle_detection_task(
+                ctx.into(),
+                detector_id.to_string(),
+                default_threshold,
+                detector_params,
+                chunks
+            )
+            .await
+            .unwrap(),
+            expected_response
+        );
+    }
+
+    #[tokio::test]
+    async fn test_handle_detection_task_no_detection() {
+        let mock_generation_client = GenerationClient::Tgis(TgisClient::faux());
+        let mut mock_detector_client = DetectorClient::faux();
+
+        let detector_id = "mocked_pii_detector";
+        let default_threshold = 0.5;
+        let input_text = "This sentence has no detections.";
+        let detector_params = DetectorParams {
+            threshold: Some(default_threshold),
+        };
+        let chunks = vec![Chunk {
+            offset: 0,
+            text: input_text.to_string(),
+        }];
+
+        let expected_response: Vec<TokenClassificationResult> = vec![];
+
+        faux::when!(mock_detector_client.text_contents(
+            detector_id,
+            ContentAnalysisRequest::new(vec![input_text.to_string()])
+        ))
+        .once()
+        .then_return(Ok(vec![vec![]]));
 
         let ctx: Context =
             get_test_context(mock_generation_client, None, Some(mock_detector_client)).await;
