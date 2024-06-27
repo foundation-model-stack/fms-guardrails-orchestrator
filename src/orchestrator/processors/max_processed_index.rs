@@ -1,3 +1,5 @@
+use std::sync::{Arc, RwLock};
+
 use async_trait::async_trait;
 use tokio::sync::mpsc;
 use tracing::debug;
@@ -16,6 +18,7 @@ pub struct MaxProcessedIndexProcessor {}
 impl DetectionStreamProcessor for MaxProcessedIndexProcessor {
     async fn process(
         &self,
+        generations: Arc<RwLock<Vec<ClassifiedGeneratedTextStreamResult>>>,
         streams: Vec<(String, mpsc::Receiver<DetectionResult>)>,
     ) -> mpsc::Receiver<ClassifiedGeneratedTextStreamResult> {
         let (result_tx, result_rx) = mpsc::channel(1024);
@@ -30,15 +33,17 @@ impl DetectionStreamProcessor for MaxProcessedIndexProcessor {
                         .into_iter()
                         .flat_map(|r| r.into_iter().map(Into::into))
                         .collect();
-                    // TODO: figure out approach to get other details needed from generation messages
+                    // TODO: figure out good approach to get details needed from generation messages.
+                    // We currently pass in a shared vec behind a RwLock, but there is probably a more elegant way.
+                    let input_token_count = generations.read().unwrap()[0].input_token_count;
                     let result = ClassifiedGeneratedTextStreamResult {
                         generated_text: Some(generated_text),
                         //finish_reason:
-                        //input_token_count:
+                        input_token_count,
                         //generated_token_count:
                         //seed:
-                        //start_index:
-                        //processed_index:
+                        start_index: result.chunk.start_index as u32,
+                        processed_index: Some(result.chunk.processed_index as u32),
                         token_classification_results: TextGenTokenClassificationResults {
                             input: None,
                             output: Some(detections),

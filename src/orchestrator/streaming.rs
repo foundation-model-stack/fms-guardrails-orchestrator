@@ -1,4 +1,8 @@
-use std::{collections::HashMap, pin::Pin, sync::Arc};
+use std::{
+    collections::HashMap,
+    pin::Pin,
+    sync::{Arc, RwLock},
+};
 
 use futures::{
     future::{self, join_all},
@@ -162,12 +166,19 @@ async fn streaming_output_detection_task(
     }
 
     debug!("spawning generation broadcast task");
+    // NOTE: this creates a shared vec for detection processors to get details from
+    // generation messages. There is probably a better approach.
+    let generations = Arc::new(RwLock::new(Vec::new()));
+
     // Spawn task to consume generation stream and forward to broadcast stream
     tokio::spawn({
+        let generations = generations.clone();
         let generation_tx = generation_tx.clone();
         async move {
             while let Some(result) = generation_stream.next().await {
                 debug!("[generation_broadcast_task] received: {result:?}");
+                // Add a copy to the shared vec
+                generations.write().unwrap().push(result.clone());
                 let _ = generation_tx.send(result);
             }
         }
@@ -176,8 +187,7 @@ async fn streaming_output_detection_task(
     drop(generation_rx);
 
     // Process detection results
-    let result_rx = processor.process(detection_streams).await;
-    Ok(result_rx)
+    Ok(processor.process(generations, detection_streams).await)
 }
 
 async fn streaming_detection_task(
