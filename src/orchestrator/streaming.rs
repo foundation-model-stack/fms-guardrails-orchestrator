@@ -1,6 +1,9 @@
 use std::{collections::HashMap, pin::Pin, sync::Arc};
 
-use futures::{future::join_all, Stream, StreamExt};
+use futures::{
+    future::{self, join_all},
+    Stream, StreamExt,
+};
 use tokio::sync::{broadcast, mpsc};
 use tokio_stream::wrappers::{BroadcastStream, ReceiverStream};
 use tracing::{debug, info};
@@ -114,13 +117,14 @@ async fn streaming_output_detection_task(
     // Create generation broadcast stream
     let (generation_tx, generation_rx) = broadcast::channel(1024);
 
-    // Create chunk broadcast streams
+    debug!("creating chunk broadcast streams");
     let chunker_ids = get_chunker_ids(ctx, detectors)?;
     // Maps chunker_id->chunk_stream
     let chunk_streams = join_all(
         chunker_ids
             .into_iter()
             .map(|chunker_id| {
+                debug!(%chunker_id, "creating chunk broadcast stream");
                 let ctx = ctx.clone();
                 let generation_rx = generation_tx.subscribe();
                 async move {
@@ -137,55 +141,33 @@ async fn streaming_output_detection_task(
     .into_iter()
     .collect::<HashMap<_, _>>();
 
-    // Maps detector_id->detection_stream
-    let mut detection_streams: Vec<(String, mpsc::Receiver<Vec<Vec<ContentAnalysisResponse>>>)> =
-        Vec::with_capacity(detectors.len());
-
-    // Spawn detector tasks to subscribe to chunker stream,
+    // Spawn detection tasks to subscribe to chunker stream,
     // send requests to detector service, and send results to detection stream
+    debug!("spawning detection tasks");
+    let mut detection_streams = Vec::with_capacity(detectors.len());
     for detector_id in detectors.keys() {
-        let ctx = ctx.clone();
         let detector_id = detector_id.to_string();
         let chunker_id = ctx.config.get_chunker_id(&detector_id).unwrap();
         // Create detection stream
         let (detector_tx, detector_rx) = mpsc::channel(1024);
         // Subscribe to chunk broadcast stream
-        let mut chunk_rx = chunk_streams.get(&chunker_id).unwrap().0.subscribe();
-        // Spawn detector task
-        tokio::spawn({
-            let detector_id = detector_id.clone();
-            async move {
-                // Process chunks
-                while let Ok(chunk) = chunk_rx.recv().await {
-                    // Send request to detector service
-                    let contents = chunk
-                        .results
-                        .into_iter()
-                        .map(|token| token.text)
-                        .collect::<Vec<_>>();
-                    let request = ContentAnalysisRequest::new(contents);
-                    let response = ctx
-                        .detector_client
-                        .text_contents(&detector_id, request)
-                        .await
-                        .map_err(|error| Error::DetectorRequestFailed {
-                            detector_id: detector_id.clone(),
-                            error,
-                        })
-                        .unwrap();
-                    // Send result to detector channel
-                    let _ = detector_tx.send(response).await;
-                }
-            }
-        });
+        let chunk_rx = chunk_streams.get(&chunker_id).unwrap().0.subscribe();
+        tokio::spawn(streaming_detection_task(
+            ctx.clone(),
+            detector_id.clone(),
+            detector_tx,
+            chunk_rx,
+        ));
         detection_streams.push((detector_id, detector_rx));
     }
 
+    debug!("spawning generation broadcast task");
     // Spawn task to consume generation stream and forward to broadcast stream
     tokio::spawn({
         let generation_tx = generation_tx.clone();
         async move {
             while let Some(result) = generation_stream.next().await {
+                debug!("[generation_broadcast_task] received: {result:?}");
                 let _ = generation_tx.send(result);
             }
         }
@@ -194,9 +176,57 @@ async fn streaming_output_detection_task(
     drop(generation_rx);
 
     // Process detection results
-    Ok(processor.process(detection_streams).await)
+    let result_rx = processor.process(detection_streams).await;
+    Ok(result_rx)
 }
 
+async fn streaming_detection_task(
+    ctx: Arc<Context>,
+    detector_id: String,
+    detector_tx: mpsc::Sender<DetectionResult>,
+    mut chunk_rx: broadcast::Receiver<TokenizationStreamResult>,
+) {
+    // Process chunks
+    while let Ok(chunk) = chunk_rx.recv().await {
+        debug!(%detector_id, "[detection_task] received: {chunk:?}");
+        // Send request to detector service
+        let contents = chunk
+            .results
+            .iter()
+            .map(|token| token.text.clone())
+            .collect::<Vec<_>>();
+        let request = ContentAnalysisRequest::new(contents);
+        debug!(%detector_id, ?request, "[detection_task] sending detector request");
+        let response = ctx
+            .detector_client
+            .text_contents(&detector_id, request)
+            .await
+            .map_err(|error| Error::DetectorRequestFailed {
+                detector_id: detector_id.clone(),
+                error,
+            })
+            .unwrap();
+        debug!(%detector_id, ?response, "[detection_task] received detector response");
+        let result = DetectionResult::new(chunk, response);
+        debug!(%detector_id, ?result, "[detection_task] sending result to detector channel");
+        let _ = detector_tx.send(result).await;
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct DetectionResult {
+    pub chunk: TokenizationStreamResult,
+    pub detections: Vec<Vec<ContentAnalysisResponse>>,
+}
+
+impl DetectionResult {
+    pub fn new(
+        chunk: TokenizationStreamResult,
+        detections: Vec<Vec<ContentAnalysisResponse>>,
+    ) -> Self {
+        Self { chunk, detections }
+    }
+}
 /************************** Requests to services **************************/
 
 /// Sends generate stream request to a generation service.
@@ -229,14 +259,33 @@ async fn chunk_broadcast_stream(
     Error,
 > {
     // Consume generation stream and convert to chunker input stream
+    debug!(%chunker_id, "creating chunker input stream");
     let input_stream = BroadcastStream::new(generation_rx)
-        .map(|result| {
-            let result = result.unwrap();
-            chunkers::BidiStreamingTokenizationTaskRequest {
-                text_stream: result.generated_text.unwrap_or_default(),
-            }
+        .filter(|generation_result| {
+            // NOTE: this filter is temporary until empty string handling fix is implemented in chunker service
+            future::ready(
+                generation_result
+                    .as_ref()
+                    .is_ok_and(|r| r.generated_text != Some("".to_string())),
+            )
         })
-        .boxed();
+        .map(|generation_result| {
+            let generated_text = generation_result
+                .unwrap()
+                .generated_text
+                .unwrap_or_default();
+            //trace!("[chunker_input_stream] received: {generated_text}");
+            chunkers::BidiStreamingTokenizationTaskRequest {
+                text_stream: generated_text,
+            }
+        });
+    // TEMP: add dummy request to init stream to work around issue https://github.com/hyperium/tonic/issues/515
+    let init_input_stream =
+        futures::stream::iter(vec![chunkers::BidiStreamingTokenizationTaskRequest {
+            text_stream: "init message 1. init message 2.".into(),
+        }]);
+    let input_stream = init_input_stream.chain(input_stream).boxed();
+    debug!(%chunker_id, "creating chunker output stream");
     let mut output_stream = ctx
         .chunker_client
         .bidi_streaming_tokenization_task_predict(&chunker_id, input_stream)
@@ -245,13 +294,20 @@ async fn chunk_broadcast_stream(
             chunker_id: chunker_id.clone(),
             error,
         })?;
+    // TEMP: consume/discard initial dummy response, although the second one will still be in the stream
+    let _ = output_stream.next().await;
+
     // Spawn task to consume output stream forward to broadcast channel
+    debug!(%chunker_id, "spawning chunker broadcast task");
     let (chunk_tx, chunk_rx) = broadcast::channel(1024);
     tokio::spawn({
         let chunk_tx = chunk_tx.clone();
         async move {
             while let Some(chunk_result) = output_stream.next().await {
-                let _ = chunk_tx.send(chunk_result);
+                debug!(%chunker_id, "[chunker_broadcast_task] received: {chunk_result:?}");
+                if let Ok(chunk_result) = chunk_result {
+                    let _ = chunk_tx.send(chunk_result);
+                }
             }
         }
     });

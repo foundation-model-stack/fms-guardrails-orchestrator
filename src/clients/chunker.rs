@@ -58,7 +58,8 @@ impl ChunkerClient {
         &self,
         model_id: &str,
         request_stream: Pin<Box<dyn Stream<Item = BidiStreamingTokenizationTaskRequest> + Send>>,
-    ) -> Result<Pin<Box<dyn Stream<Item = TokenizationStreamResult> + Send>>, Error> {
+    ) -> Result<Pin<Box<dyn Stream<Item = Result<TokenizationStreamResult, Status>> + Send>>, Error>
+    {
         let mut client = self.client(model_id)?;
         // NOTE: this is an ugly workaround to avoid bogus higher-ranked lifetime errors.
         // See the following tracking issue for additional details.
@@ -70,12 +71,7 @@ impl ChunkerClient {
                     model_id,
                 )),
             );
-        let response_stream = response_stream_fut
-            .await?
-            .into_inner()
-            .map(|resp| resp.unwrap())
-            .boxed();
-        Ok(response_stream)
+        Ok(response_stream_fut.await?.into_inner().boxed())
     }
 }
 
