@@ -990,7 +990,10 @@ mod tests {
         );
     }
 
-    /// This test receives an input of two chunks. The first sentence does not contain a detection. The second one does.
+    /// This test checks if calls to detectors are being handled appropriately.
+    /// It receives an input of two chunks. The first sentence does not contain a
+    /// detection. The second one does.
+    ///
     /// The idea behind this test case is to test that...
     /// 1. offsets are calculated correctly.
     /// 2. detections below the threshold are not returned to the client.
