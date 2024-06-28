@@ -1005,26 +1005,27 @@ mod tests {
         let detector_id = "mocked_hap_detector";
         let threshold = 0.5;
         // Input: "I don't like potatoes. I hate aliens.";
-        let first_sentence = "I don't like potatoes.";
-        let second_sentence = "I hate aliens.";
+        let first_sentence = "I don't like potatoes.".to_string();
+        let second_sentence = "I hate aliens.".to_string();
         let detector_params = DetectorParams {
             threshold: Some(threshold),
         };
         let chunks = vec![
             Chunk {
                 offset: 0,
-                text: first_sentence.to_string(),
+                text: first_sentence.clone(),
             },
             Chunk {
                 offset: 23,
-                text: second_sentence.to_string(),
+                text: second_sentence.clone(),
             },
         ];
 
+        // Since only the second chunk has a detection, we only expect one detection in the output.
         let expected_response: Vec<TokenClassificationResult> = vec![TokenClassificationResult {
             start: 23,
             end: 37,
-            word: second_sentence.to_string(),
+            word: second_sentence.clone(),
             entity: "has_HAP".to_string(),
             entity_group: "hap".to_string(),
             score: 0.9,
@@ -1033,17 +1034,14 @@ mod tests {
 
         faux::when!(mock_detector_client.text_contents(
             detector_id,
-            ContentAnalysisRequest::new(vec![
-                first_sentence.to_string(),
-                second_sentence.to_string()
-            ])
+            ContentAnalysisRequest::new(vec![first_sentence.clone(), second_sentence.clone()])
         ))
         .once()
         .then_return(Ok(vec![
             vec![ContentAnalysisResponse {
                 start: 0,
                 end: 22,
-                text: first_sentence.to_string(),
+                text: first_sentence.clone(),
                 detection: "has_HAP".to_string(),
                 detection_type: "hap".to_string(),
                 score: 0.1,
@@ -1052,7 +1050,7 @@ mod tests {
             vec![ContentAnalysisResponse {
                 start: 0,
                 end: 14,
-                text: second_sentence.to_string(),
+                text: second_sentence.clone(),
                 detection: "has_HAP".to_string(),
                 detection_type: "hap".to_string(),
                 score: 0.9,
