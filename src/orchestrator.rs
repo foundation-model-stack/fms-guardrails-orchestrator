@@ -990,6 +990,10 @@ mod tests {
         );
     }
 
+    /// This test receives an input of two chunks. The first sentence does not contain a detection. The second one does.
+    /// The idea behind this test case is to test that...
+    /// 1. offsets are calculated correctly.
+    /// 2. detections below the threshold are not returned to the client.
     #[tokio::test]
     async fn test_handle_detection_task() {
         let mock_generation_client = GenerationClient::Tgis(TgisClient::faux());
