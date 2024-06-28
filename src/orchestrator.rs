@@ -991,45 +991,67 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_handle_detection_task_with_detection() {
+    async fn test_handle_detection_task() {
         let mock_generation_client = GenerationClient::Tgis(TgisClient::faux());
         let mut mock_detector_client = DetectorClient::faux();
 
-        let detector_id = "mocked_pii_detector";
-        let default_threshold = 0.5;
-        let input_text = "My e-mail is me@mail.com";
+        let detector_id = "mocked_hap_detector";
+        let threshold = 0.5;
+        // Input: "I don't like potatoes. I hate aliens.";
+        let first_sentence = "I don't like potatoes.";
+        let second_sentence = "I hate aliens.";
         let detector_params = DetectorParams {
-            threshold: Some(default_threshold),
+            threshold: Some(threshold),
         };
-        let chunks = vec![Chunk {
-            offset: 0,
-            text: input_text.to_string(),
-        }];
+        let chunks = vec![
+            Chunk {
+                offset: 0,
+                text: first_sentence.to_string(),
+            },
+            Chunk {
+                offset: 23,
+                text: second_sentence.to_string(),
+            },
+        ];
 
-        let expected_response = vec![TokenClassificationResult {
-            start: 13,
-            end: 24,
-            word: "me@mail.com".to_string(),
-            entity: "EmailAddress".to_string(),
-            entity_group: "pii".to_string(),
-            score: 0.8,
+        let expected_response: Vec<TokenClassificationResult> = vec![TokenClassificationResult {
+            start: 23,
+            end: 37,
+            word: second_sentence.to_string(),
+            entity: "has_HAP".to_string(),
+            entity_group: "hap".to_string(),
+            score: 0.9,
             token_count: None,
         }];
 
         faux::when!(mock_detector_client.text_contents(
             detector_id,
-            ContentAnalysisRequest::new(vec![input_text.to_string()])
+            ContentAnalysisRequest::new(vec![
+                first_sentence.to_string(),
+                second_sentence.to_string()
+            ])
         ))
         .once()
-        .then_return(Ok(vec![vec![ContentAnalysisResponse {
-            start: 13,
-            end: 24,
-            text: "me@mail.com".to_string(),
-            detection: "EmailAddress".to_string(),
-            detection_type: "pii".to_string(),
-            score: 0.8,
-            evidences: Some(vec![]),
-        }]]));
+        .then_return(Ok(vec![
+            vec![ContentAnalysisResponse {
+                start: 0,
+                end: 22,
+                text: first_sentence.to_string(),
+                detection: "has_HAP".to_string(),
+                detection_type: "hap".to_string(),
+                score: 0.1,
+                evidences: Some(vec![]),
+            }],
+            vec![ContentAnalysisResponse {
+                start: 0,
+                end: 14,
+                text: second_sentence.to_string(),
+                detection: "has_HAP".to_string(),
+                detection_type: "hap".to_string(),
+                score: 0.9,
+                evidences: Some(vec![]),
+            }],
+        ]));
 
         let ctx: Context =
             get_test_context(mock_generation_client, None, Some(mock_detector_client)).await;
@@ -1038,49 +1060,7 @@ mod tests {
             handle_detection_task(
                 ctx.into(),
                 detector_id.to_string(),
-                default_threshold,
-                detector_params,
-                chunks
-            )
-            .await
-            .unwrap(),
-            expected_response
-        );
-    }
-
-    #[tokio::test]
-    async fn test_handle_detection_task_no_detection() {
-        let mock_generation_client = GenerationClient::Tgis(TgisClient::faux());
-        let mut mock_detector_client = DetectorClient::faux();
-
-        let detector_id = "mocked_pii_detector";
-        let default_threshold = 0.5;
-        let input_text = "This sentence has no detections.";
-        let detector_params = DetectorParams {
-            threshold: Some(default_threshold),
-        };
-        let chunks = vec![Chunk {
-            offset: 0,
-            text: input_text.to_string(),
-        }];
-
-        let expected_response: Vec<TokenClassificationResult> = vec![];
-
-        faux::when!(mock_detector_client.text_contents(
-            detector_id,
-            ContentAnalysisRequest::new(vec![input_text.to_string()])
-        ))
-        .once()
-        .then_return(Ok(vec![vec![]]));
-
-        let ctx: Context =
-            get_test_context(mock_generation_client, None, Some(mock_detector_client)).await;
-
-        assert_eq!(
-            handle_detection_task(
-                ctx.into(),
-                detector_id.to_string(),
-                default_threshold,
+                threshold,
                 detector_params,
                 chunks
             )
