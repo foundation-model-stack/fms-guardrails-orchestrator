@@ -889,6 +889,8 @@ impl StreamingClassificationWithGenTask {
 
 #[cfg(test)]
 mod tests {
+    use clients::detector::ContentAnalysisResponse;
+
     use super::*;
     use crate::{
         models::FinishReason,
@@ -988,6 +990,91 @@ mod tests {
                 .await
                 .unwrap(),
             expected_generate_response
+        );
+    }
+
+    /// This test checks if calls to detectors are being handled appropriately.
+    /// It receives an input of two chunks. The first sentence does not contain a
+    /// detection. The second one does.
+    ///
+    /// The idea behind this test case is to test that...
+    /// 1. offsets are calculated correctly.
+    /// 2. detections below the threshold are not returned to the client.
+    #[tokio::test]
+    async fn test_handle_detection_task() {
+        let mock_generation_client = GenerationClient::Tgis(TgisClient::faux());
+        let mut mock_detector_client = DetectorClient::faux();
+
+        let detector_id = "mocked_hap_detector";
+        let threshold = 0.5;
+        // Input: "I don't like potatoes. I hate aliens.";
+        let first_sentence = "I don't like potatoes.".to_string();
+        let second_sentence = "I hate aliens.".to_string();
+        let detector_params = DetectorParams {
+            threshold: Some(threshold),
+        };
+        let chunks = vec![
+            Chunk {
+                offset: 0,
+                text: first_sentence.clone(),
+            },
+            Chunk {
+                offset: 23,
+                text: second_sentence.clone(),
+            },
+        ];
+
+        // Since only the second chunk has a detection, we only expect one detection in the output.
+        let expected_response: Vec<TokenClassificationResult> = vec![TokenClassificationResult {
+            start: 23,
+            end: 37,
+            word: second_sentence.clone(),
+            entity: "has_HAP".to_string(),
+            entity_group: "hap".to_string(),
+            score: 0.9,
+            token_count: None,
+        }];
+
+        faux::when!(mock_detector_client.text_contents(
+            detector_id,
+            ContentAnalysisRequest::new(vec![first_sentence.clone(), second_sentence.clone()])
+        ))
+        .once()
+        .then_return(Ok(vec![
+            vec![ContentAnalysisResponse {
+                start: 0,
+                end: 22,
+                text: first_sentence.clone(),
+                detection: "has_HAP".to_string(),
+                detection_type: "hap".to_string(),
+                score: 0.1,
+                evidences: Some(vec![]),
+            }],
+            vec![ContentAnalysisResponse {
+                start: 0,
+                end: 14,
+                text: second_sentence.clone(),
+                detection: "has_HAP".to_string(),
+                detection_type: "hap".to_string(),
+                score: 0.9,
+                evidences: Some(vec![]),
+            }],
+        ]));
+
+        let ctx: Context =
+            get_test_context(mock_generation_client, None, Some(mock_detector_client)).await;
+
+        assert_eq!(
+            handle_detection_task(
+                ctx.into(),
+                detector_id.to_string(),
+                threshold,
+                detector_params,
+                chunks
+            )
+            .await
+            .unwrap(),
+            expected_response
         );
     }
 }

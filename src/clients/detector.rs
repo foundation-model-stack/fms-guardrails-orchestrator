@@ -7,12 +7,14 @@ use crate::config::ServiceConfig;
 
 const DETECTOR_ID_HEADER_NAME: &str = "detector-id";
 
-#[cfg_attr(test, derive(Default))]
+// For some reason the order matters here. #[cfg_attr(test, derive(Default), faux::create)] doesn't work. (rustc --explain E0560)
+#[cfg_attr(test, faux::create, derive(Default))]
 #[derive(Clone)]
 pub struct DetectorClient {
     clients: HashMap<String, HttpClient>,
 }
 
+#[cfg_attr(test, faux::methods)]
 impl DetectorClient {
     pub async fn new(default_port: u16, config: &[(String, ServiceConfig)]) -> Self {
         let clients: HashMap<String, HttpClient> = create_http_clients(default_port, config).await;
@@ -52,6 +54,7 @@ impl DetectorClient {
 /// Results of this request will contain analysis / detection of each of the provided documents
 /// in the order they are present in the `contents` object.
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(test, derive(PartialEq))]
 pub struct ContentAnalysisRequest {
     /// Field allowing users to provide list of documents for analysis
     pub contents: Vec<String>,
@@ -66,6 +69,7 @@ impl ContentAnalysisRequest {
 /// Evidence type
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[cfg_attr(test, derive(PartialEq))]
 pub enum EvidenceType {
     Url,
     Title,
@@ -73,12 +77,14 @@ pub enum EvidenceType {
 
 /// Source of the evidence e.g. url
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(test, derive(PartialEq))]
 pub struct Evidence {
     /// Evidence source
     pub source: String,
 }
 
 /// Evidence in response
+#[cfg_attr(test, derive(PartialEq))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct EvidenceObj {
     /// Type field signifying the type of evidence provided
@@ -90,6 +96,7 @@ pub struct EvidenceObj {
 }
 
 /// Response of text content analysis endpoint
+#[cfg_attr(test, derive(PartialEq))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ContentAnalysisResponse {
     /// Start index of detection
