@@ -20,6 +20,8 @@ use crate::{
     pb::caikit::runtime::chunkers,
 };
 
+const DEFAULT_STREAM_BUFFER_SIZE: usize = 5;
+
 impl Orchestrator {
     /// Handles unary tasks.
     pub async fn handle_classification_with_gen(
@@ -108,8 +110,6 @@ impl Orchestrator {
         }
     }
 }
-
-/***************************** Task handlers ******************************/
 
 /// Handles input detection task.
 pub async fn input_detection_task(
@@ -200,8 +200,6 @@ async fn chunk_task(
     Ok(results)
 }
 
-/************************** Requests to services **************************/
-
 /// Sends a request to a detector service and applies threshold.
 pub async fn detect(
     ctx: Arc<Context>,
@@ -285,7 +283,7 @@ pub async fn chunk_parallel(
                 Ok::<Vec<Chunk>, Error>(results)
             }
         })
-        .buffered(5)
+        .buffered(DEFAULT_STREAM_BUFFER_SIZE)
         .collect::<Vec<_>>()
         .await
         .into_iter()

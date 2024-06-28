@@ -61,16 +61,11 @@ impl ChunkerClient {
     ) -> Result<Pin<Box<dyn Stream<Item = Result<TokenizationStreamResult, Status>> + Send>>, Error>
     {
         let mut client = self.client(model_id)?;
+        let request = request_with_model_id(request_stream, model_id);
         // NOTE: this is an ugly workaround to avoid bogus higher-ranked lifetime errors.
-        // See the following tracking issue for additional details.
         // https://github.com/rust-lang/rust/issues/110338
         let response_stream_fut: Pin<Box<dyn Future<Output = StreamingTokenizationResult> + Send>> =
-            Box::pin(
-                client.bidi_streaming_tokenization_task_predict(request_with_model_id(
-                    request_stream,
-                    model_id,
-                )),
-            );
+            Box::pin(client.bidi_streaming_tokenization_task_predict(request));
         Ok(response_stream_fut.await?.into_inner().boxed())
     }
 }

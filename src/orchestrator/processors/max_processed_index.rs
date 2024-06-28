@@ -23,18 +23,20 @@ impl DetectionStreamProcessor for MaxProcessedIndexProcessor {
     ) -> mpsc::Receiver<ClassifiedGeneratedTextStreamResult> {
         let (result_tx, result_rx) = mpsc::channel(1024);
         tokio::spawn(async move {
-            // TODO: implement actual aggregation logic, this is just a placeholder
+            // TODO:
+            // - Implement actual aggregation logic, this is just a placeholder
+            // - Figure out good approach to get details needed from generation messages (using shared vec for now)
+            // - Apply thresholds
+            // - TBD
             for (detector_id, mut stream) in streams {
                 while let Some(result) = stream.recv().await {
-                    debug!(%detector_id, "[detection_processor_task] received: {result:?}");
+                    debug!(%detector_id, ?result, "[detection_processor_task] received detection result");
                     let generated_text = result.chunk.results.into_iter().map(|t| t.text).collect();
                     let detections = result
                         .detections
                         .into_iter()
                         .flat_map(|r| r.into_iter().map(Into::into))
                         .collect();
-                    // TODO: figure out good approach to get details needed from generation messages.
-                    // We currently pass in a shared vec behind a RwLock, but there is probably a more elegant way.
                     let input_token_count = generations.read().unwrap()[0].input_token_count;
                     let result = ClassifiedGeneratedTextStreamResult {
                         generated_text: Some(generated_text),
