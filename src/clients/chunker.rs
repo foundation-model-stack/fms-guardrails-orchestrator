@@ -72,12 +72,7 @@ impl ChunkerClient {
         // Handle "default" separately first
         if model_id == DEFAULT_MODEL_ID {
             info!("Using default whole doc chunker");
-            let whole_response_stream = bidi_streaming_tokenize_whole_doc(request).await;
-            tokio::spawn(async move {
-                if let Ok(message) = whole_response_stream {
-                    let _ = tx.send(message).await;
-                }
-            });
+            let _ = tx.send(tokenize_whole_doc_stream(request).await).await;
             return Ok(ReceiverStream::new(rx));
         }
         let request = request_with_model_id(request, model_id);
@@ -105,39 +100,91 @@ fn request_with_model_id<T>(request: T, model_id: &str) -> Request<T> {
 
 /// Unary tokenization result of the entire doc
 fn tokenize_whole_doc(request: TokenizationTaskRequest) -> TokenizationResults {
-    let codepoint_count = request.text.chars().count();
+    let codepoint_count = request.text.chars().count() as i64;
     TokenizationResults {
         results: vec![Token {
             start: 0,
-            end: codepoint_count as i64,
+            end: codepoint_count,
             text: request.text,
         }],
         token_count: 1, // entire doc
     }
 }
 
-/// Streaming tokenization result for an entire stream
-// Note: This doesn't return an actual "stream" because the entire input text stream
-// to the chunker has to be accumulated and processed. Only one result for the whole
-// stream doc is provided. Depending on stream size, this can be memory intensive.
-async fn bidi_streaming_tokenize_whole_doc(
-    mut request: Pin<Box<dyn Stream<Item = BidiStreamingTokenizationTaskRequest> + Send + 'static>>,
-) -> Result<TokenizationStreamResult, Error> {
-    let mut total_codepoint_count = 0;
-    let mut accumulated_text: String = "".to_owned();
-    while let Some(stream_request) = request.next().await {
-        let codepoint_count = stream_request.text_stream.chars().count();
-        total_codepoint_count += codepoint_count;
-        accumulated_text.push_str(stream_request.text_stream.as_str());
-    }
-    Ok(TokenizationStreamResult {
+/// Streaming tokenization result for the entire doc stream
+async fn tokenize_whole_doc_stream(
+    request: impl Stream<Item = BidiStreamingTokenizationTaskRequest>,
+) -> TokenizationStreamResult {
+    let text = request.map(|r| r.text_stream).collect::<String>().await;
+    let codepoint_count = text.chars().count() as i64;
+    TokenizationStreamResult {
         results: vec![Token {
             start: 0,
-            end: total_codepoint_count as i64,
-            text: accumulated_text,
+            end: codepoint_count,
+            text,
         }],
         token_count: 1, // entire doc/stream
-        processed_index: total_codepoint_count as i64,
+        processed_index: codepoint_count,
         start_index: 0,
-    })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_tokenize_whole_doc() {
+        let request = TokenizationTaskRequest {
+            text: "Lorem ipsum dolor sit amet consectetur adipiscing \
+            elit sed do eiusmod tempor incididunt ut labore et dolore \
+            magna aliqua."
+                .into(),
+        };
+        let expected_response = TokenizationResults {
+            results: vec![Token {
+                start: 0,
+                end: 121,
+                text: "Lorem ipsum dolor sit amet consectetur \
+                    adipiscing elit sed do eiusmod tempor incididunt \
+                    ut labore et dolore magna aliqua."
+                    .into(),
+            }],
+            token_count: 1,
+        };
+        let response = tokenize_whole_doc(request);
+        assert_eq!(response, expected_response)
+    }
+
+    #[tokio::test]
+    async fn test_tokenize_whole_doc_stream() {
+        let request = futures::stream::iter(vec![
+            BidiStreamingTokenizationTaskRequest {
+                text_stream: "Lorem ipsum dolor sit amet ".into(),
+            },
+            BidiStreamingTokenizationTaskRequest {
+                text_stream: "consectetur adipiscing elit ".into(),
+            },
+            BidiStreamingTokenizationTaskRequest {
+                text_stream: "sed do eiusmod tempor incididunt ".into(),
+            },
+            BidiStreamingTokenizationTaskRequest {
+                text_stream: "ut labore et dolore magna aliqua.".into(),
+            },
+        ]);
+        let expected_response = TokenizationStreamResult {
+            results: vec![Token {
+                start: 0,
+                end: 121,
+                text: "Lorem ipsum dolor sit amet consectetur adipiscing elit \
+                    sed do eiusmod tempor incididunt ut labore et dolore magna aliqua."
+                    .into(),
+            }],
+            token_count: 1,
+            processed_index: 121,
+            start_index: 0,
+        };
+        let response = tokenize_whole_doc_stream(request).await;
+        assert_eq!(response, expected_response);
+    }
 }
