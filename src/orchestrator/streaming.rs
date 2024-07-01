@@ -294,7 +294,7 @@ async fn chunk_broadcast_stream(
     tokio::spawn({
         let chunk_tx = chunk_tx.clone();
         async move {
-            while let Some(Ok(chunk)) = output_stream.next().await {
+            while let Some(chunk) = output_stream.next().await {
                 debug!(%chunker_id, ?chunk, "[chunker_broadcast_task] received chunk");
                 let _ = chunk_tx.send(chunk);
             }
