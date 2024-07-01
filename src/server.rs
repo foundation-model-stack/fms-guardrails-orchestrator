@@ -266,10 +266,7 @@ async fn stream_classification_with_gen(
         .await
     {
         Ok(response_stream) => {
-            let map = response_stream.map(|response| {
-                debug!("message: {response:?}\n");
-                Event::default().json_data(response)
-            });
+            let map = response_stream.map(|response| Event::default().json_data(response));
             let sse = Sse::new(map).keep_alive(KeepAlive::default());
             Ok(sse.into_response())
         }
