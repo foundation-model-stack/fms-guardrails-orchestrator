@@ -1077,4 +1077,112 @@ mod tests {
             expected_response
         );
     }
+
+    #[tokio::test]
+    async fn test_tgis_generate_whitespace() {
+        // Initialize a mock object from `TgisClient`
+        let mut mock_client = TgisClient::faux();
+
+        let text_whitespace = String::from("   ");
+        let text_gen_model_id = String::from("test-llm-id-1");
+
+        let generation_response = GenerationResponse {
+            text: String::from("    sample response worked"),
+            stop_reason: StopReason::EosToken.into(),
+            stop_sequence: String::from("\n"),
+            generated_token_count: 99,
+            seed: 0,
+            ..Default::default()
+        };
+
+        let client_generation_response = BatchedGenerationResponse {
+            responses: [generation_response].to_vec(),
+        };
+
+        let expected_generate_req_args = BatchedGenerationRequest {
+            model_id: text_gen_model_id.clone(),
+            prefix_id: None,
+            requests: [GenerationRequest {
+                text: text_whitespace.clone(),
+            }]
+            .to_vec(),
+            params: None,
+        };
+
+        let expected_generate_response = ClassifiedGeneratedTextResult {
+            generated_text: Some(client_generation_response.responses[0].text.clone()),
+            finish_reason: Some(FinishReason::EosToken),
+            generated_token_count: Some(99),
+            seed: Some(0),
+            ..Default::default()
+        };
+
+        faux::when!(mock_client.generate(expected_generate_req_args))
+            .once()
+            .then_return(Ok(client_generation_response));
+
+        let mock_generation_client = GenerationClient::Tgis(mock_client.clone());
+
+        let ctx: Context = get_test_context(mock_generation_client, None, None).await;
+
+        assert_eq!(
+            generate(ctx.into(), text_gen_model_id, text_whitespace, None)
+                .await
+                .unwrap(),
+            expected_generate_response
+        );
+    }
+    #[tokio::test]
+    async fn test_tgis_generate_special_characters() {
+        // Initialize a mock object from `TgisClient`
+        let mut mock_client = TgisClient::faux();
+
+        let text_special_characters = String::from("!!");
+        let text_gen_model_id = String::from("test-llm-id-1");
+
+        let generation_response = GenerationResponse {
+            text: String::from("!!\n sample response worked"),
+            stop_reason: StopReason::EosToken.into(),
+            stop_sequence: String::from("\n"),
+            generated_token_count: 4,
+            seed: 0,
+            ..Default::default()
+        };
+
+        let client_generation_response = BatchedGenerationResponse {
+            responses: [generation_response].to_vec(),
+        };
+
+        let expected_generate_req_args = BatchedGenerationRequest {
+            model_id: text_gen_model_id.clone(),
+            prefix_id: None,
+            requests: [GenerationRequest {
+                text: text_special_characters.clone(),
+            }]
+            .to_vec(),
+            params: None,
+        };
+
+        let expected_generate_response = ClassifiedGeneratedTextResult {
+            generated_text: Some(client_generation_response.responses[0].text.clone()),
+            finish_reason: Some(FinishReason::EosToken),
+            generated_token_count: Some(4),
+            seed: Some(0),
+            ..Default::default()
+        };
+
+        faux::when!(mock_client.generate(expected_generate_req_args))
+            .once()
+            .then_return(Ok(client_generation_response));
+
+        let mock_generation_client = GenerationClient::Tgis(mock_client.clone());
+
+        let ctx: Context = get_test_context(mock_generation_client, None, None).await;
+        assert_eq!(
+            generate(ctx.into(), text_gen_model_id, text_special_characters, None)
+                .await
+                .unwrap(),
+            expected_generate_response
+        );
+    }
 }

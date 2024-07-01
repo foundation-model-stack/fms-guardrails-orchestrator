@@ -24,11 +24,13 @@ use crate::{
 
 const MODEL_ID_HEADER_NAME: &str = "mm-model-id";
 
+#[faux::create]
 #[derive(Clone)]
 pub struct NlpClient {
     clients: HashMap<String, NlpServiceClient<LoadBalancedChannel>>,
 }
 
+#[faux::methods]
 impl NlpClient {
     pub async fn new(default_port: u16, config: &[(String, ServiceConfig)]) -> Self {
         let clients = create_grpc_clients(default_port, config, NlpServiceClient::new).await;
@@ -113,4 +115,97 @@ fn request_with_model_id<T>(request: T, model_id: &str) -> Request<T> {
         .metadata_mut()
         .insert(MODEL_ID_HEADER_NAME, model_id.parse().unwrap());
     request
+}
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+    use crate::{
+        pb::caikit_data_model::caikit_nlp::ExponentialDecayLengthPenalty,
+        pb::caikit_data_model::nlp::GeneratedTextResult,
+        pb::caikit_data_model::nlp::GeneratedToken,
+    };
+
+    #[tokio::test]
+    async fn test_text_generation_task_predict() {
+        // Expected OK case
+        let exp_decay: ExponentialDecayLengthPenalty = ExponentialDecayLengthPenalty {
+            start_index: 1,
+            decay_factor: 2.0,
+        };
+        let exp_decay_mock: ExponentialDecayLengthPenalty = ExponentialDecayLengthPenalty {
+            start_index: 1,
+            decay_factor: 2.0,
+        };
+        let request_mock: TextGenerationTaskRequest = TextGenerationTaskRequest {
+            max_new_tokens: Some(99),
+            min_new_tokens: Some(1),
+            truncate_input_tokens: Some(500),
+            decoding_method: Some("SAMPLING".to_string()),
+            top_k: Some(2),
+            top_p: Some(0.9),
+            typical_p: Some(0.5),
+            temperature: Some(0.8),
+            seed: Some(42),
+            repetition_penalty: Some(2.0),
+            max_time: Some(0.0),
+            stop_sequences: vec!["42".to_string()],
+            text: "Text".to_string(),
+            token_logprobs: Some(true),
+            token_ranks: Some(true),
+            input_tokens: Some(true),
+            generated_tokens: Some(true),
+            preserve_input_text: Some(true),
+            exponential_decay_length_penalty: Some(exp_decay_mock),
+        };
+        let request: TextGenerationTaskRequest = TextGenerationTaskRequest {
+            max_new_tokens: Some(99),
+            min_new_tokens: Some(1),
+            truncate_input_tokens: Some(500),
+            decoding_method: Some("SAMPLING".to_string()),
+            top_k: Some(2),
+            top_p: Some(0.9),
+            typical_p: Some(0.5),
+            temperature: Some(0.8),
+            seed: Some(42),
+            repetition_penalty: Some(2.0),
+            max_time: Some(0.0),
+            stop_sequences: vec!["42".to_string()],
+            text: "Text".to_string(),
+            token_logprobs: Some(true),
+            token_ranks: Some(true),
+            input_tokens: Some(true),
+            generated_tokens: Some(true),
+            preserve_input_text: Some(true),
+            exponential_decay_length_penalty: Some(exp_decay),
+        };
+        let gen_token: GeneratedToken = GeneratedToken {
+            text: "Text".to_string(),
+            logprob: 0.4,
+            rank: 1,
+        };
+        let input_token: GeneratedToken = GeneratedToken {
+            text: "text".to_string(),
+            logprob: 0.4,
+            rank: 1,
+        };
+
+        let mut mock_nlp_client = NlpClient::faux();
+
+        faux::when!(mock_nlp_client.text_generation_task_predict("bloom-560m", request_mock))
+            .once()
+            .then_return(Ok(GeneratedTextResult {
+                generated_text: "Text text".to_string(),
+                generated_tokens: 42,
+                finish_reason: 2,
+                input_token_count: 20,
+                seed: 23,
+                tokens: vec![gen_token],
+                input_tokens: vec![input_token],
+            }));
+        assert!(mock_nlp_client
+            .text_generation_task_predict("bloom-560m", request)
+            .await
+            .is_ok());
+    }
 }
