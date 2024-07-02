@@ -4,22 +4,22 @@ use async_trait::async_trait;
 use tokio::sync::mpsc;
 use tracing::debug;
 
-use super::DetectionStreamProcessor;
+use super::{DetectionAggregator, DetectorId};
 use crate::{
     models::{ClassifiedGeneratedTextStreamResult, TextGenTokenClassificationResults},
     orchestrator::streaming::DetectionResult,
 };
 
-/// Processes detection streams applying a "max processed index" strategy.
+/// Aggregates results applying a "max processed index" strategy.
 #[derive(Default)]
-pub struct MaxProcessedIndexProcessor {}
+pub struct MaxProcessedIndexAggregator {}
 
 #[async_trait]
-impl DetectionStreamProcessor for MaxProcessedIndexProcessor {
+impl DetectionAggregator for MaxProcessedIndexAggregator {
     async fn process(
         &self,
         generations: Arc<RwLock<Vec<ClassifiedGeneratedTextStreamResult>>>,
-        streams: Vec<(String, mpsc::Receiver<DetectionResult>)>,
+        detection_streams: Vec<(DetectorId, mpsc::Receiver<DetectionResult>)>,
     ) -> mpsc::Receiver<ClassifiedGeneratedTextStreamResult> {
         let (result_tx, result_rx) = mpsc::channel(1024);
         tokio::spawn(async move {
@@ -28,7 +28,7 @@ impl DetectionStreamProcessor for MaxProcessedIndexProcessor {
             // - Figure out good approach to get details needed from generation messages (using shared vec for now)
             // - Apply thresholds
             // - TBD
-            for (detector_id, mut stream) in streams {
+            for (detector_id, mut stream) in detection_streams {
                 while let Some(result) = stream.recv().await {
                     debug!(%detector_id, ?result, "[detection_processor_task] received detection result");
                     let generated_text = result.chunk.results.into_iter().map(|t| t.text).collect();

@@ -1,6 +1,6 @@
 pub mod errors;
 pub use errors::Error;
-pub mod processors;
+pub mod aggregators;
 pub mod streaming;
 pub mod unary;
 

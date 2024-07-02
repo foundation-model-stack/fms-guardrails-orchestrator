@@ -20,7 +20,7 @@ use crate::{
         InputWarning, InputWarningReason, TextGenTokenClassificationResults,
     },
     orchestrator::{
-        processors::{DetectionStreamProcessor, MaxProcessedIndexProcessor},
+        aggregators::{DetectionAggregator, MaxProcessedIndexAggregator},
         unary::{input_detection_task, tokenize},
         UNSUITABLE_INPUT_MESSAGE,
     },
@@ -90,9 +90,9 @@ impl Orchestrator {
             // Do output detections (streaming)
             let output_detectors = task.guardrails_config.output_detectors();
             if let Some(detectors) = output_detectors {
-                let processor = MaxProcessedIndexProcessor::default();
+                let aggregator = MaxProcessedIndexAggregator::default();
                 let mut result_rx =
-                    streaming_output_detection_task(&ctx, detectors, processor, generation_stream)
+                    streaming_output_detection_task(&ctx, detectors, aggregator, generation_stream)
                         .await?;
                 // Forward generation results with detections to response channel
                 tokio::spawn(async move {
@@ -117,7 +117,7 @@ impl Orchestrator {
 async fn streaming_output_detection_task(
     ctx: &Arc<Context>,
     detectors: &HashMap<String, DetectorParams>,
-    processor: impl DetectionStreamProcessor,
+    aggregator: impl DetectionAggregator,
     mut generation_stream: Pin<Box<dyn Stream<Item = ClassifiedGeneratedTextStreamResult> + Send>>,
 ) -> Result<mpsc::Receiver<ClassifiedGeneratedTextStreamResult>, Error> {
     // Create generation broadcast stream
@@ -126,7 +126,7 @@ async fn streaming_output_detection_task(
     debug!("creating chunk broadcast streams");
     let chunker_ids = get_chunker_ids(ctx, detectors)?;
     // Maps chunker_id->chunk_stream
-    let chunk_streams = join_all(
+    let chunk_broadcast_streams = join_all(
         chunker_ids
             .into_iter()
             .map(|chunker_id| {
@@ -157,7 +157,11 @@ async fn streaming_output_detection_task(
         // Create detection stream
         let (detector_tx, detector_rx) = mpsc::channel(1024);
         // Subscribe to chunk broadcast stream
-        let chunk_rx = chunk_streams.get(&chunker_id).unwrap().0.subscribe();
+        let chunk_rx = chunk_broadcast_streams
+            .get(&chunker_id)
+            .unwrap()
+            .0
+            .subscribe();
         tokio::spawn(streaming_detection_task(
             ctx.clone(),
             detector_id.clone(),
@@ -192,7 +196,7 @@ async fn streaming_output_detection_task(
     drop(generation_rx);
 
     // Process detection results
-    Ok(processor.process(generations, detection_streams).await)
+    Ok(aggregator.process(generations, detection_streams).await)
 }
 
 async fn streaming_detection_task(
