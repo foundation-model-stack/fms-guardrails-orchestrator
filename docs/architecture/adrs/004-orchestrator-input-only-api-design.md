@@ -1,0 +1,51 @@
+# ADR 004: Orchestrator input only detection API
+
+
+This ADR documents the design and decisions for the orchestrator APIs.
+
+Orchestrator API can be found [at these github pages](https://foundation-model-stack.github.io/fms-guardrails-orchestrator/).
+
+## Motivation
+
+Guardrails orchestrator is designed to provide end to end guardrails experience. As a part of this, orchestrator would also need to expose ability to call out to different detectors in isolation to text generation. Since there are different types of detector, segregated by their input requirements and use-cases, we need to expose related APIs in orchestrator to support those different use-cases.
+
+
+## Decisions
+
+
+### Nomenclature
+
+1. The endpoints would be named with the primary "task" they do, so for example, for the orchestrator endpoint that does both generation + detector in same call, it will be called as `generation-detection` for one which does `detection` as primary task with different "modality", it will be called as `detection/chat`` where chat is the modality.
+1. Evidences will be added later on to each endpoint, once we have the detectors under any category that actually is able to provide evidences.
+1. All of the endpoints would be prefixed by the modality of the input / output. So for text generation use-cases, the modality would be `text`, for text to image generation, the modality would be `text-image`, for image to image functionalities, the modality would be `image`.
+
+
+### Endpoints
+
+1. Content
+    - **Endpoint:** `/api/v1/text/task/detection/content`
+    - **Description:** Endpoint implementing detection task for textual content. This would map to `/text/contents` endpoint of detectors and would target general purpose text content analysis detections. The response from this endpoint would return spans denoting location of the detection.
+1. Chat
+    - **Endpoint:** `/api/v1/text/task/detection/chat`
+    - **Description:** This endpoint will implement detection task for chat input and will support detectors, exposed via `/api/v1/text/context/chat` endpoint.
+1. Document Context
+    - **Endpoint:** `/api/v1/text/task/detection/context-docs`
+    - **Description:** This endpoint will implement detection task for document based context detectors, exposed via `/api/v1/text/context/chat` endpoint.
+1. Generation Detection
+    - **Endpoint:** `/api/v1/text/task/generation-detection`
+    - **Description:** This endpoint will use the input prompt and call the LLM generation and run the requested detectors on the `generated_text`. This endpoint will loosely be similar to the "output detection" API we have currently in the end-to-end guardrails experience. However, one big difference is that, this endpoint will support detectors that need both input prompt and detection together to analyze and provide results.
+    - **Notes:**
+        - Unlike end-to-end guardrails experience endpoint, i.e. `/api/v1/task/classification-with-text-generation` and `/api/v1/task/server-streaming-classification-with-text-generation`, this endpoint will not accept a `guardrails_config`. This is because, detectors supported by this endpoint work on both input and generated text, where the generatex_text has to be given the full input prompt. So we can't provide partial input to detector, otherwise, the output may not be accurate.
+        - We would not have `guardrail_config.output`` or `guardrail_config.input`` here, since this API only works with input prompt + generated_text. So it has to always have both.
+        - `model_id` in this API refers to LLM `model_id`, similar to existing "guardrails experience"
+
+
+## Consequences
+
+1. Orchestrator would need to implement API and processing for these new endpoints.
+1. Existing endpoints, i.e. `/api/v1/task/classification-with-text-generation` and `/api/v1/task/server-streaming-classification-with-text-generation` do not follow the new paradigm and nomenclature described in this ADR, specially the definition of "task" refered here. However, these will be kept around for API compatibility. We may deprecate and create new endpoint for these.
+1. These new endpoints will require changes to how orchestrator request processing workflow is implemented currently and we would need to expand the handlers and tasks.
+
+## Status
+
+Accepted
