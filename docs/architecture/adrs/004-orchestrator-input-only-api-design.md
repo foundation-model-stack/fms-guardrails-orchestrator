@@ -39,12 +39,20 @@ Guardrails orchestrator is designed to provide end to end guardrails experience.
         - We would not have `guardrail_config.output`` or `guardrail_config.input`` here, since this API only works with input prompt + generated_text. So it has to always have both.
         - `model_id` in this API refers to LLM `model_id`, similar to existing "guardrails experience"
 
+### API Behavior
+1. Each of the endpoints mentioned in this document would accept list of `detector_id` as the input. Each of these detectors are assumed to be of "same" type. If they turn out to be different, then we will throw appropriate 400 error.
+   - NOTE: Orchestrator currently does not have a way to map detector-ids with their type / endpoint. In future, we may implement such a mapping to help with error handling.
+1. The output of each endpoint will contain a flattened list of outputs from each detectors.
+1. In future, to identify which output element in respose belongs to which `detector_id`, we will add `detector_id` as another field in the response object.
+1. If any of the endpoints / detectors fail, we will fail the entire request.
+1. These new endpoints will not handle server-side streaming and will not accept streaming input.
 
 ## Consequences
 
 1. Orchestrator would need to implement API and processing for these new endpoints.
 1. Existing endpoints, i.e. `/api/v1/task/classification-with-text-generation` and `/api/v1/task/server-streaming-classification-with-text-generation` do not follow the new paradigm and nomenclature described in this ADR, specially the definition of "task" refered here. However, these will be kept around for API compatibility. We may deprecate and create new endpoint for these.
 1. These new endpoints will require changes to how orchestrator request processing workflow is implemented currently and we would need to expand the handlers and tasks.
+1. In the existing endpoints, we have a mixed nomenclature used, where we refer to models for both LLM and detectors. However, in the new endpoints and API, we will refer `model_id` as LLM model id and refer detector_id for detectors.
 
 ## Status
 
