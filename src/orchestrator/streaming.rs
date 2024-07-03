@@ -208,6 +208,9 @@ async fn streaming_output_detection_task(
     Ok(aggregator.process(generations, detection_streams).await)
 }
 
+/// This task essentially wraps a unary detector service to make it streaming.
+/// Consumes chunk broadcast stream, sends unary requests to a detector service,
+/// and sends chunk + responses to detection stream.
 async fn streaming_detection_task(
     ctx: Arc<Context>,
     detector_id: String,
