@@ -55,10 +55,11 @@ impl Orchestrator {
         // Do input detections (unary)
         let masks = task.guardrails_config.input_masks();
         let input_detectors = task.guardrails_config.input_detectors();
-        let input_detections = if let Some(detectors) = input_detectors {
-            input_detection_task(&ctx, detectors, input_text.clone(), masks).await?
-        } else {
-            None
+        let input_detections = match input_detectors {
+            Some(detectors) if !detectors.is_empty() => {
+                input_detection_task(&ctx, detectors, input_text.clone(), masks).await?
+            }
+            _ => None,
         };
         debug!(?input_detections);
         if input_detections.is_some() {
@@ -89,24 +90,31 @@ impl Orchestrator {
 
             // Do output detections (streaming)
             let output_detectors = task.guardrails_config.output_detectors();
-            if let Some(detectors) = output_detectors {
-                let aggregator = MaxProcessedIndexAggregator::default();
-                let mut result_rx =
-                    streaming_output_detection_task(&ctx, detectors, aggregator, generation_stream)
-                        .await?;
-                // Forward generation results with detections to response channel
-                tokio::spawn(async move {
-                    while let Some(generation_with_detections) = result_rx.recv().await {
-                        let _ = response_tx.send(generation_with_detections).await;
-                    }
-                });
-            } else {
-                // No output detectors, forward generation results to response channel
-                tokio::spawn(async move {
-                    while let Some(generation) = generation_stream.next().await {
-                        let _ = response_tx.send(generation).await;
-                    }
-                });
+            match output_detectors {
+                Some(detectors) if !detectors.is_empty() => {
+                    let aggregator = MaxProcessedIndexAggregator::default();
+                    let mut result_rx = streaming_output_detection_task(
+                        &ctx,
+                        detectors,
+                        aggregator,
+                        generation_stream,
+                    )
+                    .await?;
+                    // Forward generation results with detections to response channel
+                    tokio::spawn(async move {
+                        while let Some(generation_with_detections) = result_rx.recv().await {
+                            let _ = response_tx.send(generation_with_detections).await;
+                        }
+                    });
+                }
+                _ => {
+                    // No output detectors, forward generation results to response channel
+                    tokio::spawn(async move {
+                        while let Some(generation) = generation_stream.next().await {
+                            let _ = response_tx.send(generation).await;
+                        }
+                    });
+                }
             }
         }
         Ok(ReceiverStream::new(response_rx))
