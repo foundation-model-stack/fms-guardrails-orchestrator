@@ -40,10 +40,11 @@ impl Orchestrator {
             let masks = task.guardrails_config.input_masks();
             let input_detectors = task.guardrails_config.input_detectors();
             // Do input detections
-            let input_detections = if let Some(detectors) = input_detectors {
-                input_detection_task(&ctx, detectors, input_text, masks).await?
-            } else {
-                None
+            let input_detections = match input_detectors {
+                Some(detectors) if !detectors.is_empty() => {
+                    input_detection_task(&ctx, detectors, input_text.clone(), masks).await?
+                }
+                _ => None,
             };
             debug!(?input_detections);
             if input_detections.is_some() {
@@ -77,14 +78,15 @@ impl Orchestrator {
                 debug!(?generation_results);
                 // Do output detections
                 let output_detectors = task.guardrails_config.output_detectors();
-                let output_detections = if let Some(detectors) = output_detectors {
-                    let generated_text = generation_results
-                        .generated_text
-                        .clone()
-                        .unwrap_or_default();
-                    output_detection_task(&ctx, detectors, generated_text).await?
-                } else {
-                    None
+                let output_detections = match output_detectors {
+                    Some(detectors) if !detectors.is_empty() => {
+                        let generated_text = generation_results
+                            .generated_text
+                            .clone()
+                            .unwrap_or_default();
+                        output_detection_task(&ctx, detectors, generated_text).await?
+                    }
+                    _ => None,
                 };
                 debug!(?output_detections);
                 if output_detections.is_some() {
