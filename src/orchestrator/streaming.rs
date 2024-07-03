@@ -130,13 +130,17 @@ async fn streaming_output_detection_task(
 
     debug!("creating chunk broadcast streams");
     let chunker_ids = get_chunker_ids(ctx, detectors)?;
-    // Maps chunker_id->chunk_stream
+
+    // Create a map of chunker_id->chunk_broadcast_stream
+    // This is to enable fan-out of chunk streams to potentially multiple detectors that use the same chunker.
+    // Each detector task will subscribe to an associated chunk stream.
     let chunk_broadcast_streams = join_all(
         chunker_ids
             .into_iter()
             .map(|chunker_id| {
                 debug!(%chunker_id, "creating chunk broadcast stream");
                 let ctx = ctx.clone();
+                // Subscribe to generation stream
                 let generation_rx = generation_tx.subscribe();
                 async move {
                     let (chunk_tx, chunk_rx) =
