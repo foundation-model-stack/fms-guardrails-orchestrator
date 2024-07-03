@@ -241,7 +241,6 @@ async fn classification_with_gen(
     Json(request): Json<models::GuardrailsHttpRequest>,
 ) -> Result<impl IntoResponse, Error> {
     let request_id = Uuid::new_v4();
-    // Upfront request validation
     request.validate()?;
     let task = ClassificationWithGenTask::new(request_id, request);
     match state
@@ -259,6 +258,7 @@ async fn stream_classification_with_gen(
     Json(request): Json<models::GuardrailsHttpRequest>,
 ) -> Result<impl IntoResponse, Error> {
     let request_id = Uuid::new_v4();
+    request.validate()?;
     let task = StreamingClassificationWithGenTask::new(request_id, request);
     match state
         .orchestrator
