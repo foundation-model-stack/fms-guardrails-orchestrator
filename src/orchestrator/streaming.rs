@@ -4,10 +4,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use futures::{
-    future::{self, join_all},
-    Stream, StreamExt,
-};
+use futures::{future::join_all, Stream, StreamExt};
 use tokio::sync::{broadcast, mpsc};
 use tokio_stream::wrappers::{BroadcastStream, ReceiverStream};
 use tracing::{debug, info};
@@ -272,14 +269,6 @@ async fn chunk_broadcast_stream(
     // Consume generation stream and convert to chunker input stream
     debug!(%chunker_id, "creating chunker input stream");
     let input_stream = BroadcastStream::new(generation_rx)
-        .filter(|generation_result| {
-            // NOTE: this filter is temporary until empty string handling fix is implemented in chunker service
-            future::ready(
-                generation_result
-                    .as_ref()
-                    .is_ok_and(|r| r.generated_text != Some("".to_string())),
-            )
-        })
         .map(|generation_result| {
             let generated_text = generation_result
                 .unwrap()
