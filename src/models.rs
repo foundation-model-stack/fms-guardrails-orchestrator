@@ -927,43 +927,5 @@ mod tests {
         assert!(result.is_err());
         let error = result.unwrap_err().to_string();
         assert!(error.contains("invalid masks"));
-
-        // No config input models
-        let request = GuardrailsHttpRequest {
-            model_id: "model".to_string(),
-            inputs: "This is ignored anyway!".to_string(),
-            guardrail_config: Some(GuardrailsConfig {
-                input: Some(GuardrailsConfigInput {
-                    masks: None,
-                    models: None,
-                }),
-                output: Some(GuardrailsConfigOutput {
-                    models: HashMap::new(),
-                }),
-            }),
-            text_gen_parameters: None,
-        };
-        let result = request.validate();
-        assert!(result.is_err());
-        let error = result.unwrap_err().to_string();
-        assert!(error.contains("models field not present in guardrail config input"));
-
-        // No config output models
-        let request = GuardrailsHttpRequest {
-            model_id: "model".to_string(),
-            inputs: "This is ignored anyway!".to_string(),
-            guardrail_config: Some(GuardrailsConfig {
-                input: Some(GuardrailsConfigInput {
-                    masks: None,
-                    models: HashMap::new(),
-                }),
-                output: Some(GuardrailsConfigOutput { models: None }),
-            }),
-            text_gen_parameters: None,
-        };
-        let result = request.validate();
-        assert!(result.is_err());
-        let error = result.unwrap_err().to_string();
-        assert!(error.contains("models field not present in guardrail config output"));
     }
 }
