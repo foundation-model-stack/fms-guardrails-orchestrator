@@ -84,28 +84,6 @@ impl GuardrailsHttpRequest {
                 return Err(ValidationError::Invalid("invalid masks".into()));
             }
         }
-        // Validate Guardrail config input/output models
-        let config = self.guardrail_config.as_ref();
-        let (config_input, config_output) = (
-            config.and_then(|config| config.input.as_ref()),
-            config.and_then(|config| config.output.as_ref()),
-        );
-        if let Some(config_input) = config_input {
-            if config_input.models.is_none() {
-                return Err(ValidationError::Missing(
-                    "models".into(),
-                    "guardrail config input".into(),
-                ));
-            }
-        }
-        if let Some(config_output) = config_output {
-            if config_output.models.is_none() {
-                return Err(ValidationError::Missing(
-                    "models".into(),
-                    "guardrail config output".into(),
-                ));
-            }
-        }
         Ok(())
     }
 }
@@ -131,13 +109,11 @@ impl GuardrailsConfig {
     }
 
     pub fn input_detectors(&self) -> Option<&HashMap<String, DetectorParams>> {
-        self.input.as_ref().and_then(|input| input.models.as_ref())
+        self.input.as_ref().map(|input| &input.models)
     }
 
     pub fn output_detectors(&self) -> Option<&HashMap<String, DetectorParams>> {
-        self.output
-            .as_ref()
-            .and_then(|output| output.models.as_ref())
+        self.output.as_ref().map(|output| &output.models)
     }
 }
 
@@ -146,7 +122,7 @@ impl GuardrailsConfig {
 pub struct GuardrailsConfigInput {
     /// Map of model name to model specific parameters
     #[serde(rename = "models")]
-    pub models: Option<HashMap<String, DetectorParams>>,
+    pub models: HashMap<String, DetectorParams>,
     /// Vector of spans are in the form of (span_start, span_end) corresponding
     /// to spans of input text on which to run input detection
     #[serde(rename = "masks")]
@@ -159,7 +135,7 @@ pub struct GuardrailsConfigInput {
 pub struct GuardrailsConfigOutput {
     /// Map of model name to model specific parameters
     #[serde(rename = "models")]
-    pub models: Option<HashMap<String, DetectorParams>>,
+    pub models: HashMap<String, DetectorParams>,
 }
 
 /// Parameters for text generation, ref. <https://github.com/IBM/text-generation-inference/blob/main/proto/generation.proto>
@@ -862,10 +838,10 @@ mod tests {
             guardrail_config: Some(GuardrailsConfig {
                 input: Some(GuardrailsConfigInput {
                     masks: Some(vec![(5, 8)]),
-                    models: Some(HashMap::new()),
+                    models: HashMap::new(),
                 }),
                 output: Some(GuardrailsConfigOutput {
-                    models: Some(HashMap::new()),
+                    models: HashMap::new(),
                 }),
             }),
             text_gen_parameters: None,
@@ -879,10 +855,10 @@ mod tests {
             guardrail_config: Some(GuardrailsConfig {
                 input: Some(GuardrailsConfigInput {
                     masks: Some(vec![]),
-                    models: Some(HashMap::new()),
+                    models: HashMap::new(),
                 }),
                 output: Some(GuardrailsConfigOutput {
-                    models: Some(HashMap::new()),
+                    models: HashMap::new(),
                 }),
             }),
             text_gen_parameters: None,
@@ -899,10 +875,10 @@ mod tests {
             guardrail_config: Some(GuardrailsConfig {
                 input: Some(GuardrailsConfigInput {
                     masks: None,
-                    models: Some(HashMap::new()),
+                    models: HashMap::new(),
                 }),
                 output: Some(GuardrailsConfigOutput {
-                    models: Some(HashMap::new()),
+                    models: HashMap::new(),
                 }),
             }),
             text_gen_parameters: None,
@@ -919,10 +895,10 @@ mod tests {
             guardrail_config: Some(GuardrailsConfig {
                 input: Some(GuardrailsConfigInput {
                     masks: Some(vec![(0, 12)]),
-                    models: Some(HashMap::new()),
+                    models: HashMap::new(),
                 }),
                 output: Some(GuardrailsConfigOutput {
-                    models: Some(HashMap::new()),
+                    models: HashMap::new(),
                 }),
             }),
             text_gen_parameters: None,
@@ -939,10 +915,10 @@ mod tests {
             guardrail_config: Some(GuardrailsConfig {
                 input: Some(GuardrailsConfigInput {
                     masks: Some(vec![(12, 8)]),
-                    models: Some(HashMap::new()),
+                    models: HashMap::new(),
                 }),
                 output: Some(GuardrailsConfigOutput {
-                    models: Some(HashMap::new()),
+                    models: HashMap::new(),
                 }),
             }),
             text_gen_parameters: None,
@@ -962,7 +938,7 @@ mod tests {
                     models: None,
                 }),
                 output: Some(GuardrailsConfigOutput {
-                    models: Some(HashMap::new()),
+                    models: HashMap::new(),
                 }),
             }),
             text_gen_parameters: None,
@@ -979,7 +955,7 @@ mod tests {
             guardrail_config: Some(GuardrailsConfig {
                 input: Some(GuardrailsConfigInput {
                     masks: None,
-                    models: Some(HashMap::new()),
+                    models: HashMap::new(),
                 }),
                 output: Some(GuardrailsConfigOutput { models: None }),
             }),
