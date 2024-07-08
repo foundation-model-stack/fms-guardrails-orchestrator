@@ -4,11 +4,9 @@ use std::{collections::HashMap, time::Duration};
 use futures::future::join_all;
 use ginepro::LoadBalancedChannel;
 use reqwest::StatusCode;
+use tokio::{fs::File, io::AsyncReadExt};
 use tracing::debug;
 use url::Url;
-
-use tokio::fs::File;
-use tokio::io::AsyncReadExt;
 
 use crate::config::{ServiceConfig, Tls};
 
@@ -17,6 +15,9 @@ pub use chunker::ChunkerClient;
 
 pub mod detector;
 pub use detector::DetectorClient;
+
+pub mod generation;
+pub use generation::GenerationClient;
 
 pub mod tgis;
 pub use tgis::TgisClient;
@@ -29,8 +30,8 @@ pub const DEFAULT_CAIKIT_NLP_PORT: u16 = 8085;
 pub const DEFAULT_CHUNKER_PORT: u16 = 8085;
 pub const DEFAULT_DETECTOR_PORT: u16 = 8080;
 pub const COMMON_ROUTER_KEY: &str = "common-router";
-const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
-const DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
+const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+const DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// Client errors.
 #[derive(Debug, thiserror::Error)]
@@ -70,12 +71,6 @@ impl Error {
             Error::ModelNotFound { .. } => StatusCode::NOT_FOUND,
         }
     }
-}
-
-#[derive(Clone)]
-pub enum GenerationClient {
-    Tgis(TgisClient),
-    Nlp(NlpClient),
 }
 
 #[derive(Clone)]

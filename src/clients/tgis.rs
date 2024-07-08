@@ -1,9 +1,7 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, pin::Pin};
 
-use futures::StreamExt;
+use futures::{Stream, StreamExt};
 use ginepro::LoadBalancedChannel;
-use tokio::sync::mpsc;
-use tokio_stream::wrappers::ReceiverStream;
 
 use super::{create_grpc_clients, Error};
 use crate::{
@@ -55,20 +53,16 @@ impl TgisClient {
     pub async fn generate_stream(
         &self,
         request: SingleGenerationRequest,
-    ) -> Result<ReceiverStream<GenerationResponse>, Error> {
+    ) -> Result<Pin<Box<dyn Stream<Item = GenerationResponse> + Send>>, Error> {
         let model_id = request.model_id.as_str();
-        let mut response_stream = self
+        let response_stream = self
             .client(model_id)?
             .generate_stream(request)
             .await?
-            .into_inner();
-        let (tx, rx) = mpsc::channel(128);
-        tokio::spawn(async move {
-            while let Some(Ok(message)) = response_stream.next().await {
-                let _ = tx.send(message).await;
-            }
-        });
-        Ok(ReceiverStream::new(rx))
+            .into_inner()
+            .map(|resp| resp.unwrap())
+            .boxed();
+        Ok(response_stream)
     }
 
     pub async fn tokenize(

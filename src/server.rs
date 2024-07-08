@@ -15,9 +15,7 @@ use axum::{
 use futures::StreamExt;
 use hyper::body::Incoming;
 use hyper_util::rt::{TokioExecutor, TokioIo};
-use rustls::server::WebPkiClientVerifier;
-use rustls::RootCertStore;
-use rustls::ServerConfig;
+use rustls::{server::WebPkiClientVerifier, RootCertStore, ServerConfig};
 use tokio::{net::TcpListener, signal};
 use tokio_rustls::TlsAcceptor;
 use tower_service::Service;
@@ -243,7 +241,6 @@ async fn classification_with_gen(
     Json(request): Json<models::GuardrailsHttpRequest>,
 ) -> Result<impl IntoResponse, Error> {
     let request_id = Uuid::new_v4();
-    // Upfront request validation
     request.validate()?;
     let task = ClassificationWithGenTask::new(request_id, request);
     match state
@@ -261,8 +258,8 @@ async fn stream_classification_with_gen(
     Json(request): Json<models::GuardrailsHttpRequest>,
 ) -> Result<impl IntoResponse, Error> {
     let request_id = Uuid::new_v4();
+    request.validate()?;
     let task = StreamingClassificationWithGenTask::new(request_id, request);
-
     match state
         .orchestrator
         .handle_streaming_classification_with_gen(task)

@@ -53,8 +53,7 @@ impl DetectorClient {
 /// Request for text content analysis
 /// Results of this request will contain analysis / detection of each of the provided documents
 /// in the order they are present in the `contents` object.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[cfg_attr(test, derive(PartialEq))]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct ContentAnalysisRequest {
     /// Field allowing users to provide list of documents for analysis
     pub contents: Vec<String>,
@@ -67,25 +66,22 @@ impl ContentAnalysisRequest {
 }
 
 /// Evidence type
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
-#[cfg_attr(test, derive(PartialEq))]
 pub enum EvidenceType {
     Url,
     Title,
 }
 
 /// Source of the evidence e.g. url
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[cfg_attr(test, derive(PartialEq))]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Evidence {
     /// Evidence source
     pub source: String,
 }
 
 /// Evidence in response
-#[cfg_attr(test, derive(PartialEq))]
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct EvidenceObj {
     /// Type field signifying the type of evidence provided
     #[serde(rename = "type")]
@@ -96,8 +92,7 @@ pub struct EvidenceObj {
 }
 
 /// Response of text content analysis endpoint
-#[cfg_attr(test, derive(PartialEq))]
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct ContentAnalysisResponse {
     /// Start index of detection
     pub start: usize,
