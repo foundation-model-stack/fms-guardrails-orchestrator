@@ -52,7 +52,7 @@ FROM ${UBI_MINIMAL_BASE_IMAGE}:${UBI_BASE_IMAGE_TAG} as fms-guardrails-orchestr8
 COPY --from=fms-guardrails-orchestr8-builder /app/bin/ /app/bin/
 COPY config /app/config
 
-RUN microdnf install -y --disableplugin=subscription-manager shadow-utils && \
+RUN microdnf install -y --disableplugin=subscription-manager shadow-utils compat-openssl11 && \
     microdnf clean all --disableplugin=subscription-manager
 
 RUN groupadd --system orchestr8 --gid 1001 && \
