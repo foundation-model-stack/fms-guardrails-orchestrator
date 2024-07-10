@@ -57,10 +57,14 @@ impl AddDetectionResult for BTreeMap<(u32, u32), (ClassifiedGeneratedTextStreamR
         // If spans does not exist, insert it with the provided detection results and count of 1
         // if they do exist, then increment number of detector count and insert additional
         // detector in output vector.
-        self.entry((start, end)).and_modify(|(old_classified_stream_result, num)| {
-            old_classified_stream_result.token_classification_results.output = Some(new_detection_results);
-            *num += 1;
-        }).or_insert_with(|| (classified_stream_result.clone(), 1));
+        self.entry((start, end))
+            .and_modify(|(old_classified_stream_result, num)| {
+                old_classified_stream_result
+                    .token_classification_results
+                    .output = Some(new_detection_results);
+                *num += 1;
+            })
+            .or_insert_with(|| (classified_stream_result.clone(), 1));
     }
 
     /// Finds the first available span in the BTreeMap.
@@ -112,7 +116,13 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
                     let detections: Vec<TokenClassificationResult> = result
                         .detections
                         .into_iter()
-                        .flat_map(|r| r.into_iter().map(Into::into))
+                        .flat_map(|r| {
+                            r.into_iter().map(|mut detection| {
+                                detection.start += result.chunk.start_index as usize;
+                                detection.end += result.chunk.start_index as usize;
+                                detection.into()
+                            })
+                        })
                         .collect();
 
                     let input_token_count = generations.read().unwrap()[0].input_token_count;
