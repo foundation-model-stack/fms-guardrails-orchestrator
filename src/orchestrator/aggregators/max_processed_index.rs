@@ -53,29 +53,14 @@ impl AddDetectionResult for BTreeMap<(u32, u32), (ClassifiedGeneratedTextStreamR
         // need to expand this to have the possibility that spans can overlap, in which case
         // we would change the spans stored in the tree.
 
-        // TODO: Below can be simplified using in place modify or insert method for map.
         // Check if index exist in the BTreeMap
-        if self.contains_key(&(start, end)) {
-            // Add detection_result to value
-            let (mut detection_results, mut num_detectors) =
-                self.get(&(start, end)).unwrap().to_owned();
-            detection_results.token_classification_results.output = Some(new_detection_results);
-
-            // self.entry((start, end)).and_modify(|(_, num)| {(detection_results, *num+= 1)});
-            self.insert(
-                (start, end),
-                (detection_results, {
-                    num_detectors += 1;
-                    num_detectors
-                }),
-            );
-        } else {
-            // Add key in the BTreeMap
-            // Add detection_result to value
-            let mut new_class_result = classified_stream_result.clone();
-            new_class_result.token_classification_results.output = Some(new_detection_results);
-            self.insert((start, end), (new_class_result, 1));
-        }
+        // If spans does not exist, insert it with the provided detection results and count of 1
+        // if they do exist, then increment number of detector count and insert additional
+        // detector in output vector.
+        self.entry((start, end)).and_modify(|(old_classified_stream_result, num)| {
+            old_classified_stream_result.token_classification_results.output = Some(new_detection_results);
+            *num += 1;
+        }).or_insert_with(|| (classified_stream_result.clone(), 1));
     }
 
     /// Finds the first available span in the BTreeMap.
