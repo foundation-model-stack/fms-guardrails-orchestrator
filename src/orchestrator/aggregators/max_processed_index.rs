@@ -1,6 +1,5 @@
 use std::{
-    borrow::{Borrow, BorrowMut},
-    collections::{BTreeMap, HashMap},
+    collections::BTreeMap,
     sync::{Arc, RwLock},
 };
 
@@ -11,7 +10,7 @@ use tracing::debug;
 use super::{DetectionAggregator, DetectorId};
 use crate::{
     models::{
-        ClassifiedGeneratedTextStreamResult, TextGenTokenClassificationResults,
+        ClassifiedGeneratedTextStreamResult,
         TokenClassificationResult,
     },
     orchestrator::streaming::DetectionResult,
@@ -67,14 +66,11 @@ impl AddDetectionResult for BTreeMap<(u32, u32), (ClassifiedGeneratedTextStreamR
             .or_insert_with(|| (classified_stream_result.clone(), 1));
     }
 
-    /// Finds the first available span in the BTreeMap.
+    /// Finds the first available span starting with given index in the BTreeMap.
     fn find_first(&self, start: u32) -> Option<(u32, u32)> {
-        for (key, _) in self.iter() {
-            if key.0 == start {
-                return Some(key.clone());
-            }
-        }
-        None
+        self.iter()
+            .find(|(key, _)| key.0 == start)
+            .map(|result| result.0.clone())
     }
 }
 
