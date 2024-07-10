@@ -34,6 +34,13 @@ trait AddDetectionResult {
 }
 
 impl AddDetectionResult for BTreeMap<(u32, u32), (ClassifiedGeneratedTextStreamResult, usize)> {
+    /// Adds detection results to the aggregator.
+    ///
+    /// # Arguments
+    /// * `start` - The starting index of the detection results.
+    /// * `end` - The ending index of the detection results.
+    /// * `new_detection_results` - The new detection results to add.
+    /// * `classified_stream_result` - The classified stream result associated with these detection results.
     fn add_detection_result(
         &mut self,
         start: u32,
@@ -71,6 +78,7 @@ impl AddDetectionResult for BTreeMap<(u32, u32), (ClassifiedGeneratedTextStreamR
         }
     }
 
+    /// Finds the first available span in the BTreeMap.
     fn find_first(&self, start: u32) -> Option<(u32, u32)> {
         for (key, _) in self.iter() {
             if key.0 == start {
