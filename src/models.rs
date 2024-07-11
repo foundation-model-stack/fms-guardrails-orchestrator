@@ -57,8 +57,6 @@ pub enum ValidationError {
     Required(String),
     #[error("{0}")]
     Invalid(String),
-    #[error("{0} field not present in {1}")]
-    Missing(String, String),
 }
 
 impl GuardrailsHttpRequest {
