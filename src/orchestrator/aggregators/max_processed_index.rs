@@ -17,32 +17,19 @@ use crate::{
 #[derive(Default)]
 pub struct MaxProcessedIndexAggregator {}
 
-trait AddDetectionResult {
-    fn add_detection_result(
-        &mut self,
-        start: u32,
-        end: u32,
-        new_detection_results: Vec<TokenClassificationResult>,
-        classified_stream_result: ClassifiedGeneratedTextStreamResult,
-    );
+type Span = (u32, u32);
+struct DetectionTracker(BTreeMap<Span, (ClassifiedGeneratedTextStreamResult, usize)>);
 
-    fn find_first(&self, start: u32) -> Option<(u32, u32)>;
-}
+impl DetectionTracker {
+    pub fn new() -> Self {
+        Self(BTreeMap::new())
+    }
 
-impl AddDetectionResult for BTreeMap<(u32, u32), (ClassifiedGeneratedTextStreamResult, usize)> {
-    /// Adds detection results to the aggregator.
-    ///
-    /// # Arguments
-    /// * `start` - The starting index of the detection results.
-    /// * `end` - The ending index of the detection results.
-    /// * `new_detection_results` - The new detection results to add.
-    /// * `classified_stream_result` - The classified stream result associated with these detection results.
-    fn add_detection_result(
+    pub fn insert(
         &mut self,
-        start: u32,
-        end: u32,
+        span: Span,
         new_detection_results: Vec<TokenClassificationResult>,
-        classified_stream_result: ClassifiedGeneratedTextStreamResult,
+        generation_result: ClassifiedGeneratedTextStreamResult,
     ) {
         // NOTE: below logic is assuming that 1 detection will only return 1 result for 1 span
         // NOTE: below logic currently is assuming 1 type of chunking for all detectors. We
@@ -53,28 +40,54 @@ impl AddDetectionResult for BTreeMap<(u32, u32), (ClassifiedGeneratedTextStreamR
         // If spans does not exist, insert it with the provided detection results and count of 1
         // if they do exist, then increment number of detector count and insert additional
         // detector in output vector.
-        self.entry((start, end))
+        self.0
+            .entry(span)
             .and_modify(|(old_classified_stream_result, num)| {
                 let mut detection_result = old_classified_stream_result
                     .token_classification_results
                     .output
                     .take()
                     .unwrap_or(Vec::new());
-                detection_result.extend(new_detection_results);
+
+                // Extend the output vector of token classification results with new detections.
+                detection_result.extend(new_detection_results.clone());
+
                 old_classified_stream_result
                     .token_classification_results
                     .output = Some(detection_result);
 
                 *num += 1;
             })
-            .or_insert_with(|| (classified_stream_result, 1));
+            .or_insert_with(|| {
+                let mut result = generation_result;
+                // Set the output vector of token classification results to the new detections.
+                result.token_classification_results.output = Some(new_detection_results);
+                (result, 1)
+            });
     }
 
-    /// Finds the first available span starting with given index in the BTreeMap.
-    fn find_first(&self, start: u32) -> Option<(u32, u32)> {
-        self.iter()
-            .find(|(key, _)| key.0 == start)
-            .map(|result| *result.0)
+    pub fn find_by_span_start(
+        &self,
+        start: u32,
+    ) -> Option<&(ClassifiedGeneratedTextStreamResult, usize)> {
+        self.0
+            .iter()
+            .find(|(span, _)| span.0 == start)
+            .map(|(_, value)| value)
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub fn first_key_value(
+        &self,
+    ) -> Option<(&Span, &(ClassifiedGeneratedTextStreamResult, usize))> {
+        self.0.first_key_value()
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
     }
 }
 
@@ -95,10 +108,7 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
             // We use BTreeMap since it is ordered and automatically keeps all the information sorted
             // We map spans with tuple of classifiedGeneratedTextStreamResult and count of detectors already applied
             // Later on we can change this tuple of a struct for better management and cleanliness
-            let mut detection_tracker: BTreeMap<
-                (u32, u32),
-                (ClassifiedGeneratedTextStreamResult, usize),
-            > = std::collections::BTreeMap::new();
+            let mut detection_tracker: DetectionTracker = DetectionTracker::new();
 
             // TODO:
             // - Implement actual aggregation logic, this is just a placeholder
@@ -139,13 +149,13 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
                         ..Default::default()
                     };
 
-                    // TODO: Remove clone from `detections`
-                    detection_tracker.add_detection_result(
+                    let chunk_span: Span = (
                         result.chunk.start_index as u32,
                         result.chunk.processed_index as u32,
-                        detections.clone(),
-                        classification_result,
                     );
+
+                    // TODO: Remove clone from `detections`
+                    detection_tracker.insert(chunk_span, detections.clone(), classification_result);
 
                     if processed_index == 0 && !detection_tracker.is_empty() {
                         // Nothing has been sent. Consider check for chunk starting at 0 in detection_tracker
@@ -165,17 +175,14 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
                         }
                     } else if processed_index > 0 {
                         // We are in the middle of streaming and processed_index is non-zero
-                        let span = detection_tracker.find_first(processed_index);
-                        // Spans may not be found in certain cases, like if we have exhausted the stream.
-                        if span.is_some() {
-                            let span = span.unwrap();
+                        if let Some((classified_result, num_detectors)) =
+                            detection_tracker.find_by_span_start(processed_index)
+                        {
                             // spans found.
-                            let (classified_result, num_detectors) =
-                                detection_tracker.get(&span).unwrap();
                             if *num_detectors == total_detectors {
                                 let _ = result_tx.send(classified_result.clone()).await;
                                 // Make processed_index as the end of the detected span
-                                processed_index = span.1;
+                                processed_index = classified_result.processed_index.unwrap();
                             }
                         }
                     }
