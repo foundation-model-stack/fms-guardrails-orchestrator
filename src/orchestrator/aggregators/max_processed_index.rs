@@ -9,11 +9,8 @@ use tracing::debug;
 
 use super::{DetectionAggregator, DetectorId};
 use crate::{
-    models::{
-        ClassifiedGeneratedTextStreamResult,
-        TokenClassificationResult,
-    },
-    orchestrator::streaming::DetectionResult,
+    models::{ClassifiedGeneratedTextStreamResult, TokenClassificationResult},
+    orchestrator::{streaming::DetectionResult, unary::detect},
 };
 
 /// Aggregates results applying a "max processed index" strategy.
@@ -58,19 +55,26 @@ impl AddDetectionResult for BTreeMap<(u32, u32), (ClassifiedGeneratedTextStreamR
         // detector in output vector.
         self.entry((start, end))
             .and_modify(|(old_classified_stream_result, num)| {
+                let mut detection_result = old_classified_stream_result
+                    .token_classification_results
+                    .output
+                    .take()
+                    .unwrap_or(Vec::new());
+                detection_result.extend(new_detection_results);
                 old_classified_stream_result
                     .token_classification_results
-                    .output = Some(new_detection_results);
+                    .output = Some(detection_result);
+
                 *num += 1;
             })
-            .or_insert_with(|| (classified_stream_result.clone(), 1));
+            .or_insert_with(|| (classified_stream_result, 1));
     }
 
     /// Finds the first available span starting with given index in the BTreeMap.
     fn find_first(&self, start: u32) -> Option<(u32, u32)> {
         self.iter()
             .find(|(key, _)| key.0 == start)
-            .map(|result| result.0.clone())
+            .map(|result| *result.0)
     }
 }
 
@@ -150,7 +154,7 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
                         let (span, (classified_result, num_detectors)) =
                             detection_tracker.first_key_value().unwrap();
                         // Check if all detectors have responded for this detector
-                        if num_detectors.to_owned() == total_detectors {
+                        if *num_detectors == total_detectors {
                             let _ = result_tx.send(classified_result.clone()).await;
                             // Make processed_index as the end of the detected span
                             processed_index = span.1;
@@ -168,7 +172,7 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
                             // spans found.
                             let (classified_result, num_detectors) =
                                 detection_tracker.get(&span).unwrap();
-                            if num_detectors.to_owned() == total_detectors {
+                            if *num_detectors == total_detectors {
                                 let _ = result_tx.send(classified_result.clone()).await;
                                 // Make processed_index as the end of the detected span
                                 processed_index = span.1;
@@ -191,26 +195,16 @@ mod tests {
     };
 
     use super::*;
-    use std::{
-        collections::HashMap,
-        pin::Pin,
-        sync::{Arc, RwLock},
-    };
-    use tokio::sync::{
-        broadcast,
-        mpsc::{Receiver, Sender},
-    };
+    use std::sync::{Arc, RwLock};
 
     async fn get_dummy_streaming_generation(
     ) -> Arc<RwLock<Vec<ClassifiedGeneratedTextStreamResult>>> {
-        let dummy_result = Arc::new(RwLock::new(Vec::new()));
+        let mut dummy_result = Arc::new(RwLock::new(Vec::new()));
 
         dummy_result
             .write()
             .unwrap()
-            .push(ClassifiedGeneratedTextStreamResult::default());
-
-        return dummy_result;
+            .push(ClassifiedGeneratedTextStreamResult::default())
     }
 
     async fn get_dummy_detection_stream(
@@ -218,7 +212,7 @@ mod tests {
         detector_tx: mpsc::Sender<DetectionResult>,
         chunks: Vec<TokenizationStreamResult>,
     ) -> Vec<(DetectorId, mpsc::Receiver<DetectionResult>)> {
-        let mut detection_streams = Vec::with_capacity(detector_len);
+        let detection_streams = Vec::with_capacity(detector_len);
 
         // Note: below is detection / chunks on batch of size 1 with 1 sentence
         for chunk in chunks {
@@ -238,12 +232,12 @@ mod tests {
             let _ = detector_tx.send(detection_result).await;
         }
 
-        return detection_streams;
+        detection_streams
     }
 
     #[tokio::test]
     async fn test_aggregation_single_input() {
-        let (detector_tx, detector_rx) = mpsc::channel(1024);
+        let (detector_tx, _) = mpsc::channel(1024);
         // Create chunks
         let mut chunks: Vec<TokenizationStreamResult> = [].into();
 
