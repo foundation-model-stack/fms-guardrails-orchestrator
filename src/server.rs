@@ -279,18 +279,20 @@ async fn stream_classification_with_gen(
     let request_id = Uuid::new_v4();
     request.validate()?;
     let task = StreamingClassificationWithGenTask::new(request_id, request);
-    match state
+    let response_stream = state
         .orchestrator
         .handle_streaming_classification_with_gen(task)
-        .await
-    {
-        Ok(response_stream) => {
-            let map = response_stream.map(|response| Event::default().json_data(response));
-            let sse = Sse::new(map).keep_alive(KeepAlive::default());
-            Ok(sse.into_response())
+        .await;
+    // Convert response stream to a stream of SSE events
+    let event_stream = response_stream.map(|message| match message {
+        Ok(response) => Event::default().json_data(response),
+        Err(error) => {
+            let error: Error = error.into();
+            Event::default().event("error").json_data(error.to_json())
         }
-        Err(error) => Err(error.into()),
-    }
+    });
+    let sse = Sse::new(event_stream).keep_alive(KeepAlive::default());
+    Ok(sse.into_response())
 }
 
 /// Shutdown signal handler
@@ -381,6 +383,21 @@ impl From<orchestrator::Error> for Error {
             },
             _ => Self::Unexpected,
         }
+    }
+}
+
+impl Error {
+    pub fn to_json(self) -> serde_json::Value {
+        use Error::*;
+        let (code, message) = match self {
+            Validation(_) => (StatusCode::UNPROCESSABLE_ENTITY, self.to_string()),
+            NotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
+            Unexpected => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
+        };
+        serde_json::json!({
+            "code": code.as_u16(),
+            "details": message,
+        })
     }
 }
 

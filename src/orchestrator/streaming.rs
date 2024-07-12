@@ -24,7 +24,7 @@ use std::{
 use futures::{future::join_all, Stream, StreamExt};
 use tokio::sync::{broadcast, mpsc};
 use tokio_stream::wrappers::{BroadcastStream, ReceiverStream};
-use tracing::{debug, info};
+use tracing::{debug, error, info};
 
 use super::{get_chunker_ids, Context, Error, Orchestrator, StreamingClassificationWithGenTask};
 use crate::{
@@ -46,7 +46,7 @@ impl Orchestrator {
     pub async fn handle_streaming_classification_with_gen(
         &self,
         task: StreamingClassificationWithGenTask,
-    ) -> Result<ReceiverStream<ClassifiedGeneratedTextStreamResult>, Error> {
+    ) -> ReceiverStream<Result<ClassifiedGeneratedTextStreamResult, Error>> {
         info!(
             request_id = ?task.request_id,
             model_id = %task.model_id,
@@ -54,84 +54,121 @@ impl Orchestrator {
             "handling streaming task"
         );
 
-        // TODO:
-        // - Improve error handling for streaming
-        // - Figure out good approach to share generation messages with detection processors (using shared vec for now)
-
         let ctx = self.ctx.clone();
         let model_id = task.model_id;
         let params = task.text_gen_parameters;
         let input_text = task.inputs;
 
         // Create response channel
-        let (response_tx, response_rx) = mpsc::channel(1024);
+        #[allow(clippy::type_complexity)]
+        let (response_tx, response_rx): (
+            mpsc::Sender<Result<ClassifiedGeneratedTextStreamResult, Error>>,
+            mpsc::Receiver<Result<ClassifiedGeneratedTextStreamResult, Error>>,
+        ) = mpsc::channel(1024);
 
-        // Do input detections (unary)
-        let masks = task.guardrails_config.input_masks();
-        let input_detectors = task.guardrails_config.input_detectors();
-        let input_detections = match input_detectors {
-            Some(detectors) if !detectors.is_empty() => {
-                input_detection_task(&ctx, detectors, input_text.clone(), masks).await?
-            }
-            _ => None,
-        };
-        debug!(?input_detections);
-        if input_detections.is_some() {
-            // Detected HAP/PII
-            // Do tokenization to get input_token_count
-            let (input_token_count, _tokens) =
-                tokenize(&ctx, model_id.clone(), input_text.clone()).await?;
-            // Send result with input detections
-            let _ = response_tx
-                .send(ClassifiedGeneratedTextStreamResult {
-                    input_token_count,
-                    token_classification_results: TextGenTokenClassificationResults {
-                        input: input_detections,
-                        output: None,
-                    },
-                    warnings: Some(vec![InputWarning {
-                        id: Some(InputWarningReason::UnsuitableInput),
-                        message: Some(UNSUITABLE_INPUT_MESSAGE.to_string()),
-                    }]),
-                    ..Default::default()
-                })
-                .await;
-        } else {
-            // No HAP/PII detected
-            // Do text generation (streaming)
-            let mut generation_stream =
-                generate_stream(&ctx, model_id.clone(), input_text.clone(), params.clone()).await?;
-
-            // Do output detections (streaming)
-            let output_detectors = task.guardrails_config.output_detectors();
-            match output_detectors {
+        tokio::spawn(async move {
+            // Do input detections (unary)
+            let masks = task.guardrails_config.input_masks();
+            let input_detectors = task.guardrails_config.input_detectors();
+            let input_detections = match input_detectors {
                 Some(detectors) if !detectors.is_empty() => {
-                    let aggregator = MaxProcessedIndexAggregator::default();
-                    let mut result_rx = streaming_output_detection_task(
-                        &ctx,
-                        detectors,
-                        aggregator,
-                        generation_stream,
-                    )
-                    .await?;
-                    // Forward generation results with detections to response channel
-                    tokio::spawn(async move {
-                        while let Some(generation_with_detections) = result_rx.recv().await {
-                            let _ = response_tx.send(generation_with_detections).await;
+                    match input_detection_task(&ctx, detectors, input_text.clone(), masks).await {
+                        Ok(result) => result,
+                        Err(error) => {
+                            error!(request_id = ?task.request_id, %error, "streaming task failed");
+                            let _ = response_tx.send(Err(error)).await;
+                            return;
                         }
-                    });
+                    }
                 }
-                _ => {
-                    // No output detectors, forward generation results to response channel
-                    tokio::spawn(async move {
-                        while let Some(generation) = generation_stream.next().await {
-                            let _ = response_tx.send(generation).await;
+                _ => None,
+            };
+            debug!(?input_detections);
+            if input_detections.is_some() {
+                // Detected HAP/PII
+                // Do tokenization to get input_token_count
+                let (input_token_count, _tokens) =
+                    match tokenize(&ctx, model_id.clone(), input_text.clone()).await {
+                        Ok(result) => result,
+                        Err(error) => {
+                            error!(request_id = ?task.request_id, %error, "streaming task failed");
+                            let _ = response_tx.send(Err(error)).await;
+                            return;
                         }
-                    });
+                    };
+                // Send result with input detections
+                let _ = response_tx
+                    .send(Ok(ClassifiedGeneratedTextStreamResult {
+                        input_token_count,
+                        token_classification_results: TextGenTokenClassificationResults {
+                            input: input_detections,
+                            output: None,
+                        },
+                        warnings: Some(vec![InputWarning {
+                            id: Some(InputWarningReason::UnsuitableInput),
+                            message: Some(UNSUITABLE_INPUT_MESSAGE.to_string()),
+                        }]),
+                        ..Default::default()
+                    }))
+                    .await;
+            } else {
+                // No HAP/PII detected
+                // Do text generation (streaming)
+                let mut generation_stream = match generate_stream(
+                    &ctx,
+                    model_id.clone(),
+                    input_text.clone(),
+                    params.clone(),
+                )
+                .await
+                {
+                    Ok(generation_stream) => generation_stream,
+                    Err(error) => {
+                        error!(request_id = ?task.request_id, %error, "streaming task failed");
+                        let _ = response_tx.send(Err(error)).await;
+                        return;
+                    }
+                };
+
+                // Do output detections (streaming)
+                let output_detectors = task.guardrails_config.output_detectors();
+                match output_detectors {
+                    Some(detectors) if !detectors.is_empty() => {
+                        let aggregator = MaxProcessedIndexAggregator::default();
+                        let mut result_rx = match streaming_output_detection_task(
+                            &ctx,
+                            detectors,
+                            aggregator,
+                            generation_stream,
+                        )
+                        .await
+                        {
+                            Ok(result_rx) => result_rx,
+                            Err(error) => {
+                                error!(request_id = ?task.request_id, %error, "streaming task failed");
+                                let _ = response_tx.send(Err(error)).await;
+                                return;
+                            }
+                        };
+                        // Forward generation results with detections to response channel
+                        tokio::spawn(async move {
+                            while let Some(generation_with_detections) = result_rx.recv().await {
+                                let _ = response_tx.send(Ok(generation_with_detections)).await;
+                            }
+                        });
+                    }
+                    _ => {
+                        // No output detectors, forward generation results to response channel
+                        tokio::spawn(async move {
+                            while let Some(generation) = generation_stream.next().await {
+                                let _ = response_tx.send(Ok(generation)).await;
+                            }
+                        });
+                    }
                 }
             }
-        }
-        Ok(ReceiverStream::new(response_rx))
+        });
+        ReceiverStream::new(response_rx)
     }
 }
 
