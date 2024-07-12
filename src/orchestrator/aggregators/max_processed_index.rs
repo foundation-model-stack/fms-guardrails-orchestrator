@@ -10,7 +10,7 @@ use tracing::debug;
 use super::{DetectionAggregator, DetectorId};
 use crate::{
     models::{ClassifiedGeneratedTextStreamResult, TokenClassificationResult},
-    orchestrator::{streaming::DetectionResult, unary::detect},
+    orchestrator::streaming::DetectionResult,
 };
 
 /// Aggregates results applying a "max processed index" strategy.
@@ -84,10 +84,6 @@ impl DetectionTracker {
         &self,
     ) -> Option<(&Span, &(ClassifiedGeneratedTextStreamResult, usize))> {
         self.0.first_key_value()
-    }
-
-    pub fn len(&self) -> usize {
-        self.0.len()
     }
 }
 
@@ -206,45 +202,36 @@ mod tests {
 
     async fn get_dummy_streaming_generation(
     ) -> Arc<RwLock<Vec<ClassifiedGeneratedTextStreamResult>>> {
-        let mut dummy_result = Arc::new(RwLock::new(Vec::new()));
+        let dummy_result = Arc::new(RwLock::new(Vec::new()));
 
         dummy_result
             .write()
             .unwrap()
-            .push(ClassifiedGeneratedTextStreamResult::default())
+            .push(ClassifiedGeneratedTextStreamResult::default());
+        dummy_result
     }
 
-    async fn get_dummy_detection_stream(
-        detector_len: usize,
-        detector_tx: mpsc::Sender<DetectionResult>,
-        chunks: Vec<TokenizationStreamResult>,
-    ) -> Vec<(DetectorId, mpsc::Receiver<DetectionResult>)> {
-        let detection_streams = Vec::with_capacity(detector_len);
-
-        // Note: below is detection / chunks on batch of size 1 with 1 sentence
-        for chunk in chunks {
-            let detector_response: Vec<Vec<ContentAnalysisResponse>> =
-                [[ContentAnalysisResponse {
-                    start: 0,
-                    end: 24,
-                    text: "This is a dummy sentence".to_string(),
-                    detection: "has_HAP".to_string(),
-                    detection_type: "HAP".to_string(),
-                    score: 0.99,
-                    evidences: None,
-                }]
-                .to_vec()]
-                .to_vec();
-            let detection_result = DetectionResult::new(chunk, detector_response);
-            let _ = detector_tx.send(detection_result).await;
-        }
-
-        detection_streams
+    fn get_detection_obj(
+        span: Span,
+        text: &String,
+        detection: &str,
+        detection_type: &str,
+    ) -> Vec<ContentAnalysisResponse> {
+        [ContentAnalysisResponse {
+            start: span.0 as usize,
+            end: span.1 as usize,
+            text: text.to_string(),
+            detection: detection.to_string(),
+            detection_type: detection_type.to_string(),
+            score: 0.99,
+            evidences: None,
+        }]
+        .to_vec()
     }
 
     #[tokio::test]
-    async fn test_aggregation_single_input() {
-        let (detector_tx, _) = mpsc::channel(1024);
+    /// Test to check the aggregation of streaming generation results with multiple detectors on a single chunk.
+    async fn test_aggregation_single_chunk_multi_detection() {
         // Create chunks
         let mut chunks: Vec<TokenizationStreamResult> = [].into();
 
@@ -260,10 +247,49 @@ mod tests {
             start_index: 0,
         });
 
-        let detection_stream = get_dummy_detection_stream(1, detector_tx, chunks).await;
+        let detector_count = 2;
+        let mut detection_streams = Vec::with_capacity(detector_count);
+
+        // Note: below is detection / chunks on batch of size 1 with 1 sentence
+        for chunk in &chunks {
+            let chunk_token = chunk.results[0].clone();
+            let text = &chunk_token.text;
+            let span = (chunk_token.start as u32, chunk_token.end as u32);
+            // Add multiple detections to same chunk
+
+            let (detector_tx1, detector_rx1) = mpsc::channel(1024);
+            let detector_response = get_detection_obj(span, text, "has_HAP", "HAP");
+            let detector_id = String::from("hap-1");
+            let detection_result =
+                DetectionResult::new(chunk.clone(), [detector_response].to_vec());
+            let _ = detector_tx1.send(detection_result).await;
+            detection_streams.push((detector_id, detector_rx1));
+
+            let (detector_tx2, detector_rx2) = mpsc::channel(1024);
+            let detector_response = get_detection_obj(span, text, "email_ID", "PII");
+            let detector_id = String::from("pii-1");
+            let detection_result =
+                DetectionResult::new(chunk.clone(), [detector_response].to_vec());
+            let _ = detector_tx2.send(detection_result).await;
+            detection_streams.push((detector_id, detector_rx2));
+        }
+
         let generations = get_dummy_streaming_generation().await;
         let aggregator = MaxProcessedIndexAggregator::default();
 
-        let result = aggregator.process(generations, detection_stream).await;
+        let mut result_rx = aggregator.process(generations, detection_streams).await;
+
+        let mut chunk_count = 0;
+        while let Some(classified_gen_stream_result) = result_rx.recv().await {
+            let detection = classified_gen_stream_result
+                .token_classification_results
+                .output
+                .unwrap_or(Vec::new());
+            assert_eq!(detection.len(), detector_count);
+            assert_eq!(detection[0].entity_group, "HAP");
+            assert_eq!(detection[1].entity_group, "PII");
+            chunk_count += 1;
+        }
+        assert_eq!(chunk_count, chunks.len());
     }
 }
