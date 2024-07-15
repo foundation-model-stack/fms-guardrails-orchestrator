@@ -100,11 +100,11 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
 
             let mut processed_index = 0;
 
-            let total_detectors: usize = detection_streams.len();
+            let total_detectors = detection_streams.len();
             // We use BTreeMap since it is ordered and automatically keeps all the information sorted
             // We map spans with tuple of classifiedGeneratedTextStreamResult and count of detectors already applied
             // Later on we can change this tuple of a struct for better management and cleanliness
-            let mut detection_tracker: DetectionTracker = DetectionTracker::new();
+            let mut detection_tracker = DetectionTracker::new();
 
             // TODO:
             // - Implement actual aggregation logic, this is just a placeholder
@@ -113,19 +113,20 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
             // - TBD
 
             for (detector_id, mut stream) in detection_streams {
-                while let Some(result) = stream.recv().await {
+                while let Some(message) = stream.recv().await {
+                    debug!(%detector_id, ?message, "[detection_processor_task] received detection message");
                     // NOTE: We expect the detector to respond with an answer, even if it is [] in case of no detections. example PII
-
-                    debug!(%detector_id, ?result, "[detection_processor_task] received detection result");
+                    let chunk = message.chunk;
+                    let detections = message.detections;
                     let generated_text: String =
-                        result.chunk.results.into_iter().map(|t| t.text).collect();
+                        chunk.results.into_iter().map(|t| t.text).collect();
                     let detections: Vec<TokenClassificationResult> = result
                         .detections
                         .into_iter()
                         .flat_map(|r| {
                             r.into_iter().map(|mut detection| {
-                                detection.start += result.chunk.start_index as usize;
-                                detection.end += result.chunk.start_index as usize;
+                                detection.start += chunk.start_index as usize;
+                                detection.end += chunk.start_index as usize;
                                 detection.into()
                             })
                         })
@@ -133,31 +134,30 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
 
                     let input_token_count = generations.read().unwrap()[0].input_token_count;
 
-                    let classification_result = ClassifiedGeneratedTextStreamResult {
+                    let result = ClassifiedGeneratedTextStreamResult {
                         generated_text: Some(generated_text.clone()),
                         // TODO: Populate following generation stream fields
                         // finish_reason,
                         input_token_count,
                         // generated_token_count,
                         // seed,
-                        start_index: result.chunk.start_index as u32,
-                        processed_index: Some(result.chunk.processed_index as u32),
+                        start_index: chunk.start_index as u32,
+                        processed_index: Some(chunk.processed_index as u32),
                         ..Default::default()
                     };
 
-                    let chunk_span: Span = (
-                        result.chunk.start_index as u32,
-                        result.chunk.processed_index as u32,
+                    let span: Span = (
+                        chunk.start_index as u32,
+                        chunk.processed_index as u32,
                     );
 
-                    // TODO: Remove clone from `detections`
-                    detection_tracker.insert(chunk_span, detections.clone(), classification_result);
+                    detection_tracker.insert(span, detections, result);
 
                     if processed_index == 0 && !detection_tracker.is_empty() {
                         // Nothing has been sent. Consider check for chunk starting at 0 in detection_tracker
                         // Since BTreeMap are sorted, we can rely on 1st element in detection_tracker to be the 1st one we
                         // want to send
-                        let (span, (classified_result, num_detectors)) =
+                        let (span, (result, num_detectors)) =
                             detection_tracker.first_key_value().unwrap();
                         // Check if all detectors have responded for this detector
                         if *num_detectors == total_detectors {
@@ -171,12 +171,12 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
                         }
                     } else if processed_index > 0 {
                         // We are in the middle of streaming and processed_index is non-zero
-                        if let Some((classified_result, num_detectors)) =
+                        if let Some((result, num_detectors)) =
                             detection_tracker.find_by_span_start(processed_index)
                         {
                             // spans found.
                             if *num_detectors == total_detectors {
-                                let _ = result_tx.send(classified_result.clone()).await;
+                                let _ = result_tx.send(result.clone()).await;
                                 // Make processed_index as the end of the detected span
                                 processed_index = classified_result.processed_index.unwrap();
                             }
