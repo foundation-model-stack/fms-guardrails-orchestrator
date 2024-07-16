@@ -16,11 +16,12 @@
 */
 
 use std::{
-    collections::HashMap, fs::File, io::BufReader, net::SocketAddr, path::PathBuf, sync::Arc,
+    collections::HashMap, error::Error as _, fs::File, io::BufReader, net::SocketAddr,
+    path::PathBuf, sync::Arc,
 };
 
 use axum::{
-    extract::{Request, State},
+    extract::{rejection::JsonRejection, Request, State},
     http::StatusCode,
     response::{
         sse::{Event, KeepAlive, Sse},
@@ -29,6 +30,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
+use axum_extra::extract::WithRejection;
 use futures::StreamExt;
 use hyper::body::Incoming;
 use hyper_util::rt::{TokioExecutor, TokioIo};
@@ -255,7 +257,7 @@ async fn health() -> Result<impl IntoResponse, ()> {
 
 async fn classification_with_gen(
     State(state): State<Arc<ServerState>>,
-    Json(request): Json<models::GuardrailsHttpRequest>,
+    WithRejection(Json(request), _): WithRejection<Json<models::GuardrailsHttpRequest>, Error>,
 ) -> Result<impl IntoResponse, Error> {
     let request_id = Uuid::new_v4();
     request.validate()?;
@@ -272,7 +274,7 @@ async fn classification_with_gen(
 
 async fn stream_classification_with_gen(
     State(state): State<Arc<ServerState>>,
-    Json(request): Json<models::GuardrailsHttpRequest>,
+    WithRejection(Json(request), _): WithRejection<Json<models::GuardrailsHttpRequest>, Error>,
 ) -> Result<impl IntoResponse, Error> {
     let request_id = Uuid::new_v4();
     request.validate()?;
@@ -358,6 +360,8 @@ pub enum Error {
     NotFound(String),
     #[error("unexpected error occured while processing request")]
     Unexpected,
+    #[error(transparent)]
+    JsonExtractorRejection(#[from] JsonRejection),
 }
 
 impl From<orchestrator::Error> for Error {
@@ -387,6 +391,14 @@ impl IntoResponse for Error {
             Validation(_) => (StatusCode::UNPROCESSABLE_ENTITY, self.to_string()),
             NotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
             Unexpected => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
+            JsonExtractorRejection(json_rejection) => match json_rejection {
+                JsonRejection::JsonDataError(e) => {
+                    // Get lower-level serde error message
+                    let message = e.source().map(|e| e.to_string()).unwrap_or_default();
+                    (e.status(), message)
+                }
+                _ => (json_rejection.status(), json_rejection.body_text()),
+            },
         };
         let error = serde_json::json!({
             "code": code.as_u16(),
