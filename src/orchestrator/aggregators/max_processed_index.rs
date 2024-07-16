@@ -1,5 +1,5 @@
 use std::{
-    collections::BTreeMap,
+    collections::{btree_map, BTreeMap},
     sync::{Arc, RwLock},
 };
 
@@ -28,42 +28,39 @@ impl DetectionTracker {
     pub fn insert(
         &mut self,
         span: Span,
-        new_detection_results: Vec<TokenClassificationResult>,
-        generation_result: ClassifiedGeneratedTextStreamResult,
+        detections: Vec<TokenClassificationResult>,
+        mut result: ClassifiedGeneratedTextStreamResult,
     ) {
-        // NOTE: below logic is assuming that 1 detection will only return 1 result for 1 span
-        // NOTE: below logic currently is assuming 1 type of chunking for all detectors. We
-        // need to expand this to have the possibility that spans can overlap, in which case
-        // we would change the spans stored in the tree.
+        // NOTES:
+        // 1. Assumes 1 detection will return 1 result for 1 span
+        // 2. Assumes same chunker type is used by all detectors
+        // 3. Needs to be expanded to support overlapping spans
 
-        // Check if index exist in the BTreeMap
-        // If spans does not exist, insert it with the provided detection results and count of 1
-        // if they do exist, then increment number of detector count and insert additional
-        // detector in output vector.
-        self.0
-            .entry(span)
-            .and_modify(|(old_classified_stream_result, num)| {
-                let mut detection_result = old_classified_stream_result
-                    .token_classification_results
-                    .output
-                    .take()
-                    .unwrap_or(Vec::new());
+        // Insert new or update existing entry
+        let entry = self.0.entry(span);
+        match entry {
+            btree_map::Entry::Vacant(e) => {
+                // Add detections to result
+                result.token_classification_results.output = Some(detections);
 
-                // Extend the output vector of token classification results with new detections.
-                detection_result.extend(new_detection_results.clone());
+                // Insert result, set detector count to 1
+                e.insert((result, 1));
+            }
+            btree_map::Entry::Occupied(mut e) => {
+                // Get existing result
+                let (result, num_detectors) = e.get_mut();
 
-                old_classified_stream_result
-                    .token_classification_results
-                    .output = Some(detection_result);
+                // Add detections to existing result
+                if let Some(existing_detections) =
+                    result.token_classification_results.output.as_mut()
+                {
+                    existing_detections.extend(detections);
+                }
 
-                *num += 1;
-            })
-            .or_insert_with(|| {
-                let mut result = generation_result;
-                // Set the output vector of token classification results to the new detections.
-                result.token_classification_results.output = Some(new_detection_results);
-                (result, 1)
-            });
+                // Increment detector count
+                *num_detectors += 1;
+            }
+        }
     }
 
     pub fn find_by_span_start(
@@ -120,8 +117,7 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
                     let detections = message.detections;
                     let generated_text: String =
                         chunk.results.into_iter().map(|t| t.text).collect();
-                    let detections: Vec<TokenClassificationResult> = result
-                        .detections
+                    let detections: Vec<TokenClassificationResult> = detections
                         .into_iter()
                         .flat_map(|r| {
                             r.into_iter().map(|mut detection| {
@@ -146,10 +142,7 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
                         ..Default::default()
                     };
 
-                    let span: Span = (
-                        chunk.start_index as u32,
-                        chunk.processed_index as u32,
-                    );
+                    let span: Span = (chunk.start_index as u32, chunk.processed_index as u32);
 
                     detection_tracker.insert(span, detections, result);
 
@@ -161,7 +154,7 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
                             detection_tracker.first_key_value().unwrap();
                         // Check if all detectors have responded for this detector
                         if *num_detectors == total_detectors {
-                            let _ = result_tx.send(classified_result.clone()).await;
+                            let _ = result_tx.send(result.clone()).await;
                             // Make processed_index as the end of the detected span
                             processed_index = span.1;
                             // TODO: At this point we can remove the 1st element from the detection_tracker
@@ -178,7 +171,7 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
                             if *num_detectors == total_detectors {
                                 let _ = result_tx.send(result.clone()).await;
                                 // Make processed_index as the end of the detected span
-                                processed_index = classified_result.processed_index.unwrap();
+                                processed_index = result.processed_index.unwrap();
                             }
                         }
                     }
