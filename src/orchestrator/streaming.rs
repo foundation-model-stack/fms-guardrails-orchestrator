@@ -38,7 +38,7 @@ use crate::{
         unary::{input_detection_task, tokenize},
         UNSUITABLE_INPUT_MESSAGE,
     },
-    pb::{caikit::runtime::chunkers, caikit_data_model::nlp::TokenizationStreamResult},
+    pb::caikit::runtime::chunkers,
 };
 
 impl Orchestrator {
@@ -232,7 +232,7 @@ async fn streaming_detection_task(
     ctx: Arc<Context>,
     detector_id: String,
     detector_tx: mpsc::Sender<DetectionResult>,
-    mut chunk_rx: broadcast::Receiver<TokenizationStreamResult>,
+    mut chunk_rx: broadcast::Receiver<chunkers::ChunkerTokenizationStreamResult>,
 ) {
     // Process chunks
     while let Ok(chunk) = chunk_rx.recv().await {
@@ -285,21 +285,27 @@ async fn chunk_broadcast_stream(
     generation_rx: broadcast::Receiver<ClassifiedGeneratedTextStreamResult>,
 ) -> Result<
     (
-        broadcast::Sender<TokenizationStreamResult>,
-        broadcast::Receiver<TokenizationStreamResult>,
+        broadcast::Sender<chunkers::ChunkerTokenizationStreamResult>,
+        broadcast::Receiver<chunkers::ChunkerTokenizationStreamResult>,
     ),
     Error,
 > {
     // Consume generation stream and convert to chunker input stream
     debug!(%chunker_id, "creating chunker input stream");
+    // NOTE: Text gen providers can return more than 1 token in single stream object. This can create
+    // edge cases where the enumeration generated below may not line up with token / response boundaries.
+    // So the more accurate way here might be to use `Tokens` object from response, but since that is an
+    // optional response parameter, we are avoiding that for now.
     let input_stream = BroadcastStream::new(generation_rx)
-        .map(|generation_result| {
+        .enumerate()
+        .map(|(token_pointer, generation_result)| {
             let generated_text = generation_result
                 .unwrap()
                 .generated_text
                 .unwrap_or_default();
-            chunkers::BidiStreamingTokenizationTaskRequest {
+            chunkers::BidiStreamingChunkGenerationTaskRequest {
                 text_stream: generated_text,
+                token_index_stream: token_pointer as i64
             }
         })
         .boxed();
@@ -330,13 +336,13 @@ async fn chunk_broadcast_stream(
 
 #[derive(Debug, Clone)]
 pub struct DetectionResult {
-    pub chunk: TokenizationStreamResult,
+    pub chunk: chunkers::ChunkerTokenizationStreamResult,
     pub detections: Vec<Vec<ContentAnalysisResponse>>,
 }
 
 impl DetectionResult {
     pub fn new(
-        chunk: TokenizationStreamResult,
+        chunk: chunkers::ChunkerTokenizationStreamResult,
         detections: Vec<Vec<ContentAnalysisResponse>>,
     ) -> Self {
         Self { chunk, detections }

@@ -128,23 +128,31 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
                         })
                         .collect();
 
-                    let input_token_count = generations.read().unwrap()[0].input_token_count;
+                    // let input_token_count = generations.read().unwrap()[0].input_token_count;
+                    
+                    let token_index = chunk.token_index as usize;
+                    println!("token index: {:?}", token_index);
+                    let mut result = generations.read().unwrap().get(token_index).unwrap().clone();
+                    result.generated_text = Some(generated_text.clone());
+                    // result.input_token_count = input_token_count;
+                    // println!("chunk result: {:?}", result);
 
-                    let result = ClassifiedGeneratedTextStreamResult {
-                        generated_text: Some(generated_text.clone()),
-                        // TODO: Populate following generation stream fields
-                        // finish_reason,
-                        input_token_count,
-                        // generated_token_count,
-                        // seed,
-                        start_index: chunk.start_index as u32,
-                        processed_index: Some(chunk.processed_index as u32),
-                        ..Default::default()
-                    };
+                    // let result = ClassifiedGeneratedTextStreamResult {
+                    //     generated_text: Some(generated_text.clone()),
+                    //     // TODO: Populate following generation stream fields
+                    //     // finish_reason,
+                    //     input_token_count,
+                    //     // generated_token_count,
+                    //     // seed,
+                    //     start_index: chunk.start_index as u32,
+                    //     processed_index: Some(chunk.processed_index as u32),
+                    //     ..Default::default()
+                    // };
 
                     let span: Span = (chunk.start_index as u32, chunk.processed_index as u32);
 
                     detection_tracker.insert(span, detections, result);
+                   
 
                     if processed_index == 0 && !detection_tracker.is_empty() {
                         // Nothing has been sent. Consider check for chunk starting at 0 in detection_tracker
@@ -167,6 +175,7 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
                         if let Some((result, num_detectors)) =
                             detection_tracker.find_by_span_start(processed_index)
                         {
+                            println!("detection: {:?}", result);
                             // spans found.
                             if *num_detectors == total_detectors {
                                 let _ = result_tx.send(result.clone()).await;
@@ -176,6 +185,10 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
                         }
                     }
                 }
+                // for (key, value) in detection_tracker.0.iter() {
+                //         println!("key: {:?}", key);
+                //         println!("value: {:?}", value);
+                //     }
             }
         });
         result_rx
@@ -187,7 +200,8 @@ mod tests {
 
     use crate::{
         clients::detector::ContentAnalysisResponse,
-        pb::caikit_data_model::nlp::{Token, TokenizationStreamResult},
+        pb::caikit_data_model::nlp::Token,
+        pb::caikit::runtime::chunkers,
     };
 
     use super::*;
@@ -226,9 +240,9 @@ mod tests {
     /// Test to check the aggregation of streaming generation results with multiple detectors on a single chunk.
     async fn test_aggregation_single_chunk_multi_detection() {
         // Create chunks
-        let mut chunks: Vec<TokenizationStreamResult> = [].into();
+        let mut chunks: Vec<chunkers::ChunkerTokenizationStreamResult> = [].into();
 
-        chunks.push(TokenizationStreamResult {
+        chunks.push(chunkers::ChunkerTokenizationStreamResult {
             results: [Token {
                 start: 0,
                 end: 24,
@@ -238,6 +252,7 @@ mod tests {
             token_count: 5,
             processed_index: 4,
             start_index: 0,
+            token_index: 0
         });
 
         let detector_count = 2;
