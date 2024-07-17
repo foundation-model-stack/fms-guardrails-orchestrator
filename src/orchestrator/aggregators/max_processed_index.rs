@@ -117,19 +117,10 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
                     let detections = message.detections;
                     let generated_text: String =
                         chunk.results.into_iter().map(|t| t.text).collect();
-                    println!("original detection: {:?}", detections);
                     let detections: Vec<TokenClassificationResult> = detections
                         .into_iter()
-                        .flat_map(|r| {
-                            r.into_iter().map(|mut detection| {
-                                // detection.start += chunk.start_index as usize;
-                                // detection.end += chunk.start_index as usize;
-                                detection.into()
-                            })
-                        })
+                        .flat_map(|r| r.into_iter().map(|detection| detection.into()))
                         .collect();
-
-                    println!("detection: {:?}", detections);
 
                     let input_index = chunk.input_index as usize;
 
@@ -150,7 +141,7 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
 
                     let span: Span = (chunk.start_index as u32, chunk.processed_index as u32);
 
-                    detection_tracker.insert(span, detections, result.clone());
+                    detection_tracker.insert(span, detections, result);
 
                     if processed_index == 0 && !detection_tracker.is_empty() {
                         // Nothing has been sent. Consider check for chunk starting at 0 in detection_tracker
