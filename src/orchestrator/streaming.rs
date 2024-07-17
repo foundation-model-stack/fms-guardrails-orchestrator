@@ -305,7 +305,7 @@ async fn chunk_broadcast_stream(
                 .unwrap_or_default();
             chunkers::BidiStreamingChunkGenerationTaskRequest {
                 text_stream: generated_text,
-                token_index_stream: token_pointer as i64
+                input_index_stream: token_pointer as i64,
             }
         })
         .boxed();

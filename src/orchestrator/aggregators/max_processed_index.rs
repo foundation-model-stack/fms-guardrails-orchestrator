@@ -117,42 +117,40 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
                     let detections = message.detections;
                     let generated_text: String =
                         chunk.results.into_iter().map(|t| t.text).collect();
+                    println!("original detection: {:?}", detections);
                     let detections: Vec<TokenClassificationResult> = detections
                         .into_iter()
                         .flat_map(|r| {
                             r.into_iter().map(|mut detection| {
-                                detection.start += chunk.start_index as usize;
-                                detection.end += chunk.start_index as usize;
+                                // detection.start += chunk.start_index as usize;
+                                // detection.end += chunk.start_index as usize;
                                 detection.into()
                             })
                         })
                         .collect();
 
-                    // let input_token_count = generations.read().unwrap()[0].input_token_count;
-                    
-                    let token_index = chunk.token_index as usize;
-                    println!("token index: {:?}", token_index);
-                    let mut result = generations.read().unwrap().get(token_index).unwrap().clone();
-                    result.generated_text = Some(generated_text.clone());
-                    // result.input_token_count = input_token_count;
-                    // println!("chunk result: {:?}", result);
+                    println!("detection: {:?}", detections);
 
-                    // let result = ClassifiedGeneratedTextStreamResult {
-                    //     generated_text: Some(generated_text.clone()),
-                    //     // TODO: Populate following generation stream fields
-                    //     // finish_reason,
-                    //     input_token_count,
-                    //     // generated_token_count,
-                    //     // seed,
-                    //     start_index: chunk.start_index as u32,
-                    //     processed_index: Some(chunk.processed_index as u32),
-                    //     ..Default::default()
-                    // };
+                    let input_index = chunk.input_index as usize;
+
+                    let input_token_count = generations.read().unwrap()[0].input_token_count;
+                    let result = ClassifiedGeneratedTextStreamResult {
+                        generated_text: Some(generated_text.clone()),
+                        start_index: chunk.start_index as u32,
+                        processed_index: Some(chunk.processed_index as u32),
+                        input_token_count,
+                        // Populate all fields from particular generation response
+                        ..generations
+                            .read()
+                            .unwrap()
+                            .get(input_index)
+                            .unwrap()
+                            .clone()
+                    };
 
                     let span: Span = (chunk.start_index as u32, chunk.processed_index as u32);
 
-                    detection_tracker.insert(span, detections, result);
-                   
+                    detection_tracker.insert(span, detections, result.clone());
 
                     if processed_index == 0 && !detection_tracker.is_empty() {
                         // Nothing has been sent. Consider check for chunk starting at 0 in detection_tracker
@@ -175,7 +173,6 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
                         if let Some((result, num_detectors)) =
                             detection_tracker.find_by_span_start(processed_index)
                         {
-                            println!("detection: {:?}", result);
                             // spans found.
                             if *num_detectors == total_detectors {
                                 let _ = result_tx.send(result.clone()).await;
@@ -185,10 +182,6 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
                         }
                     }
                 }
-                // for (key, value) in detection_tracker.0.iter() {
-                //         println!("key: {:?}", key);
-                //         println!("value: {:?}", value);
-                //     }
             }
         });
         result_rx
@@ -199,9 +192,8 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
 mod tests {
 
     use crate::{
-        clients::detector::ContentAnalysisResponse,
+        clients::detector::ContentAnalysisResponse, pb::caikit::runtime::chunkers,
         pb::caikit_data_model::nlp::Token,
-        pb::caikit::runtime::chunkers,
     };
 
     use super::*;
@@ -252,7 +244,7 @@ mod tests {
             token_count: 5,
             processed_index: 4,
             start_index: 0,
-            token_index: 0
+            input_index: 0,
         });
 
         let detector_count = 2;

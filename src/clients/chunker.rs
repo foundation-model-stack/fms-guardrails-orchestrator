@@ -27,8 +27,9 @@ use crate::{
     config::ServiceConfig,
     pb::{
         caikit::runtime::chunkers::{
-            chunkers_service_client::ChunkersServiceClient, BidiStreamingChunkGenerationTaskRequest,
-            ChunkGenerationTaskRequest, ChunkerTokenizationStreamResult
+            chunkers_service_client::ChunkersServiceClient,
+            BidiStreamingChunkGenerationTaskRequest, ChunkGenerationTaskRequest,
+            ChunkerTokenizationStreamResult,
         },
         caikit_data_model::nlp::{Token, TokenizationResults},
     },
@@ -38,7 +39,8 @@ const MODEL_ID_HEADER_NAME: &str = "mm-model-id";
 /// Default chunker that returns span for entire text
 const DEFAULT_MODEL_ID: &str = "whole_doc_chunker";
 
-type StreamingTokenizationResult = Result<Response<Streaming<ChunkerTokenizationStreamResult>>, Status>;
+type StreamingTokenizationResult =
+    Result<Response<Streaming<ChunkerTokenizationStreamResult>>, Status>;
 
 #[cfg_attr(test, derive(Default))]
 #[derive(Clone)]
@@ -132,7 +134,10 @@ fn tokenize_whole_doc(request: ChunkGenerationTaskRequest) -> TokenizationResult
 async fn tokenize_whole_doc_stream(
     request: impl Stream<Item = BidiStreamingChunkGenerationTaskRequest>,
 ) -> ChunkerTokenizationStreamResult {
-    let (text, index_vec): (String, Vec<i64>) = request.map(|r| (r.text_stream, r.token_index_stream)).collect().await;
+    let (text, index_vec): (String, Vec<i64>) = request
+        .map(|r| (r.text_stream, r.input_index_stream))
+        .collect()
+        .await;
     let codepoint_count = text.chars().count() as i64;
     ChunkerTokenizationStreamResult {
         results: vec![Token {
@@ -143,7 +148,7 @@ async fn tokenize_whole_doc_stream(
         token_count: 1, // entire doc/stream
         processed_index: codepoint_count,
         start_index: 0,
-        token_index: *index_vec.last().unwrap_or(&0)
+        input_index: *index_vec.last().unwrap_or(&0),
     }
 }
 
@@ -178,16 +183,20 @@ mod tests {
     async fn test_tokenize_whole_doc_stream() {
         let request = futures::stream::iter(vec![
             BidiStreamingChunkGenerationTaskRequest {
-                text_stream: "Lorem ipsum dolor sit amet ".into(), token_index_stream: 0,
+                text_stream: "Lorem ipsum dolor sit amet ".into(),
+                input_index_stream: 0,
             },
             BidiStreamingChunkGenerationTaskRequest {
-                text_stream: "consectetur adipiscing elit ".into(), token_index_stream: 1,
+                text_stream: "consectetur adipiscing elit ".into(),
+                input_index_stream: 1,
             },
             BidiStreamingChunkGenerationTaskRequest {
-                text_stream: "sed do eiusmod tempor incididunt ".into(), token_index_stream: 2,
+                text_stream: "sed do eiusmod tempor incididunt ".into(),
+                input_index_stream: 2,
             },
             BidiStreamingChunkGenerationTaskRequest {
-                text_stream: "ut labore et dolore magna aliqua.".into(), token_index_stream: 3,
+                text_stream: "ut labore et dolore magna aliqua.".into(),
+                input_index_stream: 3,
             },
         ]);
         let expected_response = ChunkerTokenizationStreamResult {
@@ -201,7 +210,7 @@ mod tests {
             token_count: 1,
             processed_index: 121,
             start_index: 0,
-            token_index: 3
+            input_index: 3,
         };
         let response = tokenize_whole_doc_stream(request).await;
         assert_eq!(response, expected_response);
