@@ -17,7 +17,7 @@
 
 use std::{collections::HashMap, pin::Pin};
 
-use futures::{Stream, StreamExt};
+use futures::{Stream, StreamExt, TryStreamExt};
 use ginepro::LoadBalancedChannel;
 use tonic::Request;
 
@@ -105,14 +105,15 @@ impl NlpClient {
         &self,
         model_id: &str,
         request: ServerStreamingTextGenerationTaskRequest,
-    ) -> Result<Pin<Box<dyn Stream<Item = GeneratedTextStreamResult> + Send>>, Error> {
+    ) -> Result<Pin<Box<dyn Stream<Item = Result<GeneratedTextStreamResult, Error>> + Send>>, Error>
+    {
         let request = request_with_model_id(request, model_id);
         let response_stream = self
             .client(model_id)?
             .server_streaming_text_generation_task_predict(request)
             .await?
             .into_inner()
-            .map(|resp| resp.unwrap())
+            .map_err(Into::into)
             .boxed();
         Ok(response_stream)
     }

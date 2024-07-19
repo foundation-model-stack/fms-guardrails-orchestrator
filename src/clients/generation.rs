@@ -17,7 +17,7 @@
 
 use std::pin::Pin;
 
-use futures::{Stream, StreamExt};
+use futures::{Stream, StreamExt, TryStreamExt};
 use tracing::debug;
 
 use super::{Error, NlpClient, TgisClient};
@@ -159,8 +159,10 @@ impl GenerationClient {
         model_id: String,
         text: String,
         params: Option<GuardrailsTextGenerationParameters>,
-    ) -> Result<Pin<Box<dyn Stream<Item = ClassifiedGeneratedTextStreamResult> + Send>>, Error>
-    {
+    ) -> Result<
+        Pin<Box<dyn Stream<Item = Result<ClassifiedGeneratedTextStreamResult, Error>> + Send>>,
+        Error,
+    > {
         match &self.0 {
             GenerationClientInner::Tgis(client) => {
                 let params = params.map(Into::into);
@@ -174,7 +176,7 @@ impl GenerationClient {
                 let response_stream = client
                     .generate_stream(request)
                     .await?
-                    .map(|resp| resp.into())
+                    .map_ok(Into::into)
                     .boxed();
                 Ok(response_stream)
             }
@@ -213,7 +215,7 @@ impl GenerationClient {
                 let response_stream = client
                     .server_streaming_text_generation_task_predict(&model_id, request)
                     .await?
-                    .map(|resp| resp.into())
+                    .map_ok(Into::into)
                     .boxed();
                 Ok(response_stream)
             }

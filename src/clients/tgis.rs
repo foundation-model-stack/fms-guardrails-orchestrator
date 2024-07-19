@@ -17,7 +17,7 @@
 
 use std::{collections::HashMap, pin::Pin};
 
-use futures::{Stream, StreamExt};
+use futures::{Stream, StreamExt, TryStreamExt};
 use ginepro::LoadBalancedChannel;
 
 use super::{create_grpc_clients, Error};
@@ -70,14 +70,14 @@ impl TgisClient {
     pub async fn generate_stream(
         &self,
         request: SingleGenerationRequest,
-    ) -> Result<Pin<Box<dyn Stream<Item = GenerationResponse> + Send>>, Error> {
+    ) -> Result<Pin<Box<dyn Stream<Item = Result<GenerationResponse, Error>> + Send>>, Error> {
         let model_id = request.model_id.as_str();
         let response_stream = self
             .client(model_id)?
             .generate_stream(request)
             .await?
             .into_inner()
-            .map(|resp| resp.unwrap())
+            .map_err(Into::into)
             .boxed();
         Ok(response_stream)
     }
