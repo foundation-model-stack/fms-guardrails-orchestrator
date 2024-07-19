@@ -393,6 +393,14 @@ impl Error {
             Validation(_) => (StatusCode::UNPROCESSABLE_ENTITY, self.to_string()),
             NotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
             Unexpected => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
+            JsonExtractorRejection(json_rejection) => match json_rejection {
+                JsonRejection::JsonDataError(e) => {
+                    // Get lower-level serde error message
+                    let message = e.source().map(|e| e.to_string()).unwrap_or_default();
+                    (e.status(), message)
+                }
+                _ => (json_rejection.status(), json_rejection.body_text()),
+            },
         };
         serde_json::json!({
             "code": code.as_u16(),
