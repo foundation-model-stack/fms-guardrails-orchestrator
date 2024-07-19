@@ -104,10 +104,7 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
             let mut detection_tracker = DetectionTracker::new();
 
             // TODO:
-            // - Implement actual aggregation logic, this is just a placeholder
-            // - Figure out good approach to get details needed from generation messages (using shared vec for now)
             // - Apply thresholds
-            // - TBD
 
             for (detector_id, mut stream) in detection_streams {
                 while let Some(message) = stream.recv().await {
@@ -125,7 +122,8 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
                     let input_start_index = chunk.input_start_index as usize;
                     let input_end_index = chunk.input_end_index as usize;
 
-                    let input_token_count = generations.read().unwrap()[0].input_token_count;
+                    // Note: input_tokens is not present in 0th response, so we use `1`
+                    let first_response = generations.read().unwrap()[1].clone();
 
                     // Get subset of generation responses relevant for this chunk
                     let generation_responses: Vec<ClassifiedGeneratedTextStreamResult> =
@@ -136,8 +134,7 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
 
                     let tokens = generation_responses
                         .iter()
-                        .map(|result| result.tokens.clone().unwrap_or([].to_vec()))
-                        .flatten()
+                        .flat_map(|result| result.tokens.clone().unwrap_or([].to_vec()))
                         .collect::<Vec<_>>();
 
                     let result: ClassifiedGeneratedTextStreamResult =
@@ -145,8 +142,9 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
                             generated_text: Some(generated_text.clone()),
                             start_index: chunk.start_index as u32,
                             processed_index: Some(chunk.processed_index as u32),
-                            input_token_count,
+                            input_token_count: first_response.input_token_count,
                             tokens: Some(tokens),
+                            input_tokens: first_response.input_tokens.clone(),
                             // Populate all fields from particular generation response
                             ..generation_responses.last().unwrap().to_owned()
                         };
