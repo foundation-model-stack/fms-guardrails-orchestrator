@@ -122,8 +122,12 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
                     let input_start_index = chunk.input_start_index as usize;
                     let input_end_index = chunk.input_end_index as usize;
 
+                    let input_token_count = generations.read().unwrap()[0].input_token_count;
                     // Note: input_tokens is not present in 0th response, so we use `1`
-                    let first_response = generations.read().unwrap()[1].clone();
+                    let input_tokens = match generations.read().unwrap().get(1) {
+                        Some(first_generation) => first_generation.input_tokens.clone(),
+                        None => Some([].to_vec()),
+                    };
 
                     // Get subset of generation responses relevant for this chunk
                     let generation_responses: Vec<ClassifiedGeneratedTextStreamResult> =
@@ -142,11 +146,14 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
                             generated_text: Some(generated_text.clone()),
                             start_index: chunk.start_index as u32,
                             processed_index: Some(chunk.processed_index as u32),
-                            input_token_count: first_response.input_token_count,
+                            input_token_count,
                             tokens: Some(tokens),
-                            input_tokens: first_response.input_tokens.clone(),
+                            input_tokens,
                             // Populate all fields from particular generation response
-                            ..generation_responses.last().unwrap().to_owned()
+                            ..generation_responses
+                                .last()
+                                .unwrap_or(&ClassifiedGeneratedTextStreamResult::default())
+                                .to_owned()
                         };
 
                     let span: Span = (chunk.start_index as u32, chunk.processed_index as u32);
@@ -283,6 +290,7 @@ mod tests {
 
         let mut chunk_count = 0;
         while let Some(classified_gen_stream_result) = result_rx.recv().await {
+            println!("reached here");
             let detection = classified_gen_stream_result
                 .token_classification_results
                 .output

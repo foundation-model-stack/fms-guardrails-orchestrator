@@ -148,7 +148,7 @@ async fn tokenize_whole_doc_stream(
         token_count: 1, // entire doc/stream
         processed_index: codepoint_count,
         start_index: 0,
-        input_start_index: *index_vec.last().unwrap_or(&0),
+        input_start_index: 0,
         input_end_index: *index_vec.last().unwrap_or(&0),
     }
 }
