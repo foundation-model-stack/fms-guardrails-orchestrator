@@ -148,7 +148,8 @@ async fn tokenize_whole_doc_stream(
         token_count: 1, // entire doc/stream
         processed_index: codepoint_count,
         start_index: 0,
-        input_index: *index_vec.last().unwrap_or(&0),
+        input_start_index: *index_vec.last().unwrap_or(&0),
+        input_end_index: *index_vec.last().unwrap_or(&0),
     }
 }
 
@@ -210,7 +211,8 @@ mod tests {
             token_count: 1,
             processed_index: 121,
             start_index: 0,
-            input_index: 3,
+            input_start_index: 0,
+            input_end_index: 3,
         };
         let response = tokenize_whole_doc_stream(request).await;
         assert_eq!(response, expected_response);

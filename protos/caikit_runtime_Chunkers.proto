@@ -30,7 +30,8 @@ message ChunkerTokenizationStreamResult {
   int64 token_count = 4;
   int64 processed_index = 2;
   int64 start_index = 3;
-  int64 input_index = 5;
+  int64 input_start_index = 5;
+  int64 input_end_index = 6;
 }
 
 

@@ -122,22 +122,34 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
                         .flat_map(|r| r.into_iter().map(|detection| detection.into()))
                         .collect();
 
-                    let input_index = chunk.input_index as usize;
+                    let input_start_index = chunk.input_start_index as usize;
+                    let input_end_index = chunk.input_end_index as usize;
 
                     let input_token_count = generations.read().unwrap()[0].input_token_count;
-                    let result = ClassifiedGeneratedTextStreamResult {
-                        generated_text: Some(generated_text.clone()),
-                        start_index: chunk.start_index as u32,
-                        processed_index: Some(chunk.processed_index as u32),
-                        input_token_count,
-                        // Populate all fields from particular generation response
-                        ..generations
-                            .read()
-                            .unwrap()
-                            .get(input_index)
-                            .unwrap()
-                            .clone()
-                    };
+
+                    // Get subset of generation responses relevant for this chunk
+                    let generation_responses: Vec<ClassifiedGeneratedTextStreamResult> =
+                        generations.read().unwrap()[input_start_index..input_end_index]
+                            .iter()
+                            .map(|result| result.to_owned())
+                            .collect::<Vec<_>>();
+
+                    let tokens = generation_responses
+                        .iter()
+                        .map(|result| result.tokens.clone().unwrap_or([].to_vec()))
+                        .flatten()
+                        .collect::<Vec<_>>();
+
+                    let result: ClassifiedGeneratedTextStreamResult =
+                        ClassifiedGeneratedTextStreamResult {
+                            generated_text: Some(generated_text.clone()),
+                            start_index: chunk.start_index as u32,
+                            processed_index: Some(chunk.processed_index as u32),
+                            input_token_count,
+                            tokens: Some(tokens),
+                            // Populate all fields from particular generation response
+                            ..generation_responses.last().unwrap().to_owned()
+                        };
 
                     let span: Span = (chunk.start_index as u32, chunk.processed_index as u32);
 
@@ -235,7 +247,8 @@ mod tests {
             token_count: 5,
             processed_index: 4,
             start_index: 0,
-            input_index: 0,
+            input_start_index: 0,
+            input_end_index: 0,
         });
 
         let detector_count = 2;
