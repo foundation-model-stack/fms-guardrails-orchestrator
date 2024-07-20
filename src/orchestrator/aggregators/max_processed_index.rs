@@ -89,7 +89,7 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
     async fn process(
         &self,
         generations: Arc<RwLock<Vec<ClassifiedGeneratedTextStreamResult>>>,
-        detection_streams: Vec<(DetectorId, mpsc::Receiver<DetectionResult>)>,
+        detection_streams: Vec<(DetectorId, f64, mpsc::Receiver<DetectionResult>)>,
     ) -> mpsc::Receiver<ClassifiedGeneratedTextStreamResult> {
         let (result_tx, result_rx) = mpsc::channel(1024);
         tokio::spawn(async move {
@@ -103,10 +103,7 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
             // Later on we can change this tuple of a struct for better management and cleanliness
             let mut detection_tracker = DetectionTracker::new();
 
-            // TODO:
-            // - Apply thresholds
-
-            for (detector_id, mut stream) in detection_streams {
+            for (detector_id, threshold, mut stream) in detection_streams {
                 while let Some(message) = stream.recv().await {
                     debug!(%detector_id, ?message, "[detection_processor_task] received detection message");
                     // NOTE: We expect the detector to respond with an answer, even if it is [] in case of no detections. example PII
@@ -116,7 +113,12 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
                         chunk.results.into_iter().map(|t| t.text).collect();
                     let detections: Vec<TokenClassificationResult> = detections
                         .into_iter()
-                        .flat_map(|r| r.into_iter().map(|detection| detection.into()))
+                        .flat_map(|r| {
+                            r.into_iter().filter_map(|resp| {
+                                let result: TokenClassificationResult = resp.into();
+                                (result.score >= threshold).then_some(result)
+                            })
+                        })
                         .collect();
 
                     let input_start_index = chunk.input_start_index as usize;
@@ -264,6 +266,7 @@ mod tests {
             let chunk_token = chunk.results[0].clone();
             let text = &chunk_token.text;
             let span = (chunk_token.start as u32, chunk_token.end as u32);
+            let threshold = 0.001;
             // Add multiple detections to same chunk
 
             let (detector_tx1, detector_rx1) = mpsc::channel(1024);
@@ -272,7 +275,7 @@ mod tests {
             let detection_result =
                 DetectionResult::new(chunk.clone(), [detector_response].to_vec());
             let _ = detector_tx1.send(detection_result).await;
-            detection_streams.push((detector_id, detector_rx1));
+            detection_streams.push((detector_id, threshold, detector_rx1));
 
             let (detector_tx2, detector_rx2) = mpsc::channel(1024);
             let detector_response = get_detection_obj(span, text, "email_ID", "PII");
@@ -280,7 +283,7 @@ mod tests {
             let detection_result =
                 DetectionResult::new(chunk.clone(), [detector_response].to_vec());
             let _ = detector_tx2.send(detection_result).await;
-            detection_streams.push((detector_id, detector_rx2));
+            detection_streams.push((detector_id, threshold, detector_rx2));
         }
 
         let generations = get_dummy_streaming_generation().await;

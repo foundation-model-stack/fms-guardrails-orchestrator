@@ -177,9 +177,18 @@ async fn streaming_output_detection_task(
     // send requests to detector service, and send results to detection stream
     debug!("spawning detection tasks");
     let mut detection_streams = Vec::with_capacity(detectors.len());
-    for detector_id in detectors.keys() {
+    for (detector_id, detector_params) in detectors.iter() {
         let detector_id = detector_id.to_string();
         let chunker_id = ctx.config.get_chunker_id(&detector_id).unwrap();
+
+        // Get the detector config
+        // TODO: Add error handling
+        let detector_config = ctx.config.detectors.get(&detector_id).unwrap();
+
+        // Get the default threshold to use if threshold is not provided by the user
+        let default_threshold = detector_config.default_threshold;
+        let threshold = detector_params.threshold.unwrap_or(default_threshold);
+
         // Create detection stream
         let (detector_tx, detector_rx) = mpsc::channel(1024);
         // Subscribe to chunk broadcast stream
@@ -194,7 +203,7 @@ async fn streaming_output_detection_task(
             detector_tx,
             chunk_rx,
         ));
-        detection_streams.push((detector_id, detector_rx));
+        detection_streams.push((detector_id, threshold, detector_rx));
     }
 
     debug!("spawning generation broadcast task");
@@ -245,6 +254,7 @@ async fn streaming_detection_task(
             .collect::<Vec<_>>();
         let request = ContentAnalysisRequest::new(contents);
         debug!(%detector_id, ?request, "[detection_task] sending detector request");
+
         let response = ctx
             .detector_client
             .text_contents(&detector_id, request)

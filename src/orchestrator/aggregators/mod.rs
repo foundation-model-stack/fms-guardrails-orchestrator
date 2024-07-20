@@ -33,6 +33,6 @@ pub trait DetectionAggregator: Default {
     async fn process(
         &self,
         generations: Arc<RwLock<Vec<ClassifiedGeneratedTextStreamResult>>>,
-        detection_streams: Vec<(DetectorId, mpsc::Receiver<DetectionResult>)>,
+        detection_streams: Vec<(DetectorId, f64, mpsc::Receiver<DetectionResult>)>,
     ) -> mpsc::Receiver<ClassifiedGeneratedTextStreamResult>;
 }
