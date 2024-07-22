@@ -313,7 +313,7 @@ async fn chunk_broadcast_stream(
                 .unwrap()
                 .generated_text
                 .unwrap_or_default();
-            chunkers::BidiStreamingChunkGenerationTaskRequest {
+            chunkers::BidiStreamingChunkerTokenizationTaskRequest {
                 text_stream: generated_text,
                 input_index_stream: token_pointer as i64,
             }

@@ -10,14 +10,14 @@ import "caikit_data_model_nlp.proto";
 
 /*-- MESSAGES ----------------------------------------------------------------*/
 
-message BidiStreamingChunkGenerationTaskRequest {
+message BidiStreamingChunkerTokenizationTaskRequest {
 
   /*-- fields --*/
   string text_stream = 1;
   int64 input_index_stream = 2;
 }
 
-message ChunkGenerationTaskRequest {
+message ChunkerTokenizationTaskRequest {
 
   /*-- fields --*/
   string text = 1;
@@ -38,6 +38,6 @@ message ChunkerTokenizationStreamResult {
 /*-- SERVICES ----------------------------------------------------------------*/
 
 service ChunkersService {
-  rpc BidiStreamingChunkGenerationTaskPredict(stream BidiStreamingChunkGenerationTaskRequest) returns (stream ChunkerTokenizationStreamResult);
-  rpc ChunkGenerationTaskPredict(ChunkGenerationTaskRequest) returns (caikit_data_model.nlp.TokenizationResults);
+  rpc BidiStreamingChunkerTokenizationTaskPredict(stream BidiStreamingChunkerTokenizationTaskRequest) returns (stream ChunkerTokenizationStreamResult);
+  rpc ChunkerTokenizationTaskPredict(ChunkerTokenizationTaskRequest) returns (caikit_data_model.nlp.TokenizationResults);
 }
