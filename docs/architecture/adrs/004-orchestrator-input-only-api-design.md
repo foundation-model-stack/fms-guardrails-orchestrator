@@ -16,7 +16,7 @@ The guardrails orchestrator is designed to provide an end-to-end guardrails expe
 ### Nomenclature
 
 1. The endpoints would be named with the primary "task" they do. For example, for the orchestrator endpoint that does both generation and detection in the same call, the task will be called `generation-detection`. For an endpoint which does `detection` as the primary task with a different "modality", the endpoint will include `detection/chat`, where "chat" is the modality.
-1. Evidences will be added later on to each endpoint, once we have the detectors under any category that actually is able to provide evidences.
+1. Evidences will be added to responses of each endpoint later on, once we have the detectors under any category that actually is able to provide evidences.
 1. All of the endpoints would be prefixed by the modality of the input / output. So for text generation use-cases, the modality would be `text`, for text to image generation, the modality would be `text-image`, for image to image functionalities, the modality would be `image`.
 
 
