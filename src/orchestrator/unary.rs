@@ -271,7 +271,7 @@ pub async fn chunk(
     offset: usize,
     text: String,
 ) -> Result<Vec<Chunk>, Error> {
-    let request = chunkers::TokenizationTaskRequest { text };
+    let request = chunkers::ChunkerTokenizationTaskRequest { text };
     debug!(%chunker_id, ?request, "sending chunker request");
     let response = ctx
         .chunker_client

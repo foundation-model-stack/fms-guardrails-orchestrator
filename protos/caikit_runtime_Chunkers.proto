@@ -10,22 +10,34 @@ import "caikit_data_model_nlp.proto";
 
 /*-- MESSAGES ----------------------------------------------------------------*/
 
-message BidiStreamingTokenizationTaskRequest {
+message BidiStreamingChunkerTokenizationTaskRequest {
 
   /*-- fields --*/
   string text_stream = 1;
+  int64 input_index_stream = 2;
 }
 
-message TokenizationTaskRequest {
+message ChunkerTokenizationTaskRequest {
 
   /*-- fields --*/
   string text = 1;
+}
+
+message ChunkerTokenizationStreamResult {
+
+  /*-- fields --*/
+  repeated caikit_data_model.nlp.Token results = 1;
+  int64 token_count = 4;
+  int64 processed_index = 2;
+  int64 start_index = 3;
+  int64 input_start_index = 5;
+  int64 input_end_index = 6;
 }
 
 
 /*-- SERVICES ----------------------------------------------------------------*/
 
 service ChunkersService {
-  rpc BidiStreamingTokenizationTaskPredict(stream caikit.runtime.Chunkers.BidiStreamingTokenizationTaskRequest) returns (stream caikit_data_model.nlp.TokenizationStreamResult);
-  rpc TokenizationTaskPredict(caikit.runtime.Chunkers.TokenizationTaskRequest) returns (caikit_data_model.nlp.TokenizationResults);
+  rpc BidiStreamingChunkerTokenizationTaskPredict(stream BidiStreamingChunkerTokenizationTaskRequest) returns (stream ChunkerTokenizationStreamResult);
+  rpc ChunkerTokenizationTaskPredict(ChunkerTokenizationTaskRequest) returns (caikit_data_model.nlp.TokenizationResults);
 }

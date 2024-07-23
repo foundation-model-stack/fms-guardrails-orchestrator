@@ -27,10 +27,11 @@ use crate::{
     config::ServiceConfig,
     pb::{
         caikit::runtime::chunkers::{
-            chunkers_service_client::ChunkersServiceClient, BidiStreamingTokenizationTaskRequest,
-            TokenizationTaskRequest,
+            chunkers_service_client::ChunkersServiceClient,
+            BidiStreamingChunkerTokenizationTaskRequest, ChunkerTokenizationStreamResult,
+            ChunkerTokenizationTaskRequest,
         },
-        caikit_data_model::nlp::{Token, TokenizationResults, TokenizationStreamResult},
+        caikit_data_model::nlp::{Token, TokenizationResults},
     },
 };
 
@@ -38,7 +39,8 @@ const MODEL_ID_HEADER_NAME: &str = "mm-model-id";
 /// Default chunker that returns span for entire text
 const DEFAULT_MODEL_ID: &str = "whole_doc_chunker";
 
-type StreamingTokenizationResult = Result<Response<Streaming<TokenizationStreamResult>>, Status>;
+type StreamingTokenizationResult =
+    Result<Response<Streaming<ChunkerTokenizationStreamResult>>, Status>;
 
 #[cfg_attr(test, derive(Default))]
 #[derive(Clone)]
@@ -65,7 +67,7 @@ impl ChunkerClient {
     pub async fn tokenization_task_predict(
         &self,
         model_id: &str,
-        request: TokenizationTaskRequest,
+        request: ChunkerTokenizationTaskRequest,
     ) -> Result<TokenizationResults, Error> {
         // Handle "default" separately first
         if model_id == DEFAULT_MODEL_ID {
@@ -75,7 +77,7 @@ impl ChunkerClient {
         let request = request_with_model_id(request, model_id);
         Ok(self
             .client(model_id)?
-            .tokenization_task_predict(request)
+            .chunker_tokenization_task_predict(request)
             .await?
             .into_inner())
     }
@@ -83,8 +85,10 @@ impl ChunkerClient {
     pub async fn bidi_streaming_tokenization_task_predict(
         &self,
         model_id: &str,
-        request_stream: Pin<Box<dyn Stream<Item = BidiStreamingTokenizationTaskRequest> + Send>>,
-    ) -> Result<Pin<Box<dyn Stream<Item = TokenizationStreamResult> + Send>>, Error> {
+        request_stream: Pin<
+            Box<dyn Stream<Item = BidiStreamingChunkerTokenizationTaskRequest> + Send>,
+        >,
+    ) -> Result<Pin<Box<dyn Stream<Item = ChunkerTokenizationStreamResult> + Send>>, Error> {
         // Handle "default" separately first
         if model_id == DEFAULT_MODEL_ID {
             info!("Using default whole doc chunker");
@@ -97,7 +101,7 @@ impl ChunkerClient {
         // NOTE: this is an ugly workaround to avoid bogus higher-ranked lifetime errors.
         // https://github.com/rust-lang/rust/issues/110338
         let response_stream_fut: Pin<Box<dyn Future<Output = StreamingTokenizationResult> + Send>> =
-            Box::pin(client.bidi_streaming_tokenization_task_predict(request));
+            Box::pin(client.bidi_streaming_chunker_tokenization_task_predict(request));
         let response_stream = response_stream_fut
             .await?
             .into_inner()
@@ -116,7 +120,7 @@ fn request_with_model_id<T>(request: T, model_id: &str) -> Request<T> {
 }
 
 /// Unary tokenization result of the entire doc
-fn tokenize_whole_doc(request: TokenizationTaskRequest) -> TokenizationResults {
+fn tokenize_whole_doc(request: ChunkerTokenizationTaskRequest) -> TokenizationResults {
     let codepoint_count = request.text.chars().count() as i64;
     TokenizationResults {
         results: vec![Token {
@@ -130,11 +134,14 @@ fn tokenize_whole_doc(request: TokenizationTaskRequest) -> TokenizationResults {
 
 /// Streaming tokenization result for the entire doc stream
 async fn tokenize_whole_doc_stream(
-    request: impl Stream<Item = BidiStreamingTokenizationTaskRequest>,
-) -> TokenizationStreamResult {
-    let text = request.map(|r| r.text_stream).collect::<String>().await;
+    request: impl Stream<Item = BidiStreamingChunkerTokenizationTaskRequest>,
+) -> ChunkerTokenizationStreamResult {
+    let (text, index_vec): (String, Vec<i64>) = request
+        .map(|r| (r.text_stream, r.input_index_stream))
+        .collect()
+        .await;
     let codepoint_count = text.chars().count() as i64;
-    TokenizationStreamResult {
+    ChunkerTokenizationStreamResult {
         results: vec![Token {
             start: 0,
             end: codepoint_count,
@@ -143,6 +150,8 @@ async fn tokenize_whole_doc_stream(
         token_count: 1, // entire doc/stream
         processed_index: codepoint_count,
         start_index: 0,
+        input_start_index: 0,
+        input_end_index: *index_vec.last().unwrap_or(&0),
     }
 }
 
@@ -152,7 +161,7 @@ mod tests {
 
     #[test]
     fn test_tokenize_whole_doc() {
-        let request = TokenizationTaskRequest {
+        let request = ChunkerTokenizationTaskRequest {
             text: "Lorem ipsum dolor sit amet consectetur adipiscing \
             elit sed do eiusmod tempor incididunt ut labore et dolore \
             magna aliqua."
@@ -176,20 +185,24 @@ mod tests {
     #[tokio::test]
     async fn test_tokenize_whole_doc_stream() {
         let request = futures::stream::iter(vec![
-            BidiStreamingTokenizationTaskRequest {
+            BidiStreamingChunkerTokenizationTaskRequest {
                 text_stream: "Lorem ipsum dolor sit amet ".into(),
+                input_index_stream: 0,
             },
-            BidiStreamingTokenizationTaskRequest {
+            BidiStreamingChunkerTokenizationTaskRequest {
                 text_stream: "consectetur adipiscing elit ".into(),
+                input_index_stream: 1,
             },
-            BidiStreamingTokenizationTaskRequest {
+            BidiStreamingChunkerTokenizationTaskRequest {
                 text_stream: "sed do eiusmod tempor incididunt ".into(),
+                input_index_stream: 2,
             },
-            BidiStreamingTokenizationTaskRequest {
+            BidiStreamingChunkerTokenizationTaskRequest {
                 text_stream: "ut labore et dolore magna aliqua.".into(),
+                input_index_stream: 3,
             },
         ]);
-        let expected_response = TokenizationStreamResult {
+        let expected_response = ChunkerTokenizationStreamResult {
             results: vec![Token {
                 start: 0,
                 end: 121,
@@ -200,6 +213,8 @@ mod tests {
             token_count: 1,
             processed_index: 121,
             start_index: 0,
+            input_start_index: 0,
+            input_end_index: 3,
         };
         let response = tokenize_whole_doc_stream(request).await;
         assert_eq!(response, expected_response);

@@ -89,7 +89,7 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
     async fn process(
         &self,
         generations: Arc<RwLock<Vec<ClassifiedGeneratedTextStreamResult>>>,
-        detection_streams: Vec<(DetectorId, mpsc::Receiver<DetectionResult>)>,
+        detection_streams: Vec<(DetectorId, f64, mpsc::Receiver<DetectionResult>)>,
     ) -> mpsc::Receiver<ClassifiedGeneratedTextStreamResult> {
         let (result_tx, result_rx) = mpsc::channel(1024);
         tokio::spawn(async move {
@@ -103,13 +103,7 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
             // Later on we can change this tuple of a struct for better management and cleanliness
             let mut detection_tracker = DetectionTracker::new();
 
-            // TODO:
-            // - Implement actual aggregation logic, this is just a placeholder
-            // - Figure out good approach to get details needed from generation messages (using shared vec for now)
-            // - Apply thresholds
-            // - TBD
-
-            for (detector_id, mut stream) in detection_streams {
+            for (detector_id, threshold, mut stream) in detection_streams {
                 while let Some(message) = stream.recv().await {
                     debug!(%detector_id, ?message, "[detection_processor_task] received detection message");
                     // NOTE: We expect the detector to respond with an answer, even if it is [] in case of no detections. example PII
@@ -120,27 +114,50 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
                     let detections: Vec<TokenClassificationResult> = detections
                         .into_iter()
                         .flat_map(|r| {
-                            r.into_iter().map(|mut detection| {
-                                detection.start += chunk.start_index as usize;
-                                detection.end += chunk.start_index as usize;
-                                detection.into()
+                            r.into_iter().filter_map(|resp| {
+                                let result: TokenClassificationResult = resp.into();
+                                (result.score >= threshold).then_some(result)
                             })
                         })
                         .collect();
 
-                    let input_token_count = generations.read().unwrap()[0].input_token_count;
+                    let input_start_index = chunk.input_start_index as usize;
+                    let input_end_index = chunk.input_end_index as usize;
 
-                    let result = ClassifiedGeneratedTextStreamResult {
-                        generated_text: Some(generated_text.clone()),
-                        // TODO: Populate following generation stream fields
-                        // finish_reason,
-                        input_token_count,
-                        // generated_token_count,
-                        // seed,
-                        start_index: chunk.start_index as u32,
-                        processed_index: Some(chunk.processed_index as u32),
-                        ..Default::default()
+                    let input_token_count = generations.read().unwrap()[0].input_token_count;
+                    // Note: input_tokens is not present in 0th response, so we use `1`
+                    let input_tokens = match generations.read().unwrap().get(1) {
+                        Some(first_generation) => first_generation.input_tokens.clone(),
+                        None => Some([].to_vec()),
                     };
+
+                    // Get subset of generation responses relevant for this chunk
+                    let generation_responses: Vec<ClassifiedGeneratedTextStreamResult> =
+                        generations.read().unwrap()[input_start_index..input_end_index]
+                            .iter()
+                            .map(|result| result.to_owned())
+                            .collect::<Vec<_>>();
+
+                    let tokens = generation_responses
+                        .iter()
+                        .flat_map(|result| result.tokens.clone().unwrap_or([].to_vec()))
+                        .collect::<Vec<_>>();
+
+                    let result: ClassifiedGeneratedTextStreamResult =
+                        ClassifiedGeneratedTextStreamResult {
+                            generated_text: Some(generated_text.clone()),
+                            start_index: chunk.start_index as u32,
+                            processed_index: Some(chunk.processed_index as u32),
+                            input_token_count,
+                            tokens: Some(tokens),
+                            input_tokens,
+                            // Populate all fields from last generation response and if not available, then use
+                            // default value for ClassifiedGeneratedTextStreamResult
+                            ..generation_responses
+                                .last()
+                                .unwrap_or(&ClassifiedGeneratedTextStreamResult::default())
+                                .to_owned()
+                        };
 
                     let span: Span = (chunk.start_index as u32, chunk.processed_index as u32);
 
@@ -186,8 +203,8 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
 mod tests {
 
     use crate::{
-        clients::detector::ContentAnalysisResponse,
-        pb::caikit_data_model::nlp::{Token, TokenizationStreamResult},
+        clients::detector::ContentAnalysisResponse, pb::caikit::runtime::chunkers,
+        pb::caikit_data_model::nlp::Token,
     };
 
     use super::*;
@@ -226,9 +243,9 @@ mod tests {
     /// Test to check the aggregation of streaming generation results with multiple detectors on a single chunk.
     async fn test_aggregation_single_chunk_multi_detection() {
         // Create chunks
-        let mut chunks: Vec<TokenizationStreamResult> = [].into();
+        let mut chunks: Vec<chunkers::ChunkerTokenizationStreamResult> = [].into();
 
-        chunks.push(TokenizationStreamResult {
+        chunks.push(chunkers::ChunkerTokenizationStreamResult {
             results: [Token {
                 start: 0,
                 end: 24,
@@ -238,6 +255,8 @@ mod tests {
             token_count: 5,
             processed_index: 4,
             start_index: 0,
+            input_start_index: 0,
+            input_end_index: 0,
         });
 
         let detector_count = 2;
@@ -248,6 +267,7 @@ mod tests {
             let chunk_token = chunk.results[0].clone();
             let text = &chunk_token.text;
             let span = (chunk_token.start as u32, chunk_token.end as u32);
+            let threshold = 0.001;
             // Add multiple detections to same chunk
 
             let (detector_tx1, detector_rx1) = mpsc::channel(1024);
@@ -256,7 +276,7 @@ mod tests {
             let detection_result =
                 DetectionResult::new(chunk.clone(), [detector_response].to_vec());
             let _ = detector_tx1.send(detection_result).await;
-            detection_streams.push((detector_id, detector_rx1));
+            detection_streams.push((detector_id, threshold, detector_rx1));
 
             let (detector_tx2, detector_rx2) = mpsc::channel(1024);
             let detector_response = get_detection_obj(span, text, "email_ID", "PII");
@@ -264,7 +284,7 @@ mod tests {
             let detection_result =
                 DetectionResult::new(chunk.clone(), [detector_response].to_vec());
             let _ = detector_tx2.send(detection_result).await;
-            detection_streams.push((detector_id, detector_rx2));
+            detection_streams.push((detector_id, threshold, detector_rx2));
         }
 
         let generations = get_dummy_streaming_generation().await;
