@@ -319,6 +319,43 @@ pub struct ClassifiedGeneratedTextResult {
     pub input_tokens: Option<Vec<GeneratedToken>>,
 }
 
+/// The request format expected in the /api/v1/text/task/detection/content endpoint.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct TextContentDetectionHttpRequest {
+    /// The content to run detectors on
+    #[serde(rename = "content")]
+    pub content: String,
+
+    /// The map of detectors to be used, along with their respective parameters, e.g. thresholds.
+    #[serde(rename = "detectors")]
+    pub detectors: HashMap<String, DetectorParams>,
+}
+
+impl TextContentDetectionHttpRequest {
+    /// Upfront validation of user request
+    pub fn validate(&self) -> Result<(), ValidationError> {
+        // Validate required parameters
+        if self.content.is_empty() {
+            return Err(ValidationError::Required("content".into()));
+        }
+        if self.detectors.is_empty() {
+            return Err(ValidationError::Required("detectors".into()));
+        }
+        Ok(())
+    }
+}
+
+/// The response format of the /api/v1/text/task/detection/content endpoint
+#[derive(Default, Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct TextContentDetectionResult {
+    /// The content to run detectors on
+    #[serde(rename = "content")]
+    pub content: String,
+
+    /// Detection results
+    #[serde(rename = "detections")]
+    pub detections: Vec<TokenClassificationResult>,
+}
 /// Streaming classification result on text produced by a text generation model, containing
 /// information from the original text generation output as well as the result of
 /// classification on the generated text. Also indicates where in stream is processed.
