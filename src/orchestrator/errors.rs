@@ -18,8 +18,10 @@
 use crate::clients;
 
 /// Orchestrator errors.
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Clone, thiserror::Error)]
 pub enum Error {
+    #[error(transparent)]
+    Client(#[from] clients::Error),
     #[error("detector not found: {detector_id}")]
     DetectorNotFound { detector_id: String },
     #[error("detector request failed for detector_id={detector_id}: {error}")]

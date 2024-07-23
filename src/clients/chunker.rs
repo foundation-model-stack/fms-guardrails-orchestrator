@@ -17,7 +17,7 @@
 
 use std::{collections::HashMap, pin::Pin};
 
-use futures::{stream, Future, Stream, StreamExt};
+use futures::{stream, Future, Stream, StreamExt, TryStreamExt};
 use ginepro::LoadBalancedChannel;
 use tonic::{Request, Response, Status, Streaming};
 use tracing::info;
@@ -88,7 +88,10 @@ impl ChunkerClient {
         request_stream: Pin<
             Box<dyn Stream<Item = BidiStreamingChunkerTokenizationTaskRequest> + Send>,
         >,
-    ) -> Result<Pin<Box<dyn Stream<Item = ChunkerTokenizationStreamResult> + Send>>, Error> {
+    ) -> Result<
+        Pin<Box<dyn Stream<Item = Result<ChunkerTokenizationStreamResult, Error>> + Send>>,
+        Error,
+    > {
         // Handle "default" separately first
         if model_id == DEFAULT_MODEL_ID {
             info!("Using default whole doc chunker");
@@ -105,7 +108,7 @@ impl ChunkerClient {
         let response_stream = response_stream_fut
             .await?
             .into_inner()
-            .map(|r| r.unwrap())
+            .map_err(Into::into)
             .boxed();
         Ok(response_stream)
     }
@@ -135,13 +138,10 @@ fn tokenize_whole_doc(request: ChunkerTokenizationTaskRequest) -> TokenizationRe
 /// Streaming tokenization result for the entire doc stream
 async fn tokenize_whole_doc_stream(
     request: impl Stream<Item = BidiStreamingChunkerTokenizationTaskRequest>,
-) -> ChunkerTokenizationStreamResult {
-    let (text, index_vec): (String, Vec<i64>) = request
-        .map(|r| (r.text_stream, r.input_index_stream))
-        .collect()
-        .await;
+) -> Result<TokenizationStreamResult, Error> {
+    let text = request.map(|r| r.text_stream).collect::<String>().await;
     let codepoint_count = text.chars().count() as i64;
-    ChunkerTokenizationStreamResult {
+    Ok(ChunkerTokenizationStreamResult {
         results: vec![Token {
             start: 0,
             end: codepoint_count,
@@ -152,7 +152,7 @@ async fn tokenize_whole_doc_stream(
         start_index: 0,
         input_start_index: 0,
         input_end_index: *index_vec.last().unwrap_or(&0),
-    }
+    })
 }
 
 #[cfg(test)]
@@ -216,7 +216,7 @@ mod tests {
             input_start_index: 0,
             input_end_index: 3,
         };
-        let response = tokenize_whole_doc_stream(request).await;
+        let response = tokenize_whole_doc_stream(request).await.unwrap();
         assert_eq!(response, expected_response);
     }
 }

@@ -5,12 +5,13 @@ use std::{
 
 use async_trait::async_trait;
 use tokio::sync::mpsc;
+use tokio_util::sync::CancellationToken;
 use tracing::debug;
 
 use super::{DetectionAggregator, DetectorId};
 use crate::{
     models::{ClassifiedGeneratedTextStreamResult, TokenClassificationResult},
-    orchestrator::streaming::DetectionResult,
+    orchestrator::{streaming::DetectionResult, Error},
 };
 
 /// Aggregates results applying a "max processed index" strategy.
@@ -90,8 +91,10 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
         &self,
         generations: Arc<RwLock<Vec<ClassifiedGeneratedTextStreamResult>>>,
         detection_streams: Vec<(DetectorId, f64, mpsc::Receiver<DetectionResult>)>,
-    ) -> mpsc::Receiver<ClassifiedGeneratedTextStreamResult> {
+        cancel: CancellationToken,
+    ) -> mpsc::Receiver<Result<ClassifiedGeneratedTextStreamResult, Error>> {
         let (result_tx, result_rx) = mpsc::channel(1024);
+        // TODO: handle cancellation
         tokio::spawn(async move {
             // TODO: Add chunker type
 
@@ -176,7 +179,7 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
                             detection_tracker.first_key_value().unwrap();
                         // Check if all detectors have responded for this detector
                         if *num_detectors == total_detectors {
-                            let _ = result_tx.send(result.clone()).await;
+                            let _ = result_tx.send(Ok(result.clone())).await;
                             // Make processed_index as the end of the detected span
                             processed_index = span.1;
                             // TODO: At this point we can remove the 1st element from the detection_tracker
@@ -191,7 +194,7 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
                         {
                             // spans found.
                             if *num_detectors == total_detectors {
-                                let _ = result_tx.send(result.clone()).await;
+                                let _ = result_tx.send(Ok(result.clone())).await;
                                 // Make processed_index as the end of the detected span
                                 processed_index = result.processed_index.unwrap();
                             }
@@ -207,13 +210,13 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
 #[cfg(test)]
 mod tests {
 
-    use crate::{
-        clients::detector::ContentAnalysisResponse, pb::caikit::runtime::chunkers,
-        pb::caikit_data_model::nlp::Token,
-    };
+    use std::sync::{Arc, RwLock};
 
     use super::*;
-    use std::sync::{Arc, RwLock};
+    use crate::{
+        clients::detector::ContentAnalysisResponse,
+        pb::{caikit::runtime::chunkers, caikit_data_model::nlp::Token},
+    };
 
     async fn get_dummy_streaming_generation(
     ) -> Arc<RwLock<Vec<ClassifiedGeneratedTextStreamResult>>> {
@@ -294,12 +297,15 @@ mod tests {
 
         let generations = get_dummy_streaming_generation().await;
         let aggregator = MaxProcessedIndexAggregator::default();
-
-        let mut result_rx = aggregator.process(generations, detection_streams).await;
+        let cancel = CancellationToken::new();
+        let mut result_rx = aggregator
+            .process(generations, detection_streams, cancel)
+            .await;
 
         let mut chunk_count = 0;
         while let Some(classified_gen_stream_result) = result_rx.recv().await {
             let detection = classified_gen_stream_result
+                .unwrap()
                 .token_classification_results
                 .output
                 .unwrap_or(Vec::new());

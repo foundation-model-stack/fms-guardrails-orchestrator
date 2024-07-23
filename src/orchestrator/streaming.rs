@@ -21,9 +21,10 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use futures::{future::join_all, Stream, StreamExt};
+use futures::{future::join_all, Stream, StreamExt, TryStreamExt};
 use tokio::sync::{broadcast, mpsc};
 use tokio_stream::wrappers::{BroadcastStream, ReceiverStream};
+use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info};
 
 use super::{get_chunker_ids, Context, Error, Orchestrator, StreamingClassificationWithGenTask};
@@ -87,15 +88,20 @@ impl Orchestrator {
             if input_detections.is_some() {
                 // Detected HAP/PII
                 // Do tokenization to get input_token_count
-                let (input_token_count, _tokens) =
-                    match tokenize(&ctx, model_id.clone(), input_text.clone()).await {
-                        Ok(result) => result,
-                        Err(error) => {
-                            error!(request_id = ?task.request_id, %error, "streaming task failed");
-                            let _ = response_tx.send(Err(error)).await;
-                            return;
-                        }
-                    };
+                let (input_token_count, _tokens) = match tokenize(
+                    &ctx,
+                    model_id.clone(),
+                    input_text.clone(),
+                )
+                .await
+                {
+                    Ok(result) => result,
+                    Err(error) => {
+                        error!(request_id = ?task.request_id, %error, "tokenize request failed");
+                        let _ = response_tx.send(Err(error)).await;
+                        return;
+                    }
+                };
                 // Send result with input detections
                 let _ = response_tx
                     .send(Ok(ClassifiedGeneratedTextStreamResult {
@@ -124,7 +130,7 @@ impl Orchestrator {
                 {
                     Ok(generation_stream) => generation_stream,
                     Err(error) => {
-                        error!(request_id = ?task.request_id, %error, "streaming task failed");
+                        error!(request_id = ?task.request_id, %error, "generate stream request failed");
                         let _ = response_tx.send(Err(error)).await;
                         return;
                     }
@@ -134,26 +140,49 @@ impl Orchestrator {
                 let output_detectors = task.guardrails_config.output_detectors();
                 match output_detectors {
                     Some(detectors) if !detectors.is_empty() => {
+                        // Create cancellation token
+                        let cancel = CancellationToken::new();
+                        //let (cancel_tx, _) = broadcast::channel(1); // TODO
+                        //let _ = cancel_tx.send(error);
+                        //let mut cancel_rx = cancel_tx.subscribe(); // do this in each task
+                        //_ = cancel_rx.recv() => { break }
                         let aggregator = MaxProcessedIndexAggregator::default();
                         let mut result_rx = match streaming_output_detection_task(
                             &ctx,
                             detectors,
                             aggregator,
                             generation_stream,
+                            cancel.clone(),
                         )
                         .await
                         {
                             Ok(result_rx) => result_rx,
                             Err(error) => {
-                                error!(request_id = ?task.request_id, %error, "streaming task failed");
+                                error!(request_id = ?task.request_id, %error, "streaming output detection failed");
+                                cancel.cancel();
                                 let _ = response_tx.send(Err(error)).await;
                                 return;
                             }
                         };
                         // Forward generation results with detections to response channel
                         tokio::spawn(async move {
-                            while let Some(generation_with_detections) = result_rx.recv().await {
-                                let _ = response_tx.send(Ok(generation_with_detections)).await;
+                            loop {
+                                tokio::select! {
+                                    _ = cancel.cancelled() => {
+                                        // TODO: log and send actual error here once changed to broadcast channel
+                                        error!(request_id = ?task.request_id, "streaming task cancelled");
+                                        let _ = response_tx.send(Err(Error::Cancelled)).await;
+                                        return;
+                                    },
+                                    result = result_rx.recv() => {
+                                        match result {
+                                            Some(generation_with_detections) => {
+                                                let _ = response_tx.send(generation_with_detections).await;
+                                            },
+                                            None => { break },
+                                        }
+                                    }
+                                }
                             }
                         });
                     }
@@ -161,7 +190,7 @@ impl Orchestrator {
                         // No output detectors, forward generation results to response channel
                         tokio::spawn(async move {
                             while let Some(generation) = generation_stream.next().await {
-                                let _ = response_tx.send(Ok(generation)).await;
+                                let _ = response_tx.send(generation).await;
                             }
                         });
                     }
@@ -177,14 +206,16 @@ async fn streaming_output_detection_task(
     ctx: &Arc<Context>,
     detectors: &HashMap<String, DetectorParams>,
     aggregator: impl DetectionAggregator,
-    mut generation_stream: Pin<Box<dyn Stream<Item = ClassifiedGeneratedTextStreamResult> + Send>>,
-) -> Result<mpsc::Receiver<ClassifiedGeneratedTextStreamResult>, Error> {
+    generation_stream: Pin<
+        Box<dyn Stream<Item = Result<ClassifiedGeneratedTextStreamResult, Error>> + Send>,
+    >,
+    cancel: CancellationToken,
+) -> Result<mpsc::Receiver<Result<ClassifiedGeneratedTextStreamResult, Error>>, Error> {
     // Create generation broadcast stream
-    let (generation_tx, generation_rx) = broadcast::channel(1024);
+    let (generation_tx, _) = broadcast::channel(1024);
 
     debug!("creating chunk broadcast streams");
     let chunker_ids = get_chunker_ids(ctx, detectors)?;
-
     // Create a map of chunker_id->chunk_broadcast_stream
     // This is to enable fan-out of chunk streams to potentially multiple detectors that use the same chunker.
     // Each detector task will subscribe to an associated chunk stream.
@@ -194,14 +225,15 @@ async fn streaming_output_detection_task(
             .map(|chunker_id| {
                 debug!(%chunker_id, "creating chunk broadcast stream");
                 let ctx = ctx.clone();
+                let cancel = cancel.clone();
                 // Subscribe to generation stream
                 let generation_rx = generation_tx.subscribe();
                 async move {
-                    let (chunk_tx, chunk_rx) =
-                        chunk_broadcast_stream(ctx, chunker_id.clone(), generation_rx)
+                    let chunk_tx =
+                        chunk_broadcast_task(ctx, chunker_id.clone(), generation_rx, cancel)
                             .await
-                            .unwrap();
-                    (chunker_id, (chunk_tx, chunk_rx))
+                            .unwrap(); // TODO: handle error
+                    (chunker_id, chunk_tx)
                 }
             })
             .collect::<Vec<_>>(),
@@ -232,13 +264,14 @@ async fn streaming_output_detection_task(
         let chunk_rx = chunk_broadcast_streams
             .get(&chunker_id)
             .unwrap()
-            .0
             .subscribe();
+        let cancel = cancel.clone();
         tokio::spawn(streaming_detection_task(
             ctx.clone(),
             detector_id.clone(),
             detector_tx,
             chunk_rx,
+            cancel,
         ));
         detection_streams.push((detector_id, threshold, detector_rx));
     }
@@ -247,31 +280,53 @@ async fn streaming_output_detection_task(
     // NOTE: this creates a shared vec for detection processors to get details from
     // generation messages. There is probably a better approach.
     let generations = Arc::new(RwLock::new(Vec::new()));
-
     // Spawn task to consume generation stream and forward to broadcast stream
-    tokio::spawn({
-        let generations = generations.clone();
-        let generation_tx = generation_tx.clone();
-        async move {
-            while let Some(generation) = generation_stream.next().await {
-                debug!(
-                    ?generation,
-                    "[generation_broadcast_task] received generation"
-                );
-                // Add a copy to the shared vec
-                generations.write().unwrap().push(generation.clone());
-                let _ = generation_tx.send(generation);
-            }
-        }
-    });
-    drop(generation_tx);
-    drop(generation_rx);
+    tokio::spawn(generation_broadcast_task(
+        generations.clone(),
+        generation_stream,
+        generation_tx,
+        cancel.clone(),
+    ));
 
-    // Process detection results
-    Ok(aggregator.process(generations, detection_streams).await)
+    debug!("processing detection streams");
+    let result_rx = aggregator
+        .process(generations, detection_streams, cancel)
+        .await;
+    Ok(result_rx)
 }
 
-/// This task essentially wraps a unary detector service to make it streaming.
+async fn generation_broadcast_task(
+    generations: Arc<RwLock<Vec<ClassifiedGeneratedTextStreamResult>>>,
+    mut generation_stream: Pin<
+        Box<dyn Stream<Item = Result<ClassifiedGeneratedTextStreamResult, Error>> + Send>,
+    >,
+    generation_tx: broadcast::Sender<ClassifiedGeneratedTextStreamResult>,
+    cancel: CancellationToken,
+) {
+    loop {
+        tokio::select! {
+            _ = cancel.cancelled() => { break },
+            generation_result = generation_stream.next() => {
+                match generation_result {
+                    Some(Ok(generation)) => {
+                        debug!(?generation, "[generation_broadcast_task] received generation");
+                        // Add a copy to the shared vec
+                        generations.write().unwrap().push(generation.clone());
+                        let _ = generation_tx.send(generation);
+                    },
+                    Some(Err(_error)) => {
+                        // received error from generation service, trigger cancellation
+                        cancel.cancel();
+                        break;
+                    },
+                    None => { break },
+                }
+            }
+        }
+    }
+}
+
+/// Wraps a unary detector service to make it streaming.
 /// Consumes chunk broadcast stream, sends unary requests to a detector service,
 /// and sends chunk + responses to detection stream.
 async fn streaming_detection_task(
@@ -279,64 +334,50 @@ async fn streaming_detection_task(
     detector_id: String,
     detector_tx: mpsc::Sender<DetectionResult>,
     mut chunk_rx: broadcast::Receiver<chunkers::ChunkerTokenizationStreamResult>,
+    cancel: CancellationToken,
 ) {
-    // Process chunks
-    while let Ok(chunk) = chunk_rx.recv().await {
-        debug!(%detector_id, ?chunk, "[detection_task] received chunk");
-        // Send request to detector service
-        let contents = chunk
-            .results
-            .iter()
-            .map(|token| token.text.clone())
-            .collect::<Vec<_>>();
-        let request = ContentAnalysisRequest::new(contents);
-        debug!(%detector_id, ?request, "[detection_task] sending detector request");
-
-        let response = ctx
-            .detector_client
-            .text_contents(&detector_id, request)
-            .await
-            .map_err(|error| Error::DetectorRequestFailed {
-                detector_id: detector_id.clone(),
-                error,
-            })
-            .unwrap();
-        debug!(%detector_id, ?response, "[detection_task] received detector response");
-        let result = DetectionResult::new(chunk, response);
-        debug!(%detector_id, ?result, "[detection_task] sending result to detector channel");
-        let _ = detector_tx.send(result).await;
+    loop {
+        tokio::select! {
+            _ = cancel.cancelled() => { break },
+            Ok(chunk) = chunk_rx.recv() => {
+                debug!(%detector_id, ?chunk, "[detection_task] received chunk");
+                // Send request to detector service
+                let contents = chunk
+                    .results
+                    .iter()
+                    .map(|token| token.text.clone())
+                    .collect::<Vec<_>>();
+                let request = ContentAnalysisRequest::new(contents);
+                debug!(%detector_id, ?request, "[detection_task] sending detector request");
+                match ctx
+                    .detector_client
+                    .text_contents(&detector_id, request)
+                    .await {
+                        Ok(response) => {
+                            debug!(%detector_id, ?response, "[detection_task] received detector response");
+                            let result = DetectionResult::new(chunk, response);
+                            debug!(%detector_id, ?result, "[detection_task] sending result to detector channel");
+                            let _ = detector_tx.send(result).await;
+                        },
+                        Err(_error) => {
+                            // received error from detector service, trigger cancellation
+                            cancel.cancel();
+                            break;
+                        },
+                    }
+            },
+        }
     }
-}
-
-/// Sends generate stream request to a generation service.
-async fn generate_stream(
-    ctx: &Arc<Context>,
-    model_id: String,
-    text: String,
-    params: Option<GuardrailsTextGenerationParameters>,
-) -> Result<Pin<Box<dyn Stream<Item = ClassifiedGeneratedTextStreamResult> + Send>>, Error> {
-    ctx.generation_client
-        .generate_stream(model_id.clone(), text, params)
-        .await
-        .map_err(|error| Error::GenerateRequestFailed {
-            model_id: model_id.clone(),
-            error,
-        })
 }
 
 /// Opens bi-directional stream to a chunker service
 /// with generation stream input and returns chunk broadcast stream.
-async fn chunk_broadcast_stream(
+async fn chunk_broadcast_task(
     ctx: Arc<Context>,
     chunker_id: String,
     generation_rx: broadcast::Receiver<ClassifiedGeneratedTextStreamResult>,
-) -> Result<
-    (
-        broadcast::Sender<chunkers::ChunkerTokenizationStreamResult>,
-        broadcast::Receiver<chunkers::ChunkerTokenizationStreamResult>,
-    ),
-    Error,
-> {
+    cancel: CancellationToken,
+) -> Result<broadcast::Sender<chunkers::ChunkerTokenizationStreamResult>, Error> {
     // Consume generation stream and convert to chunker input stream
     debug!(%chunker_id, "creating chunker input stream");
     // NOTE: Text gen providers can return more than 1 token in single stream object. This can create
@@ -350,7 +391,7 @@ async fn chunk_broadcast_stream(
                 .unwrap()
                 .generated_text
                 .unwrap_or_default();
-            chunkers::BidiStreamingChunkerTokenizationTaskRequest {
+            chunkers::BidiStreamingTokenizationTaskRequest {
                 text_stream: generated_text,
                 input_index_stream: token_pointer as i64,
             }
@@ -360,25 +401,57 @@ async fn chunk_broadcast_stream(
     let mut output_stream = ctx
         .chunker_client
         .bidi_streaming_tokenization_task_predict(&chunker_id, input_stream)
-        .await
-        .map_err(|error| Error::ChunkerRequestFailed {
-            chunker_id: chunker_id.clone(),
-            error,
-        })?;
-
+        .await?;
     // Spawn task to consume output stream forward to broadcast channel
     debug!(%chunker_id, "spawning chunker broadcast task");
-    let (chunk_tx, chunk_rx) = broadcast::channel(1024);
+    let (chunk_tx, _) = broadcast::channel(1024);
     tokio::spawn({
         let chunk_tx = chunk_tx.clone();
         async move {
-            while let Some(chunk) = output_stream.next().await {
-                debug!(%chunker_id, ?chunk, "[chunker_broadcast_task] received chunk");
-                let _ = chunk_tx.send(chunk);
+            loop {
+                tokio::select! {
+                    _ = cancel.cancelled() => { break },
+                    chunk_result = output_stream.next() => {
+                        match chunk_result {
+                            Some(Ok(chunk)) => {
+                                debug!(%chunker_id, ?chunk, "[chunker_broadcast_task] received chunk");
+                                let _ = chunk_tx.send(chunk);
+                            },
+                            Some(Err(_error)) => {
+                                // received error from chunker service, trigger cancellation
+                                cancel.cancel();
+                                break;
+                            },
+                            None => { break },
+                        }
+                    }
+                }
             }
         }
     });
-    Ok((chunk_tx, chunk_rx))
+    Ok(chunk_tx)
+}
+
+/// Sends generate stream request to a generation service.
+async fn generate_stream(
+    ctx: &Arc<Context>,
+    model_id: String,
+    text: String,
+    params: Option<GuardrailsTextGenerationParameters>,
+) -> Result<
+    Pin<Box<dyn Stream<Item = Result<ClassifiedGeneratedTextStreamResult, Error>> + Send>>,
+    Error,
+> {
+    Ok(ctx
+        .generation_client
+        .generate_stream(model_id.clone(), text, params)
+        .await
+        .map_err(|error| Error::GenerateRequestFailed {
+            model_id: model_id.clone(),
+            error,
+        })?
+        .map_err(Into::into)
+        .boxed())
 }
 
 #[derive(Debug, Clone)]
