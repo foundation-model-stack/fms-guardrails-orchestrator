@@ -649,6 +649,9 @@ components:
         token_ranks:
           type: boolean
           title: Token Ranks
+        include_stop_sequence:
+          type: boolean
+          title: Include Stop Sequence
       additionalProperties: false
       type: object
       title: Guardrails Text Generation Parameters
