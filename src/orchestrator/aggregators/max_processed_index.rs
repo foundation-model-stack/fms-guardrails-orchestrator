@@ -151,7 +151,8 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
                             input_token_count,
                             tokens: Some(tokens),
                             input_tokens,
-                            // Populate all fields from particular generation response
+                            // Populate all fields from last generation response and if not available, then use
+                            // default value for ClassifiedGeneratedTextStreamResult
                             ..generation_responses
                                 .last()
                                 .unwrap_or(&ClassifiedGeneratedTextStreamResult::default())
@@ -293,7 +294,6 @@ mod tests {
 
         let mut chunk_count = 0;
         while let Some(classified_gen_stream_result) = result_rx.recv().await {
-            println!("reached here");
             let detection = classified_gen_stream_result
                 .token_classification_results
                 .output
