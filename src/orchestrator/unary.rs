@@ -149,7 +149,7 @@ impl Orchestrator {
             let detections = input_detection_task(&ctx, &detectors, content.clone(), None).await?;
             debug!(?detections);
 
-            // Send result with input detections
+            // Send result with detections
             Ok(TextContentDetectionResult {
                 content,
                 detections: detections.unwrap_or(vec![]),
