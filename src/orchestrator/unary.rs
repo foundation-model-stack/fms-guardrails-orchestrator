@@ -151,7 +151,6 @@ impl Orchestrator {
 
             // Send result with detections
             Ok(TextContentDetectionResult {
-                content,
                 detections: detections.unwrap_or(vec![]),
             })
         });

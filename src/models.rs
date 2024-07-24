@@ -348,10 +348,6 @@ impl TextContentDetectionHttpRequest {
 /// The response format of the /api/v1/text/task/detection/content endpoint
 #[derive(Default, Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TextContentDetectionResult {
-    /// The content to run detectors on
-    #[serde(rename = "content")]
-    pub content: String,
-
     /// Detection results
     #[serde(rename = "detections")]
     pub detections: Vec<TokenClassificationResult>,
