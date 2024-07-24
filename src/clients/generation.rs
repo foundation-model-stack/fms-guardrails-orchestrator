@@ -137,6 +137,7 @@ impl GenerationClient {
                         generated_tokens: params.generated_tokens,
                         token_logprobs: params.token_logprobs,
                         token_ranks: params.token_ranks,
+                        include_stop_sequence: params.include_stop_sequence,
                     }
                 } else {
                     TextGenerationTaskRequest {
@@ -202,6 +203,7 @@ impl GenerationClient {
                         generated_tokens: params.generated_tokens,
                         token_logprobs: params.token_logprobs,
                         token_ranks: params.token_ranks,
+                        include_stop_sequence: params.include_stop_sequence,
                     }
                 } else {
                     ServerStreamingTextGenerationTaskRequest {

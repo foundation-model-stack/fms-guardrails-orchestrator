@@ -245,6 +245,12 @@ pub struct GuardrailsTextGenerationParameters {
     #[serde(rename = "token_ranks")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub token_ranks: Option<bool>,
+
+    /// Whether or not to include stop sequence
+    /// If not specified, default behavior depends on server setting
+    #[serde(rename = "include_stop_sequence")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub include_stop_sequence: Option<bool>,
 }
 
 /// Parameters to exponentially increase the likelihood of the text generation
@@ -615,7 +621,7 @@ impl From<GuardrailsTextGenerationParameters> for pb::fmaas::Parameters {
             min_new_tokens: value.min_new_tokens.unwrap_or_default(),
             time_limit_millis: value.max_time.unwrap_or_default() as u32,
             stop_sequences: value.stop_sequences.unwrap_or_default(),
-            include_stop_sequence: None,
+            include_stop_sequence: value.include_stop_sequence,
         };
         let response = pb::fmaas::ResponseOptions {
             input_text: value.preserve_input_text.unwrap_or_default(),
