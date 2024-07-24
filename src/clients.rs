@@ -16,9 +16,9 @@
 */
 
 #![allow(dead_code)]
-use std::{collections::HashMap, time::Duration};
+use std::{collections::HashMap, pin::Pin, time::Duration};
 
-use futures::future::join_all;
+use futures::{future::join_all, Stream};
 use ginepro::LoadBalancedChannel;
 use reqwest::StatusCode;
 use tokio::{fs::File, io::AsyncReadExt};
@@ -49,6 +49,8 @@ pub const DEFAULT_DETECTOR_PORT: u16 = 8080;
 pub const COMMON_ROUTER_KEY: &str = "common-router";
 const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
+
+pub type BoxStream<T> = Pin<Box<dyn Stream<Item = T> + Send>>;
 
 /// Client errors.
 #[derive(Debug, Clone, thiserror::Error)]

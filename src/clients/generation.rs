@@ -15,12 +15,10 @@
 
 */
 
-use std::pin::Pin;
-
-use futures::{Stream, StreamExt, TryStreamExt};
+use futures::{StreamExt, TryStreamExt};
 use tracing::debug;
 
-use super::{Error, NlpClient, TgisClient};
+use super::{BoxStream, Error, NlpClient, TgisClient};
 use crate::{
     models::{
         ClassifiedGeneratedTextResult, ClassifiedGeneratedTextStreamResult,
@@ -165,10 +163,7 @@ impl GenerationClient {
         model_id: String,
         text: String,
         params: Option<GuardrailsTextGenerationParameters>,
-    ) -> Result<
-        Pin<Box<dyn Stream<Item = Result<ClassifiedGeneratedTextStreamResult, Error>> + Send>>,
-        Error,
-    > {
+    ) -> Result<BoxStream<Result<ClassifiedGeneratedTextStreamResult, Error>>, Error> {
         match &self.0 {
             GenerationClientInner::Tgis(client) => {
                 let params = params.map(Into::into);

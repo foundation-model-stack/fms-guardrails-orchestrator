@@ -22,7 +22,7 @@ use ginepro::LoadBalancedChannel;
 use tonic::{Request, Response, Status, Streaming};
 use tracing::info;
 
-use super::{create_grpc_clients, Error};
+use super::{create_grpc_clients, BoxStream, Error};
 use crate::{
     config::ServiceConfig,
     pb::{
@@ -86,13 +86,8 @@ impl ChunkerClient {
     pub async fn bidi_streaming_tokenization_task_predict(
         &self,
         model_id: &str,
-        request_stream: Pin<
-            Box<dyn Stream<Item = BidiStreamingChunkerTokenizationTaskRequest> + Send>,
-        >,
-    ) -> Result<
-        Pin<Box<dyn Stream<Item = Result<ChunkerTokenizationStreamResult, Error>> + Send>>,
-        Error,
-    > {
+        request_stream: BoxStream<BidiStreamingChunkerTokenizationTaskRequest>,
+    ) -> Result<BoxStream<Result<ChunkerTokenizationStreamResult, Error>>, Error> {
         // Handle "default" separately first
         if model_id == DEFAULT_MODEL_ID {
             info!("Using default whole doc chunker");

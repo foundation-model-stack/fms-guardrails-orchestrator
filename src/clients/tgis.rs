@@ -15,12 +15,12 @@
 
 */
 
-use std::{collections::HashMap, pin::Pin};
+use std::collections::HashMap;
 
-use futures::{Stream, StreamExt, TryStreamExt};
+use futures::{StreamExt, TryStreamExt};
 use ginepro::LoadBalancedChannel;
 
-use super::{create_grpc_clients, Error};
+use super::{create_grpc_clients, BoxStream, Error};
 use crate::{
     clients::COMMON_ROUTER_KEY,
     config::ServiceConfig,
@@ -70,7 +70,7 @@ impl TgisClient {
     pub async fn generate_stream(
         &self,
         request: SingleGenerationRequest,
-    ) -> Result<Pin<Box<dyn Stream<Item = Result<GenerationResponse, Error>> + Send>>, Error> {
+    ) -> Result<BoxStream<Result<GenerationResponse, Error>>, Error> {
         let model_id = request.model_id.as_str();
         let response_stream = self
             .client(model_id)?
