@@ -20,8 +20,7 @@ use std::sync::{Arc, RwLock};
 
 use async_trait::async_trait;
 pub use max_processed_index::MaxProcessedIndexAggregator;
-use tokio::sync::mpsc;
-use tokio_util::sync::CancellationToken;
+use tokio::sync::{broadcast, mpsc};
 
 use super::{streaming::DetectionResult, Error};
 use crate::models::ClassifiedGeneratedTextStreamResult;
@@ -35,6 +34,6 @@ pub trait DetectionAggregator: Default {
         &self,
         generations: Arc<RwLock<Vec<ClassifiedGeneratedTextStreamResult>>>,
         detection_streams: Vec<(DetectorId, f64, mpsc::Receiver<DetectionResult>)>,
-        cancel: CancellationToken,
+        cancel_tx: broadcast::Sender<Error>,
     ) -> mpsc::Receiver<Result<ClassifiedGeneratedTextStreamResult, Error>>;
 }

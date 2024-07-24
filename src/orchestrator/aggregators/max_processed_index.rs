@@ -4,8 +4,7 @@ use std::{
 };
 
 use async_trait::async_trait;
-use tokio::sync::mpsc;
-use tokio_util::sync::CancellationToken;
+use tokio::sync::{broadcast, mpsc};
 use tracing::debug;
 
 use super::{DetectionAggregator, DetectorId};
@@ -91,7 +90,7 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
         &self,
         generations: Arc<RwLock<Vec<ClassifiedGeneratedTextStreamResult>>>,
         detection_streams: Vec<(DetectorId, f64, mpsc::Receiver<DetectionResult>)>,
-        _cancel: CancellationToken,
+        _cancel_tx: broadcast::Sender<Error>,
     ) -> mpsc::Receiver<Result<ClassifiedGeneratedTextStreamResult, Error>> {
         let (result_tx, result_rx) = mpsc::channel(1024);
         // TODO: handle cancellation
@@ -299,9 +298,9 @@ mod tests {
 
         let generations = get_dummy_streaming_generation().await;
         let aggregator = MaxProcessedIndexAggregator::default();
-        let cancel = CancellationToken::new();
+        let (cancel_tx, _) = broadcast::channel(1);
         let mut result_rx = aggregator
-            .process(generations, detection_streams, cancel)
+            .process(generations, detection_streams, cancel_tx)
             .await;
 
         let mut chunk_count = 0;

@@ -24,7 +24,6 @@ use std::{
 use futures::{future::join_all, Stream, StreamExt, TryStreamExt};
 use tokio::sync::{broadcast, mpsc};
 use tokio_stream::wrappers::{BroadcastStream, ReceiverStream};
-use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info};
 
 use super::{get_chunker_ids, Context, Error, Orchestrator, StreamingClassificationWithGenTask};
@@ -140,38 +139,34 @@ impl Orchestrator {
                 let output_detectors = task.guardrails_config.output_detectors();
                 match output_detectors {
                     Some(detectors) if !detectors.is_empty() => {
-                        // Create cancellation token
-                        let cancel = CancellationToken::new();
-                        //let (cancel_tx, _) = broadcast::channel(1); // TODO
-                        //let _ = cancel_tx.send(error);
-                        //let mut cancel_rx = cancel_tx.subscribe(); // do this in each task
-                        //_ = cancel_rx.recv() => { break }
+                        // Create cancellation channel
+                        let (cancel_tx, _) = broadcast::channel(1);
                         let aggregator = MaxProcessedIndexAggregator::default();
                         let mut result_rx = match streaming_output_detection_task(
                             &ctx,
                             detectors,
                             aggregator,
                             generation_stream,
-                            cancel.clone(),
+                            cancel_tx.clone(),
                         )
                         .await
                         {
                             Ok(result_rx) => result_rx,
                             Err(error) => {
                                 error!(request_id = ?task.request_id, %error, "output detection task failed");
-                                cancel.cancel();
+                                let _ = cancel_tx.send(error.clone());
                                 let _ = response_tx.send(Err(error)).await;
                                 return;
                             }
                         };
                         // Forward generation results with detections to response channel
                         tokio::spawn(async move {
+                            let mut cancel_rx = cancel_tx.subscribe();
                             loop {
                                 tokio::select! {
-                                    _ = cancel.cancelled() => {
-                                        // TODO: log and send actual error here once changed to broadcast channel
-                                        error!(?task.request_id, "[result_task] task cancelled");
-                                        let _ = response_tx.send(Err(Error::Cancelled)).await;
+                                    Ok(error) = cancel_rx.recv() => {
+                                        error!(?task.request_id, ?error, "[result_task] task failed, sending error to client");
+                                        let _ = response_tx.send(Err(error)).await;
                                         return;
                                     },
                                     result = result_rx.recv() => {
@@ -214,7 +209,7 @@ async fn streaming_output_detection_task(
     generation_stream: Pin<
         Box<dyn Stream<Item = Result<ClassifiedGeneratedTextStreamResult, Error>> + Send>,
     >,
-    cancel: CancellationToken,
+    cancel_tx: broadcast::Sender<Error>,
 ) -> Result<mpsc::Receiver<Result<ClassifiedGeneratedTextStreamResult, Error>>, Error> {
     // Create generation broadcast stream
     let (generation_tx, generation_rx) = broadcast::channel(1024);
@@ -230,12 +225,12 @@ async fn streaming_output_detection_task(
             .map(|chunker_id| {
                 debug!(%chunker_id, "creating chunk broadcast stream");
                 let ctx = ctx.clone();
-                let cancel = cancel.clone();
+                let cancel_tx = cancel_tx.clone();
                 // Subscribe to generation stream
                 let generation_rx = generation_tx.subscribe();
                 async move {
                     let chunk_tx =
-                        chunk_broadcast_task(ctx, chunker_id.clone(), generation_rx, cancel)
+                        chunk_broadcast_task(ctx, chunker_id.clone(), generation_rx, cancel_tx)
                             .await
                             .unwrap(); // TODO: handle error
                     (chunker_id, chunk_tx)
@@ -270,13 +265,14 @@ async fn streaming_output_detection_task(
             .get(&chunker_id)
             .unwrap()
             .subscribe();
-        let cancel = cancel.clone();
+        //let cancel = cancel.clone();
+        let cancel_tx = cancel_tx.clone();
         tokio::spawn(streaming_detection_task(
             ctx.clone(),
             detector_id.clone(),
             detector_tx,
             chunk_rx,
-            cancel,
+            cancel_tx,
         ));
         detection_streams.push((detector_id, threshold, detector_rx));
     }
@@ -290,13 +286,13 @@ async fn streaming_output_detection_task(
         generations.clone(),
         generation_stream,
         generation_tx,
-        cancel.clone(),
+        cancel_tx.clone(),
     ));
     drop(generation_rx);
 
     debug!("processing detection streams");
     let result_rx = aggregator
-        .process(generations, detection_streams, cancel)
+        .process(generations, detection_streams, cancel_tx)
         .await;
     Ok(result_rx)
 }
@@ -307,13 +303,14 @@ async fn generation_broadcast_task(
         Box<dyn Stream<Item = Result<ClassifiedGeneratedTextStreamResult, Error>> + Send>,
     >,
     generation_tx: broadcast::Sender<ClassifiedGeneratedTextStreamResult>,
-    cancel: CancellationToken,
+    cancel_tx: broadcast::Sender<Error>,
 ) {
+    let mut cancel_rx = cancel_tx.subscribe();
     loop {
         tokio::select! {
-            _ = cancel.cancelled() => { break },
-            generation_result = generation_stream.next() => {
-                match generation_result {
+            _ = cancel_rx.recv() => { break },
+            result = generation_stream.next() => {
+                match result {
                     Some(Ok(generation)) => {
                         debug!(?generation, "[generation_broadcast_task] received generation");
                         // Add a copy to the shared vec
@@ -322,7 +319,8 @@ async fn generation_broadcast_task(
                     },
                     Some(Err(error)) => {
                         error!(?error, "[generation_broadcast_task] generation error, cancelling task");
-                        cancel.cancel();
+                        //cancel.cancel();
+                        let _ = cancel_tx.send(error);
                         break;
                     },
                     None => {
@@ -343,11 +341,13 @@ async fn streaming_detection_task(
     detector_id: String,
     detector_tx: mpsc::Sender<DetectionResult>,
     mut chunk_rx: broadcast::Receiver<chunkers::ChunkerTokenizationStreamResult>,
-    cancel: CancellationToken,
+    cancel_tx: broadcast::Sender<Error>,
 ) {
+    let mut cancel_rx = cancel_tx.subscribe();
     loop {
         tokio::select! {
-            _ = cancel.cancelled() => { break },
+            //_ = cancel.cancelled() => { break },
+            _ = cancel_rx.recv() => { break },
             result = chunk_rx.recv() => {
                 match result {
                     Ok(chunk) => {
@@ -372,7 +372,8 @@ async fn streaming_detection_task(
                                 },
                                 Err(error) => {
                                     error!(%detector_id, ?error, "[streaming_detection_task] detector error, cancelling task");
-                                    cancel.cancel();
+                                    //cancel.cancel();
+                                    let _ = cancel_tx.send(error.into());
                                     break;
                                 },
                             }
@@ -397,7 +398,7 @@ async fn chunk_broadcast_task(
     ctx: Arc<Context>,
     chunker_id: String,
     generation_rx: broadcast::Receiver<ClassifiedGeneratedTextStreamResult>,
-    cancel: CancellationToken,
+    cancel_tx: broadcast::Sender<Error>,
 ) -> Result<broadcast::Sender<chunkers::ChunkerTokenizationStreamResult>, Error> {
     // Consume generation stream and convert to chunker input stream
     debug!(%chunker_id, "[chunk_broadcast_task] creating chunker input stream");
@@ -427,11 +428,12 @@ async fn chunk_broadcast_task(
     debug!(%chunker_id, "[chunk_broadcast_task] spawning chunker broadcast task");
     let (chunk_tx, _) = broadcast::channel(1024);
     tokio::spawn({
+        let mut cancel_rx = cancel_tx.subscribe();
         let chunk_tx = chunk_tx.clone();
         async move {
             loop {
                 tokio::select! {
-                    _ = cancel.cancelled() => { break },
+                    _ = cancel_rx.recv() => { break },
                     result = output_stream.next() => {
                         match result {
                             Some(Ok(chunk)) => {
@@ -440,7 +442,7 @@ async fn chunk_broadcast_task(
                             },
                             Some(Err(error)) => {
                                 error!(%chunker_id, ?error, "[chunk_broadcast_task] chunker error, cancelling task");
-                                cancel.cancel();
+                                let _ = cancel_tx.send(error.into());
                                 break;
                             },
                             None => {
@@ -503,7 +505,7 @@ mod tests {
         let (generation_tx, generation_rx) = mpsc::channel(4);
         let (generation_broadcast_tx, mut generation_broadcast_rx) = broadcast::channel(4);
         let generation_stream = ReceiverStream::new(generation_rx).boxed();
-        let cancel = CancellationToken::new();
+        let (cancel_tx, _) = broadcast::channel(1);
         let results = vec![
             ClassifiedGeneratedTextStreamResult {
                 generated_text: Some("hello".into()),
@@ -530,7 +532,7 @@ mod tests {
             generations,
             generation_stream,
             generation_broadcast_tx,
-            cancel,
+            cancel_tx,
         ));
         let mut broadcast_results = Vec::with_capacity(results.len());
         while let Ok(result) = generation_broadcast_rx.recv().await {
