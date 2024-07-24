@@ -39,13 +39,19 @@ use crate::{
 };
 
 #[cfg_attr(test, faux::create)]
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct GenerationClient(GenerationClientInner);
 
 #[derive(Clone)]
 enum GenerationClientInner {
     Tgis(TgisClient),
     Nlp(NlpClient),
+}
+
+impl Default for GenerationClientInner {
+    fn default() -> Self {
+        Self::Tgis(TgisClient::default())
+    }
 }
 
 #[cfg_attr(test, faux::methods)]

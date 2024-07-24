@@ -32,7 +32,7 @@ use crate::{
 };
 
 #[cfg_attr(test, faux::create)]
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct TgisClient {
     clients: HashMap<String, GenerationServiceClient<LoadBalancedChannel>>,
 }

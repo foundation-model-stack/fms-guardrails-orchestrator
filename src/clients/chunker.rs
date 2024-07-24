@@ -42,12 +42,13 @@ const DEFAULT_MODEL_ID: &str = "whole_doc_chunker";
 type StreamingTokenizationResult =
     Result<Response<Streaming<ChunkerTokenizationStreamResult>>, Status>;
 
-#[cfg_attr(test, derive(Default))]
-#[derive(Clone)]
+#[cfg_attr(test, faux::create)]
+#[derive(Clone, Default)]
 pub struct ChunkerClient {
     clients: HashMap<String, ChunkersServiceClient<LoadBalancedChannel>>,
 }
 
+#[cfg_attr(test, faux::methods)]
 impl ChunkerClient {
     pub async fn new(default_port: u16, config: &[(String, ServiceConfig)]) -> Self {
         let clients = create_grpc_clients(default_port, config, ChunkersServiceClient::new).await;

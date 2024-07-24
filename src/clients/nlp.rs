@@ -39,11 +39,13 @@ use crate::{
 
 const MODEL_ID_HEADER_NAME: &str = "mm-model-id";
 
-#[derive(Clone)]
+#[cfg_attr(test, faux::create)]
+#[derive(Clone, Default)]
 pub struct NlpClient {
     clients: HashMap<String, NlpServiceClient<LoadBalancedChannel>>,
 }
 
+#[cfg_attr(test, faux::methods)]
 impl NlpClient {
     pub async fn new(default_port: u16, config: &[(String, ServiceConfig)]) -> Self {
         let clients = create_grpc_clients(default_port, config, NlpServiceClient::new).await;

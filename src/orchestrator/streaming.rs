@@ -470,4 +470,69 @@ impl DetectionResult {
 }
 
 #[cfg(test)]
-mod tests {}
+mod tests {
+    use futures::stream;
+
+    use super::*;
+    use crate::clients::ChunkerClient;
+
+    #[tokio::test]
+    async fn test_generation_broadcast_task() {
+        let generations = Arc::new(RwLock::new(Vec::new()));
+        let (generation_tx, generation_rx) = mpsc::channel(4);
+        let (generation_broadcast_tx, mut generation_broadcast_rx) = broadcast::channel(4);
+        let generation_stream = ReceiverStream::new(generation_rx).boxed();
+        let cancel = CancellationToken::new();
+        let results = vec![
+            ClassifiedGeneratedTextStreamResult {
+                generated_text: Some("hello".into()),
+                ..Default::default()
+            },
+            ClassifiedGeneratedTextStreamResult {
+                generated_text: Some(" ".into()),
+                ..Default::default()
+            },
+            ClassifiedGeneratedTextStreamResult {
+                generated_text: Some("world".into()),
+                ..Default::default()
+            },
+        ];
+        tokio::spawn({
+            let results = results.clone();
+            async move {
+                for result in results {
+                    let _ = generation_tx.send(Ok(result)).await;
+                }
+            }
+        });
+        tokio::spawn(generation_broadcast_task(
+            generations,
+            generation_stream,
+            generation_broadcast_tx,
+            cancel,
+        ));
+        let mut broadcast_results = Vec::with_capacity(results.len());
+        while let Ok(result) = generation_broadcast_rx.recv().await {
+            println!("{result:?}");
+            broadcast_results.push(result);
+        }
+        assert_eq!(results, broadcast_results)
+    }
+
+    #[tokio::test]
+    async fn test_chunk_broadcast_task() {
+        // let mut chunker_client = ChunkerClient::faux();
+        // let request_stream = stream::iter(vec![]).boxed();
+        // faux::when!(chunker_client.bidi_streaming_tokenization_task_predict("test", request_stream));
+        // let ctx = Arc::new(Context {
+        //     chunker_client,
+        //     ..Default::default()
+        // });
+        todo!()
+    }
+
+    #[tokio::test]
+    async fn test_streaming_detection_task() {
+        todo!()
+    }
+}

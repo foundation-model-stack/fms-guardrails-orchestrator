@@ -25,8 +25,8 @@ use crate::config::ServiceConfig;
 const DETECTOR_ID_HEADER_NAME: &str = "detector-id";
 
 // For some reason the order matters here. #[cfg_attr(test, derive(Default), faux::create)] doesn't work. (rustc --explain E0560)
-#[cfg_attr(test, faux::create, derive(Default))]
-#[derive(Clone)]
+#[cfg_attr(test, faux::create)]
+#[derive(Clone, Default)]
 pub struct DetectorClient {
     clients: HashMap<String, HttpClient>,
 }

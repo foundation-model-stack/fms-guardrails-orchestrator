@@ -50,18 +50,17 @@ pub struct TlsConfig {
 }
 
 /// Generation service provider
-#[cfg_attr(test, derive(Default))]
-#[derive(Clone, Copy, Debug, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum GenerationProvider {
-    #[cfg_attr(test, default)]
+    //#[cfg_attr(test, default)]
+    #[default]
     Tgis,
     Nlp,
 }
 
 /// Generate service configuration
-#[cfg_attr(test, derive(Default))]
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize)]
 pub struct GenerationConfig {
     /// Generation service provider
     pub provider: GenerationProvider,
@@ -102,8 +101,7 @@ pub struct DetectorConfig {
 }
 
 /// Overall orchestrator server configuration
-#[cfg_attr(test, derive(Default))]
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize)]
 pub struct OrchestratorConfig {
     /// Generation service and associated configuration
     pub generation: GenerationConfig,
