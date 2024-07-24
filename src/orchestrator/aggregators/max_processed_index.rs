@@ -124,7 +124,11 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
                     let input_start_index = chunk.input_start_index as usize;
                     let input_end_index = chunk.input_end_index as usize;
 
-                    let input_token_count = generations.read().unwrap()[0].input_token_count;
+                    // Note we need to optimize below a bit and only read generations 1 time above this loop
+                    let initial_gen_response = generations.read().unwrap()[0].clone();
+                    let input_token_count = initial_gen_response.input_token_count;
+                    let seed = initial_gen_response.seed;
+
                     // Note: input_tokens is not present in 0th response, so we use `1`
                     let input_tokens = match generations.read().unwrap().get(1) {
                         Some(first_generation) => first_generation.input_tokens.clone(),
@@ -133,7 +137,7 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
 
                     // Get subset of generation responses relevant for this chunk
                     let generation_responses: Vec<ClassifiedGeneratedTextStreamResult> =
-                        generations.read().unwrap()[input_start_index..input_end_index]
+                        generations.read().unwrap()[input_start_index..=input_end_index]
                             .iter()
                             .map(|result| result.to_owned())
                             .collect::<Vec<_>>();
@@ -151,6 +155,7 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
                             input_token_count,
                             tokens: Some(tokens),
                             input_tokens,
+                            seed,
                             // Populate all fields from last generation response and if not available, then use
                             // default value for ClassifiedGeneratedTextStreamResult
                             ..generation_responses
