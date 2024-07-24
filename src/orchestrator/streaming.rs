@@ -165,32 +165,40 @@ impl Orchestrator {
                             }
                         };
                         // Forward generation results with detections to response channel
+                        // tokio::spawn(async move {
+                        //     loop {
+                        //         tokio::select! {
+                        //             _ = cancel.cancelled() => {
+                        //                 // TODO: log and send actual error here once changed to broadcast channel
+                        //                 error!(request_id = ?task.request_id, "streaming task cancelled");
+                        //                 let _ = response_tx.send(Err(Error::Cancelled)).await;
+                        //                 return;
+                        //             },
+                        //             result = result_rx.recv() => {
+                        //                 debug!("sending to response_tx: {result:?}");
+                        //                 match result {
+                        //                     Some(generation_with_detections) => {
+                        //                         let _ = response_tx.send(generation_with_detections).await;
+                        //                     },
+                        //                     None => { break },
+                        //                 }
+                        //             }
+                        //         }
+                        //     }
+                        // });
                         tokio::spawn(async move {
-                            loop {
-                                tokio::select! {
-                                    _ = cancel.cancelled() => {
-                                        // TODO: log and send actual error here once changed to broadcast channel
-                                        error!(request_id = ?task.request_id, "streaming task cancelled");
-                                        let _ = response_tx.send(Err(Error::Cancelled)).await;
-                                        return;
-                                    },
-                                    result = result_rx.recv() => {
-                                        match result {
-                                            Some(generation_with_detections) => {
-                                                let _ = response_tx.send(generation_with_detections).await;
-                                            },
-                                            None => { break },
-                                        }
-                                    }
-                                }
+                            while let Some(result) = result_rx.recv().await {
+                                debug!("sending to response_tx: {result:?}");
+                                let _ = response_tx.send(result).await;
                             }
                         });
                     }
                     _ => {
                         // No output detectors, forward generation results to response channel
                         tokio::spawn(async move {
-                            while let Some(generation) = generation_stream.next().await {
-                                let _ = response_tx.send(generation).await;
+                            while let Some(result) = generation_stream.next().await {
+                                debug!("sending to response_tx: {result:?}");
+                                let _ = response_tx.send(result).await;
                             }
                         });
                     }
@@ -340,7 +348,7 @@ async fn streaming_detection_task(
         tokio::select! {
             _ = cancel.cancelled() => { break },
             Ok(chunk) = chunk_rx.recv() => {
-                debug!(%detector_id, ?chunk, "[detection_task] received chunk");
+                debug!(%detector_id, ?chunk, "[streaming_detection_task] received chunk");
                 // Send request to detector service
                 let contents = chunk
                     .results
@@ -348,15 +356,15 @@ async fn streaming_detection_task(
                     .map(|token| token.text.clone())
                     .collect::<Vec<_>>();
                 let request = ContentAnalysisRequest::new(contents);
-                debug!(%detector_id, ?request, "[detection_task] sending detector request");
+                debug!(%detector_id, ?request, "[streaming_detection_task] sending detector request");
                 match ctx
                     .detector_client
                     .text_contents(&detector_id, request)
                     .await {
                         Ok(response) => {
-                            debug!(%detector_id, ?response, "[detection_task] received detector response");
+                            debug!(%detector_id, ?response, "[streaming_detection_task] received detector response");
                             let result = DetectionResult::new(chunk, response);
-                            debug!(%detector_id, ?result, "[detection_task] sending result to detector channel");
+                            debug!(%detector_id, ?result, "[streaming_detection_task] sending result to detector channel");
                             let _ = detector_tx.send(result).await;
                         },
                         Err(_error) => {
@@ -379,7 +387,7 @@ async fn chunk_broadcast_task(
     cancel: CancellationToken,
 ) -> Result<broadcast::Sender<chunkers::ChunkerTokenizationStreamResult>, Error> {
     // Consume generation stream and convert to chunker input stream
-    debug!(%chunker_id, "creating chunker input stream");
+    debug!(%chunker_id, "[chunk_broadcast_task] creating chunker input stream");
     // NOTE: Text gen providers can return more than 1 token in single stream object. This can create
     // edge cases where the enumeration generated below may not line up with token / response boundaries.
     // So the more accurate way here might be to use `Tokens` object from response, but since that is an
@@ -397,13 +405,13 @@ async fn chunk_broadcast_task(
             }
         })
         .boxed();
-    debug!(%chunker_id, "creating chunker output stream");
+    debug!(%chunker_id, "[chunk_broadcast_task] creating chunker output stream");
     let mut output_stream = ctx
         .chunker_client
         .bidi_streaming_tokenization_task_predict(&chunker_id, input_stream)
         .await?;
     // Spawn task to consume output stream forward to broadcast channel
-    debug!(%chunker_id, "spawning chunker broadcast task");
+    debug!(%chunker_id, "[chunk_broadcast_task] spawning chunker broadcast task");
     let (chunk_tx, _) = broadcast::channel(1024);
     tokio::spawn({
         let chunk_tx = chunk_tx.clone();
@@ -414,7 +422,7 @@ async fn chunk_broadcast_task(
                     chunk_result = output_stream.next() => {
                         match chunk_result {
                             Some(Ok(chunk)) => {
-                                debug!(%chunker_id, ?chunk, "[chunker_broadcast_task] received chunk");
+                                debug!(%chunker_id, ?chunk, "[chunk_broadcast_task] received chunk");
                                 let _ = chunk_tx.send(chunk);
                             },
                             Some(Err(_error)) => {

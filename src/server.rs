@@ -16,8 +16,8 @@
 */
 
 use std::{
-    collections::HashMap, error::Error as _, fs::File, io::BufReader, net::SocketAddr,
-    path::PathBuf, sync::Arc,
+    collections::HashMap, convert::Infallible, error::Error as _, fs::File, io::BufReader,
+    net::SocketAddr, path::PathBuf, sync::Arc,
 };
 
 use axum::{
@@ -31,7 +31,7 @@ use axum::{
     Json, Router,
 };
 use axum_extra::extract::WithRejection;
-use futures::StreamExt;
+use futures::{stream, Stream, StreamExt};
 use hyper::body::Incoming;
 use hyper_util::rt::{TokioExecutor, TokioIo};
 use rustls::{server::WebPkiClientVerifier, RootCertStore, ServerConfig};
@@ -275,24 +275,41 @@ async fn classification_with_gen(
 async fn stream_classification_with_gen(
     State(state): State<Arc<ServerState>>,
     WithRejection(Json(request), _): WithRejection<Json<models::GuardrailsHttpRequest>, Error>,
-) -> Result<impl IntoResponse, Error> {
+) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
     let request_id = Uuid::new_v4();
-    request.validate()?;
+    if let Err(error) = request.validate() {
+        // Request validation failed, return stream with single error SSE event
+        let error: Error = error.into();
+        return Sse::new(
+            stream::iter([Ok(Event::default()
+                .event("error")
+                .json_data(error.to_json())
+                .unwrap())])
+            .boxed(),
+        );
+    }
     let task = StreamingClassificationWithGenTask::new(request_id, request);
     let response_stream = state
         .orchestrator
         .handle_streaming_classification_with_gen(task)
         .await;
     // Convert response stream to a stream of SSE events
-    let event_stream = response_stream.map(|message| match message {
-        Ok(response) => Event::default().json_data(response),
-        Err(error) => {
-            let error: Error = error.into();
-            Event::default().event("error").json_data(error.to_json())
-        }
-    });
-    let sse = Sse::new(event_stream).keep_alive(KeepAlive::default());
-    Ok(sse.into_response())
+    let event_stream = response_stream
+        .map(|message| {
+            debug!("event stream: {message:?}");
+            match message {
+                Ok(response) => Ok(Event::default().json_data(response).unwrap()),
+                Err(error) => {
+                    let error: Error = error.into();
+                    Ok(Event::default()
+                        .event("error")
+                        .json_data(error.to_json())
+                        .unwrap())
+                }
+            }
+        })
+        .boxed();
+    Sse::new(event_stream).keep_alive(KeepAlive::default())
 }
 
 /// Shutdown signal handler
