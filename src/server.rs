@@ -295,17 +295,14 @@ async fn stream_classification_with_gen(
         .await;
     // Convert response stream to a stream of SSE events
     let event_stream = response_stream
-        .map(|message| {
-            debug!("event stream: {message:?}");
-            match message {
-                Ok(response) => Ok(Event::default().json_data(response).unwrap()),
-                Err(error) => {
-                    let error: Error = error.into();
-                    Ok(Event::default()
-                        .event("error")
-                        .json_data(error.to_json())
-                        .unwrap())
-                }
+        .map(|message| match message {
+            Ok(response) => Ok(Event::default().json_data(response).unwrap()),
+            Err(error) => {
+                let error: Error = error.into();
+                Ok(Event::default()
+                    .event("error")
+                    .json_data(error.to_json())
+                    .unwrap())
             }
         })
         .boxed();

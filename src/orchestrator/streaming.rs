@@ -130,7 +130,7 @@ impl Orchestrator {
                 {
                     Ok(generation_stream) => generation_stream,
                     Err(error) => {
-                        error!(request_id = ?task.request_id, %error, "generate stream request failed");
+                        error!(request_id = ?task.request_id, %error, "generate stream failed");
                         let _ = response_tx.send(Err(error)).await;
                         return;
                     }
@@ -158,38 +158,35 @@ impl Orchestrator {
                         {
                             Ok(result_rx) => result_rx,
                             Err(error) => {
-                                error!(request_id = ?task.request_id, %error, "streaming output detection failed");
+                                error!(request_id = ?task.request_id, %error, "output detection task failed");
                                 cancel.cancel();
                                 let _ = response_tx.send(Err(error)).await;
                                 return;
                             }
                         };
                         // Forward generation results with detections to response channel
-                        // tokio::spawn(async move {
-                        //     loop {
-                        //         tokio::select! {
-                        //             _ = cancel.cancelled() => {
-                        //                 // TODO: log and send actual error here once changed to broadcast channel
-                        //                 error!(request_id = ?task.request_id, "streaming task cancelled");
-                        //                 let _ = response_tx.send(Err(Error::Cancelled)).await;
-                        //                 return;
-                        //             },
-                        //             result = result_rx.recv() => {
-                        //                 debug!("sending to response_tx: {result:?}");
-                        //                 match result {
-                        //                     Some(generation_with_detections) => {
-                        //                         let _ = response_tx.send(generation_with_detections).await;
-                        //                     },
-                        //                     None => { break },
-                        //                 }
-                        //             }
-                        //         }
-                        //     }
-                        // });
                         tokio::spawn(async move {
-                            while let Some(result) = result_rx.recv().await {
-                                debug!("sending to response_tx: {result:?}");
-                                let _ = response_tx.send(result).await;
+                            loop {
+                                tokio::select! {
+                                    _ = cancel.cancelled() => {
+                                        // TODO: log and send actual error here once changed to broadcast channel
+                                        error!(?task.request_id, "[result_task] task cancelled");
+                                        let _ = response_tx.send(Err(Error::Cancelled)).await;
+                                        return;
+                                    },
+                                    result = result_rx.recv() => {
+                                        debug!(?task.request_id, ?result, "[result_task] sending result to client");
+                                        match result {
+                                            Some(generation_with_detections) => {
+                                                let _ = response_tx.send(generation_with_detections).await;
+                                            },
+                                            None => {
+                                                debug!(?task.request_id, "[result_task] stream closed");
+                                                break
+                                            },
+                                        }
+                                    }
+                                }
                             }
                         });
                     }
@@ -197,7 +194,7 @@ impl Orchestrator {
                         // No output detectors, forward generation results to response channel
                         tokio::spawn(async move {
                             while let Some(result) = generation_stream.next().await {
-                                debug!("sending to response_tx: {result:?}");
+                                debug!(?task.request_id, ?result, "[result_task] sending result to client");
                                 let _ = response_tx.send(result).await;
                             }
                         });
@@ -220,7 +217,7 @@ async fn streaming_output_detection_task(
     cancel: CancellationToken,
 ) -> Result<mpsc::Receiver<Result<ClassifiedGeneratedTextStreamResult, Error>>, Error> {
     // Create generation broadcast stream
-    let (generation_tx, _) = broadcast::channel(1024);
+    let (generation_tx, generation_rx) = broadcast::channel(1024);
 
     debug!("creating chunk broadcast streams");
     let chunker_ids = get_chunker_ids(ctx, detectors)?;
@@ -295,6 +292,7 @@ async fn streaming_output_detection_task(
         generation_tx,
         cancel.clone(),
     ));
+    drop(generation_rx);
 
     debug!("processing detection streams");
     let result_rx = aggregator
@@ -322,12 +320,15 @@ async fn generation_broadcast_task(
                         generations.write().unwrap().push(generation.clone());
                         let _ = generation_tx.send(generation);
                     },
-                    Some(Err(_error)) => {
-                        // received error from generation service, trigger cancellation
+                    Some(Err(error)) => {
+                        error!(?error, "[generation_broadcast_task] generation error, cancelling task");
                         cancel.cancel();
                         break;
                     },
-                    None => { break },
+                    None => {
+                        debug!("[generation_broadcast_task] stream closed");
+                        break
+                    },
                 }
             }
         }
@@ -347,32 +348,44 @@ async fn streaming_detection_task(
     loop {
         tokio::select! {
             _ = cancel.cancelled() => { break },
-            Ok(chunk) = chunk_rx.recv() => {
-                debug!(%detector_id, ?chunk, "[streaming_detection_task] received chunk");
-                // Send request to detector service
-                let contents = chunk
-                    .results
-                    .iter()
-                    .map(|token| token.text.clone())
-                    .collect::<Vec<_>>();
-                let request = ContentAnalysisRequest::new(contents);
-                debug!(%detector_id, ?request, "[streaming_detection_task] sending detector request");
-                match ctx
-                    .detector_client
-                    .text_contents(&detector_id, request)
-                    .await {
-                        Ok(response) => {
-                            debug!(%detector_id, ?response, "[streaming_detection_task] received detector response");
-                            let result = DetectionResult::new(chunk, response);
-                            debug!(%detector_id, ?result, "[streaming_detection_task] sending result to detector channel");
-                            let _ = detector_tx.send(result).await;
-                        },
-                        Err(_error) => {
-                            // received error from detector service, trigger cancellation
-                            cancel.cancel();
-                            break;
-                        },
+            result = chunk_rx.recv() => {
+                match result {
+                    Ok(chunk) => {
+                        debug!(%detector_id, ?chunk, "[streaming_detection_task] received chunk");
+                        // Send request to detector service
+                        let contents = chunk
+                            .results
+                            .iter()
+                            .map(|token| token.text.clone())
+                            .collect::<Vec<_>>();
+                        let request = ContentAnalysisRequest::new(contents);
+                        debug!(%detector_id, ?request, "[streaming_detection_task] sending detector request");
+                        match ctx
+                            .detector_client
+                            .text_contents(&detector_id, request)
+                            .await {
+                                Ok(response) => {
+                                    debug!(%detector_id, ?response, "[streaming_detection_task] received detector response");
+                                    let result = DetectionResult::new(chunk, response);
+                                    debug!(%detector_id, ?result, "[streaming_detection_task] sending result to detector channel");
+                                    let _ = detector_tx.send(result).await;
+                                },
+                                Err(error) => {
+                                    error!(%detector_id, ?error, "[streaming_detection_task] detector error, cancelling task");
+                                    cancel.cancel();
+                                    break;
+                                },
+                            }
+                    },
+                    Err(broadcast::error::RecvError::Closed) => {
+                        debug!(%detector_id, "[streaming_detection_task] stream closed");
+                        break;
+                    },
+                    Err(broadcast::error::RecvError::Lagged(_)) => {
+                        debug!(%detector_id, "[streaming_detection_task] stream lagged");
+                        continue;
                     }
+                }
             },
         }
     }
@@ -419,18 +432,21 @@ async fn chunk_broadcast_task(
             loop {
                 tokio::select! {
                     _ = cancel.cancelled() => { break },
-                    chunk_result = output_stream.next() => {
-                        match chunk_result {
+                    result = output_stream.next() => {
+                        match result {
                             Some(Ok(chunk)) => {
                                 debug!(%chunker_id, ?chunk, "[chunk_broadcast_task] received chunk");
                                 let _ = chunk_tx.send(chunk);
                             },
-                            Some(Err(_error)) => {
-                                // received error from chunker service, trigger cancellation
+                            Some(Err(error)) => {
+                                error!(%chunker_id, ?error, "[chunk_broadcast_task] chunker error, cancelling task");
                                 cancel.cancel();
                                 break;
                             },
-                            None => { break },
+                            None => {
+                                debug!(%chunker_id, "[chunk_broadcast_task] stream closed");
+                                break
+                            },
                         }
                     }
                 }
@@ -522,22 +538,5 @@ mod tests {
             broadcast_results.push(result);
         }
         assert_eq!(results, broadcast_results)
-    }
-
-    #[tokio::test]
-    async fn test_chunk_broadcast_task() {
-        // let mut chunker_client = ChunkerClient::faux();
-        // let request_stream = stream::iter(vec![]).boxed();
-        // faux::when!(chunker_client.bidi_streaming_tokenization_task_predict("test", request_stream));
-        // let ctx = Arc::new(Context {
-        //     chunker_client,
-        //     ..Default::default()
-        // });
-        todo!()
-    }
-
-    #[tokio::test]
-    async fn test_streaming_detection_task() {
-        todo!()
     }
 }
