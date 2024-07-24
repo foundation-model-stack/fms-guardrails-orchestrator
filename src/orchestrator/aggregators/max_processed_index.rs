@@ -91,7 +91,7 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
         &self,
         generations: Arc<RwLock<Vec<ClassifiedGeneratedTextStreamResult>>>,
         detection_streams: Vec<(DetectorId, f64, mpsc::Receiver<DetectionResult>)>,
-        cancel: CancellationToken,
+        _cancel: CancellationToken,
     ) -> mpsc::Receiver<Result<ClassifiedGeneratedTextStreamResult, Error>> {
         let (result_tx, result_rx) = mpsc::channel(1024);
         // TODO: handle cancellation

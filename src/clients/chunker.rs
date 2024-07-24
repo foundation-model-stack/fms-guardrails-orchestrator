@@ -139,9 +139,13 @@ fn tokenize_whole_doc(request: ChunkerTokenizationTaskRequest) -> TokenizationRe
 /// Streaming tokenization result for the entire doc stream
 async fn tokenize_whole_doc_stream(
     request: impl Stream<Item = BidiStreamingChunkerTokenizationTaskRequest>,
-) -> Result<TokenizationStreamResult, Error> {
-    let text = request.map(|r| r.text_stream).collect::<String>().await;
+) -> Result<ChunkerTokenizationStreamResult, Error> {
+    let (text, index_vec): (String, Vec<i64>) = request
+        .map(|r| (r.text_stream, r.input_index_stream))
+        .collect()
+        .await;
     let codepoint_count = text.chars().count() as i64;
+    let input_end_index = index_vec.last().copied().unwrap_or_default();
     Ok(ChunkerTokenizationStreamResult {
         results: vec![Token {
             start: 0,
@@ -152,7 +156,7 @@ async fn tokenize_whole_doc_stream(
         processed_index: codepoint_count,
         start_index: 0,
         input_start_index: 0,
-        input_end_index: *index_vec.last().unwrap_or(&0),
+        input_end_index,
     })
 }
 

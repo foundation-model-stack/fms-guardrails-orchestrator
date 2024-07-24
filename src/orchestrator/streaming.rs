@@ -391,7 +391,7 @@ async fn chunk_broadcast_task(
                 .unwrap()
                 .generated_text
                 .unwrap_or_default();
-            chunkers::BidiStreamingTokenizationTaskRequest {
+            chunkers::BidiStreamingChunkerTokenizationTaskRequest {
                 text_stream: generated_text,
                 input_index_stream: token_pointer as i64,
             }
@@ -471,10 +471,7 @@ impl DetectionResult {
 
 #[cfg(test)]
 mod tests {
-    use futures::stream;
-
     use super::*;
-    use crate::clients::ChunkerClient;
 
     #[tokio::test]
     async fn test_generation_broadcast_task() {
