@@ -12,10 +12,17 @@ A clear and concise description of what the bug is.
 
 ## Platform
 
-Please provide details about the environment you are using, including the following:
+Please provide details about the environment you are using (run `scripts/collect_env.sh`).
 
-- Rust version (`rustc --version`):
-- Commit hash from main branch (`git log -1 --pretty=format:"%h"`):
+Hint: In case you cannot run script due to permissions, try `chmod u+x scripts/collect_env.sh`, then run again.
+
+<!--
+Example output:
+
+rustc 1.78.0 (9b00956e5 2024-04-29)
+Commit hash: 1892295
+-->
+
 
 ## Sample Code
 
