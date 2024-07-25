@@ -14,8 +14,8 @@ A clear and concise description of what the bug is.
 
 Please provide details about the environment you are using, including the following:
 
-- Interpreter version:
-- Library version:
+- Rust version (`rustc --version`):
+- Commit hash from main branch (`git log -1 --pretty=format:"%h"`):
 
 ## Sample Code
 
