@@ -110,7 +110,7 @@ impl From<tonic::Status> for Error {
         };
         Self::Grpc {
             code,
-            message: value.to_string(),
+            message: value.message().to_string(),
         }
     }
 }

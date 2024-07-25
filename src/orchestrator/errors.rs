@@ -22,32 +22,20 @@ use crate::clients;
 pub enum Error {
     #[error(transparent)]
     Client(#[from] clients::Error),
-    #[error("detector not found: {detector_id}")]
-    DetectorNotFound { detector_id: String },
-    #[error("detector request failed for detector_id={detector_id}: {error}")]
-    DetectorRequestFailed {
-        detector_id: String,
-        error: clients::Error,
-    },
-    #[error("chunker request failed for chunker_id={chunker_id}: {error}")]
-    ChunkerRequestFailed {
-        chunker_id: String,
-        error: clients::Error,
-    },
-    #[error("generate request failed for model_id={model_id}: {error}")]
-    GenerateRequestFailed {
-        model_id: String,
-        error: clients::Error,
-    },
-    #[error("tokenize request failed for model_id={model_id}: {error}")]
-    TokenizeRequestFailed {
-        model_id: String,
-        error: clients::Error,
-    },
-    #[error("task cancelled")]
-    Cancelled,
+    #[error("detector not found: {0}")]
+    DetectorNotFound(String),
+    #[error("detector request failed: {0}")]
+    DetectorRequestFailed(clients::Error),
+    #[error("chunker request failed: {0}")]
+    ChunkerRequestFailed(clients::Error),
+    #[error("generate request failed: {0}")]
+    GenerateRequestFailed(clients::Error),
+    #[error("tokenize request failed: {0}")]
+    TokenizeRequestFailed(clients::Error),
     #[error("{0}")]
     Other(String),
+    #[error("cancelled")]
+    Cancelled,
 }
 
 impl From<tokio::task::JoinError> for Error {

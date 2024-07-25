@@ -93,12 +93,10 @@ fn get_chunker_ids(
     detectors
         .keys()
         .map(|detector_id| {
-            let chunker_id =
-                ctx.config
-                    .get_chunker_id(detector_id)
-                    .ok_or_else(|| Error::DetectorNotFound {
-                        detector_id: detector_id.clone(),
-                    })?;
+            let chunker_id = ctx
+                .config
+                .get_chunker_id(detector_id)
+                .ok_or_else(|| Error::DetectorNotFound(detector_id.clone()))?;
             Ok::<String, Error>(chunker_id)
         })
         .collect::<Result<Vec<_>, Error>>()

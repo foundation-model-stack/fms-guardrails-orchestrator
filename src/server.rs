@@ -296,7 +296,10 @@ async fn stream_classification_with_gen(
     // Convert response stream to a stream of SSE events
     let event_stream = response_stream
         .map(|message| match message {
-            Ok(response) => Ok(Event::default().json_data(response).unwrap()),
+            Ok(response) => Ok(Event::default()
+                //.event("message") NOTE: per spec, should not be included for data-only message events
+                .json_data(response)
+                .unwrap()),
             Err(error) => {
                 let error: Error = error.into();
                 Ok(Event::default()
@@ -384,11 +387,11 @@ impl From<orchestrator::Error> for Error {
     fn from(error: orchestrator::Error) -> Self {
         use orchestrator::Error::*;
         match error {
-            DetectorNotFound { .. } => Self::NotFound(error.to_string()),
-            DetectorRequestFailed { error, .. }
-            | ChunkerRequestFailed { error, .. }
-            | GenerateRequestFailed { error, .. }
-            | TokenizeRequestFailed { error, .. } => match error.status_code() {
+            DetectorNotFound(_) => Self::NotFound(error.to_string()),
+            DetectorRequestFailed(error)
+            | ChunkerRequestFailed(error)
+            | GenerateRequestFailed(error)
+            | TokenizeRequestFailed(error) => match error.status_code() {
                 StatusCode::BAD_REQUEST | StatusCode::UNPROCESSABLE_ENTITY => {
                     Self::Validation(error.to_string())
                 }

@@ -164,29 +164,28 @@ async fn detection_task(
     chunks: HashMap<String, Vec<Chunk>>,
 ) -> Result<Vec<TokenClassificationResult>, Error> {
     // Spawn tasks for each detector
-    let tasks =
-        detectors
-            .iter()
-            .map(|(detector_id, detector_params)| {
-                let ctx = ctx.clone();
-                let detector_id = detector_id.clone();
-                let detector_params = detector_params.clone();
-                // Get the detector config
-                let detector_config = ctx.config.detectors.get(&detector_id).ok_or_else(|| {
-                    Error::DetectorNotFound {
-                        detector_id: detector_id.clone(),
-                    }
-                })?;
-                // Get the default threshold to use if threshold is not provided by the user
-                let default_threshold = detector_config.default_threshold;
-                // Get chunker for detector
-                let chunker_id = detector_config.chunker_id.as_str();
-                let chunks = chunks.get(chunker_id).unwrap().clone();
-                Ok(tokio::spawn(async move {
-                    detect(ctx, detector_id, default_threshold, detector_params, chunks).await
-                }))
-            })
-            .collect::<Result<Vec<_>, Error>>()?;
+    let tasks = detectors
+        .iter()
+        .map(|(detector_id, detector_params)| {
+            let ctx = ctx.clone();
+            let detector_id = detector_id.clone();
+            let detector_params = detector_params.clone();
+            // Get the detector config
+            let detector_config = ctx
+                .config
+                .detectors
+                .get(&detector_id)
+                .ok_or_else(|| Error::DetectorNotFound(detector_id.clone()))?;
+            // Get the default threshold to use if threshold is not provided by the user
+            let default_threshold = detector_config.default_threshold;
+            // Get chunker for detector
+            let chunker_id = detector_config.chunker_id.as_str();
+            let chunks = chunks.get(chunker_id).unwrap().clone();
+            Ok(tokio::spawn(async move {
+                detect(ctx, detector_id, default_threshold, detector_params, chunks).await
+            }))
+        })
+        .collect::<Result<Vec<_>, Error>>()?;
     let results = try_join_all(tasks)
         .await?
         .into_iter()
@@ -236,10 +235,7 @@ pub async fn detect(
         .detector_client
         .text_contents(&detector_id, request)
         .await
-        .map_err(|error| Error::DetectorRequestFailed {
-            detector_id: detector_id.clone(),
-            error,
-        })?;
+        .map_err(Error::DetectorRequestFailed)?;
     debug!(%detector_id, ?response, "received detector response");
     if chunks.len() != response.len() {
         return Err(Error::Other(format!(
@@ -277,10 +273,7 @@ pub async fn chunk(
         .chunker_client
         .tokenization_task_predict(&chunker_id, request)
         .await
-        .map_err(|error| Error::ChunkerRequestFailed {
-            chunker_id: chunker_id.clone(),
-            error,
-        })?;
+        .map_err(Error::ChunkerRequestFailed)?;
     debug!(%chunker_id, ?response, "received chunker response");
     Ok(response
         .results
@@ -327,10 +320,7 @@ pub async fn tokenize(
     ctx.generation_client
         .tokenize(model_id.clone(), text)
         .await
-        .map_err(|error| Error::TokenizeRequestFailed {
-            model_id: model_id.clone(),
-            error,
-        })
+        .map_err(Error::TokenizeRequestFailed)
 }
 
 /// Sends generate request to a generation service.
@@ -343,10 +333,7 @@ async fn generate(
     ctx.generation_client
         .generate(model_id.clone(), text, params)
         .await
-        .map_err(|error| Error::GenerateRequestFailed {
-            model_id: model_id.clone(),
-            error,
-        })
+        .map_err(Error::GenerateRequestFailed)
 }
 
 #[cfg(test)]

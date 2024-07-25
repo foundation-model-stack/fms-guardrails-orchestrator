@@ -5,7 +5,7 @@ use std::{
 
 use async_trait::async_trait;
 use tokio::sync::{broadcast, mpsc};
-use tracing::debug;
+use tracing::{debug, instrument};
 
 use super::{DetectionAggregator, DetectorId};
 use crate::{
@@ -86,6 +86,7 @@ impl DetectionTracker {
 
 #[async_trait]
 impl DetectionAggregator for MaxProcessedIndexAggregator {
+    #[instrument(skip_all)]
     async fn process(
         &self,
         generations: Arc<RwLock<Vec<ClassifiedGeneratedTextStreamResult>>>,
@@ -107,7 +108,7 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
 
             for (detector_id, threshold, mut stream) in detection_streams {
                 while let Some(message) = stream.recv().await {
-                    debug!(%detector_id, ?message, "[aggregator] received detection message");
+                    debug!(%detector_id, ?message, "received detection message");
                     // NOTE: We expect the detector to respond with an answer, even if it is [] in case of no detections. example PII
                     let chunk = message.chunk;
                     let detections = message.detections;
@@ -177,7 +178,7 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
                             detection_tracker.first_key_value().unwrap();
                         // Check if all detectors have responded for this detector
                         if *num_detectors == total_detectors {
-                            debug!("[aggregator] sending to result_tx: {result:?}");
+                            debug!("sending to result_tx: {result:?}");
                             let _ = result_tx.send(Ok(result.clone())).await;
                             // Make processed_index as the end of the detected span
                             processed_index = span.1;
@@ -193,7 +194,7 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
                         {
                             // spans found.
                             if *num_detectors == total_detectors {
-                                debug!("[aggregator] sending to result_tx: {result:?}");
+                                debug!("sending to result_tx: {result:?}");
                                 let _ = result_tx.send(Ok(result.clone())).await;
                                 // Make processed_index as the end of the detected span
                                 processed_index = result.processed_index.unwrap();
@@ -201,7 +202,7 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
                         }
                     }
                 }
-                debug!(%detector_id, "[aggregator] stream closed");
+                debug!(%detector_id, "stream closed");
             }
         });
         result_rx
