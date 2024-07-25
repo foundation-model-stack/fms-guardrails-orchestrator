@@ -44,22 +44,18 @@ use crate::{
 
 impl Orchestrator {
     /// Handles streaming tasks.
-    #[instrument(skip_all)]
+    #[instrument(name = "stream_handler", skip_all)]
     pub async fn handle_streaming_classification_with_gen(
         &self,
         task: StreamingClassificationWithGenTask,
     ) -> ReceiverStream<Result<ClassifiedGeneratedTextStreamResult, Error>> {
-        info!(
-            request_id = ?task.request_id,
-            model_id = %task.model_id,
-            config = ?task.guardrails_config,
-            "handling streaming task"
-        );
-
         let ctx = self.ctx.clone();
+        let request_id = task.request_id;
         let model_id = task.model_id;
         let params = task.text_gen_parameters;
         let input_text = task.inputs;
+
+        info!(%request_id, config = ?task.guardrails_config, "starting task");
 
         // Create response channel
         #[allow(clippy::type_complexity)]
@@ -77,7 +73,7 @@ impl Orchestrator {
                     match input_detection_task(&ctx, detectors, input_text.clone(), masks).await {
                         Ok(result) => result,
                         Err(error) => {
-                            error!(request_id = ?task.request_id, %error, "streaming task failed");
+                            error!(%request_id, %error, "task failed");
                             let _ = response_tx.send(Err(error)).await;
                             return;
                         }
@@ -89,20 +85,15 @@ impl Orchestrator {
             if input_detections.is_some() {
                 // Detected HAP/PII
                 // Do tokenization to get input_token_count
-                let (input_token_count, _tokens) = match tokenize(
-                    &ctx,
-                    model_id.clone(),
-                    input_text.clone(),
-                )
-                .await
-                {
-                    Ok(result) => result,
-                    Err(error) => {
-                        error!(request_id = ?task.request_id, %error, "tokenize request failed");
-                        let _ = response_tx.send(Err(error)).await;
-                        return;
-                    }
-                };
+                let (input_token_count, _tokens) =
+                    match tokenize(&ctx, model_id.clone(), input_text.clone()).await {
+                        Ok(result) => result,
+                        Err(error) => {
+                            error!(%request_id, %error, "task failed");
+                            let _ = response_tx.send(Err(error)).await;
+                            return;
+                        }
+                    };
                 // Send result with input detections
                 let _ = response_tx
                     .send(Ok(ClassifiedGeneratedTextStreamResult {
@@ -131,7 +122,7 @@ impl Orchestrator {
                 {
                     Ok(generation_stream) => generation_stream,
                     Err(error) => {
-                        error!(request_id = ?task.request_id, %error, "generate stream failed");
+                        error!(%request_id, %error, "task failed");
                         let _ = response_tx.send(Err(error)).await;
                         return;
                     }
@@ -155,7 +146,7 @@ impl Orchestrator {
                         {
                             Ok(result_rx) => result_rx,
                             Err(error) => {
-                                error!(request_id = ?task.request_id, %error, "task failed, sending error to client");
+                                error!(%request_id, %error, "task failed");
                                 let _ = cancel_tx.send(error.clone());
                                 let _ = response_tx.send(Err(error)).await;
                                 return;
@@ -167,18 +158,18 @@ impl Orchestrator {
                             loop {
                                 tokio::select! {
                                     Ok(error) = cancel_rx.recv() => {
-                                        error!(?task.request_id, ?error, "task failed, sending error to client");
+                                        error!(%request_id, %error, "task failed");
                                         let _ = response_tx.send(Err(error)).await;
                                         return;
                                     },
                                     result = result_rx.recv() => {
                                         match result {
                                             Some(result) => {
-                                                debug!(?task.request_id, ?result, "sending result to client");
+                                                debug!(%request_id, ?result, "sending result to client");
                                                 let _ = response_tx.send(result).await;
                                             },
                                             None => {
-                                                debug!(?task.request_id, "stream closed");
+                                                info!(%request_id, "task completed: stream closed");
                                                 break;
                                             },
                                         }
@@ -191,9 +182,10 @@ impl Orchestrator {
                         // No output detectors, forward generation results to response channel
                         tokio::spawn(async move {
                             while let Some(result) = generation_stream.next().await {
-                                debug!(?task.request_id, ?result, "sending result to client");
+                                debug!(%request_id, ?result, "sending result to client");
                                 let _ = response_tx.send(result).await;
                             }
+                            debug!(%request_id, "task completed: stream closed");
                         });
                     }
                 }
@@ -298,9 +290,7 @@ async fn streaming_output_detection_task(
     drop(generation_rx);
 
     debug!("processing detection streams");
-    let result_rx = aggregator
-        .process(generations, detection_streams, cancel_tx)
-        .await;
+    let result_rx = aggregator.process(generations, detection_streams).await;
     Ok(result_rx)
 }
 

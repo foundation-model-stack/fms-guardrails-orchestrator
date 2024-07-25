@@ -21,7 +21,7 @@ use futures::{
     future::try_join_all,
     stream::{self, StreamExt},
 };
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, instrument};
 
 use super::{
     apply_masks, get_chunker_ids, Chunk, ClassificationWithGenTask, Context, Error, Orchestrator,
@@ -41,17 +41,14 @@ const DEFAULT_STREAM_BUFFER_SIZE: usize = 5;
 
 impl Orchestrator {
     /// Handles unary tasks.
+    #[instrument(name = "unary_handler", skip_all)]
     pub async fn handle_classification_with_gen(
         &self,
         task: ClassificationWithGenTask,
     ) -> Result<ClassifiedGeneratedTextResult, Error> {
-        info!(
-            request_id = ?task.request_id,
-            model_id = %task.model_id,
-            config = ?task.guardrails_config,
-            "handling unary task"
-        );
         let ctx = self.ctx.clone();
+        let request_id = task.request_id;
+        info!(%request_id, config = ?task.guardrails_config, "starting task");
         let task_handle = tokio::spawn(async move {
             let input_text = task.inputs.clone();
             let masks = task.guardrails_config.input_masks();
@@ -114,16 +111,20 @@ impl Orchestrator {
         });
         match task_handle.await {
             // Task completed successfully
-            Ok(Ok(result)) => Ok(result),
+            Ok(Ok(result)) => {
+                debug!(%request_id, ?result, "sending result to client");
+                info!(%request_id, "task completed");
+                Ok(result)
+            }
             // Task failed, return error propagated from child task that failed
             Ok(Err(error)) => {
-                error!(request_id = ?task.request_id, %error, "unary task failed");
+                error!(%request_id, %error, "task failed");
                 Err(error)
             }
             // Task cancelled or panicked
             Err(error) => {
                 let error = error.into();
-                error!(request_id = ?task.request_id, %error, "unary task failed");
+                error!(%request_id, %error, "task failed");
                 Err(error)
             }
         }
@@ -131,6 +132,7 @@ impl Orchestrator {
 }
 
 /// Handles input detection task.
+#[instrument(skip_all)]
 pub async fn input_detection_task(
     ctx: &Arc<Context>,
     detectors: &HashMap<String, DetectorParams>,
@@ -145,6 +147,7 @@ pub async fn input_detection_task(
 }
 
 /// Handles output detection task.
+#[instrument(skip_all)]
 async fn output_detection_task(
     ctx: &Arc<Context>,
     detectors: &HashMap<String, DetectorParams>,
@@ -158,6 +161,7 @@ async fn output_detection_task(
 }
 
 /// Handles detection task.
+#[instrument(skip_all)]
 async fn detection_task(
     ctx: &Arc<Context>,
     detectors: &HashMap<String, DetectorParams>,
@@ -197,6 +201,7 @@ async fn detection_task(
 }
 
 /// Handles chunk task.
+#[instrument(skip_all)]
 async fn chunk_task(
     ctx: &Arc<Context>,
     chunker_ids: Vec<String>,
@@ -219,6 +224,7 @@ async fn chunk_task(
 }
 
 /// Sends a request to a detector service and applies threshold.
+#[instrument(skip_all)]
 pub async fn detect(
     ctx: Arc<Context>,
     detector_id: String,
@@ -261,6 +267,7 @@ pub async fn detect(
 }
 
 /// Sends request to chunker service.
+#[instrument(skip_all)]
 pub async fn chunk(
     ctx: &Arc<Context>,
     chunker_id: String,

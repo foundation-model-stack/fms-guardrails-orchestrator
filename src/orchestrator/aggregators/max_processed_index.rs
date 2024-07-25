@@ -4,7 +4,7 @@ use std::{
 };
 
 use async_trait::async_trait;
-use tokio::sync::{broadcast, mpsc};
+use tokio::sync::mpsc;
 use tracing::{debug, instrument};
 
 use super::{DetectionAggregator, DetectorId};
@@ -91,10 +91,8 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
         &self,
         generations: Arc<RwLock<Vec<ClassifiedGeneratedTextStreamResult>>>,
         detection_streams: Vec<(DetectorId, f64, mpsc::Receiver<DetectionResult>)>,
-        _cancel_tx: broadcast::Sender<Error>,
     ) -> mpsc::Receiver<Result<ClassifiedGeneratedTextStreamResult, Error>> {
         let (result_tx, result_rx) = mpsc::channel(1024);
-        // TODO: handle cancellation
         tokio::spawn(async move {
             // TODO: Add chunker type
 
@@ -135,7 +133,7 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
                     // Note: input_tokens is not present in 0th response, so we use `1`
                     let input_tokens = match generations.read().unwrap().get(1) {
                         Some(first_generation) => first_generation.input_tokens.clone(),
-                        None => Some(Vec::default()), //Some([].to_vec()),
+                        None => Some([].to_vec()),
                     };
 
                     // Get subset of generation responses relevant for this chunk
@@ -147,11 +145,9 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
 
                     let tokens = generation_responses
                         .iter()
-                        .flat_map(|result| result.tokens.clone().unwrap_or_default())
-                        //.flat_map(|result| result.tokens.clone().unwrap_or([].to_vec()))
+                        .flat_map(|result| result.tokens.clone().unwrap_or([].to_vec()))
                         .collect::<Vec<_>>();
 
-                    let last_response = generation_responses.last().cloned().unwrap_or_default();
                     let result: ClassifiedGeneratedTextStreamResult =
                         ClassifiedGeneratedTextStreamResult {
                             generated_text: Some(generated_text.clone()),
@@ -163,7 +159,10 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
                             seed,
                             // Populate all fields from last generation response and if not available, then use
                             // default value for ClassifiedGeneratedTextStreamResult
-                            ..last_response
+                            ..generation_responses
+                                .last()
+                                .unwrap_or(&ClassifiedGeneratedTextStreamResult::default())
+                                .to_owned()
                         };
 
                     let span: Span = (chunk.start_index as u32, chunk.processed_index as u32);
@@ -178,7 +177,6 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
                             detection_tracker.first_key_value().unwrap();
                         // Check if all detectors have responded for this detector
                         if *num_detectors == total_detectors {
-                            debug!("sending to result_tx: {result:?}");
                             let _ = result_tx.send(Ok(result.clone())).await;
                             // Make processed_index as the end of the detected span
                             processed_index = span.1;
@@ -194,7 +192,6 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
                         {
                             // spans found.
                             if *num_detectors == total_detectors {
-                                debug!("sending to result_tx: {result:?}");
                                 let _ = result_tx.send(Ok(result.clone())).await;
                                 // Make processed_index as the end of the detected span
                                 processed_index = result.processed_index.unwrap();
@@ -202,7 +199,6 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
                         }
                     }
                 }
-                debug!(%detector_id, "stream closed");
             }
         });
         result_rx
@@ -299,10 +295,8 @@ mod tests {
 
         let generations = get_dummy_streaming_generation().await;
         let aggregator = MaxProcessedIndexAggregator::default();
-        let (cancel_tx, _) = broadcast::channel(1);
-        let mut result_rx = aggregator
-            .process(generations, detection_streams, cancel_tx)
-            .await;
+
+        let mut result_rx = aggregator.process(generations, detection_streams).await;
 
         let mut chunk_count = 0;
         while let Some(classified_gen_stream_result) = result_rx.recv().await {
