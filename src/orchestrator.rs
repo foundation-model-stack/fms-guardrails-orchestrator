@@ -40,7 +40,7 @@ const UNSUITABLE_INPUT_MESSAGE: &str = "Unsuitable input detected. \
     Please check the detected entities on your input and try again \
     with the unsuitable input removed.";
 
-#[derive(Default)]
+#[cfg_attr(test, derive(Default))]
 pub struct Context {
     config: OrchestratorConfig,
     generation_client: GenerationClient,

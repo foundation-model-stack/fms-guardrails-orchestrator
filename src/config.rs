@@ -53,14 +53,14 @@ pub struct TlsConfig {
 #[derive(Clone, Copy, Debug, Default, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum GenerationProvider {
-    //#[cfg_attr(test, default)]
     #[default]
     Tgis,
     Nlp,
 }
 
 /// Generate service configuration
-#[derive(Clone, Debug, Default, Deserialize)]
+#[cfg_attr(test, derive(Default))]
+#[derive(Clone, Debug, Deserialize)]
 pub struct GenerationConfig {
     /// Generation service provider
     pub provider: GenerationProvider,
@@ -69,11 +69,10 @@ pub struct GenerationConfig {
 }
 
 /// Chunker parser type
-#[cfg_attr(test, derive(Default))]
-#[derive(Clone, Copy, Debug, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ChunkerType {
-    #[cfg_attr(test, default)]
+    #[default]
     Sentence,
     All,
 }
@@ -101,7 +100,8 @@ pub struct DetectorConfig {
 }
 
 /// Overall orchestrator server configuration
-#[derive(Clone, Debug, Default, Deserialize)]
+#[cfg_attr(test, derive(Default))]
+#[derive(Clone, Debug, Deserialize)]
 pub struct OrchestratorConfig {
     /// Generation service and associated configuration
     pub generation: GenerationConfig,

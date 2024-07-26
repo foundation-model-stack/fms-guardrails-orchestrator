@@ -42,8 +42,8 @@ const DEFAULT_MODEL_ID: &str = "whole_doc_chunker";
 type StreamingTokenizationResult =
     Result<Response<Streaming<ChunkerTokenizationStreamResult>>, Status>;
 
-#[cfg_attr(test, faux::create)]
-#[derive(Clone, Default)]
+#[cfg_attr(test, faux::create, derive(Default))]
+#[derive(Clone)]
 pub struct ChunkerClient {
     clients: HashMap<String, ChunkersServiceClient<LoadBalancedChannel>>,
 }

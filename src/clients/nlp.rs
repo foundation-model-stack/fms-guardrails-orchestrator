@@ -39,8 +39,8 @@ use crate::{
 
 const MODEL_ID_HEADER_NAME: &str = "mm-model-id";
 
-#[cfg_attr(test, faux::create)]
-#[derive(Clone, Default)]
+#[cfg_attr(test, faux::create, derive(Default))]
+#[derive(Clone)]
 pub struct NlpClient {
     clients: HashMap<String, NlpServiceClient<LoadBalancedChannel>>,
 }

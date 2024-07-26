@@ -31,8 +31,8 @@ use crate::{
     },
 };
 
-#[cfg_attr(test, faux::create)]
-#[derive(Clone, Default)]
+#[cfg_attr(test, faux::create, derive(Default))]
+#[derive(Clone)]
 pub struct TgisClient {
     clients: HashMap<String, GenerationServiceClient<LoadBalancedChannel>>,
 }
