@@ -47,8 +47,8 @@ pub const DEFAULT_CAIKIT_NLP_PORT: u16 = 8085;
 pub const DEFAULT_CHUNKER_PORT: u16 = 8085;
 pub const DEFAULT_DETECTOR_PORT: u16 = 8080;
 pub const COMMON_ROUTER_KEY: &str = "common-router";
-const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
-const DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
+const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(60);
+const DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_secs(600);
 
 /// Client errors.
 #[derive(Debug, thiserror::Error)]
