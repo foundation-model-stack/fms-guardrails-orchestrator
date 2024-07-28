@@ -124,17 +124,6 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
                     let input_start_index = chunk.input_start_index as usize;
                     let input_end_index = chunk.input_end_index as usize;
 
-                    // Note we need to optimize below a bit and only read generations 1 time above this loop
-                    let initial_gen_response = generations.read().unwrap()[0].clone();
-                    let input_token_count = initial_gen_response.input_token_count;
-                    let seed = initial_gen_response.seed;
-
-                    // Note: input_tokens is not present in 0th response, so we use `1`
-                    let input_tokens = match generations.read().unwrap().get(1) {
-                        Some(first_generation) => first_generation.input_tokens.clone(),
-                        None => Some([].to_vec()),
-                    };
-
                     // Get subset of generation responses relevant for this chunk
                     let generation_responses: Vec<ClassifiedGeneratedTextStreamResult> =
                         generations.read().unwrap()[input_start_index..=input_end_index]
@@ -147,15 +136,12 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
                         .flat_map(|result| result.tokens.clone().unwrap_or([].to_vec()))
                         .collect::<Vec<_>>();
 
-                    let result: ClassifiedGeneratedTextStreamResult =
+                    let mut result: ClassifiedGeneratedTextStreamResult =
                         ClassifiedGeneratedTextStreamResult {
                             generated_text: Some(generated_text.clone()),
                             start_index: chunk.start_index as u32,
                             processed_index: Some(chunk.processed_index as u32),
-                            input_token_count,
                             tokens: Some(tokens),
-                            input_tokens,
-                            seed,
                             // Populate all fields from last generation response and if not available, then use
                             // default value for ClassifiedGeneratedTextStreamResult
                             ..generation_responses
@@ -163,6 +149,26 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
                                 .unwrap_or(&ClassifiedGeneratedTextStreamResult::default())
                                 .to_owned()
                         };
+
+                    // input_token_count and input_tokens to be only present in 1st output
+                    // seed to be present in 1st and last output. These are in accordance with how TGIS (provider) returns output
+                    // seed will automatically get into last from above logic of using `..generation_responses.last`
+                    if (input_start_index..input_end_index).contains(&0) {
+                        // Note we need to optimize below a bit and only read generations 1 time above this loop
+                        let initial_gen_response = generations.read().unwrap()[0].clone();
+
+                        let input_token_count = initial_gen_response.input_token_count;
+                        let seed = initial_gen_response.seed;
+                        result.input_token_count = input_token_count;
+                        result.seed = seed;
+                    } else if (input_start_index..input_end_index).contains(&1) {
+                        // Note: input_tokens is not present in 0th response, so we use `1`
+                        let input_tokens = match generations.read().unwrap().get(1) {
+                            Some(first_generation) => first_generation.input_tokens.clone(),
+                            None => Some([].to_vec()),
+                        };
+                        result.input_tokens = input_tokens;
+                    }
 
                     let span: Span = (chunk.start_index as u32, chunk.processed_index as u32);
 
