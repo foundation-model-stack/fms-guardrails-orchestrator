@@ -409,7 +409,6 @@ impl From<orchestrator::Error> for Error {
         use orchestrator::Error::*;
         match error {
             DetectorNotFound(_) => Self::NotFound(error.to_string()),
-            DetectorUnavailable(_) => Self::ServiceUnavailable(error.to_string()),
             DetectorRequestFailed(error)
             | ChunkerRequestFailed(error)
             | GenerateRequestFailed(error)
@@ -418,6 +417,7 @@ impl From<orchestrator::Error> for Error {
                     Self::Validation(error.to_string())
                 }
                 StatusCode::NOT_FOUND => Self::NotFound(error.to_string()),
+                StatusCode::SERVICE_UNAVAILABLE => Self::ServiceUnavailable(error.to_string()),
                 _ => Self::Unexpected,
             },
             _ => Self::Unexpected,

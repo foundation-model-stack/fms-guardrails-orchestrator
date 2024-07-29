@@ -284,11 +284,7 @@ pub async fn detect(
         .await
         .map_err(|error| {
             debug!(%detector_id, ?error, "error received from detector");
-            if error.status_code() == 503 {
-                Error::DetectorUnavailable(detector_id.clone())
-            } else {
-                Error::DetectorRequestFailed(error)
-            }
+            Error::DetectorRequestFailed(error)
         })?;
     debug!(%detector_id, ?response, "received detector response");
     if chunks.len() != response.len() {
@@ -575,6 +571,7 @@ mod tests {
         let mut mock_detector_client = DetectorClient::faux();
 
         let detector_id = "mocked_503_detector";
+        let detector_error_message = "Service Unavailable";
         let sentence = "This call will return a 503.".to_string();
         let threshold = 0.5;
         let detector_params = DetectorParams {
@@ -586,7 +583,10 @@ mod tests {
         }];
 
         // We expect the detector call to return a 503, with a response complying with the error response.
-        let expected_response = Error::DetectorUnavailable(detector_id.to_string());
+        let expected_response = Error::DetectorRequestFailed(clients::Error::Http {
+            code: StatusCode::SERVICE_UNAVAILABLE,
+            message: format!("detector {detector_id}: {detector_error_message}"),
+        });
 
         faux::when!(mock_detector_client.text_contents(
             detector_id,
@@ -595,7 +595,7 @@ mod tests {
         .once()
         .then_return(Err(clients::Error::Http {
             code: StatusCode::SERVICE_UNAVAILABLE,
-            message: "Service unavailable".to_string(),
+            message: format!("detector {detector_id}: {detector_error_message}"),
         }));
 
         let ctx: Context =

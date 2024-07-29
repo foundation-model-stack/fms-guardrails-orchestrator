@@ -65,7 +65,8 @@ impl DetectorClient {
         if response.status() == StatusCode::OK {
             Ok(response.json().await?)
         } else {
-            let error = response.json::<DetectorError>().await.unwrap();
+            let mut error = response.json::<DetectorError>().await.unwrap();
+            error.message = format!("detector `{0}`: {1}", model_id, error.message);
             Err(error.into())
         }
     }
