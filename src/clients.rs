@@ -54,6 +54,7 @@ pub type BoxStream<T> = Pin<Box<dyn Stream<Item = T> + Send>>;
 
 /// Client errors.
 #[derive(Debug, Clone, thiserror::Error)]
+#[cfg_attr(test, derive(PartialEq))]
 pub enum Error {
     #[error("{}", .message)]
     Grpc { code: StatusCode, message: String },

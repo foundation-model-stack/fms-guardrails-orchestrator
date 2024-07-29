@@ -393,11 +393,13 @@ async fn generate(
 
 #[cfg(test)]
 mod tests {
+    use hyper::StatusCode;
+
     use super::*;
     use crate::{
         clients::{
-            detector::ContentAnalysisResponse, ChunkerClient, DetectorClient, GenerationClient,
-            TgisClient,
+            self, detector::ContentAnalysisResponse, ChunkerClient, DetectorClient,
+            GenerationClient, TgisClient,
         },
         config::OrchestratorConfig,
         models::FinishReason,
@@ -562,6 +564,53 @@ mod tests {
             )
             .await
             .unwrap(),
+            expected_response
+        );
+    }
+
+    /// This test checks if calls to detectors returning 503 are being propagated in the orchestrator response.
+    #[tokio::test]
+    async fn test_detect_when_detector_returns_503() {
+        let mock_generation_client = GenerationClient::tgis(TgisClient::faux());
+        let mut mock_detector_client = DetectorClient::faux();
+
+        let detector_id = "mocked_503_detector";
+        let sentence = "This call will return a 503.".to_string();
+        let threshold = 0.5;
+        let detector_params = DetectorParams {
+            threshold: Some(threshold),
+        };
+        let chunks = vec![Chunk {
+            offset: 0,
+            text: sentence.clone(),
+        }];
+
+        // We expect the detector call to return a 503, with a response complying with the error response.
+        let expected_response = Error::DetectorUnavailable(detector_id.to_string());
+
+        faux::when!(mock_detector_client.text_contents(
+            detector_id,
+            ContentAnalysisRequest::new(vec![sentence.clone()])
+        ))
+        .once()
+        .then_return(Err(clients::Error::Http {
+            code: StatusCode::SERVICE_UNAVAILABLE,
+            message: "Service unavailable".to_string(),
+        }));
+
+        let ctx: Context =
+            get_test_context(mock_generation_client, None, Some(mock_detector_client)).await;
+
+        assert_eq!(
+            detect(
+                ctx.into(),
+                detector_id.to_string(),
+                threshold,
+                detector_params,
+                chunks
+            )
+            .await
+            .unwrap_err(),
             expected_response
         );
     }
