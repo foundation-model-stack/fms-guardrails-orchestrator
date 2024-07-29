@@ -40,6 +40,7 @@ const UNSUITABLE_INPUT_MESSAGE: &str = "Unsuitable input detected. \
     Please check the detected entities on your input and try again \
     with the unsuitable input removed.";
 
+#[cfg_attr(test, derive(Default))]
 pub struct Context {
     config: OrchestratorConfig,
     generation_client: GenerationClient,
@@ -92,12 +93,10 @@ fn get_chunker_ids(
     detectors
         .keys()
         .map(|detector_id| {
-            let chunker_id =
-                ctx.config
-                    .get_chunker_id(detector_id)
-                    .ok_or_else(|| Error::DetectorNotFound {
-                        detector_id: detector_id.clone(),
-                    })?;
+            let chunker_id = ctx
+                .config
+                .get_chunker_id(detector_id)
+                .ok_or_else(|| Error::DetectorNotFound(detector_id.clone()))?;
             Ok::<String, Error>(chunker_id)
         })
         .collect::<Result<Vec<_>, Error>>()

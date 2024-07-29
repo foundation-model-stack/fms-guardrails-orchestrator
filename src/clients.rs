@@ -16,9 +16,9 @@
 */
 
 #![allow(dead_code)]
-use std::{collections::HashMap, time::Duration};
+use std::{collections::HashMap, pin::Pin, time::Duration};
 
-use futures::future::join_all;
+use futures::{future::join_all, Stream};
 use ginepro::LoadBalancedChannel;
 use reqwest::StatusCode;
 use tokio::{fs::File, io::AsyncReadExt};
@@ -47,16 +47,18 @@ pub const DEFAULT_CAIKIT_NLP_PORT: u16 = 8085;
 pub const DEFAULT_CHUNKER_PORT: u16 = 8085;
 pub const DEFAULT_DETECTOR_PORT: u16 = 8080;
 pub const COMMON_ROUTER_KEY: &str = "common-router";
-const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
-const DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
+const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(60);
+const DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_secs(600);
+
+pub type BoxStream<T> = Pin<Box<dyn Stream<Item = T> + Send>>;
 
 /// Client errors.
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Clone, thiserror::Error)]
 pub enum Error {
-    #[error("{}", .0.message())]
-    Grpc(#[from] tonic::Status),
-    #[error("{0}")]
-    Http(#[from] reqwest::Error),
+    #[error("{}", .message)]
+    Grpc { code: StatusCode, message: String },
+    #[error("{}", .message)]
+    Http { code: StatusCode, message: String },
     #[error("model not found: {model_id}")]
     ModelNotFound { model_id: String },
 }
@@ -64,28 +66,51 @@ pub enum Error {
 impl Error {
     /// Returns status code.
     pub fn status_code(&self) -> StatusCode {
-        use tonic::Code::*;
         match self {
             // Return equivalent http status code for grpc status code
-            Error::Grpc(error) => match error.code() {
-                InvalidArgument => StatusCode::BAD_REQUEST,
-                Internal => StatusCode::INTERNAL_SERVER_ERROR,
-                NotFound => StatusCode::NOT_FOUND,
-                DeadlineExceeded => StatusCode::REQUEST_TIMEOUT,
-                Unimplemented => StatusCode::NOT_IMPLEMENTED,
-                Unauthenticated => StatusCode::UNAUTHORIZED,
-                PermissionDenied => StatusCode::FORBIDDEN,
-                Ok => StatusCode::OK,
-                _ => StatusCode::INTERNAL_SERVER_ERROR,
-            },
+            Error::Grpc { code, .. } => *code,
             // Return http status code for error responses
             // and 500 for other errors
-            Error::Http(error) => match error.status() {
-                Some(code) => code,
-                None => StatusCode::INTERNAL_SERVER_ERROR,
-            },
+            Error::Http { code, .. } => *code,
             // Return 404 for model not found
             Error::ModelNotFound { .. } => StatusCode::NOT_FOUND,
+        }
+    }
+}
+
+impl From<reqwest::Error> for Error {
+    fn from(value: reqwest::Error) -> Self {
+        // Return http status code for error responses
+        // and 500 for other errors
+        let code = match value.status() {
+            Some(code) => code,
+            None => StatusCode::INTERNAL_SERVER_ERROR,
+        };
+        Self::Http {
+            code,
+            message: value.to_string(),
+        }
+    }
+}
+
+impl From<tonic::Status> for Error {
+    fn from(value: tonic::Status) -> Self {
+        use tonic::Code::*;
+        // Return equivalent http status code for grpc status code
+        let code = match value.code() {
+            InvalidArgument => StatusCode::BAD_REQUEST,
+            Internal => StatusCode::INTERNAL_SERVER_ERROR,
+            NotFound => StatusCode::NOT_FOUND,
+            DeadlineExceeded => StatusCode::REQUEST_TIMEOUT,
+            Unimplemented => StatusCode::NOT_IMPLEMENTED,
+            Unauthenticated => StatusCode::UNAUTHORIZED,
+            PermissionDenied => StatusCode::FORBIDDEN,
+            Ok => StatusCode::OK,
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        };
+        Self::Grpc {
+            code,
+            message: value.message().to_string(),
         }
     }
 }

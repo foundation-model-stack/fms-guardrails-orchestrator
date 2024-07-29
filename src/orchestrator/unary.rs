@@ -21,7 +21,7 @@ use futures::{
     future::try_join_all,
     stream::{self, StreamExt},
 };
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, instrument};
 
 use super::{
     apply_masks, get_chunker_ids, Chunk, ClassificationWithGenTask, Context, Error, Orchestrator,
@@ -41,17 +41,14 @@ const DEFAULT_STREAM_BUFFER_SIZE: usize = 5;
 
 impl Orchestrator {
     /// Handles unary tasks.
+    #[instrument(name = "unary_handler", skip_all)]
     pub async fn handle_classification_with_gen(
         &self,
         task: ClassificationWithGenTask,
     ) -> Result<ClassifiedGeneratedTextResult, Error> {
-        info!(
-            request_id = ?task.request_id,
-            model_id = %task.model_id,
-            config = ?task.guardrails_config,
-            "handling unary task"
-        );
         let ctx = self.ctx.clone();
+        let request_id = task.request_id;
+        info!(%request_id, config = ?task.guardrails_config, "starting task");
         let task_handle = tokio::spawn(async move {
             let input_text = task.inputs.clone();
             let masks = task.guardrails_config.input_masks();
@@ -114,16 +111,20 @@ impl Orchestrator {
         });
         match task_handle.await {
             // Task completed successfully
-            Ok(Ok(result)) => Ok(result),
+            Ok(Ok(result)) => {
+                debug!(%request_id, ?result, "sending result to client");
+                info!(%request_id, "task completed");
+                Ok(result)
+            }
             // Task failed, return error propagated from child task that failed
             Ok(Err(error)) => {
-                error!(request_id = ?task.request_id, %error, "unary task failed");
+                error!(%request_id, %error, "task failed");
                 Err(error)
             }
             // Task cancelled or panicked
             Err(error) => {
                 let error = error.into();
-                error!(request_id = ?task.request_id, %error, "unary task failed");
+                error!(%request_id, %error, "task failed");
                 Err(error)
             }
         }
@@ -131,6 +132,7 @@ impl Orchestrator {
 }
 
 /// Handles input detection task.
+#[instrument(skip_all)]
 pub async fn input_detection_task(
     ctx: &Arc<Context>,
     detectors: &HashMap<String, DetectorParams>,
@@ -145,6 +147,7 @@ pub async fn input_detection_task(
 }
 
 /// Handles output detection task.
+#[instrument(skip_all)]
 async fn output_detection_task(
     ctx: &Arc<Context>,
     detectors: &HashMap<String, DetectorParams>,
@@ -158,35 +161,35 @@ async fn output_detection_task(
 }
 
 /// Handles detection task.
+#[instrument(skip_all)]
 async fn detection_task(
     ctx: &Arc<Context>,
     detectors: &HashMap<String, DetectorParams>,
     chunks: HashMap<String, Vec<Chunk>>,
 ) -> Result<Vec<TokenClassificationResult>, Error> {
     // Spawn tasks for each detector
-    let tasks =
-        detectors
-            .iter()
-            .map(|(detector_id, detector_params)| {
-                let ctx = ctx.clone();
-                let detector_id = detector_id.clone();
-                let detector_params = detector_params.clone();
-                // Get the detector config
-                let detector_config = ctx.config.detectors.get(&detector_id).ok_or_else(|| {
-                    Error::DetectorNotFound {
-                        detector_id: detector_id.clone(),
-                    }
-                })?;
-                // Get the default threshold to use if threshold is not provided by the user
-                let default_threshold = detector_config.default_threshold;
-                // Get chunker for detector
-                let chunker_id = detector_config.chunker_id.as_str();
-                let chunks = chunks.get(chunker_id).unwrap().clone();
-                Ok(tokio::spawn(async move {
-                    detect(ctx, detector_id, default_threshold, detector_params, chunks).await
-                }))
-            })
-            .collect::<Result<Vec<_>, Error>>()?;
+    let tasks = detectors
+        .iter()
+        .map(|(detector_id, detector_params)| {
+            let ctx = ctx.clone();
+            let detector_id = detector_id.clone();
+            let detector_params = detector_params.clone();
+            // Get the detector config
+            let detector_config = ctx
+                .config
+                .detectors
+                .get(&detector_id)
+                .ok_or_else(|| Error::DetectorNotFound(detector_id.clone()))?;
+            // Get the default threshold to use if threshold is not provided by the user
+            let default_threshold = detector_config.default_threshold;
+            // Get chunker for detector
+            let chunker_id = detector_config.chunker_id.as_str();
+            let chunks = chunks.get(chunker_id).unwrap().clone();
+            Ok(tokio::spawn(async move {
+                detect(ctx, detector_id, default_threshold, detector_params, chunks).await
+            }))
+        })
+        .collect::<Result<Vec<_>, Error>>()?;
     let results = try_join_all(tasks)
         .await?
         .into_iter()
@@ -198,6 +201,7 @@ async fn detection_task(
 }
 
 /// Handles chunk task.
+#[instrument(skip_all)]
 async fn chunk_task(
     ctx: &Arc<Context>,
     chunker_ids: Vec<String>,
@@ -220,6 +224,7 @@ async fn chunk_task(
 }
 
 /// Sends a request to a detector service and applies threshold.
+#[instrument(skip_all)]
 pub async fn detect(
     ctx: Arc<Context>,
     detector_id: String,
@@ -236,10 +241,7 @@ pub async fn detect(
         .detector_client
         .text_contents(&detector_id, request)
         .await
-        .map_err(|error| Error::DetectorRequestFailed {
-            detector_id: detector_id.clone(),
-            error,
-        })?;
+        .map_err(Error::DetectorRequestFailed)?;
     debug!(%detector_id, ?response, "received detector response");
     if chunks.len() != response.len() {
         return Err(Error::Other(format!(
@@ -265,6 +267,7 @@ pub async fn detect(
 }
 
 /// Sends request to chunker service.
+#[instrument(skip_all)]
 pub async fn chunk(
     ctx: &Arc<Context>,
     chunker_id: String,
@@ -277,10 +280,7 @@ pub async fn chunk(
         .chunker_client
         .tokenization_task_predict(&chunker_id, request)
         .await
-        .map_err(|error| Error::ChunkerRequestFailed {
-            chunker_id: chunker_id.clone(),
-            error,
-        })?;
+        .map_err(Error::ChunkerRequestFailed)?;
     debug!(%chunker_id, ?response, "received chunker response");
     Ok(response
         .results
@@ -327,10 +327,7 @@ pub async fn tokenize(
     ctx.generation_client
         .tokenize(model_id.clone(), text)
         .await
-        .map_err(|error| Error::TokenizeRequestFailed {
-            model_id: model_id.clone(),
-            error,
-        })
+        .map_err(Error::TokenizeRequestFailed)
 }
 
 /// Sends generate request to a generation service.
@@ -343,10 +340,7 @@ async fn generate(
     ctx.generation_client
         .generate(model_id.clone(), text, params)
         .await
-        .map_err(|error| Error::GenerateRequestFailed {
-            model_id: model_id.clone(),
-            error,
-        })
+        .map_err(Error::GenerateRequestFailed)
 }
 
 #[cfg(test)]

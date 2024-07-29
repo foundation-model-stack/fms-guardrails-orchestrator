@@ -15,13 +15,13 @@
 
 */
 
-use std::{collections::HashMap, pin::Pin};
+use std::collections::HashMap;
 
-use futures::{Stream, StreamExt};
+use futures::{StreamExt, TryStreamExt};
 use ginepro::LoadBalancedChannel;
 use tonic::Request;
 
-use super::{create_grpc_clients, Error};
+use super::{create_grpc_clients, BoxStream, Error};
 use crate::{
     clients::COMMON_ROUTER_KEY,
     config::ServiceConfig,
@@ -39,11 +39,13 @@ use crate::{
 
 const MODEL_ID_HEADER_NAME: &str = "mm-model-id";
 
+#[cfg_attr(test, faux::create, derive(Default))]
 #[derive(Clone)]
 pub struct NlpClient {
     clients: HashMap<String, NlpServiceClient<LoadBalancedChannel>>,
 }
 
+#[cfg_attr(test, faux::methods)]
 impl NlpClient {
     pub async fn new(default_port: u16, config: &[(String, ServiceConfig)]) -> Self {
         let clients = create_grpc_clients(default_port, config, NlpServiceClient::new).await;
@@ -105,14 +107,14 @@ impl NlpClient {
         &self,
         model_id: &str,
         request: ServerStreamingTextGenerationTaskRequest,
-    ) -> Result<Pin<Box<dyn Stream<Item = GeneratedTextStreamResult> + Send>>, Error> {
+    ) -> Result<BoxStream<Result<GeneratedTextStreamResult, Error>>, Error> {
         let request = request_with_model_id(request, model_id);
         let response_stream = self
             .client(model_id)?
             .server_streaming_text_generation_task_predict(request)
             .await?
             .into_inner()
-            .map(|resp| resp.unwrap())
+            .map_err(Into::into)
             .boxed();
         Ok(response_stream)
     }
