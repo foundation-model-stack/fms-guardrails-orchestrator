@@ -423,7 +423,8 @@ async fn chunk_broadcast_task(
         .bidi_streaming_tokenization_task_predict(&chunker_id, input_stream)
         .await
         .map_err(Error::ChunkerRequestFailed)?
-        .map_err(Error::ChunkerRequestFailed);
+        .map_err(Error::ChunkerRequestFailed); // maps stream errors
+
     // Spawn task to consume output stream forward to broadcast channel
     debug!(%chunker_id, "spawning chunker broadcast task");
     let (chunk_tx, _) = broadcast::channel(1024);
@@ -474,7 +475,7 @@ async fn generate_stream(
         .generate_stream(model_id, text, params)
         .await
         .map_err(Error::GenerateRequestFailed)?
-        .map_err(Error::GenerateRequestFailed)
+        .map_err(Error::GenerateRequestFailed) // maps stream errors
         .boxed())
 }
 
