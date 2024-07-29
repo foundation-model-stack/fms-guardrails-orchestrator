@@ -159,14 +159,13 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
 
                         let input_token_count = initial_gen_response.input_token_count;
                         let seed = initial_gen_response.seed;
-                        result.input_token_count = input_token_count;
-                        result.seed = seed;
-                    } else if (input_start_index..input_end_index).contains(&1) {
                         // Note: input_tokens is not present in 0th response, so we use `1`
                         let input_tokens = match generations.read().unwrap().get(1) {
                             Some(first_generation) => first_generation.input_tokens.clone(),
                             None => Some([].to_vec()),
                         };
+                        result.input_token_count = input_token_count;
+                        result.seed = seed;
                         result.input_tokens = input_tokens;
                     }
 
