@@ -149,9 +149,13 @@ pub async fn create_http_clients(
             let port = service_config.port.unwrap_or(default_port);
             let mut base_url = Url::parse(&service_config.hostname).unwrap();
             base_url.set_port(Some(port)).unwrap();
+            let request_timeout = match service_config.timeout {
+                Some(timeout) => Duration::from_secs(timeout),
+                None => DEFAULT_REQUEST_TIMEOUT,
+            };
             let mut builder = reqwest::ClientBuilder::new()
                 .connect_timeout(DEFAULT_CONNECT_TIMEOUT)
-                .timeout(DEFAULT_REQUEST_TIMEOUT);
+                .timeout(request_timeout);
             if let Some(Tls::Config(tls_config)) = &service_config.tls {
                 let mut cert_buf = Vec::new();
                 let cert_path = tls_config.cert_path.as_ref().unwrap().as_path();
@@ -213,12 +217,17 @@ async fn create_grpc_clients<C>(
     let clients = config
         .iter()
         .map(|(name, service_config)| async move {
+            let request_timeout = match service_config.timeout {
+                Some(timeout) => Duration::from_secs(timeout),
+                None => DEFAULT_REQUEST_TIMEOUT
+            };
             let mut builder = LoadBalancedChannel::builder((
                 service_config.hostname.clone(),
                 service_config.port.unwrap_or(default_port),
             ))
             .connect_timeout(DEFAULT_CONNECT_TIMEOUT)
-            .timeout(DEFAULT_REQUEST_TIMEOUT);
+            .timeout(request_timeout);
+
             let client_tls_config = if let Some(Tls::Config(tls_config)) = &service_config.tls {
                 let cert_path = tls_config.cert_path.as_ref().unwrap().as_path();
                 let key_path = tls_config.key_path.as_ref().unwrap().as_path();
