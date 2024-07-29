@@ -396,6 +396,8 @@ pub enum Error {
     Validation(String),
     #[error("{0}")]
     NotFound(String),
+    #[error("{0}")]
+    ServiceUnavailable(String),
     #[error("unexpected error occured while processing request")]
     Unexpected,
     #[error(transparent)]
@@ -407,6 +409,7 @@ impl From<orchestrator::Error> for Error {
         use orchestrator::Error::*;
         match error {
             DetectorNotFound(_) => Self::NotFound(error.to_string()),
+            DetectorUnavailable(_) => Self::ServiceUnavailable(error.to_string()),
             DetectorRequestFailed(error)
             | ChunkerRequestFailed(error)
             | GenerateRequestFailed(error)
@@ -428,6 +431,7 @@ impl Error {
         let (code, message) = match self {
             Validation(_) => (StatusCode::UNPROCESSABLE_ENTITY, self.to_string()),
             NotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
+            ServiceUnavailable(_) => (StatusCode::SERVICE_UNAVAILABLE, self.to_string()),
             Unexpected => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
             JsonExtractorRejection(json_rejection) => match json_rejection {
                 JsonRejection::JsonDataError(e) => {
@@ -451,6 +455,7 @@ impl IntoResponse for Error {
         let (code, message) = match self {
             Validation(_) => (StatusCode::UNPROCESSABLE_ENTITY, self.to_string()),
             NotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
+            ServiceUnavailable(_) => (StatusCode::SERVICE_UNAVAILABLE, self.to_string()),
             Unexpected => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
             JsonExtractorRejection(json_rejection) => match json_rejection {
                 JsonRejection::JsonDataError(e) => {

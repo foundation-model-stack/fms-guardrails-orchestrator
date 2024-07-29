@@ -284,7 +284,11 @@ pub async fn detect(
         .await
         .map_err(|error| {
             debug!(%detector_id, ?error, "error received from detector");
-            Error::DetectorRequestFailed(error)
+            if error.status_code() == 503 {
+                Error::DetectorUnavailable(detector_id.clone())
+            } else {
+                Error::DetectorRequestFailed(error)
+            }
         })?;
     debug!(%detector_id, ?response, "received detector response");
     if chunks.len() != response.len() {

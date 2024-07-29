@@ -24,6 +24,8 @@ pub enum Error {
     Client(#[from] clients::Error),
     #[error("detector not found: {0}")]
     DetectorNotFound(String),
+    #[error("detector unavailable: {0}")]
+    DetectorUnavailable(String),
     #[error("detector request failed: {0}")]
     DetectorRequestFailed(clients::Error),
     #[error("chunker request failed: {0}")]
