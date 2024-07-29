@@ -282,7 +282,10 @@ pub async fn detect(
         .detector_client
         .text_contents(&detector_id, request)
         .await
-        .map_err(Error::DetectorRequestFailed)?;
+        .map_err(|error| {
+            debug!(%detector_id, ?error, "error received from detector");
+            Error::DetectorRequestFailed(error)
+        })?;
     debug!(%detector_id, ?response, "received detector response");
     if chunks.len() != response.len() {
         return Err(Error::Other(format!(

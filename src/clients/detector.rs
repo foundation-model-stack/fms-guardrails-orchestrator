@@ -17,6 +17,7 @@
 
 use std::collections::HashMap;
 
+use hyper::StatusCode;
 use serde::{Deserialize, Serialize};
 
 use super::{create_http_clients, Error, HttpClient};
@@ -60,10 +61,13 @@ impl DetectorClient {
             .header(DETECTOR_ID_HEADER_NAME, model_id)
             .json(&request)
             .send()
-            .await?
-            .json()
             .await?;
-        Ok(response)
+        if response.status() == StatusCode::OK {
+            Ok(response.json().await?)
+        } else {
+            let error = response.json::<DetectorError>().await.unwrap();
+            Err(error.into())
+        }
     }
 }
 
@@ -138,6 +142,21 @@ impl From<ContentAnalysisResponse> for crate::models::TokenClassificationResult 
             entity_group: value.detection_type,
             score: value.score,
             token_count: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct DetectorError {
+    pub code: u16,
+    pub message: String,
+}
+
+impl From<DetectorError> for Error {
+    fn from(error: DetectorError) -> Self {
+        Error::Http {
+            code: StatusCode::from_u16(error.code).unwrap(),
+            message: error.message,
         }
     }
 }
