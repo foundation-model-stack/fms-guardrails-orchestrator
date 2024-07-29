@@ -32,7 +32,8 @@ use crate::{
     },
     config::{GenerationProvider, OrchestratorConfig},
     models::{
-        DetectorParams, GuardrailsConfig, GuardrailsHttpRequest, GuardrailsTextGenerationParameters,
+        DetectorParams, GuardrailsConfig, GuardrailsHttpRequest,
+        GuardrailsTextGenerationParameters, TextContentDetectionHttpRequest,
     },
 };
 
@@ -172,6 +173,29 @@ impl ClassificationWithGenTask {
             inputs: request.inputs,
             guardrails_config: request.guardrail_config.unwrap_or_default(),
             text_gen_parameters: request.text_gen_parameters,
+        }
+    }
+}
+
+/// Task for the /api/v1/text/task/detection/content endpoint
+#[derive(Debug)]
+pub struct TextContentDetectionTask {
+    /// Request unique identifier
+    pub request_id: Uuid,
+
+    /// Content to run detection on
+    pub content: String,
+
+    /// Detectors configuration
+    pub detectors: HashMap<String, DetectorParams>,
+}
+
+impl TextContentDetectionTask {
+    pub fn new(request_id: Uuid, request: TextContentDetectionHttpRequest) -> Self {
+        Self {
+            request_id,
+            content: request.content,
+            detectors: request.detectors,
         }
     }
 }
