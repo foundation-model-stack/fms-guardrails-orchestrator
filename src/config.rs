@@ -41,7 +41,8 @@ pub enum Tls {
 }
 
 /// Client TLS configuration
-#[derive(Clone, Debug, Default, Deserialize)]
+#[cfg_attr(test, derive(Default))]
+#[derive(Clone, Debug, Deserialize)]
 pub struct TlsConfig {
     pub cert_path: Option<PathBuf>,
     pub key_path: Option<PathBuf>,

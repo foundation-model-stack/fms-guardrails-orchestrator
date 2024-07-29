@@ -17,12 +17,12 @@
 
 use std::{collections::HashMap, pin::Pin};
 
-use futures::{stream, Future, Stream, StreamExt};
+use futures::{stream, Future, Stream, StreamExt, TryStreamExt};
 use ginepro::LoadBalancedChannel;
 use tonic::{Request, Response, Status, Streaming};
 use tracing::info;
 
-use super::{create_grpc_clients, Error};
+use super::{create_grpc_clients, BoxStream, Error};
 use crate::{
     config::ServiceConfig,
     pb::{
@@ -42,12 +42,13 @@ const DEFAULT_MODEL_ID: &str = "whole_doc_chunker";
 type StreamingTokenizationResult =
     Result<Response<Streaming<ChunkerTokenizationStreamResult>>, Status>;
 
-#[cfg_attr(test, derive(Default))]
+#[cfg_attr(test, faux::create, derive(Default))]
 #[derive(Clone)]
 pub struct ChunkerClient {
     clients: HashMap<String, ChunkersServiceClient<LoadBalancedChannel>>,
 }
 
+#[cfg_attr(test, faux::methods)]
 impl ChunkerClient {
     pub async fn new(default_port: u16, config: &[(String, ServiceConfig)]) -> Self {
         let clients = create_grpc_clients(default_port, config, ChunkersServiceClient::new).await;
@@ -85,10 +86,8 @@ impl ChunkerClient {
     pub async fn bidi_streaming_tokenization_task_predict(
         &self,
         model_id: &str,
-        request_stream: Pin<
-            Box<dyn Stream<Item = BidiStreamingChunkerTokenizationTaskRequest> + Send>,
-        >,
-    ) -> Result<Pin<Box<dyn Stream<Item = ChunkerTokenizationStreamResult> + Send>>, Error> {
+        request_stream: BoxStream<BidiStreamingChunkerTokenizationTaskRequest>,
+    ) -> Result<BoxStream<Result<ChunkerTokenizationStreamResult, Error>>, Error> {
         // Handle "default" separately first
         if model_id == DEFAULT_MODEL_ID {
             info!("Using default whole doc chunker");
@@ -105,7 +104,7 @@ impl ChunkerClient {
         let response_stream = response_stream_fut
             .await?
             .into_inner()
-            .map(|r| r.unwrap())
+            .map_err(Into::into)
             .boxed();
         Ok(response_stream)
     }
@@ -135,13 +134,14 @@ fn tokenize_whole_doc(request: ChunkerTokenizationTaskRequest) -> TokenizationRe
 /// Streaming tokenization result for the entire doc stream
 async fn tokenize_whole_doc_stream(
     request: impl Stream<Item = BidiStreamingChunkerTokenizationTaskRequest>,
-) -> ChunkerTokenizationStreamResult {
+) -> Result<ChunkerTokenizationStreamResult, Error> {
     let (text, index_vec): (String, Vec<i64>) = request
         .map(|r| (r.text_stream, r.input_index_stream))
         .collect()
         .await;
     let codepoint_count = text.chars().count() as i64;
-    ChunkerTokenizationStreamResult {
+    let input_end_index = index_vec.last().copied().unwrap_or_default();
+    Ok(ChunkerTokenizationStreamResult {
         results: vec![Token {
             start: 0,
             end: codepoint_count,
@@ -151,8 +151,8 @@ async fn tokenize_whole_doc_stream(
         processed_index: codepoint_count,
         start_index: 0,
         input_start_index: 0,
-        input_end_index: *index_vec.last().unwrap_or(&0),
-    }
+        input_end_index,
+    })
 }
 
 #[cfg(test)]
@@ -216,7 +216,7 @@ mod tests {
             input_start_index: 0,
             input_end_index: 3,
         };
-        let response = tokenize_whole_doc_stream(request).await;
+        let response = tokenize_whole_doc_stream(request).await.unwrap();
         assert_eq!(response, expected_response);
     }
 }
