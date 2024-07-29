@@ -375,7 +375,8 @@ pub struct ClassifiedGeneratedTextStreamResult {
 
     /// Result start index for processed text
     #[serde(rename = "start_index")]
-    pub start_index: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub start_index: Option<u32>,
 }
 
 /// Results of classification on input to a text generation model (e.g. user prompt)
@@ -735,7 +736,7 @@ impl From<pb::fmaas::GenerationResponse> for ClassifiedGeneratedTextStreamResult
                 output: None,
             },
             processed_index: None,
-            start_index: 0,
+            start_index: Some(0),
         }
     }
 }
@@ -797,7 +798,7 @@ impl From<pb::caikit_data_model::nlp::GeneratedTextStreamResult>
                 output: None,
             },
             processed_index: None,
-            start_index: 0,
+            start_index: None,
         }
     }
 }
