@@ -41,7 +41,8 @@ pub enum Tls {
 }
 
 /// Client TLS configuration
-#[derive(Clone, Debug, Default, Deserialize)]
+#[cfg_attr(test, derive(Default))]
+#[derive(Clone, Debug, Deserialize)]
 pub struct TlsConfig {
     pub cert_path: Option<PathBuf>,
     pub key_path: Option<PathBuf>,
@@ -50,10 +51,11 @@ pub struct TlsConfig {
 }
 
 /// Generation service provider
-#[derive(Clone, Copy, Debug, Default, Deserialize)]
+#[cfg_attr(test, derive(Default))]
+#[derive(Clone, Copy, Debug, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum GenerationProvider {
-    #[default]
+    #[cfg_attr(test, default)]
     Tgis,
     Nlp,
 }
@@ -69,10 +71,11 @@ pub struct GenerationConfig {
 }
 
 /// Chunker parser type
-#[derive(Clone, Copy, Debug, Default, Deserialize)]
+#[cfg_attr(test, derive(Default))]
+#[derive(Clone, Copy, Debug, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ChunkerType {
-    #[default]
+    #[cfg_attr(test, default)]
     Sentence,
     All,
 }
