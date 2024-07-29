@@ -133,7 +133,14 @@ impl Orchestrator {
                 match output_detectors {
                     Some(detectors) if !detectors.is_empty() => {
                         // Create error channel
+                        //
+                        // This channel is used for error notification & messaging and task cancellation.
+                        // When a task fails, it notifies other tasks by sending the error to error_tx.
+                        //
+                        // The parent task receives the error, logs it, forwards it to the client via response_tx,
+                        // and terminates the task.
                         let (error_tx, _) = broadcast::channel(1);
+
                         let aggregator = MaxProcessedIndexAggregator::default();
                         let mut result_rx = match streaming_output_detection_task(
                             &ctx,
