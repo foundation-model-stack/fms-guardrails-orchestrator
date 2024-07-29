@@ -496,7 +496,7 @@ components:
           type: integer
           title: Start Index
       additionalProperties: false
-      required: ["input_token_count", "token_classification_results", "start_index"]
+      required: ["input_token_count", "token_classification_results"]
       type: object
       title: Classified Generated Text Stream Result
     Error:
