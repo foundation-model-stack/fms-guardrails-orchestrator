@@ -139,7 +139,7 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
                     let mut result: ClassifiedGeneratedTextStreamResult =
                         ClassifiedGeneratedTextStreamResult {
                             generated_text: Some(generated_text.clone()),
-                            start_index: chunk.start_index as u32,
+                            start_index: Some(chunk.start_index as u32),
                             processed_index: Some(chunk.processed_index as u32),
                             tokens: Some(tokens),
                             // Populate all fields from last generation response and if not available, then use
