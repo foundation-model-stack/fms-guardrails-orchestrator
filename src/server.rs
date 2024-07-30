@@ -396,6 +396,8 @@ pub enum Error {
     Validation(String),
     #[error("{0}")]
     NotFound(String),
+    #[error("{0}")]
+    ServiceUnavailable(String),
     #[error("unexpected error occured while processing request")]
     Unexpected,
     #[error(transparent)]
@@ -403,18 +405,19 @@ pub enum Error {
 }
 
 impl From<orchestrator::Error> for Error {
-    fn from(error: orchestrator::Error) -> Self {
+    fn from(value: orchestrator::Error) -> Self {
         use orchestrator::Error::*;
-        match error {
-            DetectorNotFound(_) => Self::NotFound(error.to_string()),
-            DetectorRequestFailed(error)
-            | ChunkerRequestFailed(error)
-            | GenerateRequestFailed(error)
-            | TokenizeRequestFailed(error) => match error.status_code() {
+        match value {
+            DetectorNotFound(_) => Self::NotFound(value.to_string()),
+            DetectorRequestFailed { ref error, .. }
+            | ChunkerRequestFailed { ref error, .. }
+            | GenerateRequestFailed { ref error, .. }
+            | TokenizeRequestFailed { ref error, .. } => match error.status_code() {
                 StatusCode::BAD_REQUEST | StatusCode::UNPROCESSABLE_ENTITY => {
-                    Self::Validation(error.to_string())
+                    Self::Validation(value.to_string())
                 }
-                StatusCode::NOT_FOUND => Self::NotFound(error.to_string()),
+                StatusCode::NOT_FOUND => Self::NotFound(value.to_string()),
+                StatusCode::SERVICE_UNAVAILABLE => Self::ServiceUnavailable(value.to_string()),
                 _ => Self::Unexpected,
             },
             _ => Self::Unexpected,
@@ -428,6 +431,7 @@ impl Error {
         let (code, message) = match self {
             Validation(_) => (StatusCode::UNPROCESSABLE_ENTITY, self.to_string()),
             NotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
+            ServiceUnavailable(_) => (StatusCode::SERVICE_UNAVAILABLE, self.to_string()),
             Unexpected => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
             JsonExtractorRejection(json_rejection) => match json_rejection {
                 JsonRejection::JsonDataError(e) => {
@@ -451,6 +455,7 @@ impl IntoResponse for Error {
         let (code, message) = match self {
             Validation(_) => (StatusCode::UNPROCESSABLE_ENTITY, self.to_string()),
             NotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
+            ServiceUnavailable(_) => (StatusCode::SERVICE_UNAVAILABLE, self.to_string()),
             Unexpected => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
             JsonExtractorRejection(json_rejection) => match json_rejection {
                 JsonRejection::JsonDataError(e) => {
