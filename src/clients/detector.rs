@@ -194,7 +194,7 @@ impl From<DetectorError> for Error {
 }
 
 /// A struct representing a request to a detector compatible with the
-/// /api/v1/text/task/generation-detection endpoint.
+/// /api/v1/text/generation endpoint.
 #[cfg_attr(test, derive(PartialEq))]
 #[derive(Debug, Serialize)]
 pub struct GenerationDetectionRequest {
