@@ -405,19 +405,19 @@ pub enum Error {
 }
 
 impl From<orchestrator::Error> for Error {
-    fn from(error: orchestrator::Error) -> Self {
+    fn from(value: orchestrator::Error) -> Self {
         use orchestrator::Error::*;
-        match error {
-            DetectorNotFound(_) => Self::NotFound(error.to_string()),
-            DetectorRequestFailed { error, .. }
-            | ChunkerRequestFailed { error, .. }
-            | GenerateRequestFailed { error, .. }
-            | TokenizeRequestFailed { error, .. } => match error.status_code() {
+        match value {
+            DetectorNotFound(_) => Self::NotFound(value.to_string()),
+            DetectorRequestFailed { ref error, .. }
+            | ChunkerRequestFailed { ref error, .. }
+            | GenerateRequestFailed { ref error, .. }
+            | TokenizeRequestFailed { ref error, .. } => match error.status_code() {
                 StatusCode::BAD_REQUEST | StatusCode::UNPROCESSABLE_ENTITY => {
-                    Self::Validation(error.to_string())
+                    Self::Validation(value.to_string())
                 }
-                StatusCode::NOT_FOUND => Self::NotFound(error.to_string()),
-                StatusCode::SERVICE_UNAVAILABLE => Self::ServiceUnavailable(error.to_string()),
+                StatusCode::NOT_FOUND => Self::NotFound(value.to_string()),
+                StatusCode::SERVICE_UNAVAILABLE => Self::ServiceUnavailable(value.to_string()),
                 _ => Self::Unexpected,
             },
             _ => Self::Unexpected,
