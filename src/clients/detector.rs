@@ -108,6 +108,28 @@ impl DetectorClient {
             Err(error.into())
         }
     }
+
+    /// Invokes detectors implemented with the `/api/v1/text/context/doc` endpoint
+    pub async fn detect_for_context_documents(
+        &self,
+        model_id: &str,
+        request: ContextDocsDetectionRequest,
+    ) -> Result<Vec<DetectionResult>, Error> {
+        let client = self.client(model_id)?;
+        let url = client.base_url().as_str();
+        let response = client
+            .post(url)
+            .header(DETECTOR_ID_HEADER_NAME, model_id)
+            .json(&request)
+            .send()
+            .await?;
+        if response.status() == StatusCode::OK {
+            Ok(response.json().await?)
+        } else {
+            let error = response.json::<DetectorError>().await.unwrap();
+            Err(error.into())
+        }
+    }
 }
 
 /// Request for text content analysis
@@ -217,6 +239,31 @@ impl GenerationDetectionRequest {
         Self {
             prompt,
             generated_text,
+        }
+    }
+}
+
+/// A struct representing a request to a detector compatible with the
+/// /api/v1/text/context/doc endpoint.
+#[cfg_attr(test, derive(PartialEq))]
+#[derive(Debug, Serialize)]
+pub struct ContextDocsDetectionRequest {
+    /// Content to run detection on
+    pub content: String,
+
+    /// Type of context being sent
+    pub context_type: String,
+
+    /// Context to run detection on
+    pub context: Vec<String>,
+}
+
+impl ContextDocsDetectionRequest {
+    pub fn new(content: String, context_type: String, context: Vec<String>) -> Self {
+        Self {
+            content,
+            context_type,
+            context,
         }
     }
 }

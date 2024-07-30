@@ -44,10 +44,10 @@ use webpki::types::{CertificateDer, PrivateKeyDer};
 
 use crate::{
     config::OrchestratorConfig,
-    models,
+    models::{self},
     orchestrator::{
-        self, ClassificationWithGenTask, GenerationWithDetectionTask, Orchestrator,
-        StreamingClassificationWithGenTask, TextContentDetectionTask,
+        self, ClassificationWithGenTask, ContextDocsDetectionTask, GenerationWithDetectionTask,
+        Orchestrator, StreamingClassificationWithGenTask, TextContentDetectionTask,
     },
 };
 
@@ -158,6 +158,10 @@ pub async fn run(
         .route(
             &format!("{}/detection/content", TEXT_API_PREFIX),
             post(detection_content),
+        )
+        .route(
+            &format!("{}/detection/context-docs", TEXT_API_PREFIX),
+            post(detect_context_documents),
         )
         .with_state(shared_state);
 
@@ -351,6 +355,23 @@ async fn detection_content(
     request.validate()?;
     let task = TextContentDetectionTask::new(request_id, request);
     match state.orchestrator.handle_text_content_detection(task).await {
+        Ok(response) => Ok(Json(response).into_response()),
+        Err(error) => Err(error.into()),
+    }
+}
+
+async fn detect_context_documents(
+    State(state): State<Arc<ServerState>>,
+    WithRejection(Json(request), _): WithRejection<Json<models::ContextDocsHttpRequest>, Error>,
+) -> Result<impl IntoResponse, Error> {
+    let request_id = Uuid::new_v4();
+    request.validate()?;
+    let task = ContextDocsDetectionTask::new(request_id, request);
+    match state
+        .orchestrator
+        .handle_context_documents_detection(task)
+        .await
+    {
         Ok(response) => Ok(Json(response).into_response()),
         Err(error) => Err(error.into()),
     }

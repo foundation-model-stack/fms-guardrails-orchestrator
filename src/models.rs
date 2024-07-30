@@ -958,7 +958,7 @@ pub struct ContextDocsHttpRequest {
 
 impl ContextDocsHttpRequest {
     /// Upfront validation of user request
-    pub fn _validate(&self) -> Result<(), ValidationError> {
+    pub fn validate(&self) -> Result<(), ValidationError> {
         // Validate required parameters
         if self.detectors.is_empty() {
             return Err(ValidationError::Required("detectors".into()));
@@ -970,9 +970,9 @@ impl ContextDocsHttpRequest {
 
         if self.context_type.is_empty() {
             return Err(ValidationError::Required("context_type".into()));
-        } else if ["docs", "url"].contains(&self.context_type.as_str()) {
-            return Err(ValidationError::Invalid("context_type".into()));
-        }
+        } /*else if ["docs", "url"].contains(&self.context_type.as_str()) {
+              return Err(ValidationError::Invalid(format!("context_type must be either 'docs' or 'url'. Got {}", self.context_type).into()));
+          }*/
 
         if self.context.is_empty() {
             return Err(ValidationError::Required("context".into()));
