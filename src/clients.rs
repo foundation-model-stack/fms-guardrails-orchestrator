@@ -53,8 +53,7 @@ const DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_secs(600);
 pub type BoxStream<T> = Pin<Box<dyn Stream<Item = T> + Send>>;
 
 /// Client errors.
-#[derive(Debug, Clone, thiserror::Error)]
-#[cfg_attr(test, derive(PartialEq))]
+#[derive(Debug, Clone, PartialEq, thiserror::Error)]
 pub enum Error {
     #[error("{}", .message)]
     Grpc { code: StatusCode, message: String },

@@ -18,8 +18,7 @@
 use crate::clients;
 
 /// Orchestrator errors.
-#[derive(Debug, Clone, thiserror::Error)]
-#[cfg_attr(test, derive(PartialEq))]
+#[derive(Debug, Clone, PartialEq, thiserror::Error)]
 pub enum Error {
     #[error(transparent)]
     Client(#[from] clients::Error),
