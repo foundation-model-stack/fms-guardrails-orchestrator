@@ -284,7 +284,10 @@ pub async fn detect(
         .await
         .map_err(|error| {
             debug!(%detector_id, ?error, "error received from detector");
-            Error::DetectorRequestFailed(error)
+            Error::DetectorRequestFailed {
+                id: detector_id.clone(),
+                error,
+            }
         })?;
     debug!(%detector_id, ?response, "received detector response");
     if chunks.len() != response.len() {
@@ -324,7 +327,10 @@ pub async fn chunk(
         .chunker_client
         .tokenization_task_predict(&chunker_id, request)
         .await
-        .map_err(Error::ChunkerRequestFailed)?;
+        .map_err(|error| Error::ChunkerRequestFailed {
+            id: chunker_id.clone(),
+            error,
+        })?;
     debug!(%chunker_id, ?response, "received chunker response");
     Ok(response
         .results
@@ -371,7 +377,10 @@ pub async fn tokenize(
     ctx.generation_client
         .tokenize(model_id.clone(), text)
         .await
-        .map_err(Error::TokenizeRequestFailed)
+        .map_err(|error| Error::TokenizeRequestFailed {
+            id: model_id,
+            error,
+        })
 }
 
 /// Sends generate request to a generation service.
@@ -384,7 +393,10 @@ async fn generate(
     ctx.generation_client
         .generate(model_id.clone(), text, params)
         .await
-        .map_err(Error::GenerateRequestFailed)
+        .map_err(|error| Error::GenerateRequestFailed {
+            id: model_id,
+            error,
+        })
 }
 
 #[cfg(test)]
@@ -571,7 +583,6 @@ mod tests {
         let mut mock_detector_client = DetectorClient::faux();
 
         let detector_id = "mocked_503_detector";
-        let detector_error_message = "Service Unavailable";
         let sentence = "This call will return a 503.".to_string();
         let threshold = 0.5;
         let detector_params = DetectorParams {
@@ -583,10 +594,13 @@ mod tests {
         }];
 
         // We expect the detector call to return a 503, with a response complying with the error response.
-        let expected_response = Error::DetectorRequestFailed(clients::Error::Http {
-            code: StatusCode::SERVICE_UNAVAILABLE,
-            message: format!("detector {detector_id}: {detector_error_message}"),
-        });
+        let expected_response = Error::DetectorRequestFailed {
+            id: detector_id.to_string(),
+            error: clients::Error::Http {
+                code: StatusCode::SERVICE_UNAVAILABLE,
+                message: "Service Unavailable".to_string(),
+            },
+        };
 
         faux::when!(mock_detector_client.text_contents(
             detector_id,
@@ -595,7 +609,7 @@ mod tests {
         .once()
         .then_return(Err(clients::Error::Http {
             code: StatusCode::SERVICE_UNAVAILABLE,
-            message: format!("detector {detector_id}: {detector_error_message}"),
+            message: "Service Unavailable".to_string(),
         }));
 
         let ctx: Context =

@@ -409,10 +409,10 @@ impl From<orchestrator::Error> for Error {
         use orchestrator::Error::*;
         match error {
             DetectorNotFound(_) => Self::NotFound(error.to_string()),
-            DetectorRequestFailed(error)
-            | ChunkerRequestFailed(error)
-            | GenerateRequestFailed(error)
-            | TokenizeRequestFailed(error) => match error.status_code() {
+            DetectorRequestFailed { error, .. }
+            | ChunkerRequestFailed { error, .. }
+            | GenerateRequestFailed { error, .. }
+            | TokenizeRequestFailed { error, .. } => match error.status_code() {
                 StatusCode::BAD_REQUEST | StatusCode::UNPROCESSABLE_ENTITY => {
                     Self::Validation(error.to_string())
                 }

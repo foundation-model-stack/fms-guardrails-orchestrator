@@ -106,6 +106,7 @@ impl From<tonic::Status> for Error {
             Unimplemented => StatusCode::NOT_IMPLEMENTED,
             Unauthenticated => StatusCode::UNAUTHORIZED,
             PermissionDenied => StatusCode::FORBIDDEN,
+            Unavailable => StatusCode::SERVICE_UNAVAILABLE,
             Ok => StatusCode::OK,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         };

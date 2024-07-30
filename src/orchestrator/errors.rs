@@ -23,16 +23,16 @@ use crate::clients;
 pub enum Error {
     #[error(transparent)]
     Client(#[from] clients::Error),
-    #[error("detector not found: {0}")]
+    #[error("detector `{0}` not found")]
     DetectorNotFound(String),
-    #[error("detector request failed: {0}")]
-    DetectorRequestFailed(clients::Error),
-    #[error("chunker request failed: {0}")]
-    ChunkerRequestFailed(clients::Error),
-    #[error("generate request failed: {0}")]
-    GenerateRequestFailed(clients::Error),
-    #[error("tokenize request failed: {0}")]
-    TokenizeRequestFailed(clients::Error),
+    #[error("detector request failed for `{id}`: {error}")]
+    DetectorRequestFailed { id: String, error: clients::Error },
+    #[error("chunker request failed for `{id}`: {error}")]
+    ChunkerRequestFailed { id: String, error: clients::Error },
+    #[error("generate request failed for `{id}`: {error}")]
+    GenerateRequestFailed { id: String, error: clients::Error },
+    #[error("tokenize request failed for `{id}`: {error}")]
+    TokenizeRequestFailed { id: String, error: clients::Error },
     #[error("{0}")]
     Other(String),
     #[error("cancelled")]

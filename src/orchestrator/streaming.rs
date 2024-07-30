@@ -370,7 +370,7 @@ async fn detection_task(
                             .detector_client
                             .text_contents(&detector_id, request)
                             .await
-                            .map_err(Error::DetectorRequestFailed) {
+                            .map_err(|error| Error::DetectorRequestFailed { id: detector_id.clone(), error }) {
                                 Ok(response) => {
                                     debug!(%detector_id, ?response, "received detector response");
                                     let _ = detector_tx.send(DetectionResult::new(chunk, response)).await;
@@ -426,12 +426,19 @@ async fn chunk_broadcast_task(
         })
         .boxed();
     debug!(%chunker_id, "creating chunker output stream");
+    let id = chunker_id.clone(); // workaround for StreamExt::map_err
     let mut output_stream = ctx
         .chunker_client
         .bidi_streaming_tokenization_task_predict(&chunker_id, input_stream)
         .await
-        .map_err(Error::ChunkerRequestFailed)?
-        .map_err(Error::ChunkerRequestFailed); // maps stream errors
+        .map_err(|error| Error::ChunkerRequestFailed {
+            id: chunker_id.clone(),
+            error,
+        })?
+        .map_err(move |error| Error::ChunkerRequestFailed {
+            id: id.clone(),
+            error,
+        }); // maps stream errors
 
     // Spawn task to consume output stream forward to broadcast channel
     debug!(%chunker_id, "spawning chunker broadcast task");
@@ -480,10 +487,16 @@ async fn generate_stream(
 > {
     Ok(ctx
         .generation_client
-        .generate_stream(model_id, text, params)
+        .generate_stream(model_id.clone(), text, params)
         .await
-        .map_err(Error::GenerateRequestFailed)?
-        .map_err(Error::GenerateRequestFailed) // maps stream errors
+        .map_err(|error| Error::GenerateRequestFailed {
+            id: model_id.clone(),
+            error,
+        })?
+        .map_err(move |error| Error::GenerateRequestFailed {
+            id: model_id.clone(),
+            error,
+        }) // maps stream errors
         .boxed())
 }
 
