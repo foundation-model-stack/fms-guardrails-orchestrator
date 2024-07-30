@@ -319,7 +319,7 @@ pub struct ClassifiedGeneratedTextResult {
     pub input_tokens: Option<Vec<GeneratedToken>>,
 }
 
-/// The request format expected in the /api/v1/text/task/detection/content endpoint.
+/// The request format expected in the /api/v2/text/task/detection/content endpoint.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct TextContentDetectionHttpRequest {
     /// The content to run detectors on
@@ -345,7 +345,7 @@ impl TextContentDetectionHttpRequest {
     }
 }
 
-/// The response format of the /api/v1/text/task/detection/content endpoint
+/// The response format of the /api/v2/text/task/detection/content endpoint
 #[derive(Default, Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TextContentDetectionResult {
     /// Detection results

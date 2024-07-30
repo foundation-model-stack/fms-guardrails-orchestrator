@@ -67,13 +67,13 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-  /api/v1/text/task/detection/content:
+  /api/v2/text/detection/content:
     post:
       tags:
         - Detection tasks
       summary: Detection task on input content
       operationId: >-
-        api_v1_detection_task_content_unary_handler
+        api_v2_detection_task_content_unary_handler
       requestBody:
         content:
           application/json:
@@ -99,13 +99,13 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-  /api/v1/text/task/detection/chat:
+  /api/v2/text/detection/chat:
     post:
       tags:
         - Detection tasks
       summary: Detection task on input chat
       operationId: >-
-        api_v1_detection_task_chat_unary_handler
+        api_v2_detection_task_chat_unary_handler
       requestBody:
         content:
           application/json:
@@ -132,13 +132,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
-  /api/v1/text/task/detection/context-docs:
+  /api/v2/text/detection/context-docs:
     post:
       tags:
         - Detection tasks
       summary: Detection task on input content based on context documents
       operationId: >-
-        api_v1_detection_task_context_docs_unary_handler
+        api_v2_detection_task_context_docs_unary_handler
       requestBody:
         content:
           application/json:
@@ -165,13 +165,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
    
-  /api/v1/text/task/generation-detection:
+  /api/v2/text/generation-detection:
     post:
       tags:
         - Text Generation with detectors
       summary: Generation task performing detection on prompt and generated text
       operationId: >-
-        api_v1_detection_task_generation_detection_unary_handler
+        api_v2_detection_task_generation_detection_unary_handler
       requestBody:
         content:
           application/json:

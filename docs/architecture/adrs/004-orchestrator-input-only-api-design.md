@@ -18,21 +18,22 @@ The guardrails orchestrator is designed to provide an end-to-end guardrails expe
 1. The endpoints would be named with the primary "task" they do. For example, for the orchestrator endpoint that does both generation and detection in the same call, the task will be called `generation-detection`. For an endpoint which does `detection` as the primary task with a different "modality", the endpoint will include `detection/chat`, where "chat" is the modality.
 1. Evidences will be added to responses of each endpoint later on, once we have the detectors under any category that actually is able to provide evidences.
 1. All of the endpoints would be prefixed by the modality of the input / output. So for text generation use-cases, the modality would be `text`, for text to image generation, the modality would be `text-image`, for image to image functionalities, the modality would be `image`.
+1. All new endpoints would get released under `v2`, as a change from existing APIs, to indicate API change.
 
 
 ### Endpoints
 
 1. Content
-    - **Endpoint:** `/api/v1/text/task/detection/content`
+    - **Endpoint:** `/api/v2/text/detection/content`
     - **Description:** Endpoint implementing detection task for textual content. This would map to `/text/contents` endpoint of detectors and would target general purpose text content analysis detections. The response from this endpoint would return spans denoting location of the detection.
 1. Chat
-    - **Endpoint:** `/api/v1/text/task/detection/chat`
+    - **Endpoint:** `/api/v2/text/detection/chat`
     - **Description:** This endpoint will implement detection task for chat input and will support detectors, exposed via `/api/v1/text/context/chat` endpoint.
 1. Document Context
-    - **Endpoint:** `/api/v1/text/task/detection/context-docs`
+    - **Endpoint:** `/api/v2/text/detection/context-docs`
     - **Description:** This endpoint will implement detection task for document based context detectors, exposed via `/api/v1/text/context/chat` endpoint.
 1. Generation Detection
-    - **Endpoint:** `/api/v1/text/task/generation-detection`
+    - **Endpoint:** `/api/v2/text/generation-detection`
     - **Description:** This endpoint will use the input prompt and call the LLM generation and run the requested detectors on the `generated_text`. This endpoint will loosely be similar to the "output detection" API we have currently in the end-to-end guardrails experience. However, one big difference is that, this endpoint will support detectors that need both input prompt and detection together to analyze and provide results.
     - **Notes:**
         - Unlike the end-to-end guardrails experience endpoints, i.e. `/api/v1/task/classification-with-text-generation` and `/api/v1/task/server-streaming-classification-with-text-generation`, this endpoint will not accept a `guardrails_config`. This is because detectors supported by this endpoint work on both input and generated text, where the `generated_text` is produced from the full input `prompt`. We can't provide partial input to detectors; otherwise, the outputs may not be accurate.
