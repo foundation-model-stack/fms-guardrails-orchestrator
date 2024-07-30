@@ -48,7 +48,7 @@ pub const DEFAULT_CHUNKER_PORT: u16 = 8085;
 pub const DEFAULT_DETECTOR_PORT: u16 = 8080;
 pub const COMMON_ROUTER_KEY: &str = "common-router";
 const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(60);
-const DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_secs(600);
+const DEFAULT_REQUEST_TIMEOUT_SEC: u64 = 600;
 
 pub type BoxStream<T> = Pin<Box<dyn Stream<Item = T> + Send>>;
 
@@ -149,10 +149,11 @@ pub async fn create_http_clients(
             let port = service_config.port.unwrap_or(default_port);
             let mut base_url = Url::parse(&service_config.hostname).unwrap();
             base_url.set_port(Some(port)).unwrap();
-            let request_timeout = match service_config.timeout {
-                Some(timeout) => Duration::from_secs(timeout),
-                None => DEFAULT_REQUEST_TIMEOUT,
-            };
+            let request_timeout = Duration::from_secs(
+                service_config
+                    .timeout
+                    .unwrap_or(DEFAULT_REQUEST_TIMEOUT_SEC),
+            );
             let mut builder = reqwest::ClientBuilder::new()
                 .connect_timeout(DEFAULT_CONNECT_TIMEOUT)
                 .timeout(request_timeout);
@@ -217,10 +218,7 @@ async fn create_grpc_clients<C>(
     let clients = config
         .iter()
         .map(|(name, service_config)| async move {
-            let request_timeout = match service_config.timeout {
-                Some(timeout) => Duration::from_secs(timeout),
-                None => DEFAULT_REQUEST_TIMEOUT
-            };
+            let request_timeout = Duration::from_secs(service_config.timeout.unwrap_or(DEFAULT_REQUEST_TIMEOUT_SEC));
             let mut builder = LoadBalancedChannel::builder((
                 service_config.hostname.clone(),
                 service_config.port.unwrap_or(default_port),
