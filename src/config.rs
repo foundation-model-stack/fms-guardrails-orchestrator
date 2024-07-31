@@ -32,7 +32,7 @@ pub struct ServiceConfig {
     /// Port for service
     pub port: Option<u16>,
     /// Timeout in seconds for request to be handled
-    pub timeout: Option<u64>,
+    pub request_timeout: Option<u64>,
     /// TLS provider info
     pub tls: Option<Tls>,
 }

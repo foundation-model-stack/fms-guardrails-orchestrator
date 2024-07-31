@@ -151,7 +151,7 @@ pub async fn create_http_clients(
             base_url.set_port(Some(port)).unwrap();
             let request_timeout = Duration::from_secs(
                 service_config
-                    .timeout
+                    .request_timeout
                     .unwrap_or(DEFAULT_REQUEST_TIMEOUT_SEC),
             );
             let mut builder = reqwest::ClientBuilder::new()
@@ -218,7 +218,7 @@ async fn create_grpc_clients<C>(
     let clients = config
         .iter()
         .map(|(name, service_config)| async move {
-            let request_timeout = Duration::from_secs(service_config.timeout.unwrap_or(DEFAULT_REQUEST_TIMEOUT_SEC));
+            let request_timeout = Duration::from_secs(service_config.request_timeout.unwrap_or(DEFAULT_REQUEST_TIMEOUT_SEC));
             let mut builder = LoadBalancedChannel::builder((
                 service_config.hostname.clone(),
                 service_config.port.unwrap_or(default_port),
