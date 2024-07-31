@@ -9,7 +9,7 @@ paths:
         - Text Generation with detectors
       summary: Guardrails Unary Handler
       operationId: >-
-        guardrails_unary_handler_api_v1_task_classification_with_text_generation_post
+        guardrails_unary_handler_api_v1_text_classification_with_text_generation_post
       requestBody:
         content:
           application/json:
@@ -41,7 +41,7 @@ paths:
         - Text Generation with detectors
       summary: Guardrails Server Stream Handler
       operationId: >-
-        guardrails_server_stream_handler_api_v1_task_server_streaming_classification_with_text_generation_post
+        guardrails_server_stream_handler_api_v1_text_server_streaming_classification_with_text_generation_post
       requestBody:
         content:
           application/json:
@@ -73,7 +73,7 @@ paths:
         - Detection tasks
       summary: Detection task on input content
       operationId: >-
-        api_v2_detection_task_content_unary_handler
+        api_v2_detection_text_content_unary_handler
       requestBody:
         content:
           application/json:
@@ -105,7 +105,7 @@ paths:
         - Detection tasks
       summary: Detection task on input chat
       operationId: >-
-        api_v2_detection_task_chat_unary_handler
+        api_v2_detection_text_chat_unary_handler
       requestBody:
         content:
           application/json:
@@ -138,7 +138,7 @@ paths:
         - Detection tasks
       summary: Detection task on input content based on context documents
       operationId: >-
-        api_v2_detection_task_context_docs_unary_handler
+        api_v2_detection_text_context_docs_unary_handler
       requestBody:
         content:
           application/json:
@@ -171,7 +171,7 @@ paths:
         - Text Generation with detectors
       summary: Generation task performing detection on prompt and generated text
       operationId: >-
-        api_v2_detection_task_generation_detection_unary_handler
+        api_v2_detection_text_generation_detection_unary_handler
       requestBody:
         content:
           application/json:
