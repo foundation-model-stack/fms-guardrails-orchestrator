@@ -21,7 +21,7 @@ use hyper::StatusCode;
 use serde::{Deserialize, Serialize};
 
 use super::{create_http_clients, Error, HttpClient};
-use crate::config::ServiceConfig;
+use crate::{config::ServiceConfig, models::DetectionResult};
 
 const DETECTOR_ID_HEADER_NAME: &str = "detector-id";
 
@@ -49,11 +49,43 @@ impl DetectorClient {
             .clone())
     }
 
+    // TODO: Use generics here, since the only thing that changes in comparison to generation_detection()
+    // is the "request" parameter and return types?
+    /// Invokes detectors implemented with the `/api/v1/text/contents` endpoint
     pub async fn text_contents(
         &self,
         model_id: &str,
         request: ContentAnalysisRequest,
     ) -> Result<Vec<Vec<ContentAnalysisResponse>>, Error> {
+        let client = self.client(model_id)?;
+        let url = client.base_url().as_str();
+        let response = client
+            .post(url)
+            .header(DETECTOR_ID_HEADER_NAME, model_id)
+            .json(&request)
+            .send()
+            .await?;
+        if response.status() == StatusCode::OK {
+            Ok(response.json().await?)
+        } else {
+            let code = response.status().as_u16();
+            let error = response
+                .json::<DetectorError>()
+                .await
+                .unwrap_or(DetectorError {
+                    code,
+                    message: "".into(),
+                });
+            Err(error.into())
+        }
+    }
+
+    /// Invokes detectors implemented with the `/api/v1/text/generation` endpoint
+    pub async fn generation_detection(
+        &self,
+        model_id: &str,
+        request: GenerationDetectionRequest,
+    ) -> Result<Vec<DetectionResult>, Error> {
         let client = self.client(model_id)?;
         let url = client.base_url().as_str();
         let response = client
@@ -164,6 +196,27 @@ impl From<DetectorError> for Error {
         Error::Http {
             code: StatusCode::from_u16(error.code).unwrap(),
             message: error.message,
+        }
+    }
+}
+
+/// A struct representing a request to a detector compatible with the
+/// /api/v1/text/generation endpoint.
+#[cfg_attr(test, derive(PartialEq))]
+#[derive(Debug, Serialize)]
+pub struct GenerationDetectionRequest {
+    /// User prompt sent to LLM
+    pub prompt: String,
+
+    /// Text generated from an LLM
+    pub generated_text: String,
+}
+
+impl GenerationDetectionRequest {
+    pub fn new(prompt: String, generated_text: String) -> Self {
+        Self {
+            prompt,
+            generated_text,
         }
     }
 }

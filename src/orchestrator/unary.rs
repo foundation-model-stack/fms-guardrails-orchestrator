@@ -24,15 +24,16 @@ use futures::{
 use tracing::{debug, error, info, instrument};
 
 use super::{
-    apply_masks, get_chunker_ids, Chunk, ClassificationWithGenTask, Context, Error, Orchestrator,
-    TextContentDetectionTask,
+    apply_masks, get_chunker_ids, Chunk, ClassificationWithGenTask, Context, Error,
+    GenerationWithDetectionTask, Orchestrator, TextContentDetectionTask,
 };
 use crate::{
-    clients::detector::ContentAnalysisRequest,
+    clients::detector::{ContentAnalysisRequest, GenerationDetectionRequest},
     models::{
-        ClassifiedGeneratedTextResult, DetectorParams, GuardrailsTextGenerationParameters,
-        InputWarning, InputWarningReason, TextContentDetectionResult,
-        TextGenTokenClassificationResults, TokenClassificationResult,
+        ClassifiedGeneratedTextResult, DetectionResult, DetectorParams,
+        GenerationWithDetectionResult, GuardrailsTextGenerationParameters, InputWarning,
+        InputWarningReason, TextContentDetectionResult, TextGenTokenClassificationResults,
+        TokenClassificationResult,
     },
     orchestrator::UNSUITABLE_INPUT_MESSAGE,
     pb::caikit::runtime::chunkers,
@@ -126,6 +127,82 @@ impl Orchestrator {
             Err(error) => {
                 let error = error.into();
                 error!(%request_id, %error, "task failed");
+                Err(error)
+            }
+        }
+    }
+
+    /// Handles the given generation task, followed by detections.
+    pub async fn handle_generation_with_detection(
+        &self,
+        task: GenerationWithDetectionTask,
+    ) -> Result<GenerationWithDetectionResult, Error> {
+        info!(
+            request_id = ?task.request_id,
+            model_id = %task.model_id,
+            detectors = ?task.detectors,
+            "handling generation with detection task"
+        );
+        let ctx = self.ctx.clone();
+        let task_handle = tokio::spawn(async move {
+            let generation_results = generate(
+                &ctx,
+                task.model_id.clone(),
+                task.prompt.clone(),
+                task.text_gen_parameters.clone(),
+            )
+            .await?;
+
+            // call detection
+            let detections = try_join_all(
+                task.detectors
+                    .iter()
+                    .map(|(detector_id, detector_params)| {
+                        let ctx = ctx.clone();
+                        let detector_id = detector_id.clone();
+                        let detector_params = detector_params.clone();
+                        let prompt = task.prompt.clone();
+                        let generated_text = generation_results
+                            .generated_text
+                            .clone()
+                            .unwrap_or_default();
+                        async {
+                            detect_for_generation(
+                                ctx,
+                                detector_id,
+                                detector_params,
+                                prompt,
+                                generated_text,
+                            )
+                            .await
+                        }
+                    })
+                    .collect::<Vec<_>>(),
+            )
+            .await?
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>();
+
+            debug!(?generation_results);
+            Ok(GenerationWithDetectionResult {
+                generated_text: generation_results.generated_text.unwrap_or_default(),
+                input_token_count: generation_results.input_token_count,
+                detections,
+            })
+        });
+        match task_handle.await {
+            // Task completed successfully
+            Ok(Ok(result)) => Ok(result),
+            // Task failed, return error propagated from child task that failed
+            Ok(Err(error)) => {
+                error!(request_id = ?task.request_id, %error, "generation with detection unary task failed");
+                Err(error)
+            }
+            // Task cancelled or panicked
+            Err(error) => {
+                let error = error.into();
+                error!(request_id = ?task.request_id, %error, "generation with detection unary task failed");
                 Err(error)
             }
         }
@@ -317,6 +394,44 @@ pub async fn detect(
     Ok::<Vec<TokenClassificationResult>, Error>(results)
 }
 
+/// Calls a detector that implements the /api/v1/text/generation endpoint
+pub async fn detect_for_generation(
+    ctx: Arc<Context>,
+    detector_id: String,
+    detector_params: DetectorParams,
+    prompt: String,
+    generated_text: String,
+) -> Result<Vec<DetectionResult>, Error> {
+    let detector_id = detector_id.clone();
+    let threshold = detector_params.threshold.unwrap_or(
+        detector_params.threshold.unwrap_or(
+            ctx.config
+                .detectors
+                .get(&detector_id)
+                .ok_or_else(|| Error::DetectorNotFound(detector_id.clone()))?
+                .default_threshold,
+        ),
+    );
+    let request = GenerationDetectionRequest::new(prompt.clone(), generated_text.clone());
+    debug!(%detector_id, ?request, "sending generation detector request");
+    let response = ctx
+        .detector_client
+        .generation_detection(&detector_id, request)
+        .await
+        .map(|results| {
+            results
+                .into_iter()
+                .filter(|detection| detection.score > threshold)
+                .collect()
+        })
+        .map_err(|error| Error::DetectorRequestFailed {
+            id: detector_id.clone(),
+            error,
+        })?;
+    debug!(%detector_id, ?response, "received generation detector response");
+    Ok::<Vec<DetectionResult>, Error>(response)
+}
+
 /// Sends request to chunker service.
 #[instrument(skip_all)]
 pub async fn chunk(
@@ -410,11 +525,12 @@ mod tests {
     use super::*;
     use crate::{
         clients::{
-            self, detector::ContentAnalysisResponse, ChunkerClient, DetectorClient,
-            GenerationClient, TgisClient,
+            self,
+            detector::{ContentAnalysisResponse, GenerationDetectionRequest},
+            ChunkerClient, DetectorClient, GenerationClient, TgisClient,
         },
-        config::OrchestratorConfig,
-        models::FinishReason,
+        config::{DetectorConfig, OrchestratorConfig},
+        models::{DetectionResult, FinishReason},
         pb::fmaas::{
             BatchedGenerationRequest, BatchedGenerationResponse, GenerationRequest,
             GenerationResponse, StopReason,
@@ -669,6 +785,114 @@ mod tests {
             .await
             .unwrap(),
             expected_response_whitespace
+        );
+    }
+    /// This test checks if calls to detectors for the /generation-detection endpoint are being handled appropriately.
+    #[tokio::test]
+    async fn test_detect_for_generation() {
+        let mock_generation_client = GenerationClient::tgis(TgisClient::faux());
+        let mut mock_detector_client = DetectorClient::faux();
+
+        let detector_id = "mocked_answer_relevance_detector";
+        let threshold = 0.5;
+        let prompt = "What is the capital of Brazil?".to_string();
+        let generated_text = "The capital of Brazil is Brasilia.".to_string();
+        let detector_params = DetectorParams {
+            threshold: Some(threshold),
+        };
+
+        let expected_response: Vec<DetectionResult> = vec![DetectionResult {
+            detection_type: "relevance".to_string(),
+            detection: "is_relevant".to_string(),
+            score: 0.9,
+        }];
+
+        faux::when!(mock_detector_client.generation_detection(
+            detector_id,
+            GenerationDetectionRequest::new(prompt.clone(), generated_text.clone())
+        ))
+        .once()
+        .then_return(Ok(vec![DetectionResult {
+            detection_type: "relevance".to_string(),
+            detection: "is_relevant".to_string(),
+            score: 0.9,
+        }]));
+
+        let mut ctx: Context =
+            get_test_context(mock_generation_client, None, Some(mock_detector_client)).await;
+
+        // add detector
+        ctx.config.detectors.insert(
+            detector_id.to_string(),
+            DetectorConfig {
+                ..Default::default()
+            },
+        );
+
+        assert_eq!(
+            detect_for_generation(
+                ctx.into(),
+                detector_id.to_string(),
+                detector_params,
+                prompt,
+                generated_text
+            )
+            .await
+            .unwrap(),
+            expected_response
+        );
+    }
+
+    /// This test checks if calls to detectors for the /generation-detection endpoint only return detections above the threshold.
+    #[tokio::test]
+    async fn test_detect_for_generation_below_threshold() {
+        let mock_generation_client = GenerationClient::tgis(TgisClient::faux());
+        let mut mock_detector_client = DetectorClient::faux();
+
+        let detector_id = "mocked_answer_relevance_detector";
+        let threshold = 0.5;
+        let prompt = "What is the capital of Brazil?".to_string();
+        let generated_text =
+            "The most beautiful places can be found in Rio de Janeiro.".to_string();
+        let detector_params = DetectorParams {
+            threshold: Some(threshold),
+        };
+
+        let expected_response: Vec<DetectionResult> = vec![];
+
+        faux::when!(mock_detector_client.generation_detection(
+            detector_id,
+            GenerationDetectionRequest::new(prompt.clone(), generated_text.clone())
+        ))
+        .once()
+        .then_return(Ok(vec![DetectionResult {
+            detection_type: "relevance".to_string(),
+            detection: "is_relevant".to_string(),
+            score: 0.1,
+        }]));
+
+        let mut ctx: Context =
+            get_test_context(mock_generation_client, None, Some(mock_detector_client)).await;
+
+        // add mocked detector
+        ctx.config.detectors.insert(
+            detector_id.to_string(),
+            DetectorConfig {
+                ..Default::default()
+            },
+        );
+
+        assert_eq!(
+            detect_for_generation(
+                ctx.into(),
+                detector_id.to_string(),
+                detector_params,
+                prompt,
+                generated_text
+            )
+            .await
+            .unwrap(),
+            expected_response
         );
     }
 }

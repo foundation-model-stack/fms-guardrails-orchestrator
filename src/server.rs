@@ -46,8 +46,8 @@ use crate::{
     config::OrchestratorConfig,
     models,
     orchestrator::{
-        self, ClassificationWithGenTask, Orchestrator, StreamingClassificationWithGenTask,
-        TextContentDetectionTask,
+        self, ClassificationWithGenTask, GenerationWithDetectionTask, Orchestrator,
+        StreamingClassificationWithGenTask, TextContentDetectionTask,
     },
 };
 
@@ -150,6 +150,10 @@ pub async fn run(
                 API_PREFIX
             ),
             post(stream_classification_with_gen),
+        )
+        .route(
+            &format!("{}/generation-detection", TEXT_API_PREFIX),
+            post(generation_with_detection),
         )
         .route(
             &format!("{}/detection/content", TEXT_API_PREFIX),
@@ -272,6 +276,26 @@ async fn classification_with_gen(
     match state
         .orchestrator
         .handle_classification_with_gen(task)
+        .await
+    {
+        Ok(response) => Ok(Json(response).into_response()),
+        Err(error) => Err(error.into()),
+    }
+}
+
+async fn generation_with_detection(
+    State(state): State<Arc<ServerState>>,
+    WithRejection(Json(request), _): WithRejection<
+        Json<models::GenerationWithDetectionHttpRequest>,
+        Error,
+    >,
+) -> Result<impl IntoResponse, Error> {
+    let request_id = Uuid::new_v4();
+    request.validate()?;
+    let task = GenerationWithDetectionTask::new(request_id, request);
+    match state
+        .orchestrator
+        .handle_generation_with_detection(task)
         .await
     {
         Ok(response) => Ok(Json(response).into_response()),
