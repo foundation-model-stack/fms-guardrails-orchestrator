@@ -275,20 +275,24 @@ pub async fn detect(
 ) -> Result<Vec<TokenClassificationResult>, Error> {
     let detector_id = detector_id.clone();
     let threshold = detector_params.threshold.unwrap_or(default_threshold);
-    let contents = chunks.iter().map(|chunk| chunk.text.clone()).collect();
-    let request = ContentAnalysisRequest::new(contents);
-    debug!(%detector_id, ?request, "sending detector request");
-    let response = ctx
-        .detector_client
-        .text_contents(&detector_id, request)
-        .await
-        .map_err(|error| {
-            debug!(%detector_id, ?error, "error received from detector");
-            Error::DetectorRequestFailed {
-                id: detector_id.clone(),
-                error,
-            }
-        })?;
+    let contents: Vec<_> = chunks.iter().map(|chunk| chunk.text.clone()).collect();
+    let response = if contents.is_empty() {
+        // skip detector call as contents is empty
+        Vec::default()
+    } else {
+        let request = ContentAnalysisRequest::new(contents);
+        debug!(%detector_id, ?request, "sending detector request");
+        ctx.detector_client
+            .text_contents(&detector_id, request)
+            .await
+            .map_err(|error| {
+                debug!(%detector_id, ?error, "error received from detector");
+                Error::DetectorRequestFailed {
+                    id: detector_id.clone(),
+                    error,
+                }
+            })?
+    };
     debug!(%detector_id, ?response, "received detector response");
     if chunks.len() != response.len() {
         return Err(Error::Other(format!(
@@ -626,6 +630,45 @@ mod tests {
             .await
             .unwrap_err(),
             expected_response
+        );
+    }
+    #[tokio::test]
+    async fn test_handle_detection_task_with_whitespace() {
+        let mock_generation_client = GenerationClient::tgis(TgisClient::faux());
+        let mut mock_detector_client = DetectorClient::faux();
+
+        let detector_id = "mocked_hap_detector";
+        let threshold = 0.5;
+        let first_sentence = "".to_string();
+        let detector_params = DetectorParams {
+            threshold: Some(threshold),
+        };
+        let chunks = vec![Chunk {
+            offset: 0,
+            text: first_sentence.clone(),
+        }];
+
+        faux::when!(mock_detector_client.text_contents(
+            detector_id,
+            ContentAnalysisRequest::new(vec![first_sentence.clone()])
+        ))
+        .once()
+        .then_return(Ok(vec![vec![]]));
+
+        let ctx: Context =
+            get_test_context(mock_generation_client, None, Some(mock_detector_client)).await;
+        let expected_response_whitespace = vec![];
+        assert_eq!(
+            detect(
+                ctx.into(),
+                detector_id.to_string(),
+                threshold,
+                detector_params,
+                chunks
+            )
+            .await
+            .unwrap(),
+            expected_response_whitespace
         );
     }
 }

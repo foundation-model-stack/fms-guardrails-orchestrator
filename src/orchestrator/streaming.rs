@@ -364,7 +364,11 @@ async fn detection_task(
                             .iter()
                             .map(|token| token.text.clone())
                             .collect::<Vec<_>>();
-                        let request = ContentAnalysisRequest::new(contents);
+                        if contents.is_empty() {
+                            debug!("empty chunk, skipping detector request.");
+                            break;
+                        } else {
+                        let request = ContentAnalysisRequest::new(contents.clone());
                         debug!(%detector_id, ?request, "sending detector request");
                         match ctx
                             .detector_client
@@ -382,6 +386,7 @@ async fn detection_task(
                                     break;
                                 },
                             }
+                        }
                     },
                     Err(broadcast::error::RecvError::Closed) => {
                         debug!(%detector_id, "stream closed");
