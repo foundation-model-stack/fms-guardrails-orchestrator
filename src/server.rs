@@ -53,7 +53,7 @@ use crate::{
 
 const API_PREFIX: &str = r#"/api/v1/task"#;
 // New orchestrator API
-const TEXT_API_PREFIX: &str = r#"/api/v2/task"#;
+const TEXT_API_PREFIX: &str = r#"/api/v2/text"#;
 
 const PACKAGE_VERSION: &str = env!("CARGO_PKG_VERSION");
 const PACKAGE_NAME: &str = env!("CARGO_PKG_NAME");
