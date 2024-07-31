@@ -95,7 +95,6 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
         let (result_tx, result_rx) = mpsc::channel(1024);
         tokio::spawn(async move {
             // TODO: Add chunker type
-
             let mut processed_index = 0;
 
             let total_detectors = detection_streams.len();
@@ -103,6 +102,19 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
             // We map spans with tuple of classifiedGeneratedTextStreamResult and count of detectors already applied
             // Later on we can change this tuple of a struct for better management and cleanliness
             let mut detection_tracker = DetectionTracker::new();
+
+            let (input_token_count, seed) = generations
+                .read()
+                .unwrap()
+                .first()
+                .map(|first| (first.input_token_count, first.seed))
+                .unwrap_or_default();
+            let input_tokens = generations
+                .read()
+                .unwrap()
+                .get(1)
+                .and_then(|second| second.input_tokens.clone())
+                .or(Some(Vec::default()));
 
             for (detector_id, threshold, mut stream) in detection_streams {
                 while let Some(message) = stream.recv().await {
@@ -126,48 +138,31 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
                     let input_end_index = chunk.input_end_index as usize;
 
                     // Get subset of generation responses relevant for this chunk
-                    let generation_responses: Vec<ClassifiedGeneratedTextStreamResult> =
-                        generations.read().unwrap()[input_start_index..=input_end_index]
-                            .iter()
-                            .map(|result| result.to_owned())
-                            .collect::<Vec<_>>();
+                    let generation_responses =
+                        generations.read().unwrap()[input_start_index..=input_end_index].to_vec();
 
                     let tokens = generation_responses
                         .iter()
-                        .flat_map(|result| result.tokens.clone().unwrap_or([].to_vec()))
+                        .flat_map(|result| result.tokens.clone().unwrap_or_default())
                         .collect::<Vec<_>>();
 
-                    let mut result: ClassifiedGeneratedTextStreamResult =
-                        ClassifiedGeneratedTextStreamResult {
-                            generated_text: Some(generated_text.clone()),
-                            start_index: Some(chunk.start_index as u32),
-                            processed_index: Some(chunk.processed_index as u32),
-                            tokens: Some(tokens),
-                            // Populate all fields from last generation response and if not available, then use
-                            // default value for ClassifiedGeneratedTextStreamResult
-                            ..generation_responses
-                                .last()
-                                .unwrap_or(&ClassifiedGeneratedTextStreamResult::default())
-                                .to_owned()
-                        };
+                    let mut result = ClassifiedGeneratedTextStreamResult {
+                        generated_text: Some(generated_text.clone()),
+                        start_index: Some(chunk.start_index as u32),
+                        processed_index: Some(chunk.processed_index as u32),
+                        tokens: Some(tokens),
+                        // Populate all fields from last generation response and if not available, then use
+                        // default value for ClassifiedGeneratedTextStreamResult
+                        ..generation_responses.last().cloned().unwrap_or_default()
+                    };
 
                     // input_token_count and input_tokens to be only present in 1st output
                     // seed to be present in 1st and last output. These are in accordance with how TGIS (provider) returns output
                     // seed will automatically get into last from above logic of using `..generation_responses.last`
-                    if (input_start_index..input_end_index).contains(&0) {
-                        // Note we need to optimize below a bit and only read generations 1 time above this loop
-                        let initial_gen_response = generations.read().unwrap()[0].clone();
-
-                        let input_token_count = initial_gen_response.input_token_count;
-                        let seed = initial_gen_response.seed;
-                        // Note: input_tokens is not present in 0th response, so we use `1`
-                        let input_tokens = match generations.read().unwrap().get(1) {
-                            Some(first_generation) => first_generation.input_tokens.clone(),
-                            None => Some([].to_vec()),
-                        };
+                    if input_start_index == 0 {
                         result.input_token_count = input_token_count;
                         result.seed = seed;
-                        result.input_tokens = input_tokens;
+                        result.input_tokens.clone_from(&input_tokens);
                     }
 
                     let span: Span = (chunk.start_index as u32, chunk.processed_index as u32);
@@ -254,9 +249,7 @@ mod tests {
     /// Test to check the aggregation of streaming generation results with multiple detectors on a single chunk.
     async fn test_aggregation_single_chunk_multi_detection() {
         // Create chunks
-        let mut chunks: Vec<chunkers::ChunkerTokenizationStreamResult> = [].into();
-
-        chunks.push(chunkers::ChunkerTokenizationStreamResult {
+        let chunks = vec![chunkers::ChunkerTokenizationStreamResult {
             results: [Token {
                 start: 0,
                 end: 24,
@@ -268,7 +261,7 @@ mod tests {
             start_index: 0,
             input_start_index: 0,
             input_end_index: 0,
-        });
+        }];
 
         let detector_count = 2;
         let mut detection_streams = Vec::with_capacity(detector_count);
