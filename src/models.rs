@@ -19,7 +19,7 @@
 
 use std::collections::HashMap;
 
-use crate::pb;
+use crate::{clients::detector::ContextType, pb};
 
 /// Parameters relevant to each detector
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -949,7 +949,7 @@ pub struct ContextDocsHttpRequest {
 
     /// Content to be sent to detector
     #[serde(rename = "context_type")]
-    pub context_type: String,
+    pub context_type: ContextType,
 
     /// Content to be sent to detector
     #[serde(rename = "context")]
@@ -967,12 +967,6 @@ impl ContextDocsHttpRequest {
         if self.content.is_empty() {
             return Err(ValidationError::Required("content".into()));
         }
-
-        if self.context_type.is_empty() {
-            return Err(ValidationError::Required("context_type".into()));
-        } /*else if ["docs", "url"].contains(&self.context_type.as_str()) {
-              return Err(ValidationError::Invalid(format!("context_type must be either 'docs' or 'url'. Got {}", self.context_type).into()));
-          }*/
 
         if self.context.is_empty() {
             return Err(ValidationError::Required("context".into()));

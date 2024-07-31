@@ -259,14 +259,23 @@ pub struct ContextDocsDetectionRequest {
     pub content: String,
 
     /// Type of context being sent
-    pub context_type: String,
+    pub context_type: ContextType,
 
     /// Context to run detection on
     pub context: Vec<String>,
 }
 
+/// Enum representing the context type of a detection
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum ContextType {
+    #[serde(rename = "docs")]
+    Document,
+    #[serde(rename = "url")]
+    Url,
+}
+
 impl ContextDocsDetectionRequest {
-    pub fn new(content: String, context_type: String, context: Vec<String>) -> Self {
+    pub fn new(content: String, context_type: ContextType, context: Vec<String>) -> Self {
         Self {
             content,
             context_type,

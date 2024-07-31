@@ -27,8 +27,8 @@ use uuid::Uuid;
 
 use crate::{
     clients::{
-        self, ChunkerClient, DetectorClient, GenerationClient, NlpClient, TgisClient,
-        COMMON_ROUTER_KEY,
+        self, detector::ContextType, ChunkerClient, DetectorClient, GenerationClient, NlpClient,
+        TgisClient, COMMON_ROUTER_KEY,
     },
     config::{GenerationProvider, OrchestratorConfig},
     models::{
@@ -242,7 +242,7 @@ pub struct ContextDocsDetectionTask {
     pub content: String,
 
     /// Context type
-    pub context_type: String,
+    pub context_type: ContextType,
 
     /// Context
     pub context: Vec<String>,

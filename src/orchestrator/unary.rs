@@ -30,7 +30,8 @@ use super::{
 };
 use crate::{
     clients::detector::{
-        ContentAnalysisRequest, ContextDocsDetectionRequest, GenerationDetectionRequest,
+        ContentAnalysisRequest, ContextDocsDetectionRequest, ContextType,
+        GenerationDetectionRequest,
     },
     models::{
         ClassifiedGeneratedTextResult, ContextDocsResult, DetectionResult, DetectorParams,
@@ -503,7 +504,7 @@ pub async fn detect_for_context(
     detector_id: String,
     detector_params: DetectorParams,
     content: String,
-    context_type: String,
+    context_type: ContextType,
     context: Vec<String>,
 ) -> Result<Vec<DetectionResult>, Error> {
     let detector_id = detector_id.clone();
