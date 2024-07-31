@@ -97,7 +97,14 @@ impl DetectorClient {
         if response.status() == StatusCode::OK {
             Ok(response.json().await?)
         } else {
-            let error = response.json::<DetectorError>().await.unwrap();
+            let code = response.status().as_u16();
+            let error = response
+                .json::<DetectorError>()
+                .await
+                .unwrap_or(DetectorError {
+                    code,
+                    message: "".into(),
+                });
             Err(error.into())
         }
     }
