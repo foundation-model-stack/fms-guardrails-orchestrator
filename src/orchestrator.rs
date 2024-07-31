@@ -208,7 +208,7 @@ impl GenerationWithDetectionTask {
     }
 }
 
-/// Task for the /api/v1/text/task/detection/content endpoint
+/// Task for the /api/v2/text/detection/content endpoint
 #[derive(Debug)]
 pub struct TextContentDetectionTask {
     /// Request unique identifier
