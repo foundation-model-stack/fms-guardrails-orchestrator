@@ -70,6 +70,9 @@ impl GuardrailsHttpRequest {
             return Err(ValidationError::Required("inputs".into()));
         }
         // Validate masks
+        // Because the masks ranges are [start, end), while applying masks
+        // will not require indexing to include the last index (i.e. len of inputs),
+        // the last index is still a legitimate 'end' to provide on a mask here.
         let input_range = 0..=self.inputs.len();
         let input_masks = self
             .guardrail_config
