@@ -482,7 +482,7 @@ pub async fn detect_for_generation(
     debug!(%detector_id, ?request, "sending generation detector request");
     let response = ctx
         .detector_client
-        .generation_detection(&detector_id, request)
+        .text_generation(&detector_id, request)
         .await
         .map(|results| {
             results
@@ -521,7 +521,7 @@ pub async fn detect_for_context(
     debug!(%detector_id, ?request, "sending generation detector request");
     let response = ctx
         .detector_client
-        .detect_for_context_documents(&detector_id, request)
+        .text_context_doc(&detector_id, request)
         .await
         .map(|results| {
             results

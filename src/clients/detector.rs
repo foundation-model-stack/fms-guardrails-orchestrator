@@ -81,7 +81,7 @@ impl DetectorClient {
     }
 
     /// Invokes detectors implemented with the `/api/v1/text/generation` endpoint
-    pub async fn generation_detection(
+    pub async fn text_generation(
         &self,
         model_id: &str,
         request: GenerationDetectionRequest,
@@ -110,7 +110,7 @@ impl DetectorClient {
     }
 
     /// Invokes detectors implemented with the `/api/v1/text/context/doc` endpoint
-    pub async fn detect_for_context_documents(
+    pub async fn text_context_doc(
         &self,
         model_id: &str,
         request: ContextDocsDetectionRequest,
