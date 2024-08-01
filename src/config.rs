@@ -27,8 +27,13 @@ use tracing::debug;
 /// orchestrator to communicate with it
 #[derive(Clone, Debug, Default, Deserialize)]
 pub struct ServiceConfig {
+    /// Hostname for service
     pub hostname: String,
+    /// Port for service
     pub port: Option<u16>,
+    /// Timeout in seconds for request to be handled
+    pub request_timeout: Option<u64>,
+    /// TLS provider info
     pub tls: Option<Tls>,
 }
 
