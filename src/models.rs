@@ -70,7 +70,10 @@ impl GuardrailsHttpRequest {
             return Err(ValidationError::Required("inputs".into()));
         }
         // Validate masks
-        let input_range = 0..self.inputs.len();
+        // Because the masks ranges are [start, end), while applying masks
+        // will not require indexing to include the last index (i.e. len of inputs),
+        // the last index is still a legitimate 'end' to provide on a mask here.
+        let input_range = 0..=self.inputs.len();
         let input_masks = self
             .guardrail_config
             .as_ref()
@@ -949,6 +952,23 @@ mod tests {
             guardrail_config: Some(GuardrailsConfig {
                 input: Some(GuardrailsConfigInput {
                     masks: Some(vec![(5, 8)]),
+                    models: HashMap::new(),
+                }),
+                output: Some(GuardrailsConfigOutput {
+                    models: HashMap::new(),
+                }),
+            }),
+            text_gen_parameters: None,
+        };
+        assert!(request.validate().is_ok());
+
+        // Masks end same as inputs length - OK
+        let request = GuardrailsHttpRequest {
+            model_id: "model".to_string(),
+            inputs: "The cow jumped over the moon!".to_string(),
+            guardrail_config: Some(GuardrailsConfig {
+                input: Some(GuardrailsConfigInput {
+                    masks: Some(vec![(15, 29)]),
                     models: HashMap::new(),
                 }),
                 output: Some(GuardrailsConfigOutput {

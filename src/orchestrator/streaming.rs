@@ -368,24 +368,24 @@ async fn detection_task(
                             debug!("empty chunk, skipping detector request.");
                             break;
                         } else {
-                        let request = ContentAnalysisRequest::new(contents.clone());
-                        debug!(%detector_id, ?request, "sending detector request");
-                        match ctx
-                            .detector_client
-                            .text_contents(&detector_id, request)
-                            .await
-                            .map_err(|error| Error::DetectorRequestFailed { id: detector_id.clone(), error }) {
-                                Ok(response) => {
-                                    debug!(%detector_id, ?response, "received detector response");
-                                    let _ = detector_tx.send(DetectionResult::new(chunk, response)).await;
-                                },
-                                Err(error) => {
-                                    error!(%detector_id, %error, "detector error, cancelling task");
-                                    let _ = error_tx.send(error);
-                                    tokio::time::sleep(Duration::from_millis(5)).await;
-                                    break;
-                                },
-                            }
+                            let request = ContentAnalysisRequest::new(contents.clone());
+                            debug!(%detector_id, ?request, "sending detector request");
+                            match ctx
+                                .detector_client
+                                .text_contents(&detector_id, request)
+                                .await
+                                .map_err(|error| Error::DetectorRequestFailed { id: detector_id.clone(), error }) {
+                                    Ok(response) => {
+                                        debug!(%detector_id, ?response, "received detector response");
+                                        let _ = detector_tx.send(DetectionResult::new(chunk, response)).await;
+                                    },
+                                    Err(error) => {
+                                        error!(%detector_id, %error, "detector error, cancelling task");
+                                        let _ = error_tx.send(error);
+                                        tokio::time::sleep(Duration::from_millis(5)).await;
+                                        break;
+                                    },
+                                }
                         }
                     },
                     Err(broadcast::error::RecvError::Closed) => {
