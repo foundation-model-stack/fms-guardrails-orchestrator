@@ -19,7 +19,7 @@
 
 use std::collections::HashMap;
 
-use crate::pb;
+use crate::{clients::detector::ContextType, pb};
 
 /// Parameters relevant to each detector
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -937,6 +937,52 @@ pub struct DetectionResult {
     // The confidence level in the detection class
     #[serde(rename = "score")]
     pub score: f64,
+}
+
+/// The request format expected in the /api/v2/text/context endpoint.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct ContextDocsHttpRequest {
+    /// The map of detectors to be used, along with their respective parameters, e.g. thresholds.
+    #[serde(rename = "detectors")]
+    pub detectors: HashMap<String, DetectorParams>,
+
+    /// Content to be sent to detector
+    #[serde(rename = "content")]
+    pub content: String,
+
+    /// Content to be sent to detector
+    #[serde(rename = "context_type")]
+    pub context_type: ContextType,
+
+    /// Content to be sent to detector
+    #[serde(rename = "context")]
+    pub context: Vec<String>,
+}
+
+impl ContextDocsHttpRequest {
+    /// Upfront validation of user request
+    pub fn validate(&self) -> Result<(), ValidationError> {
+        // Validate required parameters
+        if self.detectors.is_empty() {
+            return Err(ValidationError::Required("detectors".into()));
+        }
+
+        if self.content.is_empty() {
+            return Err(ValidationError::Required("content".into()));
+        }
+
+        if self.context.is_empty() {
+            return Err(ValidationError::Required("context".into()));
+        }
+        Ok(())
+    }
+}
+
+/// The response format of the /api/v1/text/task/generation-detection endpoint
+#[derive(Default, Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ContextDocsResult {
+    #[serde(rename = "detections")]
+    pub detections: Vec<DetectionResult>,
 }
 
 #[cfg(test)]

@@ -27,13 +27,14 @@ use uuid::Uuid;
 
 use crate::{
     clients::{
-        self, ChunkerClient, DetectorClient, GenerationClient, NlpClient, TgisClient,
-        COMMON_ROUTER_KEY,
+        self, detector::ContextType, ChunkerClient, DetectorClient, GenerationClient, NlpClient,
+        TgisClient, COMMON_ROUTER_KEY,
     },
     config::{GenerationProvider, OrchestratorConfig},
     models::{
-        DetectorParams, GenerationWithDetectionHttpRequest, GuardrailsConfig,
-        GuardrailsHttpRequest, GuardrailsTextGenerationParameters, TextContentDetectionHttpRequest,
+        ContextDocsHttpRequest, DetectorParams, GenerationWithDetectionHttpRequest,
+        GuardrailsConfig, GuardrailsHttpRequest, GuardrailsTextGenerationParameters,
+        TextContentDetectionHttpRequest,
     },
 };
 
@@ -226,6 +227,37 @@ impl TextContentDetectionTask {
         Self {
             request_id,
             content: request.content,
+            detectors: request.detectors,
+        }
+    }
+}
+
+/// Task for the /api/v1/text/task/detection/context endpoint
+#[derive(Debug)]
+pub struct ContextDocsDetectionTask {
+    /// Request unique identifier
+    pub request_id: Uuid,
+
+    /// Content to run detection on
+    pub content: String,
+
+    /// Context type
+    pub context_type: ContextType,
+
+    /// Context
+    pub context: Vec<String>,
+
+    /// Detectors configuration
+    pub detectors: HashMap<String, DetectorParams>,
+}
+
+impl ContextDocsDetectionTask {
+    pub fn new(request_id: Uuid, request: ContextDocsHttpRequest) -> Self {
+        Self {
+            request_id,
+            content: request.content,
+            context_type: request.context_type,
+            context: request.context,
             detectors: request.detectors,
         }
     }

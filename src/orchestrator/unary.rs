@@ -24,13 +24,17 @@ use futures::{
 use tracing::{debug, error, info, instrument};
 
 use super::{
-    apply_masks, get_chunker_ids, Chunk, ClassificationWithGenTask, Context, Error,
-    GenerationWithDetectionTask, Orchestrator, TextContentDetectionTask,
+    apply_masks, get_chunker_ids, Chunk, ClassificationWithGenTask, Context,
+    ContextDocsDetectionTask, Error, GenerationWithDetectionTask, Orchestrator,
+    TextContentDetectionTask,
 };
 use crate::{
-    clients::detector::{ContentAnalysisRequest, GenerationDetectionRequest},
+    clients::detector::{
+        ContentAnalysisRequest, ContextDocsDetectionRequest, ContextType,
+        GenerationDetectionRequest,
+    },
     models::{
-        ClassifiedGeneratedTextResult, DetectionResult, DetectorParams,
+        ClassifiedGeneratedTextResult, ContextDocsResult, DetectionResult, DetectorParams,
         GenerationWithDetectionResult, GuardrailsTextGenerationParameters, InputWarning,
         InputWarningReason, TextContentDetectionResult, TextGenTokenClassificationResults,
         TokenClassificationResult,
@@ -247,6 +251,68 @@ impl Orchestrator {
             }
         }
     }
+
+    /// Handles context-related detections on textual content
+    pub async fn handle_context_documents_detection(
+        &self,
+        task: ContextDocsDetectionTask,
+    ) -> Result<ContextDocsResult, Error> {
+        info!(
+            request_id = ?task.request_id,
+            detectors = ?task.detectors,
+            "handling context documents detection task"
+        );
+        let ctx = self.ctx.clone();
+        let task_handle = tokio::spawn(async move {
+            // call detection
+            let detections = try_join_all(
+                task.detectors
+                    .iter()
+                    .map(|(detector_id, detector_params)| {
+                        let ctx = ctx.clone();
+                        let detector_id = detector_id.clone();
+                        let detector_params = detector_params.clone();
+                        let content = task.content.clone();
+                        let context_type = task.context_type.clone();
+                        let context = task.context.clone();
+
+                        async {
+                            detect_for_context(
+                                ctx,
+                                detector_id,
+                                detector_params,
+                                content,
+                                context_type,
+                                context,
+                            )
+                            .await
+                        }
+                    })
+                    .collect::<Vec<_>>(),
+            )
+            .await?
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>();
+
+            Ok(ContextDocsResult { detections })
+        });
+        match task_handle.await {
+            // Task completed successfully
+            Ok(Ok(result)) => Ok(result),
+            // Task failed, return error propagated from child task that failed
+            Ok(Err(error)) => {
+                error!(request_id = ?task.request_id, %error, "context documents detection task failed");
+                Err(error)
+            }
+            // Task cancelled or panicked
+            Err(error) => {
+                let error = error.into();
+                error!(request_id = ?task.request_id, %error, "context documents detection task failed");
+                Err(error)
+            }
+        }
+    }
 }
 
 /// Handles input detection task.
@@ -416,7 +482,46 @@ pub async fn detect_for_generation(
     debug!(%detector_id, ?request, "sending generation detector request");
     let response = ctx
         .detector_client
-        .generation_detection(&detector_id, request)
+        .text_generation(&detector_id, request)
+        .await
+        .map(|results| {
+            results
+                .into_iter()
+                .filter(|detection| detection.score > threshold)
+                .collect()
+        })
+        .map_err(|error| Error::DetectorRequestFailed {
+            id: detector_id.clone(),
+            error,
+        })?;
+    debug!(%detector_id, ?response, "received generation detector response");
+    Ok::<Vec<DetectionResult>, Error>(response)
+}
+
+/// Calls a detector that implements the /api/v1/text/doc endpoint
+pub async fn detect_for_context(
+    ctx: Arc<Context>,
+    detector_id: String,
+    detector_params: DetectorParams,
+    content: String,
+    context_type: ContextType,
+    context: Vec<String>,
+) -> Result<Vec<DetectionResult>, Error> {
+    let detector_id = detector_id.clone();
+    let threshold = detector_params.threshold.unwrap_or(
+        detector_params.threshold.unwrap_or(
+            ctx.config
+                .detectors
+                .get(&detector_id)
+                .ok_or_else(|| Error::DetectorNotFound(detector_id.clone()))?
+                .default_threshold,
+        ),
+    );
+    let request = ContextDocsDetectionRequest::new(content, context_type, context);
+    debug!(%detector_id, ?request, "sending generation detector request");
+    let response = ctx
+        .detector_client
+        .text_context_doc(&detector_id, request)
         .await
         .map(|results| {
             results
@@ -807,7 +912,7 @@ mod tests {
             score: 0.9,
         }];
 
-        faux::when!(mock_detector_client.generation_detection(
+        faux::when!(mock_detector_client.text_generation(
             detector_id,
             GenerationDetectionRequest::new(prompt.clone(), generated_text.clone())
         ))
@@ -860,7 +965,7 @@ mod tests {
 
         let expected_response: Vec<DetectionResult> = vec![];
 
-        faux::when!(mock_detector_client.generation_detection(
+        faux::when!(mock_detector_client.text_generation(
             detector_id,
             GenerationDetectionRequest::new(prompt.clone(), generated_text.clone())
         ))

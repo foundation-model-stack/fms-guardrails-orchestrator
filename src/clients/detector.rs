@@ -81,10 +81,39 @@ impl DetectorClient {
     }
 
     /// Invokes detectors implemented with the `/api/v1/text/generation` endpoint
-    pub async fn generation_detection(
+    pub async fn text_generation(
         &self,
         model_id: &str,
         request: GenerationDetectionRequest,
+    ) -> Result<Vec<DetectionResult>, Error> {
+        let client = self.client(model_id)?;
+        let url = client.base_url().as_str();
+        let response = client
+            .post(url)
+            .header(DETECTOR_ID_HEADER_NAME, model_id)
+            .json(&request)
+            .send()
+            .await?;
+        if response.status() == StatusCode::OK {
+            Ok(response.json().await?)
+        } else {
+            let code = response.status().as_u16();
+            let error = response
+                .json::<DetectorError>()
+                .await
+                .unwrap_or(DetectorError {
+                    code,
+                    message: "".into(),
+                });
+            Err(error.into())
+        }
+    }
+
+    /// Invokes detectors implemented with the `/api/v1/text/context/doc` endpoint
+    pub async fn text_context_doc(
+        &self,
+        model_id: &str,
+        request: ContextDocsDetectionRequest,
     ) -> Result<Vec<DetectionResult>, Error> {
         let client = self.client(model_id)?;
         let url = client.base_url().as_str();
@@ -217,6 +246,40 @@ impl GenerationDetectionRequest {
         Self {
             prompt,
             generated_text,
+        }
+    }
+}
+
+/// A struct representing a request to a detector compatible with the
+/// /api/v1/text/context/doc endpoint.
+#[cfg_attr(test, derive(PartialEq))]
+#[derive(Debug, Serialize)]
+pub struct ContextDocsDetectionRequest {
+    /// Content to run detection on
+    pub content: String,
+
+    /// Type of context being sent
+    pub context_type: ContextType,
+
+    /// Context to run detection on
+    pub context: Vec<String>,
+}
+
+/// Enum representing the context type of a detection
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum ContextType {
+    #[serde(rename = "docs")]
+    Document,
+    #[serde(rename = "url")]
+    Url,
+}
+
+impl ContextDocsDetectionRequest {
+    pub fn new(content: String, context_type: ContextType, context: Vec<String>) -> Self {
+        Self {
+            content,
+            context_type,
+            context,
         }
     }
 }
