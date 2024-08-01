@@ -936,7 +936,7 @@ pub struct DetectionResult {
     pub score: f64,
 }
 
-/// The request format expected in the /api/v1/text/task/generation-detection endpoint.
+/// The request format expected in the /api/v2/text/context endpoint.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct ContextDocsHttpRequest {
     /// The map of detectors to be used, along with their respective parameters, e.g. thresholds.

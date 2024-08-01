@@ -132,7 +132,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
-  /api/v2/text/detection/context-docs:
+  /api/v2/text/detection/context:
     post:
       tags:
         - Detection tasks

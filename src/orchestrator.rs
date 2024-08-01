@@ -232,7 +232,7 @@ impl TextContentDetectionTask {
     }
 }
 
-/// Task for the /api/v1/text/task/detection/context-docs endpoint
+/// Task for the /api/v1/text/task/detection/context endpoint
 #[derive(Debug)]
 pub struct ContextDocsDetectionTask {
     /// Request unique identifier

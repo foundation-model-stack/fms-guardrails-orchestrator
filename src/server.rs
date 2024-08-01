@@ -160,7 +160,7 @@ pub async fn run(
             post(detection_content),
         )
         .route(
-            &format!("{}/detection/context-docs", TEXT_API_PREFIX),
+            &format!("{}/detection/context", TEXT_API_PREFIX),
             post(detect_context_documents),
         )
         .with_state(shared_state);
