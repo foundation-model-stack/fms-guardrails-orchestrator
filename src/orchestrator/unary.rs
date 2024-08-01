@@ -912,7 +912,7 @@ mod tests {
             score: 0.9,
         }];
 
-        faux::when!(mock_detector_client.generation_detection(
+        faux::when!(mock_detector_client.text_generation(
             detector_id,
             GenerationDetectionRequest::new(prompt.clone(), generated_text.clone())
         ))
@@ -965,7 +965,7 @@ mod tests {
 
         let expected_response: Vec<DetectionResult> = vec![];
 
-        faux::when!(mock_detector_client.generation_detection(
+        faux::when!(mock_detector_client.text_generation(
             detector_id,
             GenerationDetectionRequest::new(prompt.clone(), generated_text.clone())
         ))
