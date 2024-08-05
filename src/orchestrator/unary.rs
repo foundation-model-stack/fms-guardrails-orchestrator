@@ -314,7 +314,7 @@ impl Orchestrator {
         }
     }
 
-    /// Handles detections on generated textual context
+    /// Handles detections on generated text (without performing generation)
     pub async fn handle_generated_text_detection(
         &self,
         task: DetectionOnGenerationTask,
