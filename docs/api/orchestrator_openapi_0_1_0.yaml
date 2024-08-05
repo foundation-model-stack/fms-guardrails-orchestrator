@@ -198,6 +198,40 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'              
                 
+  /api/v2/text/generated:
+    post:
+      tags:
+        - Detection tasks
+      summary: Detection task performing detection on prompt and generated text
+      operationId: >-
+        api_v2_detection_text_generated_unary_handler
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GeneratedTextDetectionRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GeneratedTextDetectionResponse'
+        '404':
+          description: Resource Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'              
+     
+
 components:
   schemas:
     DetectionContentRequest:
@@ -400,6 +434,44 @@ components:
       title: Generation Detection Response
       required: ["generated_text", "detections"]
             
+    GeneratedTextDetectionRequest:
+      properties:
+        prompt:
+          type: string
+          title: Prompt
+        generated_text:
+          type: string
+          title: Generated Text
+        detectors:
+          type: object
+          title: Detectors
+          default: {}
+          example: 
+            generated-detection-v1-model-en: {}
+      type: object
+      required: ["generated_text", "prompt", "detectors"]
+      title: Generated-Text Detection Request
+    GeneratedTextDetectionResponse:
+      properties:
+        detections:
+          type: array
+          items:
+            type: object
+            title: Detection Object
+            properties:
+              detection_type:
+                type: string
+                title: Detection Type
+              detection:
+                type: string
+                title: Detection
+              score:
+                type: number
+                title: Score
+      required: ["detections"]
+      title: Generated Text Detection Docs Response
+      
+    
     ClassifiedGeneratedTextResult:
       properties:
         generated_text:
