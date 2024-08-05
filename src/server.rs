@@ -46,8 +46,9 @@ use crate::{
     config::OrchestratorConfig,
     models::{self},
     orchestrator::{
-        self, ClassificationWithGenTask, ContextDocsDetectionTask, GenerationWithDetectionTask,
-        Orchestrator, StreamingClassificationWithGenTask, TextContentDetectionTask,
+        self, ClassificationWithGenTask, ContextDocsDetectionTask, DetectionOnGenerationTask,
+        GenerationWithDetectionTask, Orchestrator, StreamingClassificationWithGenTask,
+        TextContentDetectionTask,
     },
 };
 
@@ -162,6 +163,10 @@ pub async fn run(
         .route(
             &format!("{}/detection/context", TEXT_API_PREFIX),
             post(detect_context_documents),
+        )
+        .route(
+            &format!("{}/detection/generated", TEXT_API_PREFIX),
+            post(detect_generated),
         )
         .with_state(shared_state);
 
@@ -370,6 +375,26 @@ async fn detect_context_documents(
     match state
         .orchestrator
         .handle_context_documents_detection(task)
+        .await
+    {
+        Ok(response) => Ok(Json(response).into_response()),
+        Err(error) => Err(error.into()),
+    }
+}
+
+async fn detect_generated(
+    State(state): State<Arc<ServerState>>,
+    WithRejection(Json(request), _): WithRejection<
+        Json<models::DetectionOnGeneratedHttpRequest>,
+        Error,
+    >,
+) -> Result<impl IntoResponse, Error> {
+    let request_id = Uuid::new_v4();
+    request.validate()?;
+    let task = DetectionOnGenerationTask::new(request_id, request);
+    match state
+        .orchestrator
+        .handle_generated_text_detection(task)
         .await
     {
         Ok(response) => Ok(Json(response).into_response()),
