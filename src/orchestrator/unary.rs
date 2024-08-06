@@ -25,8 +25,8 @@ use tracing::{debug, error, info, instrument};
 
 use super::{
     apply_masks, get_chunker_ids, Chunk, ClassificationWithGenTask, Context,
-    ContextDocsDetectionTask, Error, GenerationWithDetectionTask, Orchestrator,
-    TextContentDetectionTask,
+    ContextDocsDetectionTask, DetectionOnGenerationTask, Error, GenerationWithDetectionTask,
+    Orchestrator, TextContentDetectionTask,
 };
 use crate::{
     clients::detector::{
@@ -34,10 +34,10 @@ use crate::{
         GenerationDetectionRequest,
     },
     models::{
-        ClassifiedGeneratedTextResult, ContextDocsResult, DetectionResult, DetectorParams,
-        GenerationWithDetectionResult, GuardrailsTextGenerationParameters, InputWarning,
-        InputWarningReason, TextContentDetectionResult, TextGenTokenClassificationResults,
-        TokenClassificationResult,
+        ClassifiedGeneratedTextResult, ContextDocsResult, DetectionOnGenerationResult,
+        DetectionResult, DetectorParams, GenerationWithDetectionResult,
+        GuardrailsTextGenerationParameters, InputWarning, InputWarningReason,
+        TextContentDetectionResult, TextGenTokenClassificationResults, TokenClassificationResult,
     },
     orchestrator::UNSUITABLE_INPUT_MESSAGE,
     pb::caikit::runtime::chunkers,
@@ -309,6 +309,65 @@ impl Orchestrator {
             Err(error) => {
                 let error = error.into();
                 error!(request_id = ?task.request_id, %error, "context documents detection task failed");
+                Err(error)
+            }
+        }
+    }
+
+    /// Handles detections on generated text (without performing generation)
+    pub async fn handle_generated_text_detection(
+        &self,
+        task: DetectionOnGenerationTask,
+    ) -> Result<DetectionOnGenerationResult, Error> {
+        info!(
+            request_id = ?task.request_id,
+            detectors = ?task.detectors,
+            "handling detection on generated content task"
+        );
+        let ctx = self.ctx.clone();
+        let task_handle = tokio::spawn(async move {
+            // call detection
+            let detections = try_join_all(
+                task.detectors
+                    .iter()
+                    .map(|(detector_id, detector_params)| {
+                        let ctx = ctx.clone();
+                        let detector_id = detector_id.clone();
+                        let detector_params = detector_params.clone();
+                        let prompt = task.prompt.clone();
+                        let generated_text = task.generated_text.clone();
+                        async {
+                            detect_for_generation(
+                                ctx,
+                                detector_id,
+                                detector_params,
+                                prompt,
+                                generated_text,
+                            )
+                            .await
+                        }
+                    })
+                    .collect::<Vec<_>>(),
+            )
+            .await?
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>();
+
+            Ok(DetectionOnGenerationResult { detections })
+        });
+        match task_handle.await {
+            // Task completed successfully
+            Ok(Ok(result)) => Ok(result),
+            // Task failed, return error propagated from child task that failed
+            Ok(Err(error)) => {
+                error!(request_id = ?task.request_id, %error, "detection on generated content task failed");
+                Err(error)
+            }
+            // Task cancelled or panicked
+            Err(error) => {
+                let error = error.into();
+                error!(request_id = ?task.request_id, %error, "detection on generated content task failed");
                 Err(error)
             }
         }
