@@ -80,7 +80,8 @@ impl GuardrailsHttpRequest {
             .and_then(|config| config.input.as_ref().and_then(|input| input.masks.as_ref()));
         if let Some(input_masks) = input_masks {
             if !input_masks.iter().all(|(start, end)| {
-                input_range.contains(start) && input_range.contains(end) && start < end
+                let end_ = end - 1;
+                input_range.contains(start) && input_range.contains(&end_) && start < end
             }) {
                 return Err(ValidationError::Invalid("invalid masks".into()));
             }

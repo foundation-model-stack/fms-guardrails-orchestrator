@@ -327,6 +327,15 @@ mod tests {
         ];
         assert_eq!(text_with_offsets, expected_text_with_offsets)
     }
+    #[test]
+    fn test_apply_masks_including_last_index() {
+        let text = "Hello Gabe! Only the third instance of Gabe will be processed. Hey there Gabe! Nice to meet you.";
+        let masks: Vec<(usize, usize)> = vec![(63, 96)];
+        let text_with_offsets = apply_masks(text.into(), Some(&masks));
+        let expected_text_with_offsets =
+            vec![(63, "Hey there Gabe! Nice to meet you.".to_string())];
+        assert_eq!(text_with_offsets, expected_text_with_offsets)
+    }
 
     #[test]
     fn test_slice_codepoints() {
