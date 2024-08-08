@@ -343,3 +343,83 @@ impl GenerationActorHandle {
         response_rx.await.unwrap()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{models::TokenClassificationResult, pb::caikit_data_model::nlp::Token};
+
+    fn get_detection_obj(
+        span: Span,
+        text: &str,
+        detection: &str,
+        detection_type: &str,
+    ) -> TokenClassificationResult {
+        TokenClassificationResult {
+            start: span.0 as u32,
+            end: span.1 as u32,
+            word: text.to_string(),
+            entity: detection.to_string(),
+            entity_group: detection_type.to_string(),
+            score: 0.99,
+            token_count: None,
+        }
+    }
+
+    #[tokio::test]
+    /// Test to check the aggregation of streaming generation results with multiple detectors on a single chunk.
+    async fn test_aggregation_single_chunk_multi_detection() {
+        let chunks = vec![Chunk {
+            results: [Token {
+                start: 0,
+                end: 24,
+                text: "This is a dummy sentence".into(),
+            }]
+            .into(),
+            token_count: 5,
+            processed_index: 4,
+            start_index: 0,
+            input_start_index: 0,
+            input_end_index: 0,
+        }];
+
+        let detector_count = 2;
+        let mut detection_streams = Vec::with_capacity(detector_count);
+
+        // Note: below is detection / chunks on batch of size 1 with 1 sentence
+        for chunk in &chunks {
+            let chunk_token = chunk.results[0].clone();
+            let text = &chunk_token.text;
+            let span = (chunk_token.start, chunk_token.end);
+
+            let (detector_tx1, detector_rx1) = mpsc::channel(1);
+            let detection = get_detection_obj(span, text, "has_HAP", "HAP");
+            let _ = detector_tx1.send((chunk.clone(), vec![detection])).await;
+            detection_streams.push(("hap-1".into(), detector_rx1));
+
+            let (detector_tx2, detector_rx2) = mpsc::channel(1);
+            let detection = get_detection_obj(span, text, "email_ID", "PII");
+            let _ = detector_tx2.send((chunk.clone(), vec![detection])).await;
+            detection_streams.push(("pii-1".into(), detector_rx2));
+        }
+
+        let (generation_tx, generation_rx) = broadcast::channel(1);
+        let _ = generation_tx.send(ClassifiedGeneratedTextStreamResult::default());
+        let aggregator = MaxProcessedIndexAggregator::default();
+
+        let mut result_rx = aggregator.run(generation_rx, detection_streams).await;
+        let mut chunk_count = 0;
+        while let Some(result) = result_rx.recv().await {
+            let detection = result
+                .unwrap()
+                .token_classification_results
+                .output
+                .unwrap_or_default();
+            assert_eq!(detection.len(), detector_count);
+            assert_eq!(detection[0].entity_group, "HAP");
+            assert_eq!(detection[1].entity_group, "PII");
+            chunk_count += 1;
+        }
+        assert_eq!(chunk_count, chunks.len());
+    }
+}

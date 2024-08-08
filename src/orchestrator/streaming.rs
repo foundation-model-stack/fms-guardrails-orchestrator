@@ -502,3 +502,49 @@ async fn generate_stream(
         }) // maps stream errors
         .boxed())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_generation_broadcast_task() {
+        let (generation_tx, generation_rx) = mpsc::channel(4);
+        let (generation_broadcast_tx, mut generation_broadcast_rx) = broadcast::channel(4);
+        let generation_stream = ReceiverStream::new(generation_rx).boxed();
+        let (error_tx, _) = broadcast::channel(1);
+        let results = vec![
+            ClassifiedGeneratedTextStreamResult {
+                generated_text: Some("hello".into()),
+                ..Default::default()
+            },
+            ClassifiedGeneratedTextStreamResult {
+                generated_text: Some(" ".into()),
+                ..Default::default()
+            },
+            ClassifiedGeneratedTextStreamResult {
+                generated_text: Some("world".into()),
+                ..Default::default()
+            },
+        ];
+        tokio::spawn({
+            let results = results.clone();
+            async move {
+                for result in results {
+                    let _ = generation_tx.send(Ok(result)).await;
+                }
+            }
+        });
+        tokio::spawn(generation_broadcast_task(
+            generation_stream,
+            generation_broadcast_tx,
+            error_tx,
+        ));
+        let mut broadcast_results = Vec::with_capacity(results.len());
+        while let Ok(result) = generation_broadcast_rx.recv().await {
+            println!("{result:?}");
+            broadcast_results.push(result);
+        }
+        assert_eq!(results, broadcast_results)
+    }
+}
