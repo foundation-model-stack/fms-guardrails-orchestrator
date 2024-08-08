@@ -24,18 +24,22 @@ use tracing::{debug, error, info, instrument};
 
 use super::{get_chunker_ids, Context, Error, Orchestrator, StreamingClassificationWithGenTask};
 use crate::{
-    clients::detector::{ContentAnalysisRequest, ContentAnalysisResponse},
+    clients::detector::ContentAnalysisRequest,
     models::{
         ClassifiedGeneratedTextStreamResult, DetectorParams, GuardrailsTextGenerationParameters,
         InputWarning, InputWarningReason, TextGenTokenClassificationResults,
+        TokenClassificationResult,
     },
     orchestrator::{
         aggregators::{DetectionAggregator, MaxProcessedIndexAggregator},
         unary::{input_detection_task, tokenize},
         UNSUITABLE_INPUT_MESSAGE,
     },
-    pb::caikit::runtime::chunkers,
+    pb::caikit::runtime::chunkers::{self, ChunkerTokenizationStreamResult},
 };
+
+pub type Chunk = ChunkerTokenizationStreamResult;
+pub type Detections = Vec<TokenClassificationResult>;
 
 impl Orchestrator {
     /// Handles streaming tasks.
@@ -227,13 +231,7 @@ async fn streaming_output_detection_task(
                     let chunk_tx =
                         chunk_broadcast_task(ctx, chunker_id.clone(), generation_rx, error_tx)
                             .await?;
-                    Ok::<
-                        (
-                            String,
-                            broadcast::Sender<chunkers::ChunkerTokenizationStreamResult>,
-                        ),
-                        Error,
-                    >((chunker_id, chunk_tx))
+                    Ok::<(String, broadcast::Sender<Chunk>), Error>((chunker_id, chunk_tx))
                 }
             })
             .collect::<Vec<_>>(),
@@ -269,11 +267,12 @@ async fn streaming_output_detection_task(
         tokio::spawn(detection_task(
             ctx.clone(),
             detector_id.clone(),
+            threshold,
             detector_tx,
             chunk_rx,
             error_tx,
         ));
-        detection_streams.push((detector_id, threshold, detector_rx));
+        detection_streams.push((detector_id, detector_rx));
     }
 
     debug!("processing detection streams");
@@ -335,8 +334,9 @@ async fn generation_broadcast_task(
 async fn detection_task(
     ctx: Arc<Context>,
     detector_id: String,
-    detector_tx: mpsc::Sender<DetectionResult>,
-    mut chunk_rx: broadcast::Receiver<chunkers::ChunkerTokenizationStreamResult>,
+    threshold: f64,
+    detector_tx: mpsc::Sender<(Chunk, Detections)>,
+    mut chunk_rx: broadcast::Receiver<Chunk>,
     error_tx: broadcast::Sender<Error>,
 ) {
     let mut error_rx = error_tx.subscribe();
@@ -366,7 +366,16 @@ async fn detection_task(
                                 .map_err(|error| Error::DetectorRequestFailed { id: detector_id.clone(), error }) {
                                     Ok(response) => {
                                         debug!(%detector_id, ?response, "received detector response");
-                                        let _ = detector_tx.send(DetectionResult::new(chunk, response)).await;
+                                        let detections = response
+                                            .into_iter()
+                                            .flat_map(|r| {
+                                                r.into_iter().filter_map(|resp| {
+                                                    let result: TokenClassificationResult = resp.into();
+                                                    (result.score >= threshold).then_some(result)
+                                                })
+                                            })
+                                            .collect::<Vec<_>>();
+                                        let _ = detector_tx.send((chunk, detections)).await;
                                     },
                                     Err(error) => {
                                         error!(%detector_id, %error, "detector error, cancelling task");
@@ -399,7 +408,7 @@ async fn chunk_broadcast_task(
     chunker_id: String,
     generation_rx: broadcast::Receiver<ClassifiedGeneratedTextStreamResult>,
     error_tx: broadcast::Sender<Error>,
-) -> Result<broadcast::Sender<chunkers::ChunkerTokenizationStreamResult>, Error> {
+) -> Result<broadcast::Sender<Chunk>, Error> {
     // Consume generation stream and convert to chunker input stream
     debug!(%chunker_id, "creating chunker input stream");
     // NOTE: Text gen providers can return more than 1 token in single stream object. This can create
@@ -493,66 +502,3 @@ async fn generate_stream(
         }) // maps stream errors
         .boxed())
 }
-
-#[derive(Debug, Clone)]
-pub struct DetectionResult {
-    pub chunk: chunkers::ChunkerTokenizationStreamResult,
-    pub detections: Vec<Vec<ContentAnalysisResponse>>,
-}
-
-impl DetectionResult {
-    pub fn new(
-        chunk: chunkers::ChunkerTokenizationStreamResult,
-        detections: Vec<Vec<ContentAnalysisResponse>>,
-    ) -> Self {
-        Self { chunk, detections }
-    }
-}
-
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
-
-//     #[tokio::test]
-//     async fn test_generation_broadcast_task() {
-//         let generations = Arc::new(RwLock::new(Vec::new()));
-//         let (generation_tx, generation_rx) = mpsc::channel(4);
-//         let (generation_broadcast_tx, mut generation_broadcast_rx) = broadcast::channel(4);
-//         let generation_stream = ReceiverStream::new(generation_rx).boxed();
-//         let (error_tx, _) = broadcast::channel(1);
-//         let results = vec![
-//             ClassifiedGeneratedTextStreamResult {
-//                 generated_text: Some("hello".into()),
-//                 ..Default::default()
-//             },
-//             ClassifiedGeneratedTextStreamResult {
-//                 generated_text: Some(" ".into()),
-//                 ..Default::default()
-//             },
-//             ClassifiedGeneratedTextStreamResult {
-//                 generated_text: Some("world".into()),
-//                 ..Default::default()
-//             },
-//         ];
-//         tokio::spawn({
-//             let results = results.clone();
-//             async move {
-//                 for result in results {
-//                     let _ = generation_tx.send(Ok(result)).await;
-//                 }
-//             }
-//         });
-//         tokio::spawn(generation_broadcast_task(
-//             generations,
-//             generation_stream,
-//             generation_broadcast_tx,
-//             error_tx,
-//         ));
-//         let mut broadcast_results = Vec::with_capacity(results.len());
-//         while let Ok(result) = generation_broadcast_rx.recv().await {
-//             println!("{result:?}");
-//             broadcast_results.push(result);
-//         }
-//         assert_eq!(results, broadcast_results)
-//     }
-// }
