@@ -1,118 +1,62 @@
-use std::{
-    collections::{btree_map, BTreeMap},
-    sync::{Arc, RwLock},
-};
+#![allow(dead_code)]
+use std::sync::Arc;
 
 use async_trait::async_trait;
-use tokio::sync::mpsc;
-use tracing::{debug, instrument};
+use tokio::sync::{broadcast, mpsc, oneshot};
+use tracing::instrument;
 
 use super::{DetectionAggregator, DetectorId};
 use crate::{
     models::{ClassifiedGeneratedTextStreamResult, TokenClassificationResult},
     orchestrator::{streaming::DetectionResult, Error},
+    pb::caikit::runtime::chunkers::ChunkerTokenizationStreamResult,
 };
+
+pub type Span = (i64, i64);
+pub type Chunk = ChunkerTokenizationStreamResult;
+pub type Detections = Vec<TokenClassificationResult>;
 
 /// Aggregates results applying a "max processed index" strategy.
 #[derive(Default)]
 pub struct MaxProcessedIndexAggregator {}
 
-type Span = (u32, u32);
-struct DetectionTracker(BTreeMap<Span, (ClassifiedGeneratedTextStreamResult, usize)>);
-
-impl DetectionTracker {
-    pub fn new() -> Self {
-        Self(BTreeMap::new())
-    }
-
-    pub fn insert(
-        &mut self,
-        span: Span,
-        detections: Vec<TokenClassificationResult>,
-        mut result: ClassifiedGeneratedTextStreamResult,
-    ) {
-        // NOTES:
-        // 1. Assumes 1 detection will return 1 result for 1 span
-        // 2. Assumes same chunker type is used by all detectors
-        // 3. Needs to be expanded to support overlapping spans
-
-        // Insert new or update existing entry
-        let entry = self.0.entry(span);
-        match entry {
-            btree_map::Entry::Vacant(e) => {
-                // Add detections to result
-                result.token_classification_results.output = Some(detections);
-
-                // Insert result, set detector count to 1
-                e.insert((result, 1));
-            }
-            btree_map::Entry::Occupied(mut e) => {
-                // Get existing result
-                let (result, num_detectors) = e.get_mut();
-
-                // Add detections to existing result
-                if let Some(existing_detections) =
-                    result.token_classification_results.output.as_mut()
-                {
-                    existing_detections.extend(detections);
-                }
-
-                // Increment detector count
-                *num_detectors += 1;
-            }
-        }
-    }
-
-    pub fn find_by_span_start(
-        &self,
-        start: u32,
-    ) -> Option<&(ClassifiedGeneratedTextStreamResult, usize)> {
-        self.0
-            .iter()
-            .find(|(span, _)| span.0 == start)
-            .map(|(_, value)| value)
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-
-    pub fn first_key_value(
-        &self,
-    ) -> Option<(&Span, &(ClassifiedGeneratedTextStreamResult, usize))> {
-        self.0.first_key_value()
-    }
-}
-
 #[async_trait]
 impl DetectionAggregator for MaxProcessedIndexAggregator {
     #[instrument(skip_all)]
-    async fn process(
+    async fn run(
         &self,
-        generations: Arc<RwLock<Vec<ClassifiedGeneratedTextStreamResult>>>,
+        mut generation_rx: broadcast::Receiver<ClassifiedGeneratedTextStreamResult>,
         detection_streams: Vec<(DetectorId, f64, mpsc::Receiver<DetectionResult>)>,
     ) -> mpsc::Receiver<Result<ClassifiedGeneratedTextStreamResult, Error>> {
+        // Create result channel
         let (result_tx, result_rx) = mpsc::channel(1024);
-        tokio::spawn(async move {
-            // TODO: Add chunker type
 
-            let mut processed_index = 0;
+        // Create actors
+        let generation_actor = Arc::new(GenerationActorHandle::new());
+        let result_actor = ResultActorHandle::new(generation_actor.clone(), result_tx);
+        let aggregation_actor = Arc::new(AggregationActorHandle::new(
+            result_actor,
+            detection_streams.len(),
+        ));
 
-            let total_detectors = detection_streams.len();
-            // We use BTreeMap since it is ordered and automatically keeps all the information sorted
-            // We map spans with tuple of classifiedGeneratedTextStreamResult and count of detectors already applied
-            // Later on we can change this tuple of a struct for better management and cleanliness
-            let mut detection_tracker = DetectionTracker::new();
+        // Spawn task to send generations to generation actor
+        tokio::spawn({
+            async move {
+                while let Ok(generation) = generation_rx.recv().await {
+                    let _ = generation_actor.put(generation).await;
+                }
+            }
+        });
 
-            for (detector_id, threshold, mut stream) in detection_streams {
-                while let Some(message) = stream.recv().await {
-                    debug!(%detector_id, ?message, "received detection message");
-                    // NOTE: We expect the detector to respond with an answer, even if it is [] in case of no detections. example PII
-                    let chunk = message.chunk;
-                    let detections = message.detections;
-                    let generated_text: String =
-                        chunk.results.into_iter().map(|t| t.text).collect();
-                    let detections: Vec<TokenClassificationResult> = detections
+        // Spawn tasks to process detection streams concurrently
+        for (detector_id, threshold, mut stream) in detection_streams {
+            let aggregation_actor = aggregation_actor.clone();
+            tokio::spawn(async move {
+                while let Some(msg) = stream.recv().await {
+                    let chunk = msg.chunk;
+                    // TODO: move threshold application and conversion to detection_task
+                    let detections = msg
+                        .detections
                         .into_iter()
                         .flat_map(|r| {
                             r.into_iter().filter_map(|resp| {
@@ -120,201 +64,302 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
                                 (result.score >= threshold).then_some(result)
                             })
                         })
-                        .collect();
-
-                    let input_start_index = chunk.input_start_index as usize;
-                    let input_end_index = chunk.input_end_index as usize;
-
-                    // Get subset of generation responses relevant for this chunk
-                    let generation_responses: Vec<ClassifiedGeneratedTextStreamResult> =
-                        generations.read().unwrap()[input_start_index..=input_end_index]
-                            .iter()
-                            .map(|result| result.to_owned())
-                            .collect::<Vec<_>>();
-
-                    let tokens = generation_responses
-                        .iter()
-                        .flat_map(|result| result.tokens.clone().unwrap_or([].to_vec()))
                         .collect::<Vec<_>>();
-
-                    let mut result: ClassifiedGeneratedTextStreamResult =
-                        ClassifiedGeneratedTextStreamResult {
-                            generated_text: Some(generated_text.clone()),
-                            start_index: Some(chunk.start_index as u32),
-                            processed_index: Some(chunk.processed_index as u32),
-                            tokens: Some(tokens),
-                            // Populate all fields from last generation response and if not available, then use
-                            // default value for ClassifiedGeneratedTextStreamResult
-                            ..generation_responses
-                                .last()
-                                .unwrap_or(&ClassifiedGeneratedTextStreamResult::default())
-                                .to_owned()
-                        };
-
-                    // input_token_count and input_tokens to be only present in 1st output
-                    // seed to be present in 1st and last output. These are in accordance with how TGIS (provider) returns output
-                    // seed will automatically get into last from above logic of using `..generation_responses.last`
-                    if (input_start_index..input_end_index).contains(&0) {
-                        // Note we need to optimize below a bit and only read generations 1 time above this loop
-                        let initial_gen_response = generations.read().unwrap()[0].clone();
-
-                        let input_token_count = initial_gen_response.input_token_count;
-                        let seed = initial_gen_response.seed;
-                        // Note: input_tokens is not present in 0th response, so we use `1`
-                        let input_tokens = match generations.read().unwrap().get(1) {
-                            Some(first_generation) => first_generation.input_tokens.clone(),
-                            None => Some([].to_vec()),
-                        };
-                        result.input_token_count = input_token_count;
-                        result.seed = seed;
-                        result.input_tokens = input_tokens;
-                    }
-
-                    let span: Span = (chunk.start_index as u32, chunk.processed_index as u32);
-
-                    detection_tracker.insert(span, detections, result);
-
-                    if processed_index == 0 && !detection_tracker.is_empty() {
-                        // Nothing has been sent. Consider check for chunk starting at 0 in detection_tracker
-                        // Since BTreeMap are sorted, we can rely on 1st element in detection_tracker to be the 1st one we
-                        // want to send
-                        let (span, (result, num_detectors)) =
-                            detection_tracker.first_key_value().unwrap();
-                        // Check if all detectors have responded for this detector
-                        if *num_detectors == total_detectors {
-                            let _ = result_tx.send(Ok(result.clone())).await;
-                            // Make processed_index as the end of the detected span
-                            processed_index = span.1;
-                            // TODO: At this point we can remove the 1st element from the detection_tracker
-                            // and simplify entirity of this if-condition. But keeping it as is for now,
-                            // since this information can be useful in future for handling different edge-cases
-                            // and different types of chunkers
-                        }
-                    } else if processed_index > 0 {
-                        // We are in the middle of streaming and processed_index is non-zero
-                        if let Some((result, num_detectors)) =
-                            detection_tracker.find_by_span_start(processed_index)
-                        {
-                            // spans found.
-                            if *num_detectors == total_detectors {
-                                let _ = result_tx.send(Ok(result.clone())).await;
-                                // Make processed_index as the end of the detected span
-                                processed_index = result.processed_index.unwrap();
-                            }
-                        }
-                    }
+                    // Send to aggregation actor
+                    aggregation_actor
+                        .send(detector_id.clone(), chunk, detections)
+                        .await;
                 }
-            }
-        });
+            });
+        }
         result_rx
     }
 }
 
-#[cfg(test)]
-mod tests {
+#[derive(Debug)]
+struct ResultActorMessage((Chunk, Detections));
 
-    use std::sync::{Arc, RwLock};
+struct ResultActor {
+    rx: mpsc::Receiver<ResultActorMessage>,
+    generation_actor: Arc<GenerationActorHandle>,
+    result_tx: mpsc::Sender<Result<ClassifiedGeneratedTextStreamResult, Error>>,
+}
 
-    use super::*;
-    use crate::{
-        clients::detector::ContentAnalysisResponse,
-        pb::{caikit::runtime::chunkers, caikit_data_model::nlp::Token},
-    };
-
-    async fn get_dummy_streaming_generation(
-    ) -> Arc<RwLock<Vec<ClassifiedGeneratedTextStreamResult>>> {
-        let dummy_result = Arc::new(RwLock::new(Vec::new()));
-
-        dummy_result
-            .write()
-            .unwrap()
-            .push(ClassifiedGeneratedTextStreamResult::default());
-        dummy_result
+impl ResultActor {
+    pub fn new(
+        rx: mpsc::Receiver<ResultActorMessage>,
+        generation_actor: Arc<GenerationActorHandle>,
+        result_tx: mpsc::Sender<Result<ClassifiedGeneratedTextStreamResult, Error>>,
+    ) -> Self {
+        Self {
+            rx,
+            generation_actor,
+            result_tx,
+        }
     }
 
-    fn get_detection_obj(
-        span: Span,
-        text: &String,
-        detection: &str,
-        detection_type: &str,
-    ) -> Vec<ContentAnalysisResponse> {
-        [ContentAnalysisResponse {
-            start: span.0 as usize,
-            end: span.1 as usize,
-            text: text.to_string(),
-            detection: detection.to_string(),
-            detection_type: detection_type.to_string(),
-            score: 0.99,
-            evidence: None,
-        }]
-        .to_vec()
+    async fn run(&mut self) {
+        while let Some(msg) = self.rx.recv().await {
+            self.handle(msg).await;
+        }
     }
 
-    #[tokio::test]
-    /// Test to check the aggregation of streaming generation results with multiple detectors on a single chunk.
-    async fn test_aggregation_single_chunk_multi_detection() {
-        // Create chunks
-        let mut chunks: Vec<chunkers::ChunkerTokenizationStreamResult> = [].into();
+    async fn handle(&mut self, msg: ResultActorMessage) {
+        let (chunk, detections) = msg.0;
+        let generated_text: String = chunk.results.into_iter().map(|t| t.text).collect();
+        let input_start_index = chunk.input_start_index as usize;
+        let input_end_index = chunk.input_end_index as usize;
 
-        chunks.push(chunkers::ChunkerTokenizationStreamResult {
-            results: [Token {
-                start: 0,
-                end: 24,
-                text: "This is a dummy sentence".into(),
-            }]
-            .into(),
-            token_count: 5,
-            processed_index: 4,
-            start_index: 0,
-            input_start_index: 0,
-            input_end_index: 0,
-        });
+        // Get subset of generation responses relevant for this chunk
+        let generations = self
+            .generation_actor
+            .get_range(input_start_index, input_end_index)
+            .await;
 
-        let detector_count = 2;
-        let mut detection_streams = Vec::with_capacity(detector_count);
-
-        // Note: below is detection / chunks on batch of size 1 with 1 sentence
-        for chunk in &chunks {
-            let chunk_token = chunk.results[0].clone();
-            let text = &chunk_token.text;
-            let span = (chunk_token.start as u32, chunk_token.end as u32);
-            let threshold = 0.001;
-            // Add multiple detections to same chunk
-
-            let (detector_tx1, detector_rx1) = mpsc::channel(1024);
-            let detector_response = get_detection_obj(span, text, "has_HAP", "HAP");
-            let detector_id = String::from("hap-1");
-            let detection_result =
-                DetectionResult::new(chunk.clone(), [detector_response].to_vec());
-            let _ = detector_tx1.send(detection_result).await;
-            detection_streams.push((detector_id, threshold, detector_rx1));
-
-            let (detector_tx2, detector_rx2) = mpsc::channel(1024);
-            let detector_response = get_detection_obj(span, text, "email_ID", "PII");
-            let detector_id = String::from("pii-1");
-            let detection_result =
-                DetectionResult::new(chunk.clone(), [detector_response].to_vec());
-            let _ = detector_tx2.send(detection_result).await;
-            detection_streams.push((detector_id, threshold, detector_rx2));
+        // Build result
+        let tokens = generations
+            .iter()
+            .flat_map(|generation| generation.tokens.clone().unwrap_or_default())
+            .collect::<Vec<_>>();
+        let mut result = ClassifiedGeneratedTextStreamResult {
+            generated_text: Some(generated_text.clone()),
+            start_index: Some(chunk.start_index as u32),
+            processed_index: Some(chunk.processed_index as u32),
+            tokens: Some(tokens),
+            // Populate fields from last response or default
+            ..generations.last().cloned().unwrap_or_default()
+        };
+        result.token_classification_results.output = Some(detections);
+        if input_start_index == 0 {
+            // Get input_token_count and seed from first generation message
+            let first = generations.first().unwrap();
+            result.input_token_count = first.input_token_count;
+            result.seed = first.seed;
+            // Get input_tokens from second generation message (if specified)
+            let input_tokens = if let Some(second) = generations.get(1) {
+                second.input_tokens.clone()
+            } else {
+                Some(Vec::default())
+            };
+            result.input_tokens = input_tokens;
         }
 
-        let generations = get_dummy_streaming_generation().await;
-        let aggregator = MaxProcessedIndexAggregator::default();
+        // Send result to result channel
+        let _ = self.result_tx.send(Ok(result)).await;
+    }
+}
 
-        let mut result_rx = aggregator.process(generations, detection_streams).await;
+/// [`ResultActor`] handle.
+struct ResultActorHandle {
+    tx: mpsc::Sender<ResultActorMessage>,
+}
 
-        let mut chunk_count = 0;
-        while let Some(classified_gen_stream_result) = result_rx.recv().await {
-            let detection = classified_gen_stream_result
-                .unwrap()
-                .token_classification_results
-                .output
-                .unwrap_or(Vec::new());
-            assert_eq!(detection.len(), detector_count);
-            assert_eq!(detection[0].entity_group, "HAP");
-            assert_eq!(detection[1].entity_group, "PII");
-            chunk_count += 1;
+impl ResultActorHandle {
+    pub fn new(
+        generation_actor: Arc<GenerationActorHandle>,
+        result_tx: mpsc::Sender<Result<ClassifiedGeneratedTextStreamResult, Error>>,
+    ) -> Self {
+        let (tx, rx) = mpsc::channel(8);
+        let mut actor = ResultActor::new(rx, generation_actor, result_tx);
+        tokio::spawn(async move { actor.run().await });
+        Self { tx }
+    }
+
+    pub async fn send(&self, chunk: Chunk, detections: Detections) {
+        let msg = ResultActorMessage((chunk, detections));
+        let _ = self.tx.send(msg).await;
+    }
+}
+
+#[derive(Debug)]
+struct AggregationActorMessage {
+    pub detector_id: DetectorId,
+    pub chunk: Chunk,
+    pub detections: Detections,
+}
+
+struct AggregationActor {
+    rx: mpsc::Receiver<AggregationActorMessage>,
+    result_actor: ResultActorHandle,
+    tracker: Vec<(Span, Detections)>,
+    n_detectors: usize,
+}
+
+impl AggregationActor {
+    pub fn new(
+        rx: mpsc::Receiver<AggregationActorMessage>,
+        result_actor: ResultActorHandle,
+        n_detectors: usize,
+    ) -> Self {
+        let tracker = Vec::new();
+        Self {
+            rx,
+            result_actor,
+            tracker,
+            n_detectors,
         }
-        assert_eq!(chunk_count, chunks.len());
+    }
+
+    async fn run(&mut self) {
+        while let Some(msg) = self.rx.recv().await {
+            self.handle(msg).await;
+        }
+    }
+
+    async fn handle(&mut self, msg: AggregationActorMessage) {
+        // TODO: support overlapping spans from different chunkers?
+        let _detector_id = msg.detector_id;
+        let chunk = msg.chunk;
+        let detections = msg.detections;
+
+        // Add to tracker
+        let span: Span = (chunk.start_index, chunk.processed_index);
+        self.tracker.push((span, detections));
+
+        // Get current detections for this span
+        let current = self
+            .tracker
+            .iter()
+            .filter(|(span, _)| span.0 == chunk.start_index)
+            .collect::<Vec<_>>();
+
+        //debug!(?self.tracker, "tracker snapshot");
+
+        // If we have results from all detectors, send to result actor
+        if current.len() == self.n_detectors {
+            // TODO: remove from tracker instead of cloning?
+            let detections = current
+                .into_iter()
+                .flat_map(|(_, detections)| detections)
+                .cloned()
+                .collect::<Vec<_>>();
+            let _ = self.result_actor.send(chunk, detections).await;
+        }
+    }
+}
+
+/// [`AggregationActor`] handle.
+struct AggregationActorHandle {
+    tx: mpsc::Sender<AggregationActorMessage>,
+}
+
+impl AggregationActorHandle {
+    pub fn new(result_actor: ResultActorHandle, n_detectors: usize) -> Self {
+        let (tx, rx) = mpsc::channel(8);
+        let mut actor = AggregationActor::new(rx, result_actor, n_detectors);
+        tokio::spawn(async move { actor.run().await });
+        Self { tx }
+    }
+
+    pub async fn send(&self, detector_id: DetectorId, chunk: Chunk, detections: Detections) {
+        let msg = AggregationActorMessage {
+            detector_id,
+            chunk,
+            detections,
+        };
+        let _ = self.tx.send(msg).await;
+    }
+}
+
+#[derive(Debug)]
+enum GenerationActorMessage {
+    Put(ClassifiedGeneratedTextStreamResult),
+    Get {
+        index: usize,
+        response_tx: oneshot::Sender<Option<ClassifiedGeneratedTextStreamResult>>,
+    },
+    GetRange {
+        start: usize,
+        end: usize,
+        response_tx: oneshot::Sender<Vec<ClassifiedGeneratedTextStreamResult>>,
+    },
+    Length {
+        response_tx: oneshot::Sender<usize>,
+    },
+}
+struct GenerationActor {
+    rx: mpsc::Receiver<GenerationActorMessage>,
+    generations: Vec<ClassifiedGeneratedTextStreamResult>,
+}
+
+impl GenerationActor {
+    pub fn new(rx: mpsc::Receiver<GenerationActorMessage>) -> Self {
+        let generations = Vec::new();
+        Self { rx, generations }
+    }
+
+    async fn run(&mut self) {
+        while let Some(msg) = self.rx.recv().await {
+            self.handle(msg);
+        }
+    }
+
+    fn handle(&mut self, msg: GenerationActorMessage) {
+        match msg {
+            GenerationActorMessage::Put(generation) => self.generations.push(generation),
+            GenerationActorMessage::Get { index, response_tx } => {
+                let generation = self.generations.get(index).cloned();
+                let _ = response_tx.send(generation);
+            }
+            GenerationActorMessage::GetRange {
+                start,
+                end,
+                response_tx,
+            } => {
+                let generations = self.generations[start..=end].to_vec();
+                let _ = response_tx.send(generations);
+            }
+            GenerationActorMessage::Length { response_tx } => {
+                let _ = response_tx.send(self.generations.len());
+            }
+        }
+    }
+}
+
+/// [`GenerationActor`] handle.
+struct GenerationActorHandle {
+    tx: mpsc::Sender<GenerationActorMessage>,
+}
+
+impl GenerationActorHandle {
+    pub fn new() -> Self {
+        let (tx, rx) = mpsc::channel(8);
+        let mut actor = GenerationActor::new(rx);
+        tokio::spawn(async move { actor.run().await });
+        Self { tx }
+    }
+
+    pub async fn put(&self, generation: ClassifiedGeneratedTextStreamResult) {
+        let msg = GenerationActorMessage::Put(generation);
+        let _ = self.tx.send(msg).await;
+    }
+
+    pub async fn get(&self, index: usize) -> Option<ClassifiedGeneratedTextStreamResult> {
+        let (response_tx, response_rx) = oneshot::channel();
+        let msg = GenerationActorMessage::Get { index, response_tx };
+        let _ = self.tx.send(msg).await;
+        response_rx.await.unwrap()
+    }
+
+    pub async fn get_range(
+        &self,
+        start: usize,
+        end: usize,
+    ) -> Vec<ClassifiedGeneratedTextStreamResult> {
+        let (response_tx, response_rx) = oneshot::channel();
+        let msg = GenerationActorMessage::GetRange {
+            start,
+            end,
+            response_tx,
+        };
+        let _ = self.tx.send(msg).await;
+        response_rx.await.unwrap()
+    }
+
+    pub async fn len(&self) -> usize {
+        let (response_tx, response_rx) = oneshot::channel();
+        let msg = GenerationActorMessage::Length { response_tx };
+        let _ = self.tx.send(msg).await;
+        response_rx.await.unwrap()
     }
 }
