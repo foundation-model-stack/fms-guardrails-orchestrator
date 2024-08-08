@@ -7,14 +7,14 @@ use tracing::instrument;
 
 use super::{DetectionAggregator, DetectorId};
 use crate::{
-    models::{ClassifiedGeneratedTextStreamResult, TokenClassificationResult},
-    orchestrator::{streaming::DetectionResult, Error},
-    pb::caikit::runtime::chunkers::ChunkerTokenizationStreamResult,
+    models::ClassifiedGeneratedTextStreamResult,
+    orchestrator::{
+        streaming::{Chunk, Detections},
+        Error,
+    },
 };
 
 pub type Span = (i64, i64);
-pub type Chunk = ChunkerTokenizationStreamResult;
-pub type Detections = Vec<TokenClassificationResult>;
 
 /// Aggregates results applying a "max processed index" strategy.
 #[derive(Default)]
@@ -26,7 +26,7 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
     async fn run(
         &self,
         mut generation_rx: broadcast::Receiver<ClassifiedGeneratedTextStreamResult>,
-        detection_streams: Vec<(DetectorId, f64, mpsc::Receiver<DetectionResult>)>,
+        detection_streams: Vec<(DetectorId, mpsc::Receiver<(Chunk, Detections)>)>,
     ) -> mpsc::Receiver<Result<ClassifiedGeneratedTextStreamResult, Error>> {
         // Create result channel
         let (result_tx, result_rx) = mpsc::channel(1024);
@@ -49,22 +49,10 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
         });
 
         // Spawn tasks to process detection streams concurrently
-        for (detector_id, threshold, mut stream) in detection_streams {
+        for (detector_id, mut stream) in detection_streams {
             let aggregation_actor = aggregation_actor.clone();
             tokio::spawn(async move {
-                while let Some(msg) = stream.recv().await {
-                    let chunk = msg.chunk;
-                    // TODO: move threshold application and conversion to detection_task
-                    let detections = msg
-                        .detections
-                        .into_iter()
-                        .flat_map(|r| {
-                            r.into_iter().filter_map(|resp| {
-                                let result: TokenClassificationResult = resp.into();
-                                (result.score >= threshold).then_some(result)
-                            })
-                        })
-                        .collect::<Vec<_>>();
+                while let Some((chunk, detections)) = stream.recv().await {
                     // Send to aggregation actor
                     aggregation_actor
                         .send(detector_id.clone(), chunk, detections)

@@ -21,7 +21,10 @@ use async_trait::async_trait;
 pub use max_processed_index::MaxProcessedIndexAggregator;
 use tokio::sync::{broadcast, mpsc};
 
-use super::{streaming::DetectionResult, Error};
+use super::{
+    streaming::{Chunk, Detections},
+    Error,
+};
 use crate::models::ClassifiedGeneratedTextStreamResult;
 
 pub type DetectorId = String;
@@ -32,6 +35,6 @@ pub trait DetectionAggregator {
     async fn run(
         &self,
         mut generation_rx: broadcast::Receiver<ClassifiedGeneratedTextStreamResult>,
-        detection_streams: Vec<(DetectorId, f64, mpsc::Receiver<DetectionResult>)>,
+        detection_streams: Vec<(DetectorId, mpsc::Receiver<(Chunk, Detections)>)>,
     ) -> mpsc::Receiver<Result<ClassifiedGeneratedTextStreamResult, Error>>;
 }
