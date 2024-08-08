@@ -49,14 +49,12 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
         });
 
         // Spawn tasks to process detection streams concurrently
-        for (detector_id, mut stream) in detection_streams {
+        for (_detector_id, mut stream) in detection_streams {
             let aggregation_actor = aggregation_actor.clone();
             tokio::spawn(async move {
                 while let Some((chunk, detections)) = stream.recv().await {
                     // Send to aggregation actor
-                    aggregation_actor
-                        .send(detector_id.clone(), chunk, detections)
-                        .await;
+                    aggregation_actor.send(chunk, detections).await;
                 }
             });
         }
@@ -161,7 +159,6 @@ impl ResultActorHandle {
 
 #[derive(Debug)]
 struct AggregationActorMessage {
-    pub detector_id: DetectorId,
     pub chunk: Chunk,
     pub detections: Detections,
 }
@@ -196,7 +193,6 @@ impl AggregationActor {
 
     async fn handle(&mut self, msg: AggregationActorMessage) {
         // TODO: support overlapping spans from different chunkers?
-        let _detector_id = msg.detector_id;
         let chunk = msg.chunk;
         let detections = msg.detections;
 
@@ -239,12 +235,8 @@ impl AggregationActorHandle {
         Self { tx }
     }
 
-    pub async fn send(&self, detector_id: DetectorId, chunk: Chunk, detections: Detections) {
-        let msg = AggregationActorMessage {
-            detector_id,
-            chunk,
-            detections,
-        };
+    pub async fn send(&self, chunk: Chunk, detections: Detections) {
+        let msg = AggregationActorMessage { chunk, detections };
         let _ = self.tx.send(msg).await;
     }
 }
