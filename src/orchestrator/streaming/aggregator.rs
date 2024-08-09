@@ -44,7 +44,7 @@ impl Aggregator {
         detection_streams: Vec<(DetectorId, mpsc::Receiver<(Chunk, Detections)>)>,
     ) -> mpsc::Receiver<Result<ClassifiedGeneratedTextStreamResult, Error>> {
         // Create result channel
-        let (result_tx, result_rx) = mpsc::channel(1024);
+        let (result_tx, result_rx) = mpsc::channel(32);
 
         // Create actors
         let generation_actor = Arc::new(GenerationActorHandle::new());
@@ -162,7 +162,7 @@ impl ResultActorHandle {
         generation_actor: Arc<GenerationActorHandle>,
         result_tx: mpsc::Sender<Result<ClassifiedGeneratedTextStreamResult, Error>>,
     ) -> Self {
-        let (tx, rx) = mpsc::channel(8);
+        let (tx, rx) = mpsc::channel(32);
         let mut actor = ResultActor::new(rx, generation_actor, result_tx);
         tokio::spawn(async move { actor.run().await });
         Self { tx }
@@ -247,7 +247,7 @@ impl AggregationActorHandle {
         n_detectors: usize,
         //strategy: AggregationStrategy,
     ) -> Self {
-        let (tx, rx) = mpsc::channel(8);
+        let (tx, rx) = mpsc::channel(32);
         let mut actor = AggregationActor::new(rx, result_actor, n_detectors);
         tokio::spawn(async move { actor.run().await });
         Self { tx }
@@ -323,7 +323,7 @@ struct GenerationActorHandle {
 
 impl GenerationActorHandle {
     pub fn new() -> Self {
-        let (tx, rx) = mpsc::channel(8);
+        let (tx, rx) = mpsc::channel(32);
         let mut actor = GenerationActor::new(rx);
         tokio::spawn(async move { actor.run().await });
         Self { tx }
