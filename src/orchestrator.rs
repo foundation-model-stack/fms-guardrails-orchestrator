@@ -17,7 +17,6 @@
 
 pub mod errors;
 pub use errors::Error;
-pub mod aggregators;
 pub mod streaming;
 pub mod unary;
 
