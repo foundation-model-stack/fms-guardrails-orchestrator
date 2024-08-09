@@ -124,7 +124,7 @@ impl ResultActor {
             .flat_map(|generation| generation.tokens.clone().unwrap_or_default())
             .collect::<Vec<_>>();
         let mut result = ClassifiedGeneratedTextStreamResult {
-            generated_text: Some(generated_text.clone()),
+            generated_text: Some(generated_text),
             start_index: Some(chunk.start_index as u32),
             processed_index: Some(chunk.processed_index as u32),
             tokens: Some(tokens),
