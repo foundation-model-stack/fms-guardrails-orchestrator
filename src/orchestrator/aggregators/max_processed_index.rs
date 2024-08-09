@@ -1,7 +1,6 @@
 #![allow(dead_code)]
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use tokio::sync::{broadcast, mpsc, oneshot};
 use tracing::instrument;
 
@@ -20,10 +19,9 @@ pub type Span = (i64, i64);
 #[derive(Default)]
 pub struct MaxProcessedIndexAggregator {}
 
-#[async_trait]
 impl DetectionAggregator for MaxProcessedIndexAggregator {
     #[instrument(skip_all)]
-    async fn run(
+    fn run(
         &self,
         mut generation_rx: broadcast::Receiver<ClassifiedGeneratedTextStreamResult>,
         detection_streams: Vec<(DetectorId, mpsc::Receiver<(Chunk, Detections)>)>,
@@ -407,7 +405,7 @@ mod tests {
         let _ = generation_tx.send(ClassifiedGeneratedTextStreamResult::default());
         let aggregator = MaxProcessedIndexAggregator::default();
 
-        let mut result_rx = aggregator.run(generation_rx, detection_streams).await;
+        let mut result_rx = aggregator.run(generation_rx, detection_streams);
         let mut chunk_count = 0;
         while let Some(result) = result_rx.recv().await {
             let detection = result

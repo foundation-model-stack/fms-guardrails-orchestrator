@@ -277,9 +277,7 @@ async fn streaming_output_detection_task(
 
     debug!("processing detection streams");
     let aggregator = MaxProcessedIndexAggregator::default();
-    let result_rx = aggregator
-        .run(generation_tx.subscribe(), detection_streams)
-        .await;
+    let result_rx = aggregator.run(generation_tx.subscribe(), detection_streams);
 
     debug!("spawning generation broadcast task");
     // Spawn task to consume generation stream and forward to broadcast stream
