@@ -81,6 +81,7 @@ impl Aggregator {
 #[derive(Debug)]
 struct ResultActorMessage((Chunk, Detections));
 
+/// Builds results and sends them to result channel.
 struct ResultActor {
     rx: mpsc::Receiver<ResultActorMessage>,
     generation_actor: Arc<GenerationActorHandle>,
@@ -179,6 +180,7 @@ struct AggregationActorMessage {
     pub detections: Detections,
 }
 
+/// Aggregates detections and sends them to [`ResultActor`].
 struct AggregationActor {
     rx: mpsc::Receiver<AggregationActorMessage>,
     result_actor: ResultActorHandle,
@@ -273,6 +275,8 @@ enum GenerationActorMessage {
         response_tx: oneshot::Sender<usize>,
     },
 }
+
+/// Consumes generations from generation stream and provides them to [`ResultActor`].
 struct GenerationActor {
     rx: mpsc::Receiver<GenerationActorMessage>,
     generations: Vec<ClassifiedGeneratedTextStreamResult>,
