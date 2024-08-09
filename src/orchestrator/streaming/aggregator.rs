@@ -182,7 +182,7 @@ struct AggregationActorMessage {
 struct AggregationActor {
     rx: mpsc::Receiver<AggregationActorMessage>,
     result_actor: ResultActorHandle,
-    tracker: Vec<(Span, Detections)>,
+    tracker: Tracker,
     n_detectors: usize,
 }
 
@@ -192,7 +192,7 @@ impl AggregationActor {
         result_actor: ResultActorHandle,
         n_detectors: usize,
     ) -> Self {
-        let tracker = Vec::new();
+        let tracker = Tracker::new();
         Self {
             rx,
             result_actor,
@@ -216,22 +216,18 @@ impl AggregationActor {
         let span: Span = (chunk.start_index, chunk.processed_index);
         self.tracker.push((span, detections));
 
-        // Get current detections for this span
-        let current = self
-            .tracker
-            .iter()
-            .filter(|(span, _)| span.0 == chunk.start_index)
-            .collect::<Vec<_>>();
+        // Find current detections for this span
+        let current = self.tracker.find_by_span_start(chunk.start_index);
 
         //debug!(?self.tracker, "tracker snapshot");
 
         // If we have results from all detectors, send to result actor
         if current.len() == self.n_detectors {
-            // TODO: remove from tracker instead of cloning?
-            let detections = current
+            let detections = self
+                .tracker
+                .take(current)
                 .into_iter()
                 .flat_map(|(_, detections)| detections)
-                .cloned()
                 .collect::<Vec<_>>();
             let _ = self.result_actor.send(chunk, detections).await;
         }
@@ -361,6 +357,45 @@ impl GenerationActorHandle {
         let msg = GenerationActorMessage::Length { response_tx };
         let _ = self.tx.send(msg).await;
         response_rx.await.unwrap()
+    }
+}
+
+#[derive(Debug, Clone)]
+struct Tracker {
+    state: Vec<Option<(Span, Detections)>>,
+}
+
+impl Tracker {
+    pub fn new() -> Self {
+        Self { state: Vec::new() }
+    }
+
+    pub fn push(&mut self, value: (Span, Detections)) {
+        self.state.push(Some(value));
+    }
+
+    pub fn find_by_span_start(&self, start: i64) -> Vec<usize> {
+        self.state
+            .iter()
+            .enumerate()
+            .filter(|(_, value)| value.as_ref().is_some_and(|(span, _)| span.0 == start))
+            .map(|(i, _)| i)
+            .collect::<Vec<_>>()
+    }
+
+    pub fn take(&mut self, indices: Vec<usize>) -> Vec<(Span, Detections)> {
+        indices
+            .into_iter()
+            .filter_map(|i| self.state.get_mut(i).unwrap().take())
+            .collect()
+    }
+}
+
+impl std::ops::Deref for Tracker {
+    type Target = [Option<(Span, Detections)>];
+
+    fn deref(&self) -> &Self::Target {
+        &self.state
     }
 }
 
