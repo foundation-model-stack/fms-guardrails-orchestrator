@@ -15,8 +15,11 @@
 
 */
 
+mod aggregator;
+
 use std::{collections::HashMap, pin::Pin, sync::Arc, time::Duration};
 
+use aggregator::Aggregator;
 use futures::{future::try_join_all, Stream, StreamExt, TryStreamExt};
 use tokio::sync::{broadcast, mpsc};
 use tokio_stream::wrappers::{BroadcastStream, ReceiverStream};
@@ -31,7 +34,6 @@ use crate::{
         TokenClassificationResult,
     },
     orchestrator::{
-        aggregators::{DetectionAggregator, MaxProcessedIndexAggregator},
         unary::{input_detection_task, tokenize},
         UNSUITABLE_INPUT_MESSAGE,
     },
@@ -276,7 +278,7 @@ async fn streaming_output_detection_task(
     }
 
     debug!("processing detection streams");
-    let aggregator = MaxProcessedIndexAggregator::default();
+    let aggregator = Aggregator::default();
     let result_rx = aggregator.run(generation_tx.subscribe(), detection_streams);
 
     debug!("spawning generation broadcast task");

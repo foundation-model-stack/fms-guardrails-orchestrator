@@ -4,7 +4,6 @@ use std::sync::Arc;
 use tokio::sync::{broadcast, mpsc, oneshot};
 use tracing::instrument;
 
-use super::{DetectionAggregator, DetectorId};
 use crate::{
     models::ClassifiedGeneratedTextStreamResult,
     orchestrator::{
@@ -13,15 +12,33 @@ use crate::{
     },
 };
 
+pub type DetectorId = String;
 pub type Span = (i64, i64);
 
-/// Aggregates results applying a "max processed index" strategy.
-#[derive(Default)]
-pub struct MaxProcessedIndexAggregator {}
+#[derive(Debug, Clone, Copy)]
+pub enum AggregationStrategy {
+    MaxProcessedIndex,
+}
 
-impl DetectionAggregator for MaxProcessedIndexAggregator {
+pub struct Aggregator {
+    strategy: AggregationStrategy,
+}
+
+impl Default for Aggregator {
+    fn default() -> Self {
+        Self {
+            strategy: AggregationStrategy::MaxProcessedIndex,
+        }
+    }
+}
+
+impl Aggregator {
+    pub fn new(strategy: AggregationStrategy) -> Self {
+        Self { strategy }
+    }
+
     #[instrument(skip_all)]
-    fn run(
+    pub fn run(
         &self,
         mut generation_rx: broadcast::Receiver<ClassifiedGeneratedTextStreamResult>,
         detection_streams: Vec<(DetectorId, mpsc::Receiver<(Chunk, Detections)>)>,
@@ -35,6 +52,7 @@ impl DetectionAggregator for MaxProcessedIndexAggregator {
         let aggregation_actor = Arc::new(AggregationActorHandle::new(
             result_actor,
             detection_streams.len(),
+            //self.strategy,
         ));
 
         // Spawn task to send generations to generation actor
@@ -226,7 +244,11 @@ struct AggregationActorHandle {
 }
 
 impl AggregationActorHandle {
-    pub fn new(result_actor: ResultActorHandle, n_detectors: usize) -> Self {
+    pub fn new(
+        result_actor: ResultActorHandle,
+        n_detectors: usize,
+        //strategy: AggregationStrategy,
+    ) -> Self {
         let (tx, rx) = mpsc::channel(8);
         let mut actor = AggregationActor::new(rx, result_actor, n_detectors);
         tokio::spawn(async move { actor.run().await });
@@ -403,7 +425,7 @@ mod tests {
 
         let (generation_tx, generation_rx) = broadcast::channel(1);
         let _ = generation_tx.send(ClassifiedGeneratedTextStreamResult::default());
-        let aggregator = MaxProcessedIndexAggregator::default();
+        let aggregator = Aggregator::default();
 
         let mut result_rx = aggregator.run(generation_rx, detection_streams);
         let mut chunk_count = 0;
