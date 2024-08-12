@@ -24,10 +24,32 @@ use serde::{Deserialize, Serialize};
 use crate::{clients::detector::ContextType, pb};
 
 /// Parameters relevant to each detector
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct DetectorParams {
-    /// Threshold with which to filter detector results by score
-    pub threshold: Option<f64>,
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct DetectorParams(HashMap<String, serde_json::Value>);
+
+impl DetectorParams {
+    #[allow(dead_code)]
+    pub fn new() -> Self {
+        Self(HashMap::new())
+    }
+
+    pub fn threshold(&self) -> Option<f64> {
+        self.0.get("threshold").and_then(|v| v.as_f64())
+    }
+}
+
+impl std::ops::Deref for DetectorParams {
+    type Target = HashMap<String, serde_json::Value>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::ops::DerefMut for DetectorParams {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
 }
 
 /// User request to orchestrator
@@ -1030,5 +1052,18 @@ mod tests {
         assert!(result.is_err());
         let error = result.unwrap_err().to_string();
         assert!(error.contains("invalid masks"));
+    }
+
+    #[test]
+    fn test_detector_params() -> Result<(), serde_json::Error> {
+        let value_json = r#"
+        {
+            "threshold": 0.2
+        }"#;
+        let value: DetectorParams = serde_json::from_str(value_json)?;
+        assert_eq!(value.threshold(), Some(0.2));
+        let value = DetectorParams::new();
+        assert_eq!(value.threshold(), None);
+        Ok(())
     }
 }

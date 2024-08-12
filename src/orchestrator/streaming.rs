@@ -264,7 +264,7 @@ async fn streaming_output_detection_task(
 
         // Get the default threshold to use if threshold is not provided by the user
         let default_threshold = detector_config.default_threshold;
-        let threshold = detector_params.threshold.unwrap_or(default_threshold);
+        let threshold = detector_params.threshold().unwrap_or(default_threshold);
 
         // Create detection stream
         let (detector_tx, detector_rx) = mpsc::channel(1024);

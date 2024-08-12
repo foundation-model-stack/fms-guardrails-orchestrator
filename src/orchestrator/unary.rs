@@ -476,7 +476,7 @@ pub async fn detect(
     chunks: Vec<Chunk>,
 ) -> Result<Vec<TokenClassificationResult>, Error> {
     let detector_id = detector_id.clone();
-    let threshold = detector_params.threshold.unwrap_or(default_threshold);
+    let threshold = detector_params.threshold().unwrap_or(default_threshold);
     let contents: Vec<_> = chunks.iter().map(|chunk| chunk.text.clone()).collect();
     let response = if contents.is_empty() {
         // skip detector call as contents is empty
@@ -528,8 +528,8 @@ pub async fn detect_for_generation(
     generated_text: String,
 ) -> Result<Vec<DetectionResult>, Error> {
     let detector_id = detector_id.clone();
-    let threshold = detector_params.threshold.unwrap_or(
-        detector_params.threshold.unwrap_or(
+    let threshold = detector_params.threshold().unwrap_or(
+        detector_params.threshold().unwrap_or(
             ctx.config
                 .detectors
                 .get(&detector_id)
@@ -567,8 +567,8 @@ pub async fn detect_for_context(
     context: Vec<String>,
 ) -> Result<Vec<DetectionResult>, Error> {
     let detector_id = detector_id.clone();
-    let threshold = detector_params.threshold.unwrap_or(
-        detector_params.threshold.unwrap_or(
+    let threshold = detector_params.threshold().unwrap_or(
+        detector_params.threshold().unwrap_or(
             ctx.config
                 .detectors
                 .get(&detector_id)
@@ -792,9 +792,8 @@ mod tests {
         // Input: "I don't like potatoes. I hate aliens.";
         let first_sentence = "I don't like potatoes.".to_string();
         let second_sentence = "I hate aliens.".to_string();
-        let detector_params = DetectorParams {
-            threshold: Some(threshold),
-        };
+        let mut detector_params = DetectorParams::new();
+        detector_params.insert("threshold".into(), threshold.into());
         let chunks = vec![
             Chunk {
                 offset: 0,
@@ -869,9 +868,8 @@ mod tests {
         let detector_id = "mocked_503_detector";
         let sentence = "This call will return a 503.".to_string();
         let threshold = 0.5;
-        let detector_params = DetectorParams {
-            threshold: Some(threshold),
-        };
+        let mut detector_params = DetectorParams::new();
+        detector_params.insert("threshold".into(), threshold.into());
         let chunks = vec![Chunk {
             offset: 0,
             text: sentence.clone(),
@@ -920,9 +918,8 @@ mod tests {
         let detector_id = "mocked_hap_detector";
         let threshold = 0.5;
         let first_sentence = "".to_string();
-        let detector_params = DetectorParams {
-            threshold: Some(threshold),
-        };
+        let mut detector_params = DetectorParams::new();
+        detector_params.insert("threshold".into(), threshold.into());
         let chunks = vec![Chunk {
             offset: 0,
             text: first_sentence.clone(),
@@ -961,9 +958,8 @@ mod tests {
         let threshold = 0.5;
         let prompt = "What is the capital of Brazil?".to_string();
         let generated_text = "The capital of Brazil is Brasilia.".to_string();
-        let detector_params = DetectorParams {
-            threshold: Some(threshold),
-        };
+        let mut detector_params = DetectorParams::new();
+        detector_params.insert("threshold".into(), threshold.into());
 
         let expected_response: Vec<DetectionResult> = vec![DetectionResult {
             detection_type: "relevance".to_string(),
@@ -1018,9 +1014,8 @@ mod tests {
         let prompt = "What is the capital of Brazil?".to_string();
         let generated_text =
             "The most beautiful places can be found in Rio de Janeiro.".to_string();
-        let detector_params = DetectorParams {
-            threshold: Some(threshold),
-        };
+        let mut detector_params = DetectorParams::new();
+        detector_params.insert("threshold".into(), threshold.into());
 
         let expected_response: Vec<DetectionResult> = vec![];
 
