@@ -162,7 +162,6 @@ pub struct GuardrailsTextGenerationParameters {
     /// Similar to top_k except the candidates to generate the next token are the
     /// most likely tokens with probabilities that add up to at least top_p.
     /// Also known as nucleus sampling. A value of 1.0 is equivalent to disabled.
-
     #[serde(skip_serializing_if = "Option::is_none")]
     pub top_p: Option<f64>,
 
