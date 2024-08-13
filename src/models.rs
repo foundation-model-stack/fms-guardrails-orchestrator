@@ -89,7 +89,9 @@ impl GuardrailsHttpRequest {
         if self.inputs.is_empty() {
             return Err(ValidationError::Required("inputs".into()));
         }
+
         let guardrail_config = self.guardrail_config.as_ref();
+
         // Validate masks
         // Because the masks ranges are [start, end), while applying masks
         // will not require indexing to include the last index (i.e. len of inputs),
@@ -117,23 +119,6 @@ impl GuardrailsHttpRequest {
 
         Ok(())
     }
-}
-
-/// Validates detector params.
-fn validate_detector_params(
-    models: &HashMap<String, DetectorParams>,
-) -> Result<(), ValidationError> {
-    for (model_id, detector_params) in models {
-        // Validate threshold is a number, if specified
-        if let Some(threshold) = detector_params.get("threshold") {
-            if !threshold.is_number() {
-                return Err(ValidationError::Invalid(format!(
-                    "`threshold` parameter specified for model `{model_id}` must be a number"
-                )));
-            }
-        }
-    }
-    Ok(())
 }
 
 /// Configuration of guardrails models for either or both input to a text generation model
@@ -353,6 +338,10 @@ impl TextContentDetectionHttpRequest {
         if self.detectors.is_empty() {
             return Err(ValidationError::Required("detectors".into()));
         }
+
+        // Validate detector params
+        validate_detector_params(&self.detectors)?;
+
         Ok(())
     }
 }
@@ -849,6 +838,10 @@ impl GenerationWithDetectionHttpRequest {
         if self.detectors.is_empty() {
             return Err(ValidationError::Required("detectors".into()));
         }
+
+        // Validate detector params
+        validate_detector_params(&self.detectors)?;
+
         Ok(())
     }
 }
@@ -905,14 +898,16 @@ impl ContextDocsHttpRequest {
         if self.detectors.is_empty() {
             return Err(ValidationError::Required("detectors".into()));
         }
-
         if self.content.is_empty() {
             return Err(ValidationError::Required("content".into()));
         }
-
         if self.context.is_empty() {
             return Err(ValidationError::Required("context".into()));
         }
+
+        // Validate detector params
+        validate_detector_params(&self.detectors)?;
+
         Ok(())
     }
 }
@@ -949,6 +944,10 @@ impl DetectionOnGeneratedHttpRequest {
         if self.detectors.is_empty() {
             return Err(ValidationError::Required("detectors".into()));
         }
+
+        // Validate detector params
+        validate_detector_params(&self.detectors)?;
+
         Ok(())
     }
 }
@@ -958,6 +957,23 @@ impl DetectionOnGeneratedHttpRequest {
 pub struct DetectionOnGenerationResult {
     /// Detection results
     pub detections: Vec<DetectionResult>,
+}
+
+/// Validates detector params.
+fn validate_detector_params(
+    models: &HashMap<String, DetectorParams>,
+) -> Result<(), ValidationError> {
+    for (model_id, detector_params) in models {
+        // Validate threshold is a number, if specified
+        if let Some(threshold) = detector_params.get("threshold") {
+            if !threshold.is_number() {
+                return Err(ValidationError::Invalid(format!(
+                    "`threshold` parameter specified for model `{model_id}` must be a number"
+                )));
+            }
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
