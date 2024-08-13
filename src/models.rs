@@ -89,14 +89,13 @@ impl GuardrailsHttpRequest {
         if self.inputs.is_empty() {
             return Err(ValidationError::Required("inputs".into()));
         }
+        let guardrail_config = self.guardrail_config.as_ref();
         // Validate masks
         // Because the masks ranges are [start, end), while applying masks
         // will not require indexing to include the last index (i.e. len of inputs),
         // the last index is still a legitimate 'end' to provide on a mask here.
         let input_range = 0..=self.inputs.len();
-        let input_masks = self
-            .guardrail_config
-            .as_ref()
+        let input_masks = guardrail_config
             .and_then(|config| config.input.as_ref().and_then(|input| input.masks.as_ref()));
         if let Some(input_masks) = input_masks {
             if !input_masks.iter().all(|(start, end)| {
@@ -105,8 +104,36 @@ impl GuardrailsHttpRequest {
                 return Err(ValidationError::Invalid("invalid masks".into()));
             }
         }
+
+        // Validate detector params
+        if let Some(config) = guardrail_config {
+            if let Some(input_detectors) = config.input_detectors() {
+                validate_detector_params(input_detectors)?;
+            }
+            if let Some(output_detectors) = config.output_detectors() {
+                validate_detector_params(output_detectors)?;
+            }
+        }
+
         Ok(())
     }
+}
+
+/// Validates detector params.
+fn validate_detector_params(
+    models: &HashMap<String, DetectorParams>,
+) -> Result<(), ValidationError> {
+    for (model_id, detector_params) in models {
+        // Validate threshold is a number, if specified
+        if let Some(threshold) = detector_params.get("threshold") {
+            if !matches!(threshold, serde_json::Value::Number(_)) {
+                return Err(ValidationError::Invalid(format!(
+                    "`threshold` parameter specified for model `{model_id}` must be a number"
+                )));
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Configuration of guardrails models for either or both input to a text generation model
@@ -1052,6 +1079,48 @@ mod tests {
         assert!(result.is_err());
         let error = result.unwrap_err().to_string();
         assert!(error.contains("invalid masks"));
+
+        // Validate detector params
+
+        // Valid detector params, threshold is number -- OK
+        let mut valid_detector_params = DetectorParams::new();
+        valid_detector_params.insert("threshold".into(), 0.2.into());
+        let request = GuardrailsHttpRequest {
+            model_id: "model".to_string(),
+            inputs: "hello".to_string(),
+            guardrail_config: Some(GuardrailsConfig {
+                input: Some(GuardrailsConfigInput {
+                    masks: None,
+                    models: HashMap::from_iter([("detector1".into(), valid_detector_params)]),
+                }),
+                output: Some(GuardrailsConfigOutput {
+                    models: HashMap::new(),
+                }),
+            }),
+            text_gen_parameters: None,
+        };
+        assert!(request.validate().is_ok());
+
+        // Invalid detector params, threshold is string -- ERR
+        let mut invalid_detector_params = DetectorParams::new();
+        invalid_detector_params.insert("threshold".into(), "0.2".into());
+        let request = GuardrailsHttpRequest {
+            model_id: "model".to_string(),
+            inputs: "hello".to_string(),
+            guardrail_config: Some(GuardrailsConfig {
+                input: Some(GuardrailsConfigInput {
+                    masks: None,
+                    models: HashMap::from_iter([("detector1".into(), invalid_detector_params)]),
+                }),
+                output: Some(GuardrailsConfigOutput {
+                    models: HashMap::new(),
+                }),
+            }),
+            text_gen_parameters: None,
+        };
+        assert!(request
+            .validate()
+            .is_err_and(|e| e.to_string().contains("must be a number")));
     }
 
     #[test]
