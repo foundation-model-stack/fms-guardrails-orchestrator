@@ -24,10 +24,33 @@ use serde::{Deserialize, Serialize};
 use crate::{clients::detector::ContextType, pb};
 
 /// Parameters relevant to each detector
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct DetectorParams {
-    /// Threshold with which to filter detector results by score
-    pub threshold: Option<f64>,
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct DetectorParams(HashMap<String, serde_json::Value>);
+
+impl DetectorParams {
+    #[allow(dead_code)]
+    pub fn new() -> Self {
+        Self(HashMap::new())
+    }
+
+    /// Threshold to filter detector results by score.
+    pub fn threshold(&self) -> Option<f64> {
+        self.0.get("threshold").and_then(|v| v.as_f64())
+    }
+}
+
+impl std::ops::Deref for DetectorParams {
+    type Target = HashMap<String, serde_json::Value>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::ops::DerefMut for DetectorParams {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
 }
 
 /// User request to orchestrator
@@ -67,14 +90,15 @@ impl GuardrailsHttpRequest {
         if self.inputs.is_empty() {
             return Err(ValidationError::Required("inputs".into()));
         }
+
+        let guardrail_config = self.guardrail_config.as_ref();
+
         // Validate masks
         // Because the masks ranges are [start, end), while applying masks
         // will not require indexing to include the last index (i.e. len of inputs),
         // the last index is still a legitimate 'end' to provide on a mask here.
         let input_range = 0..=self.inputs.len();
-        let input_masks = self
-            .guardrail_config
-            .as_ref()
+        let input_masks = guardrail_config
             .and_then(|config| config.input.as_ref().and_then(|input| input.masks.as_ref()));
         if let Some(input_masks) = input_masks {
             if !input_masks.iter().all(|(start, end)| {
@@ -83,6 +107,17 @@ impl GuardrailsHttpRequest {
                 return Err(ValidationError::Invalid("invalid masks".into()));
             }
         }
+
+        // Validate detector params
+        if let Some(config) = guardrail_config {
+            if let Some(input_detectors) = config.input_detectors() {
+                validate_detector_params(input_detectors)?;
+            }
+            if let Some(output_detectors) = config.output_detectors() {
+                validate_detector_params(output_detectors)?;
+            }
+        }
+
         Ok(())
     }
 }
@@ -304,6 +339,10 @@ impl TextContentDetectionHttpRequest {
         if self.detectors.is_empty() {
             return Err(ValidationError::Required("detectors".into()));
         }
+
+        // Validate detector params
+        validate_detector_params(&self.detectors)?;
+
         Ok(())
     }
 }
@@ -800,6 +839,10 @@ impl GenerationWithDetectionHttpRequest {
         if self.detectors.is_empty() {
             return Err(ValidationError::Required("detectors".into()));
         }
+
+        // Validate detector params
+        validate_detector_params(&self.detectors)?;
+
         Ok(())
     }
 }
@@ -856,14 +899,16 @@ impl ContextDocsHttpRequest {
         if self.detectors.is_empty() {
             return Err(ValidationError::Required("detectors".into()));
         }
-
         if self.content.is_empty() {
             return Err(ValidationError::Required("content".into()));
         }
-
         if self.context.is_empty() {
             return Err(ValidationError::Required("context".into()));
         }
+
+        // Validate detector params
+        validate_detector_params(&self.detectors)?;
+
         Ok(())
     }
 }
@@ -900,6 +945,10 @@ impl DetectionOnGeneratedHttpRequest {
         if self.detectors.is_empty() {
             return Err(ValidationError::Required("detectors".into()));
         }
+
+        // Validate detector params
+        validate_detector_params(&self.detectors)?;
+
         Ok(())
     }
 }
@@ -909,6 +958,23 @@ impl DetectionOnGeneratedHttpRequest {
 pub struct DetectionOnGenerationResult {
     /// Detection results
     pub detections: Vec<DetectionResult>,
+}
+
+/// Validates detector params.
+fn validate_detector_params(
+    models: &HashMap<String, DetectorParams>,
+) -> Result<(), ValidationError> {
+    for (model_id, detector_params) in models {
+        // Validate threshold is a number, if specified
+        if let Some(threshold) = detector_params.get("threshold") {
+            if !threshold.is_number() {
+                return Err(ValidationError::Invalid(format!(
+                    "`threshold` parameter specified for model `{model_id}` must be a number"
+                )));
+            }
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -1030,5 +1096,60 @@ mod tests {
         assert!(result.is_err());
         let error = result.unwrap_err().to_string();
         assert!(error.contains("invalid masks"));
+
+        // Validate detector params
+
+        // Valid detector params, threshold is number -- OK
+        let mut valid_detector_params = DetectorParams::new();
+        valid_detector_params.insert("threshold".into(), 0.2.into());
+        let request = GuardrailsHttpRequest {
+            model_id: "model".to_string(),
+            inputs: "hello".to_string(),
+            guardrail_config: Some(GuardrailsConfig {
+                input: Some(GuardrailsConfigInput {
+                    masks: None,
+                    models: HashMap::from_iter([("detector1".into(), valid_detector_params)]),
+                }),
+                output: Some(GuardrailsConfigOutput {
+                    models: HashMap::new(),
+                }),
+            }),
+            text_gen_parameters: None,
+        };
+        assert!(request.validate().is_ok());
+
+        // Invalid detector params, threshold is string -- ERR
+        let mut invalid_detector_params = DetectorParams::new();
+        invalid_detector_params.insert("threshold".into(), "0.2".into());
+        let request = GuardrailsHttpRequest {
+            model_id: "model".to_string(),
+            inputs: "hello".to_string(),
+            guardrail_config: Some(GuardrailsConfig {
+                input: Some(GuardrailsConfigInput {
+                    masks: None,
+                    models: HashMap::from_iter([("detector1".into(), invalid_detector_params)]),
+                }),
+                output: Some(GuardrailsConfigOutput {
+                    models: HashMap::new(),
+                }),
+            }),
+            text_gen_parameters: None,
+        };
+        assert!(request
+            .validate()
+            .is_err_and(|e| e.to_string().contains("must be a number")));
+    }
+
+    #[test]
+    fn test_detector_params() -> Result<(), serde_json::Error> {
+        let value_json = r#"
+        {
+            "threshold": 0.2
+        }"#;
+        let value: DetectorParams = serde_json::from_str(value_json)?;
+        assert_eq!(value.threshold(), Some(0.2));
+        let value = DetectorParams::new();
+        assert_eq!(value.threshold(), None);
+        Ok(())
     }
 }
