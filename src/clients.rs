@@ -238,7 +238,7 @@ async fn create_grpc_clients<C>(
                     .unwrap_or_else(|error| panic!("error reading key from {key_path:?}: {error}"));
                 let identity = tonic::transport::Identity::from_pem(cert_pem, key_pem);
                 let mut client_tls_config =
-                    tonic::transport::ClientTlsConfig::new().identity(identity);
+                    tonic::transport::ClientTlsConfig::new().identity(identity).with_native_roots().with_webpki_roots();
                 if let Some(client_ca_cert_path) = &tls_config.client_ca_cert_path {
                     let client_ca_cert_pem = tokio::fs::read(client_ca_cert_path)
                         .await

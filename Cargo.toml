@@ -35,7 +35,7 @@ thiserror = "1.0.63"
 tokio = { version = "1.39.2", features = ["rt", "rt-multi-thread", "parking_lot", "signal", "sync", "fs"] }
 tokio-rustls = { version = "0.26.0" }
 tokio-stream = { version = "0.1.15", features = ["sync"] }
-tonic = { version = "0.12.1", features = ["tls"] }
+tonic = { version = "0.12.1", features = ["tls", "tls-roots", "tls-webpki-roots"] }
 tower-service = "0.3"
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["json", "env-filter"] }
