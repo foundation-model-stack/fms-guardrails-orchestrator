@@ -126,7 +126,7 @@ fn validate_detector_params(
     for (model_id, detector_params) in models {
         // Validate threshold is a number, if specified
         if let Some(threshold) = detector_params.get("threshold") {
-            if !matches!(threshold, serde_json::Value::Number(_)) {
+            if !threshold.is_number() {
                 return Err(ValidationError::Invalid(format!(
                     "`threshold` parameter specified for model `{model_id}` must be a number"
                 )));
