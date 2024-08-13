@@ -44,8 +44,11 @@ struct Args {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let args = Args::parse();
+    rustls::crypto::aws_lc_rs::default_provider()
+        .install_default()
+        .expect("Failed to install rustls crypto provider");
 
+    let args = Args::parse();
     if args.tls_key_path.is_some() != args.tls_cert_path.is_some() {
         panic!("tls: must provide both cert and key")
     }
