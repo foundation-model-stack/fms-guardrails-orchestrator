@@ -33,6 +33,7 @@ impl DetectorParams {
         Self(HashMap::new())
     }
 
+    /// Threshold to filter detector results by score.
     pub fn threshold(&self) -> Option<f64> {
         self.0.get("threshold").and_then(|v| v.as_f64())
     }
