@@ -154,30 +154,30 @@ impl ContentAnalysisRequest {
     }
 }
 
-/// Evidence type
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "lowercase")]
-pub enum EvidenceType {
-    Url,
-    Title,
-}
-
-/// Source of the evidence e.g. url
+/// Evidence
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Evidence {
-    /// Evidence source
-    pub source: String,
+    /// Evidence name
+    pub name: String,
+    /// Evidence value
+    pub value: String,
+    /// Optional, score for evidence
+    pub score: Option<f64>,
 }
 
 /// Evidence in response
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct EvidenceObj {
-    /// Type field signifying the type of evidence provided
-    #[serde(rename = "type")]
-    pub r#type: EvidenceType,
-    /// Evidence currently only containing source
+    /// Evidence name
+    pub name: String,
+    /// Evidence value
+    pub value: String,
+    /// Optional, score for evidence
+    pub score: Option<f64>,
+    /// Optional, evidence on evidence value
+    // Evidence nesting should likely not go beyond this
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub evidence: Option<Evidence>,
+    pub evidence: Option<Vec<Evidence>>,
 }
 
 /// Response of text content analysis endpoint
