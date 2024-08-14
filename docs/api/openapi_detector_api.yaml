@@ -1,6 +1,6 @@
 openapi: 3.0.1
 info:
-  title: Detectors API (WIP)
+  title: Detectors API
   license:
     name: Apache 2.0
     url: https://www.apache.org/licenses/LICENSE-2.0.html
@@ -248,12 +248,12 @@ components:
           type: number
           title: Score
           example: 0.684
-        evidences:
+        evidence:
           anyOf:
             - items:
                 $ref: '#/components/schemas/EvidenceObj'
               type: array
-          description: Optional field providing evidences for the provided detection
+          description: Optional field providing evidence for the provided detection
       type: object
       required:
         - detection
@@ -300,12 +300,12 @@ components:
           type: number
           title: Score
           example: 0.5
-        evidences:
+        evidence:
           anyOf:
             - items:
                 $ref: '#/components/schemas/EvidenceObj'
               type: array
-          description: Optional field providing evidences for the provided detection
+          description: Optional field providing evidence for the provided detection
       type: object
       required:
         - detection
@@ -347,68 +347,52 @@ components:
         attributes -- see the documentation for details.
     Evidence:
       properties:
-        source:
+        name:
           type: string
-          title: Source
-          description: source of the evidence, it can be url of the evidence etc
-          example: https://en.wikipedia.org/wiki/IBM
+          title: Name
+          description: Name for the evidence
+          example: context_chunk
+        value:
+          type: string
+          title: Value
+          description: Value for the evidence
+          example: one chunk of context
+        score:
+          type: number
+          title: Score
+          example: 0.5
       type: object
       required:
-        - source
+        - name
+        - value
       title: Evidence
     EvidenceObj:
       properties:
-        type:
-          allOf:
-            - $ref: '#/components/schemas/EvidenceType'
-          description: >-
-            Type field signifying the type of evidence provided. Example url,
-            title etc
-          example: url
+        name:
+          type: string
+          title: Name
+          description: Name for the evidence
+          example: context
+        value:
+          type: string
+          title: Value
+          description: Value for the evidence
+          example: This is one context sentence.
+        score:
+          type: number
+          title: Score
+          example: 0.5
         evidence:
-          allOf:
-            - $ref: '#/components/schemas/Evidence'
-          description: >-
-            Evidence object, currently only containing source, but in future can
-            contain other optional arguments like id, etc
-          example:
-            source: https://en.wikipedia.org/wiki/IBM
+          anyOf:
+            - items:
+                $ref: '#/components/schemas/Evidence'
+              type: array
+          description: Evidence on evidence value
       type: object
       required:
-        - type
+        - name
+        - value
       title: EvidenceObj
-    EvidenceType:
-      type: string
-      enum:
-        - url
-        - title
-      title: EvidenceType
-      description: >-
-        A collection of name/value pairs.
-
-        Access them by:
-
-        - attribute access::
-
-        >>> EvidenceType.url <EvidenceType.url: 'url'>
-
-        - value lookup:
-
-        >>> EvidenceType('url') <EvidenceType.url: 'url'>
-
-        - name lookup:
-
-        >>> EvidenceType['url'] <EvidenceType.url: 'url'>
-
-        Enumerations can be iterated over, and know how many members they have:
-
-        >>> len(EvidenceType) 2
-
-        >>> list(EvidenceType) [<EvidenceType.url: 'url'>, <EvidenceType.title:
-        'title'>]
-
-        Methods can be added to enumerations, and members can have their own
-        attributes -- see the documentation for details.
     GenerationAnalysisHttpRequest:
       properties:
         prompt:
@@ -440,12 +424,12 @@ components:
           type: number
           title: Score
           example: 0.5
-        evidences:
+        evidence:
           anyOf:
             - items:
                 $ref: '#/components/schemas/EvidenceObj'
               type: array
-          description: Optional field providing evidences for the provided detection
+          description: Optional field providing evidence for the provided detection
       type: object
       required:
         - detection
@@ -557,12 +541,12 @@ components:
           type: number
           title: Score
           example: 0.8
-        evidences:
+        evidence:
           anyOf:
             - items:
                 $ref: '#/components/schemas/EvidenceObj'
               type: array
-          description: Optional field providing evidences for the provided detection
+          description: Optional field providing evidence for the provided detection
       type: object
       required:
         - start

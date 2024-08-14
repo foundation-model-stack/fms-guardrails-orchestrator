@@ -385,9 +385,13 @@ components:
               score:
                 type: number
                 title: Score
+              evidence:
+                anyOf:
+                - items:
+                    $ref: '#/components/schemas/EvidenceObj'
+                  type: array
       required: ["detections"]
       title: Detection Context Docs Response
-    
     GenerationDetectionRequest:
       properties:
         model_id:
@@ -592,6 +596,53 @@ components:
       additionalProperties: false
       type: object
       title: Exponential Decay Length Penalty
+    Evidence:
+      properties:
+        name:
+          type: string
+          title: Name
+          description: Name for the evidence
+          example: context_chunk
+        value:
+          type: string
+          title: Value
+          description: Value for the evidence
+          example: one chunk of context
+        score:
+          type: number
+          title: Score
+          example: 0.5
+      type: object
+      required:
+        - name
+        - value
+      title: Evidence
+    EvidenceObj:
+      properties:
+        name:
+          type: string
+          title: Name
+          description: Name for the evidence
+          example: context
+        value:
+          type: string
+          title: Value
+          description: Value for the evidence
+          example: This is one context sentence.
+        score:
+          type: number
+          title: Score
+          example: 0.5
+        evidence:
+          anyOf:
+            - items:
+                $ref: '#/components/schemas/Evidence'
+              type: array
+      type: object
+      required:
+        - name
+        - value
+      title: EvidenceObj
     FinishReason:
       type: string
       enum:
