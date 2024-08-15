@@ -44,7 +44,7 @@ Based on the input requirements, the APIs will be divided into following parts:
 1. `/api/v1/text/context/doc` - Context Analysis
     - Providing detection computation of content w.r.t the context provided in the input.
 
-Each of above endpoints will also provide an "evidence" block that will allow future integration with evidences for their response.
+Each of above endpoints will also provide an "evidence" block that will allow future integration with evidence for their response.
 
 ## Consequences
 

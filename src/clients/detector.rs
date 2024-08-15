@@ -195,9 +195,9 @@ pub struct ContentAnalysisResponse {
     pub detection_type: String,
     /// Score of detection
     pub score: f64,
-    /// Optional, any applicable evidences for detection
+    /// Optional, any applicable evidence for detection
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub evidences: Option<Vec<EvidenceObj>>,
+    pub evidence: Option<Vec<EvidenceObj>>,
 }
 
 impl From<ContentAnalysisResponse> for crate::models::TokenClassificationResult {
