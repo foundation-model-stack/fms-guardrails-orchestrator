@@ -829,7 +829,7 @@ mod tests {
                 detection: "has_HAP".to_string(),
                 detection_type: "hap".to_string(),
                 score: 0.1,
-                evidences: Some(vec![]),
+                evidence: Some(vec![]),
             }],
             vec![ContentAnalysisResponse {
                 start: 0,
@@ -838,7 +838,7 @@ mod tests {
                 detection: "has_HAP".to_string(),
                 detection_type: "hap".to_string(),
                 score: 0.9,
-                evidences: Some(vec![]),
+                evidence: Some(vec![]),
             }],
         ]));
 

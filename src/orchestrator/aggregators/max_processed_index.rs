@@ -245,7 +245,7 @@ mod tests {
             detection: detection.to_string(),
             detection_type: detection_type.to_string(),
             score: 0.99,
-            evidences: None,
+            evidence: None,
         }]
         .to_vec()
     }
