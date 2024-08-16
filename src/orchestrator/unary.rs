@@ -694,7 +694,7 @@ mod tests {
             ChunkerClient, DetectorClient, GenerationClient, TgisClient,
         },
         config::{DetectorConfig, OrchestratorConfig},
-        models::{DetectionResult, FinishReason},
+        models::{DetectionResult, EvidenceObj, FinishReason},
         pb::fmaas::{
             BatchedGenerationRequest, BatchedGenerationResponse, GenerationRequest,
             GenerationResponse, StopReason,
@@ -965,6 +965,15 @@ mod tests {
             detection_type: "relevance".to_string(),
             detection: "is_relevant".to_string(),
             score: 0.9,
+            evidence: Some(
+                [EvidenceObj {
+                    name: "relevant chunk".into(),
+                    value: "What is capital of Brazil".into(),
+                    score: Some(0.99),
+                    evidence: None,
+                }]
+                .to_vec(),
+            ),
         }];
 
         faux::when!(mock_detector_client.text_generation(
@@ -976,6 +985,15 @@ mod tests {
             detection_type: "relevance".to_string(),
             detection: "is_relevant".to_string(),
             score: 0.9,
+            evidence: Some(
+                [EvidenceObj {
+                    name: "relevant chunk".into(),
+                    value: "What is capital of Brazil".into(),
+                    score: Some(0.99),
+                    evidence: None,
+                }]
+                .to_vec(),
+            ),
         }]));
 
         let mut ctx: Context =
@@ -1028,6 +1046,7 @@ mod tests {
             detection_type: "relevance".to_string(),
             detection: "is_relevant".to_string(),
             score: 0.1,
+            evidence: None,
         }]));
 
         let mut ctx: Context =
