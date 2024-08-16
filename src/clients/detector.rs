@@ -166,7 +166,7 @@ pub struct Evidence {
 }
 
 /// Evidence in response
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 pub struct EvidenceObj {
     /// Evidence name
     pub name: String,
