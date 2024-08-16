@@ -874,6 +874,10 @@ pub struct DetectionResult {
 
     // The confidence level in the detection class
     pub score: f64,
+
+    // Optional evidence block
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub evidence: Option<Vec<EvidenceObj>>,
 }
 
 /// The request format expected in the /api/v2/text/context endpoint.
@@ -975,6 +979,31 @@ fn validate_detector_params(
         }
     }
     Ok(())
+}
+
+/// Individual evidence object for detection response
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Evidence {
+    // Name for the evidence
+    pub name: String,
+    // Value for the evidence
+    pub value: String,
+    // Computed score for the value
+    pub score: Option<f64>,
+}
+
+/// High level evidence object for detection response
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EvidenceObj {
+    // Name for the evidence
+    pub name: String,
+    // Value for the evidence
+    pub value: String,
+    // Computed score for the value
+    pub score: Option<f64>,
+    // Additional evidence
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub evidence: Option<Vec<Evidence>>,
 }
 
 #[cfg(test)]

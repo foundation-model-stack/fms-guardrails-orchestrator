@@ -200,6 +200,10 @@ paths:
                   - detection: "relevant"
                     detection_type: "dummy_detector_type"
                     score: 0.99
+                    evidence:
+                      - name: "context_chunk"
+                        value: "Context sentence 1"
+                        score: 0.333
         '404':
           description: Resource Not Found
           content:
@@ -280,9 +284,11 @@ components:
           example:
             - https://en.wikipedia.org/wiki/IBM
             - https://research.ibm.com/
+        detector_params:
+          type: object
       type: object
       required:
-        - prompt
+        - content
         - context_type
         - context
       title: ContextAnalysisHttpRequest

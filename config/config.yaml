@@ -1,33 +1,58 @@
+# generation:
+#     provider: nlp # tgis or nlp
+#     service:
+#         hostname: localhost
+#         port: 9085
+#         tls: caikit
 generation:
     provider: tgis # tgis or nlp
     service:
         hostname: localhost
-        port: 8033
+        port: 8034
+        # tls: caikit
 chunkers:
-    en_regex:
+    sentence_syntax_izumo_en_stock_chunker:
         type: sentence
         service:
             hostname: localhost
             port: 8085
-            tls: caikit
+            # tls: caikit
 detectors:
-    hap-en:
+    en_syntax_slate.38m.hap:
         service:
-            hostname: https://localhost/api/v1/text/contents # full url / endpoint currently expected
-            port: 8080
-            tls: detector
-        chunker_id: en_regex
+            hostname: https://fms-hap-fmaas-tuning.apps.fmaas-devstage-backend.fmaas.res.ibm.com/api/v1/text/contents
+            port: 443
+            tls: detectors
+        chunker_id: sentence_syntax_izumo_en_stock_chunker
         default_threshold: 0.5
+    os-detector-answer-relevance-v1:
+        service:
+          hostname: https://localhost/api/v1/text/generation
+          port: 8000
+          tls: caikit
+        chunker_id: whole_doc_chunker
+        default_threshold: 0.0
+    os-faithfulness-v1:
+        service:
+            hostname: https://lagavulin.almaden.ibm.com/api/v1/text/context/doc
+            port: 8013
+            tls: caikit
+        chunker_id: whole_doc_chunker
+        default_threshold: 0.0
 tls:
+    os-detectors:
+        cert_path: certs/os_certs/tls.crt
+        key_path: certs/os_certs/tls.key
+        client_ca_cert_path: certs/os_certs/ca.crt
+        insecure: true
+    detectors:
+        cert_path: certs/detectors-tls/client.crt
+        key_path: certs/detectors-tls/client.key
+        client_ca_cert_path: certs/detectors-tls/ca.crt
     caikit:
-        cert_path: /path/to/tls.crt
-        key_path: /path/to/tls.key
-        client_ca_cert_path: /path/to/ca.crt
-    detector:
-        cert_path: /path/to/tls.crt
-        key_path: /path/to/tls.key
-        client_ca_cert_path: /path/to/ca.crt
-        insecure: false
+        cert_path: certs/tgis_tls.crt
+        key_path: certs/tgis_tls.key
+        client_ca_cert_path: certs/tgis_ca.crt
     detector_bundle_no_ca:
         cert_path: /path/to/client-bundle.pem
         insecure: true
