@@ -30,7 +30,7 @@ The guardrails orchestrator is designed to provide an end-to-end guardrails expe
     - **Endpoint:** `/api/v2/text/detection/chat`
     - **Description:** This endpoint will implement detection task for chat input and will support detectors, exposed via `/api/v1/text/context/chat` endpoint.
 1. Document Context
-    - **Endpoint:** `/api/v2/text/detection/context-docs`
+    - **Endpoint:** `/api/v2/text/detection/context`
     - **Description:** This endpoint will implement detection task for document based context detectors, exposed via `/api/v1/text/context/chat` endpoint.
 1. Generation Detection
     - **Endpoint:** `/api/v2/text/generation-detection`
