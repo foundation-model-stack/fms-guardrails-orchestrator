@@ -85,7 +85,15 @@ pub async fn run(
     // with rustls, the hyper and tower crates [what axum is built on] had to
     // be used directly
 
-    let config = OrchestratorConfig::load(config_path).await;
+    let config = OrchestratorConfig::load(config_path)
+        .await
+        .map_err(Error::from)
+        .map_err(|error| match error {
+            Error::ConfigurationFailed(_) => error,
+            _ => {
+                panic!("Unexpected error during service configuration: {error}");
+            }
+        })?;
     let orchestrator = Orchestrator::new(config).await?;
     let shared_state = Arc::new(ServerState { orchestrator });
 
@@ -469,6 +477,8 @@ pub enum Error {
     NotFound(String),
     #[error("{0}")]
     ServiceUnavailable(String),
+    #[error("{0}")]
+    ConfigurationFailed(String),
     #[error("unexpected error occured while processing request")]
     Unexpected,
     #[error(transparent)]
@@ -504,6 +514,9 @@ impl Error {
             NotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
             ServiceUnavailable(_) => (StatusCode::SERVICE_UNAVAILABLE, self.to_string()),
             Unexpected => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
+            ConfigurationFailed(_) => {
+                panic!("service configuration error should not be returned to client")
+            }
             JsonExtractorRejection(json_rejection) => match json_rejection {
                 JsonRejection::JsonDataError(e) => {
                     // Get lower-level serde error message
@@ -528,6 +541,9 @@ impl IntoResponse for Error {
             NotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
             ServiceUnavailable(_) => (StatusCode::SERVICE_UNAVAILABLE, self.to_string()),
             Unexpected => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
+            ConfigurationFailed(_) => {
+                panic!("service configuration error should not be returned to client")
+            }
             JsonExtractorRejection(json_rejection) => match json_rejection {
                 JsonRejection::JsonDataError(e) => {
                     // Get lower-level serde error message

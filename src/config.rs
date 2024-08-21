@@ -15,13 +15,55 @@
 
 */
 
+use serde::Deserialize;
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
 };
+use tracing::{debug, error, warn};
 
-use serde::Deserialize;
-use tracing::debug;
+use crate::{clients::chunker::DEFAULT_MODEL_ID, server};
+
+#[derive(Debug, Clone, PartialEq, thiserror::Error)]
+pub enum Error {
+    #[error("failed to read config file from {path:?}: {error}")]
+    FailedToReadConfigFile { path: String, error: String },
+    #[error("failed to serialize config file {path}: {error}")]
+    FailedToSerializeConfigFile { path: String, error: String },
+    #[error("TLS config `{name}` not found for service {host}:{port} in config")]
+    TlsConfigNotFound {
+        name: String,
+        host: String,
+        port: String,
+    },
+    #[error("no detectors provided in config")]
+    NoDetectorsConfigured,
+    #[error("config for detector `{detector}` has an unknown chunker_id `{chunker}`")]
+    DetectorChunkerNotFound { detector: String, chunker: String },
+}
+
+impl From<Error> for server::Error {
+    fn from(error: Error) -> Self {
+        match error {
+            Error::FailedToReadConfigFile { .. }
+            | Error::FailedToSerializeConfigFile { .. }
+            | Error::TlsConfigNotFound { .. }
+            | Error::NoDetectorsConfigured
+            | Error::DetectorChunkerNotFound { .. } => {
+                server::Error::ConfigurationFailed(error.to_string())
+            }
+        }
+    }
+}
+
+impl From<serde_yml::Error> for Error {
+    fn from(error: serde_yml::Error) -> Self {
+        Error::FailedToSerializeConfigFile {
+            path: "".to_string(),
+            error: error.to_string(),
+        }
+    }
+}
 
 /// Configuration for service needed for
 /// orchestrator to communicate with it
@@ -111,55 +153,88 @@ pub struct DetectorConfig {
 #[cfg_attr(test, derive(Default))]
 #[derive(Clone, Debug, Deserialize)]
 pub struct OrchestratorConfig {
-    /// Generation service and associated configuration
-    pub generation: GenerationConfig,
-    /// Chunker services and associated configurations
-    pub chunkers: HashMap<String, ChunkerConfig>,
+    /// Generation service and associated configuration, can be omitted if configuring for generation is not wanted
+    pub generation: Option<GenerationConfig>,
+    /// Chunker services and associated configurations, if omitted the default value "whole_doc_chunker" is used
+    pub chunkers: Option<HashMap<String, ChunkerConfig>>,
     /// Detector services and associated configurations
     pub detectors: HashMap<String, DetectorConfig>,
     /// Map of TLS connections, allowing reuse across services
     /// that may require the same TLS information
-    pub tls: HashMap<String, TlsConfig>,
+    pub tls: Option<HashMap<String, TlsConfig>>,
 }
 
 impl OrchestratorConfig {
     /// Load overall orchestrator server configuration
-    pub async fn load(path: impl AsRef<Path>) -> Self {
-        let path = path.as_ref();
-        let s = tokio::fs::read_to_string(path)
-            .await
-            .unwrap_or_else(|error| {
-                panic!("failed to read orchestrator config from {path:?}: {error}")
-            });
-        let mut config: OrchestratorConfig = serde_yml::from_str(&s)
-            .unwrap_or_else(|error| panic!("invalid orchestrator config: {error}"));
-        // Map tls name to tls config
-        // TODO: do this cleaner
-        let tls_configs = &config.tls;
-        config.generation.service =
-            service_tls_name_to_config(tls_configs, config.generation.service);
-        config.chunkers = config
-            .chunkers
-            .into_iter()
-            .map(|(name, mut config)| {
-                config.service = service_tls_name_to_config(tls_configs, config.service);
-                (name, config)
-            })
-            .collect::<HashMap<_, _>>();
-        config.detectors = config
-            .detectors
-            .into_iter()
-            .map(|(name, mut config)| {
-                config.service = service_tls_name_to_config(tls_configs, config.service);
-                (name, config)
-            })
-            .collect::<HashMap<_, _>>();
+    pub async fn load(path: impl AsRef<Path>) -> Result<Self, Error> {
+        let mut config = Self::from_file(path).await?;
         debug!(?config, "loaded orchestrator config");
-        config
+
+        Self::map_tls_configs(&mut config)?;
+        config.validate()
     }
 
-    fn _validate(&self) {
-        todo!()
+    async fn from_file(path: impl AsRef<Path>) -> Result<Self, Error> {
+        let path = path.as_ref();
+        let s = tokio::fs::read_to_string(path).await.map_err(|error| {
+            Error::FailedToReadConfigFile {
+                path: path.to_str().unwrap().to_string(),
+                error: error.to_string(),
+            }
+        })?;
+        serde_yml::from_str(&s).map_err(|error| Error::FailedToSerializeConfigFile {
+            path: path.to_str().unwrap().to_string(),
+            error: error.to_string(),
+        })
+    }
+
+    fn map_tls_configs(config: &mut Self) -> Result<(), Error> {
+        let tls_configs = &config.tls;
+        match config.generation {
+            Some(ref mut generation) => {
+                generation.service =
+                    Self::tls_name_to_config(tls_configs, generation.clone().service)?;
+            }
+            None => warn!("no generation service configuration provided"),
+        }
+
+        match config.chunkers {
+            Some(ref mut chunkers) => {
+                for (_, chunker) in chunkers.iter_mut() {
+                    chunker.service =
+                        Self::tls_name_to_config(tls_configs, chunker.clone().service)?;
+                }
+            }
+            None => warn!("no chunker service configurations provided"),
+        }
+
+        for (_, detector) in config.detectors.iter_mut() {
+            detector.service = Self::tls_name_to_config(tls_configs, detector.clone().service)?;
+        }
+
+        Ok(())
+    }
+
+    fn validate(&self) -> Result<Self, Error> {
+        if self.detectors.is_empty() {
+            Err(Error::NoDetectorsConfigured)
+        } else {
+            for (_, detector) in self.detectors.iter() {
+                if !self
+                    .clone()
+                    .chunkers
+                    .unwrap()
+                    .contains_key(&detector.chunker_id)
+                    && detector.chunker_id != DEFAULT_MODEL_ID
+                {
+                    return Err(Error::DetectorChunkerNotFound {
+                        detector: detector.clone().service.hostname,
+                        chunker: detector.chunker_id.clone(),
+                    });
+                }
+            }
+            Ok(self.clone())
+        }
     }
 
     /// Get ID of chunker associated with a particular detector
@@ -168,17 +243,35 @@ impl OrchestratorConfig {
             .get(detector_id)
             .map(|detector_config| detector_config.chunker_id.clone())
     }
-}
 
-fn service_tls_name_to_config(
-    tls_configs: &HashMap<String, TlsConfig>,
-    mut service: ServiceConfig,
-) -> ServiceConfig {
-    if let Some(Tls::Name(name)) = &service.tls {
-        let tls_config = tls_configs.get(name).unwrap().clone(); // TODO: handle error
-        service.tls = Some(Tls::Config(tls_config))
+    fn tls_name_to_config(
+        tls_configs: &Option<HashMap<String, TlsConfig>>,
+        mut service: ServiceConfig,
+    ) -> Result<ServiceConfig, Error> {
+        match &service.tls {
+            Some(Tls::Name(name)) => {
+                if let Some(tls_configs) = tls_configs {
+                    let tls_config = tls_configs
+                        .get(name)
+                        .ok_or(Error::TlsConfigNotFound {
+                            name: name.clone(),
+                            host: service.clone().hostname,
+                            port: service.clone().port.unwrap_or(0).to_string(),
+                        })?
+                        .clone();
+                    service.tls = Some(Tls::Config(tls_config));
+                    Ok(service)
+                } else {
+                    Err(Error::TlsConfigNotFound {
+                        name: name.clone(),
+                        host: service.clone().hostname,
+                        port: service.clone().port.unwrap_or(0).to_string(),
+                    })
+                }
+            }
+            _ => Ok(service),
+        }
     }
-    service
 }
 
 #[cfg(test)]
@@ -190,8 +283,6 @@ impl Default for Tls {
 
 #[cfg(test)]
 mod tests {
-    use anyhow::Error;
-
     use super::*;
 
     #[test]
@@ -223,7 +314,14 @@ detectors:
 tls: {}
         "#;
         let config: OrchestratorConfig = serde_yml::from_str(s)?;
-        assert!(config.chunkers.len() == 2 && config.detectors.len() == 1);
+        assert!(
+            config
+                .chunkers
+                .expect("chunkers should have been configured")
+                .len()
+                == 2
+                && config.detectors.len() == 1
+        );
         Ok(())
     }
 
@@ -259,8 +357,23 @@ tls:
         cert_path: /certs/client.pem
         "#;
         let config: OrchestratorConfig = serde_yml::from_str(s)?;
-        assert!(config.chunkers.len() == 2 && config.detectors.len() == 1);
-        assert!(config.tls.len() == 1 && config.tls.contains_key("detector"));
+        assert!(
+            config
+                .chunkers
+                .expect("chunkers should have been configured")
+                .len()
+                == 2
+                && config.detectors.len() == 1
+        );
+        assert!(
+            config
+                .tls
+                .as_ref()
+                .expect("tls should have been configured")
+                .len()
+                == 1
+                && config.tls.as_ref().unwrap().contains_key("detector")
+        );
         Ok(())
     }
 
@@ -299,9 +412,29 @@ tls:
         insecure: true
         "#;
         let config: OrchestratorConfig = serde_yml::from_str(s)?;
-        assert!(config.chunkers.len() == 2 && config.detectors.len() == 1);
         assert!(
-            config.tls.len() == 1 && config.tls.get("detector").unwrap().insecure == Some(true)
+            config
+                .chunkers
+                .expect("chunkers should have been configured")
+                .len()
+                == 2
+                && config.detectors.len() == 1
+        );
+        assert!(
+            config
+                .tls
+                .as_ref()
+                .expect("tls should have been configured")
+                .len()
+                == 1
+                && config
+                    .tls
+                    .as_ref()
+                    .unwrap()
+                    .get("detector")
+                    .unwrap()
+                    .insecure
+                    == Some(true)
         );
         Ok(())
     }
