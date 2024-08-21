@@ -576,8 +576,8 @@ pub async fn detect_for_context(
                 .default_threshold,
         ),
     );
-    let request = ContextDocsDetectionRequest::new(content, context_type, context);
-    debug!(%detector_id, ?request, "sending generation detector request");
+    let request = ContextDocsDetectionRequest::new(content, context_type, context, detector_params);
+    debug!(%detector_id, ?request, "sending detector request");
     let response = ctx
         .detector_client
         .text_context_doc(&detector_id, request)
@@ -592,7 +592,7 @@ pub async fn detect_for_context(
             id: detector_id.clone(),
             error,
         })?;
-    debug!(%detector_id, ?response, "received generation detector response");
+    debug!(%detector_id, ?response, "received detector response");
     Ok::<Vec<DetectionResult>, Error>(response)
 }
 

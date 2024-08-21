@@ -21,7 +21,10 @@ use hyper::StatusCode;
 use serde::{Deserialize, Serialize};
 
 use super::{create_http_clients, Error, HttpClient};
-use crate::{config::ServiceConfig, models::DetectionResult};
+use crate::{
+    config::ServiceConfig,
+    models::{DetectionResult, DetectorParams},
+};
 
 const DETECTOR_ID_HEADER_NAME: &str = "detector-id";
 
@@ -263,6 +266,9 @@ pub struct ContextDocsDetectionRequest {
 
     /// Context to run detection on
     pub context: Vec<String>,
+
+    // Detector Params
+    pub detector_params: DetectorParams,
 }
 
 /// Enum representing the context type of a detection
@@ -275,11 +281,17 @@ pub enum ContextType {
 }
 
 impl ContextDocsDetectionRequest {
-    pub fn new(content: String, context_type: ContextType, context: Vec<String>) -> Self {
+    pub fn new(
+        content: String,
+        context_type: ContextType,
+        context: Vec<String>,
+        detector_params: DetectorParams,
+    ) -> Self {
         Self {
             content,
             context_type,
             context,
+            detector_params,
         }
     }
 }
