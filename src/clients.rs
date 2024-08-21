@@ -16,11 +16,10 @@
 */
 
 #![allow(dead_code)]
-use std::{collections::HashMap, pin::Pin, time::Duration};
+use std::{collections::HashMap, fmt::Display, pin::Pin, time::Duration};
 
 use futures::{future::join_all, Stream};
 use ginepro::LoadBalancedChannel;
-use reqwest::StatusCode;
 use tokio::{fs::File, io::AsyncReadExt};
 use tracing::debug;
 use url::Url;
@@ -33,14 +32,11 @@ pub use chunker::ChunkerClient;
 pub mod detector;
 pub use detector::DetectorClient;
 
+pub mod errors;
+pub use errors::{Error, ExternalError};
+
 pub mod generation;
-pub use generation::GenerationClient;
-
-pub mod tgis;
-pub use tgis::TgisClient;
-
-pub mod nlp;
-pub use nlp::NlpClient;
+pub use generation::{GenerationClient, NlpClient, TgisClient};
 
 pub const DEFAULT_TGIS_PORT: u16 = 8033;
 pub const DEFAULT_CAIKIT_NLP_PORT: u16 = 8085;
@@ -52,68 +48,44 @@ const DEFAULT_REQUEST_TIMEOUT_SEC: u64 = 600;
 
 pub type BoxStream<T> = Pin<Box<dyn Stream<Item = T> + Send>>;
 
-/// Client errors.
-#[derive(Debug, Clone, PartialEq, thiserror::Error)]
-pub enum Error {
-    #[error("{}", .message)]
-    Grpc { code: StatusCode, message: String },
-    #[error("{}", .message)]
-    Http { code: StatusCode, message: String },
-    #[error("model not found: {model_id}")]
-    ModelNotFound { model_id: String },
+#[derive(Debug, Clone, PartialEq)]
+pub enum ClientKind {
+    Chunker,
+    Detector,
+    Generation,
 }
 
-impl Error {
-    /// Returns status code.
-    pub fn status_code(&self) -> StatusCode {
-        match self {
-            // Return equivalent http status code for grpc status code
-            Error::Grpc { code, .. } => *code,
-            // Return http status code for error responses
-            // and 500 for other errors
-            Error::Http { code, .. } => *code,
-            // Return 404 for model not found
-            Error::ModelNotFound { .. } => StatusCode::NOT_FOUND,
+impl Display for ClientKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let kind = <&str>::from(self);
+        write!(f, "{}", kind)
+    }
+}
+
+impl From<&ClientKind> for &'static str {
+    fn from(value: &ClientKind) -> Self {
+        match value {
+            ClientKind::Chunker => "chunker",
+            ClientKind::Detector => "detector",
+            ClientKind::Generation => "generation",
         }
     }
 }
 
-impl From<reqwest::Error> for Error {
-    fn from(value: reqwest::Error) -> Self {
-        // Return http status code for error responses
-        // and 500 for other errors
-        let code = match value.status() {
-            Some(code) => code,
-            None => StatusCode::INTERNAL_SERVER_ERROR,
-        };
-        Self::Http {
-            code,
-            message: value.to_string(),
+impl From<&str> for ClientKind {
+    fn from(value: &str) -> Self {
+        match value {
+            "chunker" => ClientKind::Chunker,
+            "detector" => ClientKind::Detector,
+            "generation" => ClientKind::Generation,
+            _ => panic!("invalid client kind: {}", value),
         }
     }
 }
 
-impl From<tonic::Status> for Error {
-    fn from(value: tonic::Status) -> Self {
-        use tonic::Code::*;
-        // Return equivalent http status code for grpc status code
-        let code = match value.code() {
-            InvalidArgument => StatusCode::BAD_REQUEST,
-            Internal => StatusCode::INTERNAL_SERVER_ERROR,
-            NotFound => StatusCode::NOT_FOUND,
-            DeadlineExceeded => StatusCode::REQUEST_TIMEOUT,
-            Unimplemented => StatusCode::NOT_IMPLEMENTED,
-            Unauthenticated => StatusCode::UNAUTHORIZED,
-            PermissionDenied => StatusCode::FORBIDDEN,
-            Unavailable => StatusCode::SERVICE_UNAVAILABLE,
-            Ok => StatusCode::OK,
-            _ => StatusCode::INTERNAL_SERVER_ERROR,
-        };
-        Self::Grpc {
-            code,
-            message: value.message().to_string(),
-        }
-    }
+pub trait Client {
+    // TODO: Implement health check for every client
+    // fn health_check(&self) -> Result<(), Error>;
 }
 
 #[derive(Clone)]

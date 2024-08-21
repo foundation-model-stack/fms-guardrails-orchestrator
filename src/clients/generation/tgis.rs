@@ -15,14 +15,13 @@
 
 */
 
-use std::collections::HashMap;
-
 use futures::{StreamExt, TryStreamExt};
 use ginepro::LoadBalancedChannel;
+use std::collections::HashMap;
 
-use super::{create_grpc_clients, BoxStream, Error};
+use super::Error;
 use crate::{
-    clients::COMMON_ROUTER_KEY,
+    clients::{create_grpc_clients, BoxStream, ExternalError, COMMON_ROUTER_KEY},
     config::ServiceConfig,
     pb::fmaas::{
         generation_service_client::GenerationServiceClient, BatchedGenerationRequest,
@@ -53,8 +52,9 @@ impl TgisClient {
         Ok(self
             .clients
             .get(model_id)
-            .ok_or_else(|| Error::ModelNotFound {
-                model_id: model_id.to_string(),
+            .ok_or_else(|| Error::GenerationModelNotFound {
+                id: model_id.to_string(),
+                task: "generation with TGIS client".to_string(),
             })?
             .clone())
     }
@@ -63,21 +63,28 @@ impl TgisClient {
         &self,
         request: BatchedGenerationRequest,
     ) -> Result<BatchedGenerationResponse, Error> {
-        let model_id = request.model_id.as_str();
-        Ok(self.client(model_id)?.generate(request).await?.into_inner())
+        let model_id = request.model_id.to_string();
+        Ok(self
+            .client(model_id.as_str())?
+            .generate(request)
+            .await
+            .map_err(|e| ExternalError::from(e).into_client_error(model_id))?
+            .into_inner())
     }
 
     pub async fn generate_stream(
         &self,
         request: SingleGenerationRequest,
     ) -> Result<BoxStream<Result<GenerationResponse, Error>>, Error> {
-        let model_id = request.model_id.as_str();
+        let model_id = request.model_id.to_string();
+        let model_id_ = model_id.clone();
         let response_stream = self
-            .client(model_id)?
+            .client(request.model_id.as_str())?
             .generate_stream(request)
-            .await?
+            .await
+            .map_err(|e| ExternalError::from(e).into_client_error(model_id))?
             .into_inner()
-            .map_err(Into::into)
+            .map_err(move |e| ExternalError::from(e).into_client_error(model_id_.clone()))
             .boxed();
         Ok(response_stream)
     }
@@ -86,16 +93,22 @@ impl TgisClient {
         &self,
         request: BatchedTokenizeRequest,
     ) -> Result<BatchedTokenizeResponse, Error> {
-        let model_id = request.model_id.as_str();
-        Ok(self.client(model_id)?.tokenize(request).await?.into_inner())
+        let model_id = request.model_id.clone();
+        Ok(self
+            .client(model_id.as_str())?
+            .tokenize(request)
+            .await
+            .map_err(|e| ExternalError::from(e).into_client_error(model_id))?
+            .into_inner())
     }
 
     pub async fn model_info(&self, request: ModelInfoRequest) -> Result<ModelInfoResponse, Error> {
-        let model_id = request.model_id.as_str();
+        let model_id = request.model_id.to_string();
         Ok(self
-            .client(model_id)?
+            .client(model_id.as_str())?
             .model_info(request)
-            .await?
+            .await
+            .map_err(|e| ExternalError::from(e).into_client_error(model_id))?
             .into_inner())
     }
 }

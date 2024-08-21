@@ -21,9 +21,8 @@ use futures::{StreamExt, TryStreamExt};
 use ginepro::LoadBalancedChannel;
 use tonic::Request;
 
-use super::{create_grpc_clients, BoxStream, Error};
 use crate::{
-    clients::COMMON_ROUTER_KEY,
+    clients::{create_grpc_clients, BoxStream, Error, ExternalError, COMMON_ROUTER_KEY},
     config::ServiceConfig,
     pb::{
         caikit::runtime::nlp::{
@@ -58,8 +57,9 @@ impl NlpClient {
         Ok(self
             .clients
             .get(model_id)
-            .ok_or_else(|| Error::ModelNotFound {
-                model_id: model_id.to_string(),
+            .ok_or_else(|| Error::GenerationModelNotFound {
+                id: model_id.to_string(),
+                task: "generation with NLP client".to_string(),
             })?
             .clone())
     }
@@ -73,7 +73,9 @@ impl NlpClient {
         Ok(self
             .client(model_id)?
             .tokenization_task_predict(request)
-            .await?
+            .await
+            .map_err(Into::<ExternalError>::into)
+            .map_err(|e| e.into_client_error(model_id.to_string()))?
             .into_inner())
     }
 
@@ -86,7 +88,9 @@ impl NlpClient {
         Ok(self
             .client(model_id)?
             .token_classification_task_predict(request)
-            .await?
+            .await
+            .map_err(Into::<ExternalError>::into)
+            .map_err(|e| e.into_client_error(model_id.to_string()))?
             .into_inner())
     }
 
@@ -99,7 +103,8 @@ impl NlpClient {
         Ok(self
             .client(model_id)?
             .text_generation_task_predict(request)
-            .await?
+            .await
+            .map_err(|e| Error::from_status(e, model_id.to_string()))?
             .into_inner())
     }
 
@@ -108,13 +113,16 @@ impl NlpClient {
         model_id: &str,
         request: ServerStreamingTextGenerationTaskRequest,
     ) -> Result<BoxStream<Result<GeneratedTextStreamResult, Error>>, Error> {
-        let request = request_with_model_id(request, model_id);
+        let model_id = model_id.to_string();
+        let model_id_ = model_id.to_string();
+        let request = request_with_model_id(request, model_id.as_str());
         let response_stream = self
-            .client(model_id)?
+            .client(model_id.as_str())?
             .server_streaming_text_generation_task_predict(request)
-            .await?
+            .await
+            .map_err(|e| Error::from_status(e, model_id))?
             .into_inner()
-            .map_err(Into::into)
+            .map_err(move |e| Error::from_status(e, model_id_.clone()))
             .boxed();
         Ok(response_stream)
     }

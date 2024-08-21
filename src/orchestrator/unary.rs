@@ -15,7 +15,7 @@
 
 */
 
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 
 use futures::{
     future::try_join_all,
@@ -29,6 +29,7 @@ use super::{
     Orchestrator, TextContentDetectionTask,
 };
 use crate::{
+    clients,
     clients::detector::{
         ContentAnalysisRequest, ContextDocsDetectionRequest, ContextType,
         GenerationDetectionRequest,
@@ -52,7 +53,9 @@ impl Orchestrator {
         &self,
         task: ClassificationWithGenTask,
     ) -> Result<ClassifiedGeneratedTextResult, Error> {
-        let ctx = self.ctx.clone();
+        let ctx = self
+            .ctx
+            .with_gen(Some("handle classification with generation"))?;
         let request_id = task.request_id;
         info!(%request_id, config = ?task.guardrails_config, "starting task");
         let task_handle = tokio::spawn(async move {
@@ -62,7 +65,7 @@ impl Orchestrator {
             // Do input detections
             let input_detections = match input_detectors {
                 Some(detectors) if !detectors.is_empty() => {
-                    input_detection_task(&ctx, detectors, input_text.clone(), masks).await?
+                    input_detection_task(ctx.clone(), detectors, input_text.clone(), masks).await?
                 }
                 _ => None,
             };
@@ -71,7 +74,7 @@ impl Orchestrator {
                 // Detected HAP/PII
                 // Do tokenization to get input_token_count
                 let (input_token_count, _tokens) =
-                    tokenize(&ctx, task.model_id.clone(), task.inputs.clone()).await?;
+                    tokenize(ctx, task.model_id.clone(), task.inputs.clone()).await?;
                 // Send result with input detections
                 Ok(ClassifiedGeneratedTextResult {
                     input_token_count,
@@ -89,7 +92,7 @@ impl Orchestrator {
                 // No HAP/PII detected
                 // Do text generation
                 let mut generation_results = generate(
-                    &ctx,
+                    ctx.clone(),
                     task.model_id.clone(),
                     task.inputs.clone(),
                     task.text_gen_parameters.clone(),
@@ -104,7 +107,7 @@ impl Orchestrator {
                             .generated_text
                             .clone()
                             .unwrap_or_default();
-                        output_detection_task(&ctx, detectors, generated_text).await?
+                        output_detection_task(ctx.clone(), detectors, generated_text).await?
                     }
                     _ => None,
                 };
@@ -150,7 +153,7 @@ impl Orchestrator {
         let ctx = self.ctx.clone();
         let task_handle = tokio::spawn(async move {
             let generation_results = generate(
-                &ctx,
+                ctx.clone(),
                 task.model_id.clone(),
                 task.prompt.clone(),
                 task.text_gen_parameters.clone(),
@@ -170,6 +173,7 @@ impl Orchestrator {
                             .generated_text
                             .clone()
                             .unwrap_or_default();
+                        let ctx = ctx.clone();
                         async {
                             detect_for_generation(
                                 ctx,
@@ -227,7 +231,7 @@ impl Orchestrator {
             let detectors = task.detectors.clone();
 
             // Call detectors
-            let detections = input_detection_task(&ctx, &detectors, content.clone(), None).await?;
+            let detections = input_detection_task(ctx, &detectors, content.clone(), None).await?;
             debug!(?detections);
 
             // Send result with detections
@@ -377,36 +381,36 @@ impl Orchestrator {
 /// Handles input detection task.
 #[instrument(skip_all)]
 pub async fn input_detection_task(
-    ctx: &Arc<Context>,
+    ctx: Context,
     detectors: &HashMap<String, DetectorParams>,
     input_text: String,
     masks: Option<&[(usize, usize)]>,
 ) -> Result<Option<Vec<TokenClassificationResult>>, Error> {
     let text_with_offsets = apply_masks(input_text, masks);
-    let chunker_ids = get_chunker_ids(ctx, detectors)?;
-    let chunks = chunk_task(ctx, chunker_ids, text_with_offsets).await?;
-    let detections = detection_task(ctx, detectors, chunks).await?;
+    let chunker_ids = get_chunker_ids(ctx.clone(), detectors)?;
+    let chunks = chunk_task(ctx.clone(), chunker_ids, text_with_offsets).await?;
+    let detections = detection_task(ctx.clone(), detectors, chunks).await?;
     Ok((!detections.is_empty()).then_some(detections))
 }
 
 /// Handles output detection task.
 #[instrument(skip_all)]
 async fn output_detection_task(
-    ctx: &Arc<Context>,
+    ctx: Context,
     detectors: &HashMap<String, DetectorParams>,
     generated_text: String,
 ) -> Result<Option<Vec<TokenClassificationResult>>, Error> {
     let text_with_offsets = apply_masks(generated_text, None);
-    let chunker_ids = get_chunker_ids(ctx, detectors)?;
-    let chunks = chunk_task(ctx, chunker_ids, text_with_offsets).await?;
-    let detections = detection_task(ctx, detectors, chunks).await?;
+    let chunker_ids = get_chunker_ids(ctx.clone(), detectors)?;
+    let chunks = chunk_task(ctx.clone(), chunker_ids, text_with_offsets).await?;
+    let detections = detection_task(ctx.clone(), detectors, chunks).await?;
     Ok((!detections.is_empty()).then_some(detections))
 }
 
 /// Handles detection task.
 #[instrument(skip_all)]
 async fn detection_task(
-    ctx: &Arc<Context>,
+    ctx: Context,
     detectors: &HashMap<String, DetectorParams>,
     chunks: HashMap<String, Vec<Chunk>>,
 ) -> Result<Vec<TokenClassificationResult>, Error> {
@@ -418,18 +422,26 @@ async fn detection_task(
             let detector_id = detector_id.clone();
             let detector_params = detector_params.clone();
             // Get the detector config
-            let detector_config = ctx
-                .config
-                .detectors
-                .get(&detector_id)
-                .ok_or_else(|| Error::DetectorNotFound(detector_id.clone()))?;
+            let detector_config = ctx.0.config.detectors.get(&detector_id).ok_or_else(|| {
+                clients::Error::DetectorNotFound {
+                    id: detector_id.clone(),
+                    task: "detection".to_string(),
+                }
+            })?;
             // Get the default threshold to use if threshold is not provided by the user
             let default_threshold = detector_config.default_threshold;
             // Get chunker for detector
             let chunker_id = detector_config.chunker_id.as_str();
             let chunks = chunks.get(chunker_id).unwrap().clone();
             Ok(tokio::spawn(async move {
-                detect(ctx, detector_id, default_threshold, detector_params, chunks).await
+                detect(
+                    ctx.clone(),
+                    detector_id,
+                    default_threshold,
+                    detector_params,
+                    chunks,
+                )
+                .await
             }))
         })
         .collect::<Result<Vec<_>, Error>>()?;
@@ -446,7 +458,7 @@ async fn detection_task(
 /// Handles chunk task.
 #[instrument(skip_all)]
 async fn chunk_task(
-    ctx: &Arc<Context>,
+    ctx: Context,
     chunker_ids: Vec<String>,
     text_with_offsets: Vec<(usize, String)>,
 ) -> Result<HashMap<String, Vec<Chunk>>, Error> {
@@ -456,7 +468,9 @@ async fn chunk_task(
         .map(|chunker_id| {
             let ctx = ctx.clone();
             let text_with_offsets = text_with_offsets.clone();
-            tokio::spawn(async move { chunk_parallel(&ctx, chunker_id, text_with_offsets).await })
+            tokio::spawn(
+                async move { chunk_parallel(ctx.clone(), chunker_id, text_with_offsets).await },
+            )
         })
         .collect::<Vec<_>>();
     let results = try_join_all(tasks)
@@ -469,7 +483,7 @@ async fn chunk_task(
 /// Sends a request to a detector service and applies threshold.
 #[instrument(skip_all)]
 pub async fn detect(
-    ctx: Arc<Context>,
+    ctx: Context,
     detector_id: String,
     default_threshold: f64,
     detector_params: DetectorParams,
@@ -484,16 +498,10 @@ pub async fn detect(
     } else {
         let request = ContentAnalysisRequest::new(contents);
         debug!(%detector_id, ?request, "sending detector request");
-        ctx.detector_client
+        ctx.0
+            .detector_client
             .text_contents(&detector_id, request)
-            .await
-            .map_err(|error| {
-                debug!(%detector_id, ?error, "error received from detector");
-                Error::DetectorRequestFailed {
-                    id: detector_id.clone(),
-                    error,
-                }
-            })?
+            .await?
     };
     debug!(%detector_id, ?response, "received detector response");
     if chunks.len() != response.len() {
@@ -521,7 +529,7 @@ pub async fn detect(
 
 /// Calls a detector that implements the /api/v1/text/generation endpoint
 pub async fn detect_for_generation(
-    ctx: Arc<Context>,
+    ctx: Context,
     detector_id: String,
     detector_params: DetectorParams,
     prompt: String,
@@ -533,7 +541,10 @@ pub async fn detect_for_generation(
             ctx.config
                 .detectors
                 .get(&detector_id)
-                .ok_or_else(|| Error::DetectorNotFound(detector_id.clone()))?
+                .ok_or_else(|| clients::Error::DetectorNotFound {
+                    id: detector_id.clone(),
+                    task: "detection for generation".to_string(),
+                })?
                 .default_threshold,
         ),
     );
@@ -549,17 +560,14 @@ pub async fn detect_for_generation(
                 .filter(|detection| detection.score > threshold)
                 .collect()
         })
-        .map_err(|error| Error::DetectorRequestFailed {
-            id: detector_id.clone(),
-            error,
-        })?;
+        .map_err(Error::from)?;
     debug!(%detector_id, ?response, "received generation detector response");
     Ok::<Vec<DetectionResult>, Error>(response)
 }
 
 /// Calls a detector that implements the /api/v1/text/doc endpoint
 pub async fn detect_for_context(
-    ctx: Arc<Context>,
+    ctx: Context,
     detector_id: String,
     detector_params: DetectorParams,
     content: String,
@@ -572,7 +580,10 @@ pub async fn detect_for_context(
             ctx.config
                 .detectors
                 .get(&detector_id)
-                .ok_or_else(|| Error::DetectorNotFound(detector_id.clone()))?
+                .ok_or_else(|| clients::Error::DetectorNotFound {
+                    id: detector_id.clone(),
+                    task: "detection for context".to_string(),
+                })?
                 .default_threshold,
         ),
     );
@@ -587,10 +598,6 @@ pub async fn detect_for_context(
                 .into_iter()
                 .filter(|detection| detection.score > threshold)
                 .collect()
-        })
-        .map_err(|error| Error::DetectorRequestFailed {
-            id: detector_id.clone(),
-            error,
         })?;
     debug!(%detector_id, ?response, "received generation detector response");
     Ok::<Vec<DetectionResult>, Error>(response)
@@ -599,7 +606,7 @@ pub async fn detect_for_context(
 /// Sends request to chunker service.
 #[instrument(skip_all)]
 pub async fn chunk(
-    ctx: &Arc<Context>,
+    ctx: Context,
     chunker_id: String,
     offset: usize,
     text: String,
@@ -607,13 +614,10 @@ pub async fn chunk(
     let request = chunkers::ChunkerTokenizationTaskRequest { text };
     debug!(%chunker_id, ?request, "sending chunker request");
     let response = ctx
+        .0
         .chunker_client
         .tokenization_task_predict(&chunker_id, request)
-        .await
-        .map_err(|error| Error::ChunkerRequestFailed {
-            id: chunker_id.clone(),
-            error,
-        })?;
+        .await?;
     debug!(%chunker_id, ?response, "received chunker response");
     Ok(response
         .results
@@ -627,7 +631,7 @@ pub async fn chunk(
 
 /// Sends parallel requests to a chunker service.
 pub async fn chunk_parallel(
-    ctx: &Arc<Context>,
+    ctx: Context,
     chunker_id: String,
     text_with_offsets: Vec<(usize, String)>,
 ) -> Result<(String, Vec<Chunk>), Error> {
@@ -636,7 +640,7 @@ pub async fn chunk_parallel(
             let ctx = ctx.clone();
             let chunker_id = chunker_id.clone();
             async move {
-                let results = chunk(&ctx, chunker_id, offset, text).await?;
+                let results = chunk(ctx.clone(), chunker_id, offset, text).await?;
                 Ok::<Vec<Chunk>, Error>(results)
             }
         })
@@ -653,33 +657,30 @@ pub async fn chunk_parallel(
 
 /// Sends tokenize request to a generation service.
 pub async fn tokenize(
-    ctx: &Arc<Context>,
+    ctx: Context,
     model_id: String,
     text: String,
 ) -> Result<(u32, Vec<String>), Error> {
+    let ctx = ctx.with_gen(Some("tokenization"))?;
     ctx.generation_client
         .tokenize(model_id.clone(), text)
         .await
-        .map_err(|error| Error::TokenizeRequestFailed {
-            id: model_id,
-            error,
-        })
+        .map_err(Into::into)
 }
 
 /// Sends generate request to a generation service.
 async fn generate(
-    ctx: &Arc<Context>,
+    ctx: Context,
     model_id: String,
     text: String,
     params: Option<GuardrailsTextGenerationParameters>,
 ) -> Result<ClassifiedGeneratedTextResult, Error> {
-    ctx.generation_client
+    let ctx = ctx.with_gen(Some("generation"))?;
+    ctx.0
+        .generation_client
         .generate(model_id.clone(), text, params)
         .await
-        .map_err(|error| Error::GenerateRequestFailed {
-            id: model_id,
-            error,
-        })
+        .map_err(Into::into)
 }
 
 #[cfg(test)]
@@ -768,7 +769,7 @@ mod tests {
 
         // Test request formulation and response processing is as expected
         assert_eq!(
-            generate(&ctx, text_gen_model_id, sample_text, None)
+            generate(ctx, text_gen_model_id, sample_text, None)
                 .await
                 .unwrap(),
             expected_generate_response

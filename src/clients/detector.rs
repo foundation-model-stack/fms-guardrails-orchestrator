@@ -20,7 +20,7 @@ use std::collections::HashMap;
 use hyper::StatusCode;
 use serde::{Deserialize, Serialize};
 
-use super::{create_http_clients, Error, HttpClient};
+use super::{create_http_clients, Client, Error, ExternalError, HttpClient};
 use crate::{config::ServiceConfig, models::DetectionResult};
 
 const DETECTOR_ID_HEADER_NAME: &str = "detector-id";
@@ -31,6 +31,8 @@ const DETECTOR_ID_HEADER_NAME: &str = "detector-id";
 pub struct DetectorClient {
     clients: HashMap<String, HttpClient>,
 }
+
+impl Client for DetectorClient {}
 
 #[cfg_attr(test, faux::methods)]
 impl DetectorClient {
@@ -43,8 +45,9 @@ impl DetectorClient {
         Ok(self
             .clients
             .get(model_id)
-            .ok_or_else(|| Error::ModelNotFound {
-                model_id: model_id.to_string(),
+            .ok_or_else(|| Error::DetectorNotFound {
+                id: model_id.to_string(),
+                task: "detection".to_string(),
             })?
             .clone())
     }
@@ -64,9 +67,15 @@ impl DetectorClient {
             .header(DETECTOR_ID_HEADER_NAME, model_id)
             .json(&request)
             .send()
-            .await?;
+            .await
+            .map_err(Into::<ExternalError>::into)
+            .map_err(|e| e.into_client_error(model_id.to_string()))?;
         if response.status() == StatusCode::OK {
-            Ok(response.json().await?)
+            Ok(response
+                .json()
+                .await
+                .map_err(Into::<ExternalError>::into)
+                .map_err(|e| e.into_client_error(model_id.to_string()))?)
         } else {
             let code = response.status().as_u16();
             let error = response
@@ -76,7 +85,7 @@ impl DetectorClient {
                     code,
                     message: "".into(),
                 });
-            Err(error.into())
+            Err(ExternalError::from(error).into_client_error(model_id.to_string()))
         }
     }
 
@@ -93,9 +102,15 @@ impl DetectorClient {
             .header(DETECTOR_ID_HEADER_NAME, model_id)
             .json(&request)
             .send()
-            .await?;
+            .await
+            .map_err(Into::<ExternalError>::into)
+            .map_err(|e| e.into_client_error(model_id.to_string()))?;
         if response.status() == StatusCode::OK {
-            Ok(response.json().await?)
+            Ok(response
+                .json()
+                .await
+                .map_err(Into::<ExternalError>::into)
+                .map_err(|e| e.into_client_error(model_id.to_string()))?)
         } else {
             let code = response.status().as_u16();
             let error = response
@@ -105,7 +120,7 @@ impl DetectorClient {
                     code,
                     message: "".into(),
                 });
-            Err(error.into())
+            Err(ExternalError::from(error).into_client_error(model_id.to_string()))
         }
     }
 
@@ -122,9 +137,15 @@ impl DetectorClient {
             .header(DETECTOR_ID_HEADER_NAME, model_id)
             .json(&request)
             .send()
-            .await?;
+            .await
+            .map_err(Into::<ExternalError>::into)
+            .map_err(|e| e.into_client_error(model_id.to_string()))?;
         if response.status() == StatusCode::OK {
-            Ok(response.json().await?)
+            Ok(response
+                .json()
+                .await
+                .map_err(Into::<ExternalError>::into)
+                .map_err(|e| e.into_client_error(model_id.to_string()))?)
         } else {
             let code = response.status().as_u16();
             let error = response
@@ -134,7 +155,7 @@ impl DetectorClient {
                     code,
                     message: "".into(),
                 });
-            Err(error.into())
+            Err(ExternalError::from(error).into_client_error(model_id.to_string()))
         }
     }
 }
@@ -220,9 +241,9 @@ pub struct DetectorError {
     pub message: String,
 }
 
-impl From<DetectorError> for Error {
+impl From<DetectorError> for ExternalError {
     fn from(error: DetectorError) -> Self {
-        Error::Http {
+        ExternalError::Http {
             code: StatusCode::from_u16(error.code).unwrap(),
             message: error.message,
         }

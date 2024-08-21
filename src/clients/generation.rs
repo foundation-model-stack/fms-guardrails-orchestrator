@@ -15,11 +15,16 @@
 
 */
 
+mod nlp;
+pub use nlp::NlpClient;
+mod tgis;
+pub use tgis::TgisClient;
+
 use futures::{StreamExt, TryStreamExt};
 use tracing::debug;
 
-use super::{BoxStream, Error, NlpClient, TgisClient};
 use crate::{
+    clients::{BoxStream, Client, Error},
     models::{
         ClassifiedGeneratedTextResult, ClassifiedGeneratedTextStreamResult,
         GuardrailsTextGenerationParameters,
@@ -36,21 +41,17 @@ use crate::{
     },
 };
 
-#[cfg_attr(test, faux::create, derive(Default))]
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct GenerationClient(GenerationClientInner);
 
-#[derive(Clone)]
+impl Client for GenerationClient {}
+
+#[derive(Clone, Default)]
 enum GenerationClientInner {
     Tgis(TgisClient),
     Nlp(NlpClient),
-}
-
-#[cfg(test)]
-impl Default for GenerationClientInner {
-    fn default() -> Self {
-        Self::Tgis(TgisClient::default())
-    }
+    #[default]
+    NotConfigured,
 }
 
 #[cfg_attr(test, faux::methods)]
@@ -61,6 +62,10 @@ impl GenerationClient {
 
     pub fn nlp(client: NlpClient) -> Self {
         Self(GenerationClientInner::Nlp(client))
+    }
+
+    pub fn is_configured(&self) -> bool {
+        !matches!(self.0, GenerationClientInner::NotConfigured)
     }
 
     pub async fn tokenize(
@@ -95,6 +100,9 @@ impl GenerationClient {
                     .collect::<Vec<_>>();
                 Ok((response.token_count as u32, tokens))
             }
+            GenerationClientInner::NotConfigured => Err(Error::GenerationNotConfigured {
+                task: "tokenization".to_string(),
+            }),
         }
     }
 
@@ -157,6 +165,9 @@ impl GenerationClient {
                 debug!(%model_id, provider = "nlp", ?response, "received generate response");
                 Ok(response.into())
             }
+            GenerationClientInner::NotConfigured => Err(Error::GenerationNotConfigured {
+                task: "generation".to_string(),
+            }),
         }
     }
 
@@ -223,6 +234,9 @@ impl GenerationClient {
                     .boxed();
                 Ok(response_stream)
             }
+            GenerationClientInner::NotConfigured => Err(Error::GenerationNotConfigured {
+                task: "stream generation".to_string(),
+            }),
         }
     }
 }

@@ -22,8 +22,9 @@ use ginepro::LoadBalancedChannel;
 use tonic::{Request, Response, Status, Streaming};
 use tracing::info;
 
-use super::{create_grpc_clients, BoxStream, Error};
+use super::{create_grpc_clients, BoxStream, Client, Error};
 use crate::{
+    clients::ExternalError,
     config::ServiceConfig,
     pb::{
         caikit::runtime::chunkers::{
@@ -37,7 +38,7 @@ use crate::{
 
 const MODEL_ID_HEADER_NAME: &str = "mm-model-id";
 /// Default chunker that returns span for entire text
-const DEFAULT_MODEL_ID: &str = "whole_doc_chunker";
+pub const DEFAULT_MODEL_ID: &str = "whole_doc_chunker";
 
 type StreamingTokenizationResult =
     Result<Response<Streaming<ChunkerTokenizationStreamResult>>, Status>;
@@ -47,6 +48,8 @@ type StreamingTokenizationResult =
 pub struct ChunkerClient {
     clients: HashMap<String, ChunkersServiceClient<LoadBalancedChannel>>,
 }
+
+impl Client for ChunkerClient {}
 
 #[cfg_attr(test, faux::methods)]
 impl ChunkerClient {
@@ -59,8 +62,8 @@ impl ChunkerClient {
         Ok(self
             .clients
             .get(model_id)
-            .ok_or_else(|| Error::ModelNotFound {
-                model_id: model_id.to_string(),
+            .ok_or_else(|| Error::ChunkerNotFound {
+                id: model_id.to_string(),
             })?
             .clone())
     }
@@ -79,7 +82,9 @@ impl ChunkerClient {
         Ok(self
             .client(model_id)?
             .chunker_tokenization_task_predict(request)
-            .await?
+            .await
+            .map_err(Into::<ExternalError>::into)
+            .map_err(|e| e.into_client_error(model_id.to_string()))?
             .into_inner())
     }
 
@@ -101,10 +106,14 @@ impl ChunkerClient {
         // https://github.com/rust-lang/rust/issues/110338
         let response_stream_fut: Pin<Box<dyn Future<Output = StreamingTokenizationResult> + Send>> =
             Box::pin(client.bidi_streaming_chunker_tokenization_task_predict(request));
+        let model_id_ = model_id.to_string();
         let response_stream = response_stream_fut
-            .await?
+            .await
+            .map_err(Into::<ExternalError>::into)
+            .map_err(|e| e.into_client_error(model_id.to_string().clone()))?
             .into_inner()
-            .map_err(Into::into)
+            .map_err(Into::<ExternalError>::into)
+            .map_err(move |e| e.into_client_error(model_id_.clone()))
             .boxed();
         Ok(response_stream)
     }

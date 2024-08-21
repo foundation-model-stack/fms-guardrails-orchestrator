@@ -43,6 +43,7 @@ use uuid::Uuid;
 use webpki::types::{CertificateDer, PrivateKeyDer};
 
 use crate::{
+    clients, config,
     config::OrchestratorConfig,
     models::{self},
     orchestrator::{
@@ -85,7 +86,15 @@ pub async fn run(
     // with rustls, the hyper and tower crates [what axum is built on] had to
     // be used directly
 
-    let config = OrchestratorConfig::load(config_path).await;
+    let config = OrchestratorConfig::load(config_path)
+        .await
+        .map_err(Error::from)
+        .map_err(|error| match error {
+            Error::ConfigurationFailed(_) => error,
+            _ => {
+                panic!("Unexpected error during service configuration: {error}");
+            }
+        })?;
     let orchestrator = Orchestrator::new(config).await?;
     let shared_state = Arc::new(ServerState { orchestrator });
 
@@ -235,6 +244,7 @@ pub async fn run(
                 let fut = graceful.watch(conn.into_owned());
                 tokio::spawn(async move {
                     if let Err(err) = fut.await {
+                        println!("should reach here");
                         warn!("error serving connection from {}: {}", addr, err);
                     }
                 });
@@ -469,29 +479,59 @@ pub enum Error {
     NotFound(String),
     #[error("{0}")]
     ServiceUnavailable(String),
-    #[error("unexpected error occured while processing request")]
-    Unexpected,
+    #[error("{0}")]
+    ConfigurationFailed(String),
+    #[error("unexpected error occurred while processing request: {0}")]
+    Unexpected(String),
     #[error(transparent)]
     JsonExtractorRejection(#[from] JsonRejection),
 }
 
 impl From<orchestrator::Error> for Error {
     fn from(value: orchestrator::Error) -> Self {
-        use orchestrator::Error::*;
         match value {
-            DetectorNotFound(_) => Self::NotFound(value.to_string()),
-            DetectorRequestFailed { ref error, .. }
-            | ChunkerRequestFailed { ref error, .. }
-            | GenerateRequestFailed { ref error, .. }
-            | TokenizeRequestFailed { ref error, .. } => match error.status_code() {
-                StatusCode::BAD_REQUEST | StatusCode::UNPROCESSABLE_ENTITY => {
-                    Self::Validation(value.to_string())
-                }
-                StatusCode::NOT_FOUND => Self::NotFound(value.to_string()),
-                StatusCode::SERVICE_UNAVAILABLE => Self::ServiceUnavailable(value.to_string()),
-                _ => Self::Unexpected,
+            orchestrator::Error::UnexpectedClientError { .. } => {
+                Self::Unexpected(value.to_string())
+            }
+            orchestrator::Error::ClientRequestFailed {
+                error: clients::Error::ClientRequestFailed { ref error, .. },
+            } => match error {
+                clients::ExternalError::Grpc { code, .. }
+                | clients::ExternalError::Http { code, .. } => match *code {
+                    StatusCode::NOT_FOUND => Self::NotFound(value.to_string()),
+                    StatusCode::SERVICE_UNAVAILABLE => Self::ServiceUnavailable(value.to_string()),
+                    StatusCode::BAD_REQUEST | StatusCode::UNPROCESSABLE_ENTITY => {
+                        Self::Validation(value.to_string())
+                    }
+                    _ => Self::Unexpected(value.to_string()),
+                },
             },
-            _ => Self::Unexpected,
+            orchestrator::Error::ClientRequestCreationFailed { .. } => {
+                Self::NotFound(value.to_string())
+            }
+            orchestrator::Error::ServiceConfigurationFailed { .. } => {
+                Self::ConfigurationFailed(value.to_string())
+            }
+            _ => Self::Unexpected(value.to_string()),
+        }
+    }
+}
+
+impl From<config::Error> for Error {
+    fn from(value: config::Error) -> Self {
+        match value {
+            // We are checking all cases explicitly to avoid accidentally swallowing new errors,
+            // this is because all these config errors result in failure, and we want to handle that
+            // explicitly in case future errors are added to config that are not necessarily fatal
+            config::Error::FailedToReadConfigFile { .. }
+            | config::Error::FailedToSerializeConfigFile { .. }
+            | config::Error::ServiceHasNoTls { .. }
+            | config::Error::NoTlsConfigsFound
+            | config::Error::TlsConfigNotFound { .. }
+            | config::Error::NoDetectorsConfigured
+            | config::Error::UnresolvedDetectorChunker { .. } => {
+                Self::ConfigurationFailed(value.to_string())
+            }
         }
     }
 }
@@ -503,7 +543,7 @@ impl Error {
             Validation(_) => (StatusCode::UNPROCESSABLE_ENTITY, self.to_string()),
             NotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
             ServiceUnavailable(_) => (StatusCode::SERVICE_UNAVAILABLE, self.to_string()),
-            Unexpected => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
+            Unexpected(_) => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
             JsonExtractorRejection(json_rejection) => match json_rejection {
                 JsonRejection::JsonDataError(e) => {
                     // Get lower-level serde error message
@@ -512,6 +552,7 @@ impl Error {
                 }
                 _ => (json_rejection.status(), json_rejection.body_text()),
             },
+            ConfigurationFailed(_) => panic!("Service configuration failed but not handled, this error should be handled before propagation to client"),
         };
         serde_json::json!({
             "code": code.as_u16(),
@@ -527,7 +568,7 @@ impl IntoResponse for Error {
             Validation(_) => (StatusCode::UNPROCESSABLE_ENTITY, self.to_string()),
             NotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
             ServiceUnavailable(_) => (StatusCode::SERVICE_UNAVAILABLE, self.to_string()),
-            Unexpected => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
+            Unexpected(_) => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
             JsonExtractorRejection(json_rejection) => match json_rejection {
                 JsonRejection::JsonDataError(e) => {
                     // Get lower-level serde error message
@@ -536,6 +577,7 @@ impl IntoResponse for Error {
                 }
                 _ => (json_rejection.status(), json_rejection.body_text()),
             },
+            ConfigurationFailed(_) => panic!("Service configuration failed but not handled, this error should be handled before propagation to client"),
         };
         let error = serde_json::json!({
             "code": code.as_u16(),

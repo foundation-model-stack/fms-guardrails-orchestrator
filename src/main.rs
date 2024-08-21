@@ -17,6 +17,7 @@
 
 use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr},
+    panic,
     path::PathBuf,
 };
 
@@ -43,7 +44,34 @@ struct Args {
     tls_client_ca_cert_path: Option<PathBuf>,
 }
 
+/// Panics should catch bugs in the code not errors caused by users.
+/// We can make this distinction between user errors and system bugs clearer with a custom panic hook.
+/// Panics should not be used for fatal user errors, use fatal! to report error and exit with a
+/// user-facing error code and message instead of a trace dumped by a panic.
+fn setup_panic_hook() {
+    panic::set_hook(Box::new(|info| {
+        let payload = info
+            .payload()
+            .downcast_ref::<&str>()
+            .unwrap_or(&"something went wrong rendering panic message");
+
+        // Print the location of the panic, if available
+        if let Some(location) = info.location() {
+            eprintln!(
+                "internal_unhandled_panic[{}:{}] {}",
+                location.file(),
+                location.line(),
+                payload
+            );
+        } else {
+            eprintln!("internal_unhandled_panic[?] {}", payload);
+        }
+    }));
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    setup_panic_hook();
+
     rustls::crypto::aws_lc_rs::default_provider()
         .install_default()
         .expect("Failed to install rustls crypto provider");

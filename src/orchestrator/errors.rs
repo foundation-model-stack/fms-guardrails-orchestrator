@@ -15,23 +15,19 @@
 
 */
 
-use crate::clients;
+use crate::{clients, config};
 
 /// Orchestrator errors.
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
 pub enum Error {
-    #[error(transparent)]
-    Client(#[from] clients::Error),
-    #[error("detector `{0}` not found")]
-    DetectorNotFound(String),
-    #[error("detector request failed for `{id}`: {error}")]
-    DetectorRequestFailed { id: String, error: clients::Error },
-    #[error("chunker request failed for `{id}`: {error}")]
-    ChunkerRequestFailed { id: String, error: clients::Error },
-    #[error("generate request failed for `{id}`: {error}")]
-    GenerateRequestFailed { id: String, error: clients::Error },
-    #[error("tokenize request failed for `{id}`: {error}")]
-    TokenizeRequestFailed { id: String, error: clients::Error },
+    #[error("unexpected client error: {error}")]
+    UnexpectedClientError { error: clients::Error },
+    #[error("Client request failed: {error}")]
+    ClientRequestFailed { error: clients::Error },
+    #[error("client request could not be created: {error}")]
+    ClientRequestCreationFailed { error: clients::Error },
+    #[error("service configuration failed: {error}")]
+    ServiceConfigurationFailed { error: config::Error },
     #[error("{0}")]
     Other(String),
     #[error("cancelled")]

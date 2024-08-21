@@ -21,10 +21,11 @@ pub mod aggregators;
 pub mod streaming;
 pub mod unary;
 
+use std::ops::Deref;
 use std::{collections::HashMap, sync::Arc};
-
 use uuid::Uuid;
 
+use crate::clients::{Client, ClientKind};
 use crate::{
     clients::{
         self, detector::ContextType, ChunkerClient, DetectorClient, GenerationClient, NlpClient,
@@ -43,22 +44,64 @@ const UNSUITABLE_INPUT_MESSAGE: &str = "Unsuitable input detected. \
     with the unsuitable input removed.";
 
 #[cfg_attr(test, derive(Default))]
-pub struct Context {
+pub struct ContextInner {
     config: OrchestratorConfig,
     generation_client: GenerationClient,
     chunker_client: ChunkerClient,
     detector_client: DetectorClient,
 }
 
+#[cfg_attr(test, derive(Default))]
+pub struct Context(Arc<ContextInner>);
+
+impl Context {
+    pub fn new(inner: ContextInner) -> Self {
+        Self(Arc::new(inner))
+    }
+
+    pub fn with_gen(&self, task: Option<&str>) -> Result<Self, Error> {
+        if self.0.generation_client.is_configured() {
+            Ok(self.clone())
+        } else {
+            Err(clients::Error::GenerationNotConfigured {
+                task: task.unwrap_or("process with generation").to_string(),
+            }
+            .into())
+        }
+    }
+
+    pub fn _client(&self, kind: ClientKind) -> &dyn Client {
+        match kind {
+            ClientKind::Generation => &self.generation_client,
+            ClientKind::Chunker => &self.chunker_client,
+            ClientKind::Detector => &self.detector_client,
+        }
+    }
+}
+
+impl Clone for Context {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+
+impl Deref for Context {
+    type Target = Arc<ContextInner>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
 /// Handles orchestrator tasks.
 pub struct Orchestrator {
-    ctx: Arc<Context>,
+    ctx: Context,
 }
 
 impl Orchestrator {
     pub async fn new(config: OrchestratorConfig) -> Result<Self, Error> {
         let (generation_client, chunker_client, detector_client) = create_clients(&config).await;
-        let ctx = Arc::new(Context {
+        let ctx = Context::new(ContextInner {
             config,
             generation_client,
             chunker_client,
@@ -89,16 +132,18 @@ fn apply_masks(text: String, masks: Option<&[(usize, usize)]>) -> Vec<(usize, St
 }
 
 fn get_chunker_ids(
-    ctx: &Arc<Context>,
+    ctx: Context,
     detectors: &HashMap<String, DetectorParams>,
 ) -> Result<Vec<String>, Error> {
     detectors
         .keys()
         .map(|detector_id| {
-            let chunker_id = ctx
-                .config
-                .get_chunker_id(detector_id)
-                .ok_or_else(|| Error::DetectorNotFound(detector_id.clone()))?;
+            let chunker_id = ctx.config.get_chunker_id(detector_id).ok_or_else(|| {
+                Error::from(clients::Error::DetectorNotFound {
+                    id: detector_id.clone(),
+                    task: "get chunker ids".to_string(),
+                })
+            })?;
             Ok::<String, Error>(chunker_id)
         })
         .collect::<Result<Vec<_>, Error>>()
@@ -108,36 +153,36 @@ async fn create_clients(
     config: &OrchestratorConfig,
 ) -> (GenerationClient, ChunkerClient, DetectorClient) {
     // TODO: create better solution for routers
-    let generation_client = match config.generation.provider {
-        GenerationProvider::Tgis => {
-            let client = TgisClient::new(
-                clients::DEFAULT_TGIS_PORT,
-                &[(
-                    COMMON_ROUTER_KEY.to_string(),
-                    config.generation.service.clone(),
-                )],
-            )
-            .await;
-            GenerationClient::tgis(client)
-        }
-        GenerationProvider::Nlp => {
-            let client = NlpClient::new(
-                clients::DEFAULT_CAIKIT_NLP_PORT,
-                &[(
-                    COMMON_ROUTER_KEY.to_string(),
-                    config.generation.service.clone(),
-                )],
-            )
-            .await;
-            GenerationClient::nlp(client)
-        }
+    let generation_client = match &config.generation {
+        Some(generation) => match generation.provider {
+            GenerationProvider::Tgis => {
+                let client = TgisClient::new(
+                    clients::DEFAULT_TGIS_PORT,
+                    &[(COMMON_ROUTER_KEY.to_string(), generation.service.clone())],
+                )
+                .await;
+                GenerationClient::tgis(client)
+            }
+            GenerationProvider::Nlp => {
+                let client = NlpClient::new(
+                    clients::DEFAULT_CAIKIT_NLP_PORT,
+                    &[(COMMON_ROUTER_KEY.to_string(), generation.service.clone())],
+                )
+                .await;
+                GenerationClient::nlp(client)
+            }
+        },
+        None => GenerationClient::default(),
     };
+
     // TODO: simplify all of this
-    let chunker_config = config
-        .chunkers
-        .iter()
-        .map(|(chunker_id, config)| (chunker_id.clone(), config.service.clone()))
-        .collect::<Vec<_>>();
+    let chunker_config = match config.chunkers {
+        Some(ref chunkers) => chunkers
+            .iter()
+            .map(|(chunker_id, config)| (chunker_id.clone(), config.service.clone()))
+            .collect::<Vec<_>>(),
+        None => vec![],
+    };
     let chunker_client = ChunkerClient::new(clients::DEFAULT_CHUNKER_PORT, &chunker_config).await;
 
     let detector_config = config

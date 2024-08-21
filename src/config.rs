@@ -20,8 +20,47 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use crate::{clients::chunker::DEFAULT_MODEL_ID, orchestrator};
 use serde::Deserialize;
-use tracing::debug;
+use tracing::{debug, error, warn};
+
+#[derive(Debug, Clone, PartialEq, thiserror::Error)]
+pub enum Error {
+    #[error("failed to read config file from {path:?}: {error}")]
+    FailedToReadConfigFile { path: String, error: String },
+    #[error("failed to serialize config file at {path:?}: {error}")]
+    FailedToSerializeConfigFile { path: String, error: String },
+    #[error("no TLS name provided in config for service {host}:{port}")]
+    ServiceHasNoTls { host: String, port: String },
+    #[error("no TLS configs found in config")]
+    NoTlsConfigsFound,
+    #[error("TLS config `{name}` not found for service {host}:{port} in config")]
+    TlsConfigNotFound {
+        name: String,
+        host: String,
+        port: String,
+    },
+    #[error("no detectors provided in config")]
+    NoDetectorsConfigured,
+    #[error("config for detector `{detector}` has an unknown chunker_id `{chunker}`")]
+    UnresolvedDetectorChunker { detector: String, chunker: String },
+}
+
+impl From<Error> for orchestrator::Error {
+    fn from(error: Error) -> Self {
+        match error {
+            Error::FailedToReadConfigFile { .. }
+            | Error::FailedToSerializeConfigFile { .. }
+            | Error::ServiceHasNoTls { .. }
+            | Error::NoTlsConfigsFound
+            | Error::TlsConfigNotFound { .. }
+            | Error::NoDetectorsConfigured
+            | Error::UnresolvedDetectorChunker { .. } => {
+                orchestrator::Error::ServiceConfigurationFailed { error }
+            }
+        }
+    }
+}
 
 /// Configuration for service needed for
 /// orchestrator to communicate with it
@@ -111,74 +150,125 @@ pub struct DetectorConfig {
 #[cfg_attr(test, derive(Default))]
 #[derive(Clone, Debug, Deserialize)]
 pub struct OrchestratorConfig {
-    /// Generation service and associated configuration
-    pub generation: GenerationConfig,
-    /// Chunker services and associated configurations
-    pub chunkers: HashMap<String, ChunkerConfig>,
-    /// Detector services and associated configurations
+    /// Generation service and associated configuration, may be omitted entirely from config
+    pub generation: Option<GenerationConfig>,
+    /// Chunker services and associated configurations, may be omitted entirely from config
+    pub chunkers: Option<HashMap<String, ChunkerConfig>>,
+    /// Detector services and associated configurations, must be present in config
     pub detectors: HashMap<String, DetectorConfig>,
-    /// Map of TLS connections, allowing reuse across services
-    /// that may require the same TLS information
-    pub tls: HashMap<String, TlsConfig>,
+    /// Map of TLS connections, allowing reuse across services that may require the same TLS
+    /// information, may be omitted entirely from config
+    pub tls: Option<HashMap<String, TlsConfig>>,
 }
 
 impl OrchestratorConfig {
     /// Load overall orchestrator server configuration
-    pub async fn load(path: impl AsRef<Path>) -> Self {
-        let path = path.as_ref();
-        let s = tokio::fs::read_to_string(path)
-            .await
-            .unwrap_or_else(|error| {
-                panic!("failed to read orchestrator config from {path:?}: {error}")
-            });
-        let mut config: OrchestratorConfig = serde_yml::from_str(&s)
-            .unwrap_or_else(|error| panic!("invalid orchestrator config: {error}"));
-        // Map tls name to tls config
-        // TODO: do this cleaner
-        let tls_configs = &config.tls;
-        config.generation.service =
-            service_tls_name_to_config(tls_configs, config.generation.service);
-        config.chunkers = config
-            .chunkers
-            .into_iter()
-            .map(|(name, mut config)| {
-                config.service = service_tls_name_to_config(tls_configs, config.service);
-                (name, config)
-            })
-            .collect::<HashMap<_, _>>();
-        config.detectors = config
-            .detectors
-            .into_iter()
-            .map(|(name, mut config)| {
-                config.service = service_tls_name_to_config(tls_configs, config.service);
-                (name, config)
-            })
-            .collect::<HashMap<_, _>>();
+    pub async fn load(path: impl AsRef<Path>) -> Result<Self, Error> {
+        let mut config = Self::from_file(path).await?;
         debug!(?config, "loaded orchestrator config");
-        config
+
+        Self::map_tls_configs(&mut config)?;
+        config.validate()
     }
 
-    fn _validate(&self) {
-        todo!()
+    async fn from_file(path: impl AsRef<Path>) -> Result<Self, Error> {
+        let path = path.as_ref();
+        let s = tokio::fs::read_to_string(path).await.map_err(|error| {
+            Error::FailedToReadConfigFile {
+                path: path.to_str().unwrap().to_string(),
+                error: error.to_string(),
+            }
+        })?;
+        serde_yml::from_str(&s).map_err(|error| Error::FailedToSerializeConfigFile {
+            path: path.to_str().unwrap().to_string(),
+            error: error.to_string(),
+        })
+    }
+
+    fn map_tls_configs(config: &mut Self) -> Result<(), Error> {
+        let tls_configs = &config.tls;
+        match config.generation {
+            Some(ref mut generation) => {
+                generation.service =
+                    Self::tls_name_to_config(tls_configs, generation.clone().service)?;
+            }
+            None => warn!("no generation service configuration provided"),
+        }
+
+        match config.chunkers {
+            Some(ref mut chunkers) => {
+                for (_, chunker) in chunkers.iter_mut() {
+                    chunker.service =
+                        Self::tls_name_to_config(tls_configs, chunker.clone().service)?;
+                }
+            }
+            None => warn!("no chunker service configurations provided"),
+        }
+
+        for (_, detector) in config.detectors.iter_mut() {
+            detector.service = Self::tls_name_to_config(tls_configs, detector.clone().service)?;
+        }
+
+        Ok(())
+    }
+
+    fn validate(&self) -> Result<Self, Error> {
+        if self.detectors.is_empty() {
+            Err(Error::NoDetectorsConfigured)
+        } else {
+            for (_, detector) in self.detectors.iter() {
+                if !self
+                    .clone()
+                    .chunkers
+                    .unwrap()
+                    .contains_key(&detector.chunker_id)
+                    && detector.chunker_id != DEFAULT_MODEL_ID
+                {
+                    return Err(Error::UnresolvedDetectorChunker {
+                        detector: detector.clone().service.hostname,
+                        chunker: detector.chunker_id.clone(),
+                    });
+                }
+            }
+            Ok(self.clone())
+        }
     }
 
     /// Get ID of chunker associated with a particular detector
     pub fn get_chunker_id(&self, detector_id: &str) -> Option<String> {
         self.detectors
             .get(detector_id)
-            .map(|detector_config| detector_config.chunker_id.clone())
+            .map(|detector| detector.chunker_id.clone())
     }
-}
 
-fn service_tls_name_to_config(
-    tls_configs: &HashMap<String, TlsConfig>,
-    mut service: ServiceConfig,
-) -> ServiceConfig {
-    if let Some(Tls::Name(name)) = &service.tls {
-        let tls_config = tls_configs.get(name).unwrap().clone(); // TODO: handle error
-        service.tls = Some(Tls::Config(tls_config))
+    fn tls_name_to_config(
+        tls_configs: &Option<HashMap<String, TlsConfig>>,
+        mut service: ServiceConfig,
+    ) -> Result<ServiceConfig, Error> {
+        if service.tls.is_none() {
+            return Err(Error::ServiceHasNoTls {
+                host: service.hostname,
+                port: service.port.unwrap_or(0).to_string(),
+            });
+        }
+        if let Some(Tls::Name(name)) = &service.tls {
+            if let Some(tls_configs) = tls_configs {
+                if tls_configs.is_empty() {
+                    return Err(Error::NoTlsConfigsFound);
+                }
+                let tls_config = tls_configs
+                    .get(name)
+                    .ok_or(Error::TlsConfigNotFound {
+                        name: name.clone(),
+                        host: service.clone().hostname,
+                        port: service.clone().port.unwrap_or(0).to_string(),
+                    })?
+                    .clone();
+                service.tls = Some(Tls::Config(tls_config))
+            }
+        }
+        Ok(service)
     }
-    service
 }
 
 #[cfg(test)]
