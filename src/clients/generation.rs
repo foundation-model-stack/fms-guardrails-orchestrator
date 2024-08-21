@@ -67,10 +67,6 @@ impl GenerationClient {
         Self(None)
     }
 
-    pub fn is_configured(&self) -> bool {
-        self.0.is_some()
-    }
-
     pub async fn tokenize(
         &self,
         model_id: String,
