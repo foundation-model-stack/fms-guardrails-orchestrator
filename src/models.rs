@@ -986,9 +986,11 @@ fn validate_detector_params(
 pub struct Evidence {
     // Name for the evidence
     pub name: String,
-    // Value for the evidence
-    pub value: String,
-    // Computed score for the value
+    // Optional, value for the evidence
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub value: Option<String>,
+    // Optional, computed score for the value
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub score: Option<f64>,
 }
 
@@ -997,11 +999,13 @@ pub struct Evidence {
 pub struct EvidenceObj {
     // Name for the evidence
     pub name: String,
-    // Value for the evidence
-    pub value: String,
-    // Computed score for the value
+    // Optional, value for the evidence
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub value: Option<String>,
+    // Optional, omputed score for the value
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub score: Option<f64>,
-    // Additional evidence
+    // Optional, additional evidence
     #[serde(skip_serializing_if = "Option::is_none")]
     pub evidence: Option<Vec<Evidence>>,
 }

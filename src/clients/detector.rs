@@ -162,9 +162,11 @@ impl ContentAnalysisRequest {
 pub struct Evidence {
     /// Evidence name
     pub name: String,
-    /// Evidence value
-    pub value: String,
+    /// Optional, evidence value
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub value: Option<String>,
     /// Optional, score for evidence
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub score: Option<f64>,
 }
 
@@ -173,9 +175,11 @@ pub struct Evidence {
 pub struct EvidenceObj {
     /// Evidence name
     pub name: String,
-    /// Evidence value
-    pub value: String,
+    /// Optional, evidence value
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub value: Option<String>,
     /// Optional, score for evidence
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub score: Option<f64>,
     /// Optional, evidence on evidence value
     // Evidence nesting should likely not go beyond this
