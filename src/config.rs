@@ -65,6 +65,15 @@ impl From<serde_yml::Error> for Error {
     }
 }
 
+impl From<std::io::Error> for Error {
+    fn from(error: std::io::Error) -> Self {
+        Error::FailedToReadConfigFile {
+            path: "".to_string(),
+            error: error.to_string(),
+        }
+    }
+}
+
 /// Configuration for service needed for
 /// orchestrator to communicate with it
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -176,16 +185,8 @@ impl OrchestratorConfig {
 
     async fn from_file(path: impl AsRef<Path>) -> Result<Self, Error> {
         let path = path.as_ref();
-        let s = tokio::fs::read_to_string(path).await.map_err(|error| {
-            Error::FailedToReadConfigFile {
-                path: path.to_str().unwrap().to_string(),
-                error: error.to_string(),
-            }
-        })?;
-        serde_yml::from_str(&s).map_err(|error| Error::FailedToSerializeConfigFile {
-            path: path.to_str().unwrap().to_string(),
-            error: error.to_string(),
-        })
+        let s = tokio::fs::read_to_string(path).await.map_err(Error::from)?;
+        serde_yml::from_str(&s).map_err(Error::from)
     }
 
     fn map_tls_configs(config: &mut Self) -> Result<(), Error> {
@@ -437,6 +438,137 @@ tls:
                     == Some(true)
         );
         Ok(())
+    }
+
+    #[test]
+    fn test_deserialize_config_no_detectors() {
+        let s = r#"
+generation:
+    provider: tgis
+    service:
+        hostname: localhost
+        port: 8000
+chunkers:
+    sentence-en:
+        type: sentence
+        service:
+            hostname: localhost
+            port: 9000
+    sentence-ja:
+        type: sentence
+        service:
+            hostname: localhost
+            port: 9000
+detectors: {}
+tls: {}
+        "#;
+        let mut config: OrchestratorConfig = serde_yml::from_str(s).unwrap_or_else(|error| {
+            panic!("unexpected failure to deserialize config: {}", error);
+        });
+        OrchestratorConfig::map_tls_configs(&mut config)
+            .expect("Mapping TLS configs should have succeeded");
+        let config = config
+            .validate()
+            .expect_err("Config should not have been validated");
+        assert_eq!(config, Error::NoDetectorsConfigured);
+    }
+
+    #[test]
+    fn test_deserialize_config_tls_not_found() {
+        let s = r#"
+generation:
+    provider: tgis
+    service:
+        hostname: localhost
+        port: 8000
+chunkers:
+    sentence-en:
+        type: sentence
+        service:
+            hostname: localhost
+            port: 9000
+    sentence-ja:
+        type: sentence
+        service:
+            hostname: localhost
+            port: 9000
+detectors:
+    hap:
+        service:
+            hostname: localhost
+            port: 9000
+            tls: notadetector
+        chunker_id: sentence-en
+        default_threshold: 0.5
+tls:
+    detector:
+        client_ca_cert_path: /certs/ca.pem
+        cert_path: /certs/client.pem
+        key_path: /certs/client-key.pem
+        "#;
+        let mut config: OrchestratorConfig = serde_yml::from_str(s).unwrap_or_else(|error| {
+            panic!("unexpected failure to deserialize config: {}", error);
+        });
+        let err = OrchestratorConfig::map_tls_configs(&mut config)
+            .expect_err("Config should not have been able to map TLS configs");
+        assert_eq!(
+            err,
+            Error::TlsConfigNotFound {
+                name: "notadetector".to_string(),
+                host: "localhost".to_string(),
+                port: "9000".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn test_deserialize_config_chunker_found() {
+        let s = r#"
+generation:
+    provider: tgis
+    service:
+        hostname: localhost
+        port: 8000
+chunkers:
+    sentence-en:
+        type: sentence
+        service:
+            hostname: localhost
+            port: 9000
+    sentence-ja:
+        type: sentence
+        service:
+            hostname: localhost
+            port: 9000
+detectors:
+    hap:
+        service:
+            hostname: localhost
+            port: 9000
+            tls: detector
+        chunker_id: sentence-fr
+        default_threshold: 0.5
+tls:
+    detector:
+        client_ca_cert_path: /certs/ca.pem
+        cert_path: /certs/client.pem
+        key_path: /certs/client-key.pem
+        "#;
+        let mut config: OrchestratorConfig = serde_yml::from_str(s).unwrap_or_else(|error| {
+            panic!("unexpected failure to deserialize config: {}", error);
+        });
+        OrchestratorConfig::map_tls_configs(&mut config)
+            .expect("Mapping TLS configs should have succeeded");
+        let err = config
+            .validate()
+            .expect_err("Config should not have been validated");
+        assert_eq!(
+            err,
+            Error::DetectorChunkerNotFound {
+                detector: "localhost".to_string(),
+                chunker: "sentence-fr".to_string(),
+            }
+        );
     }
 }
 
