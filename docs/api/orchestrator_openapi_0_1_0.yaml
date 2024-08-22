@@ -615,7 +615,6 @@ components:
       type: object
       required:
         - name
-        - value
       title: Evidence
     EvidenceObj:
       properties:
@@ -641,7 +640,6 @@ components:
       type: object
       required:
         - name
-        - value
       title: EvidenceObj
     FinishReason:
       type: string

@@ -968,7 +968,7 @@ mod tests {
             evidence: Some(
                 [EvidenceObj {
                     name: "relevant chunk".into(),
-                    value: "What is capital of Brazil".into(),
+                    value: Some("What is capital of Brazil".into()),
                     score: Some(0.99),
                     evidence: None,
                 }]
@@ -988,7 +988,7 @@ mod tests {
             evidence: Some(
                 [EvidenceObj {
                     name: "relevant chunk".into(),
-                    value: "What is capital of Brazil".into(),
+                    value: Some("What is capital of Brazil".into()),
                     score: Some(0.99),
                     evidence: None,
                 }]
