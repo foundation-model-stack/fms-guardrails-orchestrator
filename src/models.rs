@@ -21,7 +21,10 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{clients::detector::ContextType, pb};
+use crate::{
+    clients::detector::{ContentAnalysisResponse, ContextType},
+    pb,
+};
 
 /// Parameters relevant to each detector
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -351,7 +354,7 @@ impl TextContentDetectionHttpRequest {
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TextContentDetectionResult {
     /// Detection results
-    pub detections: Vec<TokenClassificationResult>,
+    pub detections: Vec<ContentAnalysisResponse>,
 }
 /// Streaming classification result on text produced by a text generation model, containing
 /// information from the original text generation output as well as the result of
