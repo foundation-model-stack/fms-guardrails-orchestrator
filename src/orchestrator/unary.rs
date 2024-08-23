@@ -594,10 +594,14 @@ pub async fn detect_content(
     let results = chunks
         .into_iter()
         .zip(response)
-        .flat_map(|(_chunk, response)| {
+        .flat_map(|(chunk, response)| {
             response
                 .into_iter()
-                .filter_map(|resp| (resp.score >= threshold).then_some(resp))
+                .filter_map(|mut resp| {
+                    resp.start += chunk.offset;
+                    resp.end += chunk.offset;
+                    (resp.score >= threshold).then_some(resp)
+                })
                 .collect::<Vec<_>>()
         })
         .collect::<Vec<_>>();
