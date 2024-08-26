@@ -21,7 +21,7 @@ use std::{
 };
 
 use serde::Deserialize;
-use tracing::{debug, error};
+use tracing::{debug, error, warn};
 
 use crate::{clients::chunker::DEFAULT_MODEL_ID, server};
 
@@ -180,6 +180,13 @@ impl OrchestratorConfig {
         let config_yaml = tokio::fs::read_to_string(path).await?;
         let mut config: OrchestratorConfig = serde_yml::from_str(&config_yaml)?;
         debug!(?config, "loaded orchestrator config");
+
+        if config.generation.is_none() {
+            warn!("no generation config provided");
+        }
+        if config.chunkers.is_none() {
+            warn!("no chunker configs provided");
+        }
 
         config.apply_named_tls_configs()?;
         config.validate()?;
