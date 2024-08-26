@@ -175,20 +175,16 @@ pub struct OrchestratorConfig {
 }
 
 impl OrchestratorConfig {
-    /// Load overall orchestrator server configuration
+    /// Loads config
     pub async fn load(path: impl AsRef<Path>) -> Result<Self, Error> {
-        let mut config = Self::from_file(path).await?;
+        let config_yaml = tokio::fs::read_to_string(path).await?;
+        let mut config: OrchestratorConfig = serde_yml::from_str(&config_yaml)?;
         debug!(?config, "loaded orchestrator config");
 
         config.apply_named_tls_configs()?;
         config.validate()?;
-        Ok(config)
-    }
 
-    async fn from_file(path: impl AsRef<Path>) -> Result<Self, Error> {
-        let path = path.as_ref();
-        let s = tokio::fs::read_to_string(path).await.map_err(Error::from)?;
-        serde_yml::from_str(&s).map_err(Error::from)
+        Ok(config)
     }
 
     /// Applies named TLS configs to services.
