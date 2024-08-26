@@ -180,7 +180,8 @@ impl OrchestratorConfig {
         debug!(?config, "loaded orchestrator config");
 
         Self::map_tls_configs(&mut config)?;
-        config.validate()
+        config.validate()?;
+        Ok(config)
     }
 
     async fn from_file(path: impl AsRef<Path>) -> Result<Self, Error> {
@@ -216,25 +217,25 @@ impl OrchestratorConfig {
         Ok(())
     }
 
-    fn validate(&self) -> Result<Self, Error> {
+    fn validate(&self) -> Result<(), Error> {
         if self.detectors.is_empty() {
             Err(Error::NoDetectorsConfigured)
         } else {
-            for (_, detector) in self.detectors.iter() {
-                if !self
-                    .clone()
+            for detector in self.detectors.values() {
+                // Chunker is valid
+                let valid_chunker = detector.chunker_id == DEFAULT_MODEL_ID
+                    || self
                     .chunkers
-                    .unwrap()
-                    .contains_key(&detector.chunker_id)
-                    && detector.chunker_id != DEFAULT_MODEL_ID
-                {
+                    .as_ref()
+                    .is_some_and(|chunkers| chunkers.contains_key(&detector.chunker_id));
+                if !valid_chunker {
                     return Err(Error::DetectorChunkerNotFound {
-                        detector: detector.clone().service.hostname,
+                        detector: detector.service.hostname.clone(),
                         chunker: detector.chunker_id.clone(),
                     });
                 }
             }
-            Ok(self.clone())
+            Ok(())
         }
     }
 
