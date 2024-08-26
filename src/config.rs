@@ -196,20 +196,21 @@ impl OrchestratorConfig {
 
     /// Applies named TLS configs to services.
     fn apply_named_tls_configs(&mut self) -> Result<(), Error> {
-        let tls_configs = &self.tls;
-        // Generation
-        if let Some(generation) = &mut self.generation {
-            apply_named_tls_config(&mut generation.service, tls_configs)?;
-        }
-        // Chunkers
-        if let Some(chunkers) = &mut self.chunkers {
-            for chunker in chunkers.values_mut() {
-                apply_named_tls_config(&mut chunker.service, tls_configs)?;
+        if let Some(tls_configs) = &self.tls {
+            // Generation
+            if let Some(generation) = &mut self.generation {
+                apply_named_tls_config(&mut generation.service, tls_configs)?;
             }
-        }
-        // Detectors
-        for detector in self.detectors.values_mut() {
-            apply_named_tls_config(&mut detector.service, tls_configs)?;
+            // Chunkers
+            if let Some(chunkers) = &mut self.chunkers {
+                for chunker in chunkers.values_mut() {
+                    apply_named_tls_config(&mut chunker.service, tls_configs)?;
+                }
+            }
+            // Detectors
+            for detector in self.detectors.values_mut() {
+                apply_named_tls_config(&mut detector.service, tls_configs)?;
+            }
         }
         Ok(())
     }
@@ -247,32 +248,20 @@ impl OrchestratorConfig {
 /// Applies named TLS config to a service.
 fn apply_named_tls_config(
     service: &mut ServiceConfig,
-    tls_configs: &Option<HashMap<String, TlsConfig>>,
+    tls_configs: &HashMap<String, TlsConfig>,
 ) -> Result<(), Error> {
-    match &service.tls {
-        Some(Tls::Name(name)) => {
-            if let Some(tls_configs) = tls_configs {
-                let tls_config = tls_configs
-                    .get(name)
-                    .ok_or(Error::TlsConfigNotFound {
-                        name: name.clone(),
-                        host: service.hostname.clone(),
-                        port: service.port.unwrap_or(0).to_string(),
-                    })?
-                    .clone();
-                service.tls = Some(Tls::Config(tls_config));
-                Ok(())
-            } else {
-                Err(Error::TlsConfigNotFound {
-                    name: name.clone(),
-                    host: service.hostname.clone(),
-                    port: service.port.unwrap_or(0).to_string(),
-                })
-            }
-        }
-        // No named TLS config specified
-        _ => Ok(()),
+    if let Some(Tls::Name(name)) = &service.tls {
+        let tls_config = tls_configs
+            .get(name)
+            .ok_or(Error::TlsConfigNotFound {
+                name: name.clone(),
+                host: service.hostname.clone(),
+                port: service.port.unwrap_or(0).to_string(),
+            })?
+            .clone();
+        service.tls = Some(Tls::Config(tls_config));
     }
+    Ok(())
 }
 
 #[cfg(test)]
