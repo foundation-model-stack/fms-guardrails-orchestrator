@@ -15,12 +15,13 @@
 
 */
 
-use serde::Deserialize;
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
 };
-use tracing::{debug, error, warn};
+
+use serde::Deserialize;
+use tracing::{debug, error};
 
 use crate::{clients::chunker::DEFAULT_MODEL_ID, server};
 
@@ -179,7 +180,7 @@ impl OrchestratorConfig {
         let mut config = Self::from_file(path).await?;
         debug!(?config, "loaded orchestrator config");
 
-        Self::map_tls_configs(&mut config)?;
+        config.apply_named_tls_configs()?;
         config.validate()?;
         Ok(config)
     }
@@ -190,30 +191,23 @@ impl OrchestratorConfig {
         serde_yml::from_str(&s).map_err(Error::from)
     }
 
-    fn map_tls_configs(config: &mut Self) -> Result<(), Error> {
-        let tls_configs = &config.tls;
-        match config.generation {
-            Some(ref mut generation) => {
-                generation.service =
-                    Self::tls_name_to_config(tls_configs, generation.clone().service)?;
+    /// Applies named TLS configs to services.
+    fn apply_named_tls_configs(&mut self) -> Result<(), Error> {
+        let tls_configs = &self.tls;
+        // Generation
+        if let Some(generation) = &mut self.generation {
+            apply_named_tls_config(&mut generation.service, tls_configs)?;
+        }
+        // Chunkers
+        if let Some(chunkers) = &mut self.chunkers {
+            for chunker in chunkers.values_mut() {
+                apply_named_tls_config(&mut chunker.service, tls_configs)?;
             }
-            None => warn!("no generation service configuration provided"),
         }
-
-        match config.chunkers {
-            Some(ref mut chunkers) => {
-                for (_, chunker) in chunkers.iter_mut() {
-                    chunker.service =
-                        Self::tls_name_to_config(tls_configs, chunker.clone().service)?;
-                }
-            }
-            None => warn!("no chunker service configurations provided"),
+        // Detectors
+        for detector in self.detectors.values_mut() {
+            apply_named_tls_config(&mut detector.service, tls_configs)?;
         }
-
-        for (_, detector) in config.detectors.iter_mut() {
-            detector.service = Self::tls_name_to_config(tls_configs, detector.clone().service)?;
-        }
-
         Ok(())
     }
 
@@ -225,9 +219,9 @@ impl OrchestratorConfig {
                 // Chunker is valid
                 let valid_chunker = detector.chunker_id == DEFAULT_MODEL_ID
                     || self
-                    .chunkers
-                    .as_ref()
-                    .is_some_and(|chunkers| chunkers.contains_key(&detector.chunker_id));
+                        .chunkers
+                        .as_ref()
+                        .is_some_and(|chunkers| chunkers.contains_key(&detector.chunker_id));
                 if !valid_chunker {
                     return Err(Error::DetectorChunkerNotFound {
                         detector: detector.service.hostname.clone(),
@@ -245,34 +239,36 @@ impl OrchestratorConfig {
             .get(detector_id)
             .map(|detector_config| detector_config.chunker_id.clone())
     }
+}
 
-    fn tls_name_to_config(
-        tls_configs: &Option<HashMap<String, TlsConfig>>,
-        mut service: ServiceConfig,
-    ) -> Result<ServiceConfig, Error> {
-        match &service.tls {
-            Some(Tls::Name(name)) => {
-                if let Some(tls_configs) = tls_configs {
-                    let tls_config = tls_configs
-                        .get(name)
-                        .ok_or(Error::TlsConfigNotFound {
-                            name: name.clone(),
-                            host: service.clone().hostname,
-                            port: service.clone().port.unwrap_or(0).to_string(),
-                        })?
-                        .clone();
-                    service.tls = Some(Tls::Config(tls_config));
-                    Ok(service)
-                } else {
-                    Err(Error::TlsConfigNotFound {
+/// Applies named TLS config to a service.
+fn apply_named_tls_config(
+    service: &mut ServiceConfig,
+    tls_configs: &Option<HashMap<String, TlsConfig>>,
+) -> Result<(), Error> {
+    match &service.tls {
+        Some(Tls::Name(name)) => {
+            if let Some(tls_configs) = tls_configs {
+                let tls_config = tls_configs
+                    .get(name)
+                    .ok_or(Error::TlsConfigNotFound {
                         name: name.clone(),
-                        host: service.clone().hostname,
-                        port: service.clone().port.unwrap_or(0).to_string(),
-                    })
-                }
+                        host: service.hostname.clone(),
+                        port: service.port.unwrap_or(0).to_string(),
+                    })?
+                    .clone();
+                service.tls = Some(Tls::Config(tls_config));
+                Ok(())
+            } else {
+                Err(Error::TlsConfigNotFound {
+                    name: name.clone(),
+                    host: service.hostname.clone(),
+                    port: service.port.unwrap_or(0).to_string(),
+                })
             }
-            _ => Ok(service),
         }
+        // No named TLS config specified
+        _ => Ok(()),
     }
 }
 
@@ -466,8 +462,9 @@ tls: {}
         let mut config: OrchestratorConfig = serde_yml::from_str(s).unwrap_or_else(|error| {
             panic!("unexpected failure to deserialize config: {}", error);
         });
-        OrchestratorConfig::map_tls_configs(&mut config)
-            .expect("Mapping TLS configs should have succeeded");
+        config
+            .apply_named_tls_configs()
+            .expect("Apply named TLS configs should have succeeded");
         let config = config
             .validate()
             .expect_err("Config should not have been validated");
@@ -510,8 +507,9 @@ tls:
         let mut config: OrchestratorConfig = serde_yml::from_str(s).unwrap_or_else(|error| {
             panic!("unexpected failure to deserialize config: {}", error);
         });
-        let err = OrchestratorConfig::map_tls_configs(&mut config)
-            .expect_err("Config should not have been able to map TLS configs");
+        let err = config
+            .apply_named_tls_configs()
+            .expect_err("Apply named TLS configs should have failed");
         assert_eq!(
             err,
             Error::TlsConfigNotFound {
@@ -558,8 +556,9 @@ tls:
         let mut config: OrchestratorConfig = serde_yml::from_str(s).unwrap_or_else(|error| {
             panic!("unexpected failure to deserialize config: {}", error);
         });
-        OrchestratorConfig::map_tls_configs(&mut config)
-            .expect("Mapping TLS configs should have succeeded");
+        config
+            .apply_named_tls_configs()
+            .expect("Apply named TLS configs should have succeeded");
         let err = config
             .validate()
             .expect_err("Config should not have been validated");
@@ -572,5 +571,3 @@ tls:
         );
     }
 }
-
-//
