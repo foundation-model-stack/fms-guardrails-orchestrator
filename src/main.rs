@@ -24,6 +24,7 @@ use clap::Parser;
 use fms_guardrails_orchestr8::server;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 use fms_guardrails_orchestr8::config::OrchestratorConfig;
+use fms_guardrails_orchestr8::orchestrator::Orchestrator;
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -77,13 +78,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap()
         .block_on(async {
             let config = OrchestratorConfig::load(args.config_path).await?;
+            // TODO: Error handling during orchestrator creation
+            let orchestrator = Orchestrator::new(config).await?;
+
             server::run(
                 http_addr,
                 health_http_addr,
                 args.tls_cert_path,
                 args.tls_key_path,
                 args.tls_client_ca_cert_path,
-                config,
+                orchestrator,
             )
                 .await?;
             Ok(())

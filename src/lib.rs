@@ -20,6 +20,6 @@
 mod clients;
 pub mod config;
 mod models;
-mod orchestrator;
+pub mod orchestrator;
 mod pb;
 pub mod server;

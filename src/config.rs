@@ -23,7 +23,7 @@ use std::{
 use serde::Deserialize;
 use tracing::{debug, error, warn};
 
-use crate::{clients::chunker::DEFAULT_MODEL_ID, server};
+use crate::clients::chunker::DEFAULT_MODEL_ID;
 
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
 pub enum Error {
@@ -41,20 +41,6 @@ pub enum Error {
     NoDetectorsConfigured,
     #[error("config for detector `{detector}` has an unknown chunker_id `{chunker}`")]
     DetectorChunkerNotFound { detector: String, chunker: String },
-}
-
-impl From<Error> for server::Error {
-    fn from(error: Error) -> Self {
-        match error {
-            Error::FailedToReadConfigFile { .. }
-            | Error::FailedToSerializeConfigFile { .. }
-            | Error::TlsConfigNotFound { .. }
-            | Error::NoDetectorsConfigured
-            | Error::DetectorChunkerNotFound { .. } => {
-                server::Error::ConfigurationFailed(error.to_string())
-            }
-        }
-    }
 }
 
 impl From<serde_yml::Error> for Error {
