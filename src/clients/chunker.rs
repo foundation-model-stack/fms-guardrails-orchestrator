@@ -17,8 +17,10 @@
 
 use std::{collections::HashMap, pin::Pin};
 
-use futures::{stream, Future, Stream, StreamExt, TryStreamExt};
+use futures::{Future, Stream, StreamExt, TryStreamExt};
 use ginepro::LoadBalancedChannel;
+use tokio::sync::mpsc;
+use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Request, Response, Status, Streaming};
 use tracing::info;
 
@@ -88,24 +90,30 @@ impl ChunkerClient {
         model_id: &str,
         request_stream: BoxStream<BidiStreamingChunkerTokenizationTaskRequest>,
     ) -> Result<BoxStream<Result<ChunkerTokenizationStreamResult, Error>>, Error> {
-        // Handle "default" separately first
-        if model_id == DEFAULT_MODEL_ID {
+        let response_stream = if model_id == DEFAULT_MODEL_ID {
             info!("Using default whole doc chunker");
-            return Ok(Box::pin(stream::iter(vec![
-                tokenize_whole_doc_stream(request_stream).await,
-            ])));
-        }
-        let mut client = self.client(model_id)?;
-        let request = request_with_model_id(request_stream, model_id);
-        // NOTE: this is an ugly workaround to avoid bogus higher-ranked lifetime errors.
-        // https://github.com/rust-lang/rust/issues/110338
-        let response_stream_fut: Pin<Box<dyn Future<Output = StreamingTokenizationResult> + Send>> =
-            Box::pin(client.bidi_streaming_chunker_tokenization_task_predict(request));
-        let response_stream = response_stream_fut
-            .await?
-            .into_inner()
-            .map_err(Into::into)
-            .boxed();
+            let (response_tx, response_rx) = mpsc::channel(1);
+            // Spawn task to collect input stream
+            tokio::spawn(async move {
+                // NOTE: this will not resolve until the input stream is closed
+                let response = tokenize_whole_doc_stream(request_stream).await;
+                let _ = response_tx.send(response).await;
+            });
+            ReceiverStream::new(response_rx).boxed()
+        } else {
+            let mut client = self.client(model_id)?;
+            let request = request_with_model_id(request_stream, model_id);
+            // NOTE: this is an ugly workaround to avoid bogus higher-ranked lifetime errors.
+            // https://github.com/rust-lang/rust/issues/110338
+            let response_stream_fut: Pin<
+                Box<dyn Future<Output = StreamingTokenizationResult> + Send>,
+            > = Box::pin(client.bidi_streaming_chunker_tokenization_task_predict(request));
+            response_stream_fut
+                .await?
+                .into_inner()
+                .map_err(Into::into)
+                .boxed()
+        };
         Ok(response_stream)
     }
 }
