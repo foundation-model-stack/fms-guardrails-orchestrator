@@ -21,10 +21,8 @@ use std::{
 };
 
 use clap::Parser;
-use fms_guardrails_orchestr8::server;
+use fms_guardrails_orchestr8::{config::OrchestratorConfig, orchestrator::Orchestrator, server};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
-use fms_guardrails_orchestr8::config::OrchestratorConfig;
-use fms_guardrails_orchestr8::orchestrator::Orchestrator;
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -45,7 +43,7 @@ struct Args {
     tls_client_ca_cert_path: Option<PathBuf>,
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> Result<(), anyhow::Error> {
     rustls::crypto::aws_lc_rs::default_provider()
         .install_default()
         .expect("Failed to install rustls crypto provider");
@@ -89,7 +87,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 args.tls_client_ca_cert_path,
                 orchestrator,
             )
-                .await?;
+            .await?;
             Ok(())
         })
 }

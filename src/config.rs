@@ -25,40 +25,25 @@ use tracing::{debug, error, warn};
 
 use crate::clients::chunker::DEFAULT_MODEL_ID;
 
-#[derive(Debug, Clone, PartialEq, thiserror::Error)]
+#[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error("failed to read config file from {path:?}: {error}")]
-    FailedToReadConfigFile { path: String, error: String },
-    #[error("failed to serialize config file {path}: {error}")]
-    FailedToSerializeConfigFile { path: String, error: String },
-    #[error("TLS config `{name}` not found for service {host}:{port} in config")]
+    #[error("failed to read config from `{path}`: {error}")]
+    FailedToReadConfigFile { path: String, error: std::io::Error },
+    #[error("invalid config file: {0}")]
+    InvalidConfigFile(serde_yml::Error),
+    #[error("tls config `{name}` not found for service `{host}:{port}`")]
     TlsConfigNotFound {
         name: String,
         host: String,
         port: String,
     },
-    #[error("no detectors provided in config")]
+    #[error("no detectors configured")]
     NoDetectorsConfigured,
-    #[error("config for detector `{detector}` has an unknown chunker_id `{chunker}`")]
-    DetectorChunkerNotFound { detector: String, chunker: String },
-}
-
-impl From<serde_yml::Error> for Error {
-    fn from(error: serde_yml::Error) -> Self {
-        Error::FailedToSerializeConfigFile {
-            path: "".to_string(),
-            error: error.to_string(),
-        }
-    }
-}
-
-impl From<std::io::Error> for Error {
-    fn from(error: std::io::Error) -> Self {
-        Error::FailedToReadConfigFile {
-            path: "".to_string(),
-            error: error.to_string(),
-        }
-    }
+    #[error("chunker `{chunker_id}` not found for detector `{detector_id}`")]
+    DetectorChunkerNotFound {
+        detector_id: String,
+        chunker_id: String,
+    },
 }
 
 /// Configuration for service needed for
@@ -163,8 +148,15 @@ pub struct OrchestratorConfig {
 impl OrchestratorConfig {
     /// Loads config
     pub async fn load(path: impl AsRef<Path>) -> Result<Self, Error> {
-        let config_yaml = tokio::fs::read_to_string(path).await?;
-        let mut config: OrchestratorConfig = serde_yml::from_str(&config_yaml)?;
+        let path = path.as_ref();
+        let config_yaml = tokio::fs::read_to_string(path).await.map_err(|error| {
+            Error::FailedToReadConfigFile {
+                path: path.to_string_lossy().to_string(),
+                error,
+            }
+        })?;
+        let mut config: OrchestratorConfig =
+            serde_yml::from_str(&config_yaml).map_err(Error::InvalidConfigFile)?;
         debug!(?config, "loaded orchestrator config");
 
         if config.generation.is_none() {
@@ -205,7 +197,7 @@ impl OrchestratorConfig {
         if self.detectors.is_empty() {
             Err(Error::NoDetectorsConfigured)
         } else {
-            for detector in self.detectors.values() {
+            for (detector_id, detector) in &self.detectors {
                 // Chunker is valid
                 let valid_chunker = detector.chunker_id == DEFAULT_MODEL_ID
                     || self
@@ -214,8 +206,8 @@ impl OrchestratorConfig {
                         .is_some_and(|chunkers| chunkers.contains_key(&detector.chunker_id));
                 if !valid_chunker {
                     return Err(Error::DetectorChunkerNotFound {
-                        detector: detector.service.hostname.clone(),
-                        chunker: detector.chunker_id.clone(),
+                        detector_id: detector_id.clone(),
+                        chunker_id: detector.chunker_id.clone(),
                     });
                 }
             }
@@ -289,7 +281,7 @@ detectors:
         default_threshold: 0.5
 tls: {}
         "#;
-        let config: OrchestratorConfig = serde_yml::from_str(s)?;
+        let config: OrchestratorConfig = serde_yml::from_str(s).unwrap();
         assert!(
             config
                 .chunkers
@@ -332,7 +324,7 @@ tls:
     detector:
         cert_path: /certs/client.pem
         "#;
-        let config: OrchestratorConfig = serde_yml::from_str(s)?;
+        let config: OrchestratorConfig = serde_yml::from_str(s).unwrap();
         assert!(
             config
                 .chunkers
@@ -387,7 +379,7 @@ tls:
         key_path: /certs/client-key.pem
         insecure: true
         "#;
-        let config: OrchestratorConfig = serde_yml::from_str(s)?;
+        let config: OrchestratorConfig = serde_yml::from_str(s).unwrap();
         assert!(
             config
                 .chunkers
@@ -437,16 +429,14 @@ chunkers:
 detectors: {}
 tls: {}
         "#;
-        let mut config: OrchestratorConfig = serde_yml::from_str(s).unwrap_or_else(|error| {
-            panic!("unexpected failure to deserialize config: {}", error);
-        });
+        let mut config: OrchestratorConfig = serde_yml::from_str(s).unwrap();
         config
             .apply_named_tls_configs()
             .expect("Apply named TLS configs should have succeeded");
-        let config = config
+        let error = config
             .validate()
             .expect_err("Config should not have been validated");
-        assert_eq!(config, Error::NoDetectorsConfigured);
+        assert!(matches!(error, Error::NoDetectorsConfigured))
     }
 
     #[test]
@@ -482,20 +472,11 @@ tls:
         cert_path: /certs/client.pem
         key_path: /certs/client-key.pem
         "#;
-        let mut config: OrchestratorConfig = serde_yml::from_str(s).unwrap_or_else(|error| {
-            panic!("unexpected failure to deserialize config: {}", error);
-        });
-        let err = config
+        let mut config: OrchestratorConfig = serde_yml::from_str(s).unwrap();
+        let error = config
             .apply_named_tls_configs()
             .expect_err("Apply named TLS configs should have failed");
-        assert_eq!(
-            err,
-            Error::TlsConfigNotFound {
-                name: "notadetector".to_string(),
-                host: "localhost".to_string(),
-                port: "9000".to_string(),
-            }
-        );
+        assert!(matches!(error, Error::TlsConfigNotFound { .. }))
     }
 
     #[test]
@@ -531,21 +512,13 @@ tls:
         cert_path: /certs/client.pem
         key_path: /certs/client-key.pem
         "#;
-        let mut config: OrchestratorConfig = serde_yml::from_str(s).unwrap_or_else(|error| {
-            panic!("unexpected failure to deserialize config: {}", error);
-        });
+        let mut config: OrchestratorConfig = serde_yml::from_str(s).unwrap();
         config
             .apply_named_tls_configs()
             .expect("Apply named TLS configs should have succeeded");
-        let err = config
+        let error = config
             .validate()
             .expect_err("Config should not have been validated");
-        assert_eq!(
-            err,
-            Error::DetectorChunkerNotFound {
-                detector: "localhost".to_string(),
-                chunker: "sentence-fr".to_string(),
-            }
-        );
+        assert!(matches!(error, Error::DetectorChunkerNotFound { .. }))
     }
 }
