@@ -37,7 +37,7 @@ use crate::{
 
 const MODEL_ID_HEADER_NAME: &str = "mm-model-id";
 /// Default chunker that returns span for entire text
-const DEFAULT_MODEL_ID: &str = "whole_doc_chunker";
+pub const DEFAULT_MODEL_ID: &str = "whole_doc_chunker";
 
 type StreamingTokenizationResult =
     Result<Response<Streaming<ChunkerTokenizationStreamResult>>, Status>;

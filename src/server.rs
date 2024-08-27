@@ -43,7 +43,6 @@ use uuid::Uuid;
 use webpki::types::{CertificateDer, PrivateKeyDer};
 
 use crate::{
-    config::OrchestratorConfig,
     models::{self},
     orchestrator::{
         self, ClassificationWithGenTask, ContextDocsDetectionTask, DetectionOnGenerationTask,
@@ -71,7 +70,7 @@ pub async fn run(
     tls_cert_path: Option<PathBuf>,
     tls_key_path: Option<PathBuf>,
     tls_client_ca_cert_path: Option<PathBuf>,
-    config_path: PathBuf,
+    orchestrator: Orchestrator,
 ) -> Result<(), Error> {
     // Overall, the server setup and run does a couple of steps:
     // (1) Sets up a HTTP server (without TLS) for the health endpoint
@@ -85,8 +84,6 @@ pub async fn run(
     // with rustls, the hyper and tower crates [what axum is built on] had to
     // be used directly
 
-    let config = OrchestratorConfig::load(config_path).await;
-    let orchestrator = Orchestrator::new(config).await?;
     let shared_state = Arc::new(ServerState { orchestrator });
 
     // (1) Separate HTTP health server without TLS for probes

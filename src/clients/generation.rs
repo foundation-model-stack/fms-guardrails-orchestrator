@@ -38,7 +38,7 @@ use crate::{
 
 #[cfg_attr(test, faux::create, derive(Default))]
 #[derive(Clone)]
-pub struct GenerationClient(GenerationClientInner);
+pub struct GenerationClient(Option<GenerationClientInner>);
 
 #[derive(Clone)]
 enum GenerationClientInner {
@@ -56,11 +56,15 @@ impl Default for GenerationClientInner {
 #[cfg_attr(test, faux::methods)]
 impl GenerationClient {
     pub fn tgis(client: TgisClient) -> Self {
-        Self(GenerationClientInner::Tgis(client))
+        Self(Some(GenerationClientInner::Tgis(client)))
     }
 
     pub fn nlp(client: NlpClient) -> Self {
-        Self(GenerationClientInner::Nlp(client))
+        Self(Some(GenerationClientInner::Nlp(client)))
+    }
+
+    pub fn not_configured() -> Self {
+        Self(None)
     }
 
     pub async fn tokenize(
@@ -69,7 +73,7 @@ impl GenerationClient {
         text: String,
     ) -> Result<(u32, Vec<String>), Error> {
         match &self.0 {
-            GenerationClientInner::Tgis(client) => {
+            Some(GenerationClientInner::Tgis(client)) => {
                 let request = BatchedTokenizeRequest {
                     model_id: model_id.clone(),
                     requests: vec![TokenizeRequest { text }],
@@ -83,7 +87,7 @@ impl GenerationClient {
                 let response = response.responses.swap_remove(0);
                 Ok((response.token_count, response.tokens))
             }
-            GenerationClientInner::Nlp(client) => {
+            Some(GenerationClientInner::Nlp(client)) => {
                 let request = TokenizationTaskRequest { text };
                 debug!(%model_id, provider = "nlp", ?request, "sending tokenize request");
                 let response = client.tokenization_task_predict(&model_id, request).await?;
@@ -95,6 +99,7 @@ impl GenerationClient {
                     .collect::<Vec<_>>();
                 Ok((response.token_count as u32, tokens))
             }
+            None => Err(Error::ModelNotFound { model_id }),
         }
     }
 
@@ -105,7 +110,7 @@ impl GenerationClient {
         params: Option<GuardrailsTextGenerationParameters>,
     ) -> Result<ClassifiedGeneratedTextResult, Error> {
         match &self.0 {
-            GenerationClientInner::Tgis(client) => {
+            Some(GenerationClientInner::Tgis(client)) => {
                 let params = params.map(Into::into);
                 let request = BatchedGenerationRequest {
                     model_id: model_id.clone(),
@@ -118,7 +123,7 @@ impl GenerationClient {
                 debug!(%model_id, provider = "tgis", ?response, "received generate response");
                 Ok(response.into())
             }
-            GenerationClientInner::Nlp(client) => {
+            Some(GenerationClientInner::Nlp(client)) => {
                 let request = if let Some(params) = params {
                     TextGenerationTaskRequest {
                         text,
@@ -157,6 +162,7 @@ impl GenerationClient {
                 debug!(%model_id, provider = "nlp", ?response, "received generate response");
                 Ok(response.into())
             }
+            None => Err(Error::ModelNotFound { model_id }),
         }
     }
 
@@ -167,7 +173,7 @@ impl GenerationClient {
         params: Option<GuardrailsTextGenerationParameters>,
     ) -> Result<BoxStream<Result<ClassifiedGeneratedTextStreamResult, Error>>, Error> {
         match &self.0 {
-            GenerationClientInner::Tgis(client) => {
+            Some(GenerationClientInner::Tgis(client)) => {
                 let params = params.map(Into::into);
                 let request = SingleGenerationRequest {
                     model_id: model_id.clone(),
@@ -183,7 +189,7 @@ impl GenerationClient {
                     .boxed();
                 Ok(response_stream)
             }
-            GenerationClientInner::Nlp(client) => {
+            Some(GenerationClientInner::Nlp(client)) => {
                 let request = if let Some(params) = params {
                     ServerStreamingTextGenerationTaskRequest {
                         text,
@@ -223,6 +229,7 @@ impl GenerationClient {
                     .boxed();
                 Ok(response_stream)
             }
+            None => Err(Error::ModelNotFound { model_id }),
         }
     }
 }

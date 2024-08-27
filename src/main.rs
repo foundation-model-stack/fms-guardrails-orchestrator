@@ -21,7 +21,7 @@ use std::{
 };
 
 use clap::Parser;
-use fms_guardrails_orchestr8::server;
+use fms_guardrails_orchestr8::{config::OrchestratorConfig, orchestrator::Orchestrator, server};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 #[derive(Parser, Debug)]
@@ -43,7 +43,7 @@ struct Args {
     tls_client_ca_cert_path: Option<PathBuf>,
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> Result<(), anyhow::Error> {
     rustls::crypto::aws_lc_rs::default_provider()
         .install_default()
         .expect("Failed to install rustls crypto provider");
@@ -75,13 +75,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build()
         .unwrap()
         .block_on(async {
+            let config = OrchestratorConfig::load(args.config_path).await?;
+            // TODO: Error handling during orchestrator creation
+            let orchestrator = Orchestrator::new(config).await?;
+
             server::run(
                 http_addr,
                 health_http_addr,
                 args.tls_cert_path,
                 args.tls_key_path,
                 args.tls_client_ca_cert_path,
-                args.config_path,
+                orchestrator,
             )
             .await?;
             Ok(())

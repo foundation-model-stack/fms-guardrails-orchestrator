@@ -108,36 +108,35 @@ async fn create_clients(
     config: &OrchestratorConfig,
 ) -> (GenerationClient, ChunkerClient, DetectorClient) {
     // TODO: create better solution for routers
-    let generation_client = match config.generation.provider {
-        GenerationProvider::Tgis => {
-            let client = TgisClient::new(
-                clients::DEFAULT_TGIS_PORT,
-                &[(
-                    COMMON_ROUTER_KEY.to_string(),
-                    config.generation.service.clone(),
-                )],
-            )
-            .await;
-            GenerationClient::tgis(client)
-        }
-        GenerationProvider::Nlp => {
-            let client = NlpClient::new(
-                clients::DEFAULT_CAIKIT_NLP_PORT,
-                &[(
-                    COMMON_ROUTER_KEY.to_string(),
-                    config.generation.service.clone(),
-                )],
-            )
-            .await;
-            GenerationClient::nlp(client)
-        }
+    let generation_client = match &config.generation {
+        Some(generation) => match &generation.provider {
+            GenerationProvider::Tgis => {
+                let client = TgisClient::new(
+                    clients::DEFAULT_TGIS_PORT,
+                    &[(COMMON_ROUTER_KEY.to_string(), generation.service.clone())],
+                )
+                .await;
+                GenerationClient::tgis(client)
+            }
+            GenerationProvider::Nlp => {
+                let client = NlpClient::new(
+                    clients::DEFAULT_CAIKIT_NLP_PORT,
+                    &[(COMMON_ROUTER_KEY.to_string(), generation.service.clone())],
+                )
+                .await;
+                GenerationClient::nlp(client)
+            }
+        },
+        None => GenerationClient::not_configured(),
     };
     // TODO: simplify all of this
-    let chunker_config = config
-        .chunkers
-        .iter()
-        .map(|(chunker_id, config)| (chunker_id.clone(), config.service.clone()))
-        .collect::<Vec<_>>();
+    let chunker_config = match &config.chunkers {
+        Some(chunkers) => chunkers
+            .iter()
+            .map(|(chunker_id, config)| (chunker_id.clone(), config.service.clone()))
+            .collect::<Vec<_>>(),
+        None => vec![],
+    };
     let chunker_client = ChunkerClient::new(clients::DEFAULT_CHUNKER_PORT, &chunker_config).await;
 
     let detector_config = config
