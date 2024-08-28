@@ -21,7 +21,7 @@ use std::{
 };
 
 use axum::{
-    extract::{rejection::JsonRejection, Request, State},
+    extract::{rejection::JsonRejection, Query, Request, State},
     http::StatusCode,
     response::{
         sse::{Event, KeepAlive, Sse},
@@ -35,6 +35,7 @@ use futures::{stream, Stream, StreamExt};
 use hyper::body::Incoming;
 use hyper_util::rt::{TokioExecutor, TokioIo};
 use rustls::{server::WebPkiClientVerifier, RootCertStore, ServerConfig};
+use serde::Deserialize;
 use tokio::{net::TcpListener, signal};
 use tokio_rustls::TlsAcceptor;
 use tower_service::Service;
@@ -286,9 +287,11 @@ async fn health() -> Result<impl IntoResponse, ()> {
     Ok(Json(info_object).into_response())
 }
 
-async fn ready(State(state): State<Arc<ServerState>>) -> Result<impl IntoResponse, ()> {
-    // TODO: support probe flag
-    Ok(state.orchestrator.ready(true).await.unwrap())
+async fn ready(
+    State(state): State<Arc<ServerState>>,
+    Query(params): Query<ReadyCheckParams>,
+) -> Result<impl IntoResponse, ()> {
+    Ok(state.orchestrator.ready(params.probe).await.unwrap())
 }
 
 async fn classification_with_gen(
@@ -474,6 +477,18 @@ fn load_private_key(filename: &PathBuf) -> PrivateKeyDer<'static> {
         "no keys found in {:?} (encrypted keys not supported)",
         filename
     );
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ReadyCheckParams {
+    #[serde(default = "ReadyCheckParams::de_default")]
+    probe: bool,
+}
+
+impl ReadyCheckParams {
+    pub fn de_default() -> bool {
+        false
+    }
 }
 
 /// High-level errors to return to clients.
