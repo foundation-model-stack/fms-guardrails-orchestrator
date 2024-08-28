@@ -13,6 +13,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "protos/caikit_runtime_Nlp.proto",
                 "protos/generation.proto",
                 "protos/caikit_data_model_caikit_nlp.proto",
+                "protos/health_check.proto",
             ],
             &["protos"],
         )

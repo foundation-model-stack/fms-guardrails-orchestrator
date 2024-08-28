@@ -22,12 +22,19 @@ pub mod unary;
 
 use std::{collections::HashMap, sync::Arc};
 
+use axum::{
+    response::{IntoResponse, Response},
+    Json,
+};
+use reqwest::StatusCode;
+use serde::Serialize;
+use tokio::sync::Mutex;
 use uuid::Uuid;
 
 use crate::{
     clients::{
-        self, detector::ContextType, ChunkerClient, DetectorClient, GenerationClient, NlpClient,
-        TgisClient, COMMON_ROUTER_KEY,
+        self, detector::ContextType, ChunkerClient, DetectorClient, GenerationClient, HealthProbe,
+        NlpClient, TgisClient, COMMON_ROUTER_KEY,
     },
     config::{GenerationProvider, OrchestratorConfig},
     models::{
@@ -49,9 +56,99 @@ pub struct Context {
     detector_client: DetectorClient,
 }
 
+fn serialize_status_code<S>(code: &StatusCode, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    serializer.serialize_u16(code.as_u16())
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub enum HealthStatus {
+    #[serde(rename = "Not Ready")]
+    NotReady {
+        #[serde(rename = "code")]
+        #[serde(serialize_with = "serialize_status_code")]
+        code: StatusCode,
+    },
+    Ready,
+    Live,
+    Unknown,
+}
+
+impl HealthStatus {
+    pub fn to_live(&self) -> Self {
+        match self {
+            Self::Ready => Self::Live,
+            _ => self.clone(),
+        }
+    }
+}
+
+impl From<StatusCode> for HealthStatus {
+    fn from(code: StatusCode) -> Self {
+        match code {
+            StatusCode::OK => Self::Ready,
+            _ => Self::NotReady { code },
+        }
+    }
+}
+
+impl From<tonic::Status> for HealthStatus {
+    fn from(status: tonic::Status) -> Self {
+        let code = status.code();
+        match code {
+            tonic::Code::Ok => Self::Ready,
+            _ => Self::NotReady {
+                code: clients::Error::from(status).status_code(),
+            },
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct HealthCheckCache {
+    pub detectors: HashMap<String, HealthStatus>,
+    pub chunkers: HashMap<String, HealthStatus>,
+    pub generation: HashMap<String, HealthStatus>,
+}
+
+impl IntoResponse for HealthCheckCache {
+    fn into_response(self) -> Response {
+        (self.status(), Json(self)).into_response()
+    }
+}
+
+impl HealthCheckCache {
+    pub fn is_initialized(&self) -> bool {
+        !self.detectors.is_empty() && !self.chunkers.is_empty() && !self.generation.is_empty()
+    }
+
+    pub fn status(&self) -> StatusCode {
+        if self
+            .detectors
+            .values()
+            .any(|status| matches!(status, HealthStatus::NotReady { .. }))
+            || self
+                .chunkers
+                .values()
+                .any(|status| matches!(status, HealthStatus::NotReady { .. }))
+            || self
+                .generation
+                .values()
+                .any(|status| matches!(status, HealthStatus::NotReady { .. }))
+        {
+            StatusCode::SERVICE_UNAVAILABLE
+        } else {
+            StatusCode::OK
+        }
+    }
+}
+
 /// Handles orchestrator tasks.
 pub struct Orchestrator {
     ctx: Arc<Context>,
+    health_cache: Arc<Mutex<HealthCheckCache>>,
 }
 
 impl Orchestrator {
@@ -63,7 +160,20 @@ impl Orchestrator {
             chunker_client,
             detector_client,
         });
-        Ok(Self { ctx })
+        Ok(Self {
+            ctx,
+            health_cache: Arc::new(Mutex::new(HealthCheckCache::default())),
+        })
+    }
+
+    pub async fn ready(&self, probe: bool) -> Result<HealthCheckCache, Error> {
+        let mut health_cache = self.health_cache.lock().await;
+        if probe || !health_cache.is_initialized() {
+            health_cache.detectors = self.ctx.detector_client.ready().await?;
+            health_cache.chunkers = self.ctx.chunker_client.ready().await?;
+            health_cache.generation = self.ctx.generation_client.ready().await?;
+        }
+        Ok(health_cache.clone())
     }
 }
 

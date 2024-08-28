@@ -270,9 +270,11 @@ pub async fn run(
 }
 
 pub fn get_health_app(state: Arc<ServerState>) -> Router {
-    Router::new()
+    let health_app: Router = Router::new()
         .route("/health", get(health))
-        .with_state(state)
+        .route("/ready", get(ready))
+        .with_state(state);
+    health_app
 }
 
 async fn health() -> Result<impl IntoResponse, ()> {
@@ -282,6 +284,11 @@ async fn health() -> Result<impl IntoResponse, ()> {
     // should not be added in `health` endpoint`
     let info_object = HashMap::from([(PACKAGE_NAME, PACKAGE_VERSION)]);
     Ok(Json(info_object).into_response())
+}
+
+async fn ready(State(state): State<Arc<ServerState>>) -> Result<impl IntoResponse, ()> {
+    // TODO: support probe flag
+    Ok(state.orchestrator.ready(true).await.unwrap())
 }
 
 async fn classification_with_gen(

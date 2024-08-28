@@ -21,10 +21,11 @@ use futures::{StreamExt, TryStreamExt};
 use ginepro::LoadBalancedChannel;
 use tonic::Request;
 
-use super::{create_grpc_clients, BoxStream, Error};
+use super::{create_grpc_clients, BoxStream, Error, HealthProbe};
 use crate::{
     clients::COMMON_ROUTER_KEY,
     config::ServiceConfig,
+    orchestrator::HealthStatus,
     pb::{
         caikit::runtime::nlp::{
             nlp_service_client::NlpServiceClient, ServerStreamingTextGenerationTaskRequest,
@@ -34,6 +35,7 @@ use crate::{
             GeneratedTextResult, GeneratedTextStreamResult, TokenClassificationResults,
             TokenizationResults,
         },
+        grpc::health::v1::{health_client::HealthClient, HealthCheckRequest},
     },
 };
 
@@ -43,13 +45,40 @@ const MODEL_ID_HEADER_NAME: &str = "mm-model-id";
 #[derive(Clone)]
 pub struct NlpClient {
     clients: HashMap<String, NlpServiceClient<LoadBalancedChannel>>,
+    health_clients: HashMap<String, HealthClient<LoadBalancedChannel>>,
+}
+
+impl HealthProbe for NlpClient {
+    async fn ready(&self) -> Result<HashMap<String, HealthStatus>, Error> {
+        let mut results = HashMap::new();
+        for (model_id, mut client) in self.health_clients() {
+            let response = client
+                .check(HealthCheckRequest {
+                    service: model_id.clone(),
+                })
+                .await;
+            let status = response.map(|_| HealthStatus::Ready).unwrap_or_else(|e| {
+                if e.code() == tonic::Code::Unknown {
+                    HealthStatus::Unknown
+                } else {
+                    Error::from(e).status_code().into()
+                }
+            });
+            results.insert(model_id, status);
+        }
+        Ok(results)
+    }
 }
 
 #[cfg_attr(test, faux::methods)]
 impl NlpClient {
     pub async fn new(default_port: u16, config: &[(String, ServiceConfig)]) -> Self {
         let clients = create_grpc_clients(default_port, config, NlpServiceClient::new).await;
-        Self { clients }
+        let health_clients = create_grpc_clients(default_port, config, HealthClient::new).await;
+        Self {
+            clients,
+            health_clients,
+        }
     }
 
     fn client(&self, _model_id: &str) -> Result<NlpServiceClient<LoadBalancedChannel>, Error> {
@@ -62,6 +91,10 @@ impl NlpClient {
                 model_id: model_id.to_string(),
             })?
             .clone())
+    }
+
+    fn health_clients(&self) -> HashMap<String, HealthClient<LoadBalancedChannel>> {
+        self.health_clients.clone()
     }
 
     pub async fn tokenization_task_predict(

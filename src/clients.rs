@@ -26,7 +26,10 @@ use tokio::{fs::File, io::AsyncReadExt};
 use tracing::{debug, error};
 use url::Url;
 
-use crate::config::{ServiceConfig, Tls};
+use crate::{
+    config::{ServiceConfig, Tls},
+    orchestrator::HealthStatus,
+};
 
 pub mod chunker;
 pub use chunker::ChunkerClient;
@@ -62,6 +65,8 @@ pub enum Error {
     Http { code: StatusCode, message: String },
     #[error("model not found: {model_id}")]
     ModelNotFound { model_id: String },
+    #[error("health check request failed for model `{model_id}`: health status is unknown")]
+    HealthCheckRequestFailed { model_id: String },
 }
 
 impl Error {
@@ -75,6 +80,8 @@ impl Error {
             Error::Http { code, .. } => *code,
             // Return 404 for model not found
             Error::ModelNotFound { .. } => StatusCode::NOT_FOUND,
+            // Return 500 for health check failures
+            Error::HealthCheckRequestFailed { .. } => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 }
@@ -125,6 +132,17 @@ impl From<tonic::Status> for Error {
     }
 }
 
+pub trait HealthCheck {
+    async fn check(&self) -> Result<HealthStatus, Error>;
+}
+
+pub trait HealthProbe {
+    async fn ready(&self) -> Result<HashMap<String, HealthStatus>, Error>;
+    async fn live(&self) -> Result<HashMap<String, HealthStatus>, Error> {
+        unimplemented!()
+    }
+}
+
 #[derive(Clone)]
 pub struct HttpClient {
     base_url: Url,
@@ -138,6 +156,30 @@ impl HttpClient {
 
     pub fn base_url(&self) -> &Url {
         &self.base_url
+    }
+
+    pub fn health_endpoint(&self) -> Url {
+        let mut url = self.base_url.clone();
+        url.set_path("/health");
+        url
+    }
+}
+
+impl HealthCheck for HttpClient {
+    async fn check(&self) -> Result<HealthStatus, Error> {
+        self.get(self.health_endpoint().as_str())
+            .send()
+            .await
+            .map(|response| Ok(response.status().into()))
+            .unwrap_or_else(|error| {
+                if error.is_status() {
+                    Ok(error.status().unwrap().into())
+                } else {
+                    Err(Error::HealthCheckRequestFailed {
+                        model_id: self.base_url().as_str().to_string(),
+                    })
+                }
+            })
     }
 }
 

@@ -20,14 +20,18 @@ use std::collections::HashMap;
 use futures::{StreamExt, TryStreamExt};
 use ginepro::LoadBalancedChannel;
 
-use super::{create_grpc_clients, BoxStream, Error};
+use super::{create_grpc_clients, BoxStream, Error, HealthProbe};
 use crate::{
     clients::COMMON_ROUTER_KEY,
     config::ServiceConfig,
-    pb::fmaas::{
-        generation_service_client::GenerationServiceClient, BatchedGenerationRequest,
-        BatchedGenerationResponse, BatchedTokenizeRequest, BatchedTokenizeResponse,
-        GenerationResponse, ModelInfoRequest, ModelInfoResponse, SingleGenerationRequest,
+    orchestrator::HealthStatus,
+    pb::{
+        fmaas::{
+            generation_service_client::GenerationServiceClient, BatchedGenerationRequest,
+            BatchedGenerationResponse, BatchedTokenizeRequest, BatchedTokenizeResponse,
+            GenerationResponse, ModelInfoRequest, ModelInfoResponse, SingleGenerationRequest,
+        },
+        grpc::health::v1::{health_client::HealthClient, HealthCheckRequest},
     },
 };
 
@@ -35,13 +39,40 @@ use crate::{
 #[derive(Clone)]
 pub struct TgisClient {
     clients: HashMap<String, GenerationServiceClient<LoadBalancedChannel>>,
+    health_clients: HashMap<String, HealthClient<LoadBalancedChannel>>,
+}
+
+impl HealthProbe for TgisClient {
+    async fn ready(&self) -> Result<HashMap<String, HealthStatus>, Error> {
+        let mut results = HashMap::new();
+        for (model_id, mut client) in self.health_clients() {
+            let response = client
+                .check(HealthCheckRequest {
+                    service: model_id.clone(),
+                })
+                .await;
+            let status = response.map(|_| HealthStatus::Ready).unwrap_or_else(|e| {
+                if e.code() == tonic::Code::Unknown {
+                    HealthStatus::Unknown
+                } else {
+                    Error::from(e).status_code().into()
+                }
+            });
+            results.insert(model_id, status);
+        }
+        Ok(results)
+    }
 }
 
 #[cfg_attr(test, faux::methods)]
 impl TgisClient {
     pub async fn new(default_port: u16, config: &[(String, ServiceConfig)]) -> Self {
         let clients = create_grpc_clients(default_port, config, GenerationServiceClient::new).await;
-        Self { clients }
+        let health_clients = create_grpc_clients(default_port, config, HealthClient::new).await;
+        Self {
+            clients,
+            health_clients,
+        }
     }
 
     fn client(
@@ -57,6 +88,10 @@ impl TgisClient {
                 model_id: model_id.to_string(),
             })?
             .clone())
+    }
+
+    fn health_clients(&self) -> HashMap<String, HealthClient<LoadBalancedChannel>> {
+        self.health_clients.clone()
     }
 
     pub async fn generate(

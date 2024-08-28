@@ -24,7 +24,8 @@ use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Request, Response, Status, Streaming};
 use tracing::info;
 
-use super::{create_grpc_clients, BoxStream, Error};
+use super::{create_grpc_clients, BoxStream, Error, HealthProbe};
+use crate::orchestrator::HealthStatus;
 use crate::{
     config::ServiceConfig,
     pb::{
@@ -33,6 +34,7 @@ use crate::{
             BidiStreamingChunkerTokenizationTaskRequest, ChunkerTokenizationTaskRequest,
         },
         caikit_data_model::nlp::{ChunkerTokenizationStreamResult, Token, TokenizationResults},
+        grpc::health::v1::{health_client::HealthClient, HealthCheckRequest},
     },
 };
 
@@ -47,13 +49,40 @@ type StreamingTokenizationResult =
 #[derive(Clone)]
 pub struct ChunkerClient {
     clients: HashMap<String, ChunkersServiceClient<LoadBalancedChannel>>,
+    health_clients: HashMap<String, HealthClient<LoadBalancedChannel>>,
+}
+
+impl HealthProbe for ChunkerClient {
+    async fn ready(&self) -> Result<HashMap<String, HealthStatus>, Error> {
+        let mut results = HashMap::new();
+        for (model_id, mut client) in self.health_clients() {
+            let response = client
+                .check(HealthCheckRequest {
+                    service: model_id.clone(),
+                })
+                .await;
+            let status = response.map(|_| HealthStatus::Ready).unwrap_or_else(|e| {
+                if e.code() == tonic::Code::Unknown {
+                    HealthStatus::Unknown
+                } else {
+                    Error::from(e).status_code().into()
+                }
+            });
+            results.insert(model_id, status);
+        }
+        Ok(results)
+    }
 }
 
 #[cfg_attr(test, faux::methods)]
 impl ChunkerClient {
     pub async fn new(default_port: u16, config: &[(String, ServiceConfig)]) -> Self {
         let clients = create_grpc_clients(default_port, config, ChunkersServiceClient::new).await;
-        Self { clients }
+        let health_clients = create_grpc_clients(default_port, config, HealthClient::new).await;
+        Self {
+            clients,
+            health_clients,
+        }
     }
 
     fn client(&self, model_id: &str) -> Result<ChunkersServiceClient<LoadBalancedChannel>, Error> {
@@ -64,6 +93,10 @@ impl ChunkerClient {
                 model_id: model_id.to_string(),
             })?
             .clone())
+    }
+
+    fn health_clients(&self) -> HashMap<String, HealthClient<LoadBalancedChannel>> {
+        self.health_clients.clone()
     }
 
     pub async fn tokenization_task_predict(

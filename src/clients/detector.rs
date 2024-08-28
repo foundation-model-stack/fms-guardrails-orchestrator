@@ -19,11 +19,13 @@ use std::collections::HashMap;
 
 use hyper::StatusCode;
 use serde::{Deserialize, Serialize};
+use tracing::warn;
 
-use super::{create_http_clients, Error, HttpClient};
+use super::{create_http_clients, Error, HealthCheck, HealthProbe, HttpClient};
 use crate::{
     config::ServiceConfig,
     models::{DetectionResult, DetectorParams},
+    orchestrator::HealthStatus,
 };
 
 const DETECTOR_ID_HEADER_NAME: &str = "detector-id";
@@ -33,6 +35,20 @@ const DETECTOR_ID_HEADER_NAME: &str = "detector-id";
 #[derive(Clone)]
 pub struct DetectorClient {
     clients: HashMap<String, HttpClient>,
+}
+
+impl HealthProbe for DetectorClient {
+    async fn ready(&self) -> Result<HashMap<String, HealthStatus>, Error> {
+        let mut results = HashMap::new();
+        for (model_id, client) in self.clients() {
+            let status = client.check().await.unwrap_or_else(|err| {
+                warn!("{}", err);
+                HealthStatus::Unknown
+            });
+            results.insert(model_id.to_string(), status);
+        }
+        Ok(results)
+    }
 }
 
 #[cfg_attr(test, faux::methods)]
@@ -50,6 +66,10 @@ impl DetectorClient {
                 model_id: model_id.to_string(),
             })?
             .clone())
+    }
+
+    fn clients(&self) -> impl Iterator<Item = (&String, &HttpClient)> {
+        self.clients.iter()
     }
 
     // TODO: Use generics here, since the only thing that changes in comparison to generation_detection()
