@@ -1,5 +1,8 @@
 #![allow(dead_code)]
-use std::sync::Arc;
+use std::{
+    collections::{btree_map, BTreeMap},
+    sync::Arc,
+};
 
 use tokio::sync::{broadcast, mpsc, oneshot};
 use tracing::instrument;
@@ -79,7 +82,10 @@ impl Aggregator {
 }
 
 #[derive(Debug)]
-struct ResultActorMessage((Chunk, Detections));
+struct ResultActorMessage {
+    pub chunk: Chunk,
+    pub detections: Detections,
+}
 
 /// Builds results and sends them to result channel.
 struct ResultActor {
@@ -108,7 +114,8 @@ impl ResultActor {
     }
 
     async fn handle(&mut self, msg: ResultActorMessage) {
-        let (chunk, detections) = msg.0;
+        let chunk = msg.chunk;
+        let detections = msg.detections;
         let generated_text: String = chunk.results.into_iter().map(|t| t.text).collect();
         let input_start_index = chunk.input_start_index as usize;
         let input_end_index = chunk.input_end_index as usize;
@@ -169,7 +176,7 @@ impl ResultActorHandle {
     }
 
     pub async fn send(&self, chunk: Chunk, detections: Detections) {
-        let msg = ResultActorMessage((chunk, detections));
+        let msg = ResultActorMessage { chunk, detections };
         let _ = self.tx.send(msg).await;
     }
 }
@@ -210,28 +217,26 @@ impl AggregationActor {
     }
 
     async fn handle(&mut self, msg: AggregationActorMessage) {
-        // TODO: support overlapping spans from different chunkers?
         let chunk = msg.chunk;
         let detections = msg.detections;
 
         // Add to tracker
-        let span: Span = (chunk.start_index, chunk.processed_index);
-        self.tracker.push((span, detections));
+        let span = (chunk.start_index, chunk.processed_index);
+        self.tracker
+            .insert(span, TrackerEntry::new(chunk, detections));
 
-        // Find current detections for this span
-        let current = self.tracker.find_by_span_start(chunk.start_index);
-
-        //debug!(?self.tracker, "tracker snapshot");
-
-        // If we have results from all detectors, send to result actor
-        if current.len() == self.n_detectors {
-            let detections = self
-                .tracker
-                .take(current)
-                .into_iter()
-                .flat_map(|(_, detections)| detections)
-                .collect::<Vec<_>>();
-            let _ = self.result_actor.send(chunk, detections).await;
+        // Check if we have all detections for the first span
+        if self
+            .tracker
+            .first()
+            .is_some_and(|first| first.detections.len() == self.n_detectors)
+        {
+            // Take first span and send to result actor
+            if let Some((_key, value)) = self.tracker.pop_first() {
+                let chunk = value.chunk;
+                let detections = value.detections.into_iter().flatten().collect();
+                let _ = self.result_actor.send(chunk, detections).await;
+            }
         }
     }
 }
@@ -242,11 +247,7 @@ struct AggregationActorHandle {
 }
 
 impl AggregationActorHandle {
-    pub fn new(
-        result_actor: ResultActorHandle,
-        n_detectors: usize,
-        //strategy: AggregationStrategy,
-    ) -> Self {
+    pub fn new(result_actor: ResultActorHandle, n_detectors: usize) -> Self {
         let (tx, rx) = mpsc::channel(32);
         let mut actor = AggregationActor::new(rx, result_actor, n_detectors);
         tokio::spawn(async move { actor.run().await });
@@ -365,41 +366,58 @@ impl GenerationActorHandle {
 }
 
 #[derive(Debug, Clone)]
+struct TrackerEntry {
+    pub chunk: Chunk,
+    pub detections: Vec<Detections>,
+}
+
+impl TrackerEntry {
+    pub fn new(chunk: Chunk, detections: Detections) -> Self {
+        Self {
+            chunk,
+            detections: vec![detections],
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 struct Tracker {
-    state: Vec<Option<(Span, Detections)>>,
+    state: BTreeMap<Span, TrackerEntry>,
 }
 
 impl Tracker {
     pub fn new() -> Self {
-        Self { state: Vec::new() }
+        Self {
+            state: BTreeMap::new(),
+        }
     }
 
-    pub fn push(&mut self, value: (Span, Detections)) {
-        self.state.push(Some(value));
+    pub fn insert(&mut self, key: Span, value: TrackerEntry) {
+        match self.state.entry(key) {
+            btree_map::Entry::Vacant(entry) => {
+                // New span, insert entry with chunk and detections
+                entry.insert(value);
+            }
+            btree_map::Entry::Occupied(mut entry) => {
+                // Existing span, extend detections
+                entry.get_mut().detections.extend(value.detections);
+            }
+        }
     }
 
-    pub fn find_by_span_start(&self, start: i64) -> Vec<usize> {
-        self.state
-            .iter()
-            .enumerate()
-            .filter(|(_, value)| value.as_ref().is_some_and(|(span, _)| span.0 == start))
-            .map(|(i, _)| i)
-            .collect::<Vec<_>>()
+    /// Returns the key-value pair of the first span.
+    pub fn first_key_value(&self) -> Option<(&Span, &TrackerEntry)> {
+        self.state.first_key_value()
     }
 
-    pub fn take(&mut self, indices: Vec<usize>) -> Vec<(Span, Detections)> {
-        indices
-            .into_iter()
-            .filter_map(|i| self.state.get_mut(i).unwrap().take())
-            .collect()
+    /// Returns the value of the first span.
+    pub fn first(&self) -> Option<&TrackerEntry> {
+        self.state.first_key_value().map(|(_, value)| value)
     }
-}
 
-impl std::ops::Deref for Tracker {
-    type Target = [Option<(Span, Detections)>];
-
-    fn deref(&self) -> &Self::Target {
-        &self.state
+    /// Removes and returns the key-value pair of the first span.
+    pub fn pop_first(&mut self) -> Option<(Span, TrackerEntry)> {
+        self.state.pop_first()
     }
 }
 
