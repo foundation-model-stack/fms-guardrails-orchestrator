@@ -76,7 +76,7 @@ fn main() -> Result<(), anyhow::Error> {
         .unwrap()
         .block_on(async {
             let config = OrchestratorConfig::load(args.config_path).await?;
-            // TODO: Error handling during orchestrator creation
+            // Error handling during orchestrator creation includes start up readiness probing
             let orchestrator = Orchestrator::new(config).await?;
 
             server::run(

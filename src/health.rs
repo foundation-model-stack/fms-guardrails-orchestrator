@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt::Display;
 use std::sync::Arc;
 
 use axum::{
@@ -49,6 +50,16 @@ pub enum HealthStatus {
     Unknown,
 }
 
+impl Display for HealthStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            HealthStatus::Ready => write!(f, "ready to serve"),
+            HealthStatus::NotReady => write!(f, "not ready to serve"),
+            HealthStatus::Unknown => write!(f, "unknown"),
+        }
+    }
+}
+
 /// An optional response body that can be interpreted from an HTTP health check response.
 /// This is a minimal contract that allows HTTP health requests to opt in to more detailed health check responses than just the status code.
 /// If the body omitted, the health check response is considered successful if the status code is `HTTP 200 OK`.
@@ -83,10 +94,50 @@ pub struct HealthCheckCache {
     pub generation: HashMap<String, HealthCheckResult>,
 }
 
+impl Display for HealthCheckCache {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut services = vec![];
+        if !self.detectors.is_empty() {
+            services.push(format!("\ndetectors: {:?}", self.detectors));
+        }
+        if !self.chunkers.is_empty() {
+            services.push(format!("\nchunkers: {:?}", self.chunkers));
+        }
+        if !self.generation.is_empty() {
+            services.push(format!("\ngeneration: {:?}", self.generation));
+        }
+        write!(f, "services: {{{}}}", services.join(", "))
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct ReadinessProbeResponse {
     pub health_status: HealthStatus,
     pub services: HealthCheckCache,
+}
+
+impl ReadinessProbeResponse {
+    pub fn is_ready(&self) -> bool {
+        matches!(self.health_status, HealthStatus::Ready)
+    }
+
+    pub fn is_not_ready(&self) -> bool {
+        matches!(self.health_status, HealthStatus::NotReady)
+    }
+
+    pub fn is_unknown(&self) -> bool {
+        matches!(self.health_status, HealthStatus::Unknown)
+    }
+}
+
+impl Display for ReadinessProbeResponse {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "overall health status: {}\n{}",
+            self.health_status, self.services
+        )
+    }
 }
 
 impl Serialize for HealthCheckResult {
@@ -121,7 +172,7 @@ impl HealthCheckResult {
     }
 
     pub fn is_not_ready(&self) -> bool {
-        matches!(self.health_status, HealthStatus::NotReady { .. })
+        matches!(self.health_status, HealthStatus::NotReady)
     }
 
     pub fn is_unknown(&self) -> bool {

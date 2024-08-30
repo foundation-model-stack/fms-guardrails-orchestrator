@@ -25,6 +25,7 @@ use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
+use crate::orchestrator::Error::BadHealth;
 use crate::{
     clients::{
         self, detector::ContextType, ChunkerClient, DetectorClient, GenerationClient, NlpClient,
@@ -66,10 +67,26 @@ impl Orchestrator {
             chunker_client,
             detector_client,
         });
-        Ok(Self {
+        let orchestrator = Self {
             ctx,
             health_cache: Arc::new(Mutex::new(HealthCheckCache::default())),
-        })
+        };
+        orchestrator.start_up_checks().await?;
+        Ok(orchestrator)
+    }
+
+    pub async fn start_up_checks(&self) -> Result<(), Error> {
+        let res = self.ready(true).await;
+        match res {
+            Ok(response) if response.is_ready() => Ok(()),
+            Ok(response) => {
+                let message = format!("{}", response);
+                Err(BadHealth { message })
+            }
+            Err(err) => Err(BadHealth {
+                message: err.to_string(),
+            }),
+        }
     }
 
     pub async fn ready(&self, probe: bool) -> Result<ReadinessProbeResponse, Error> {
