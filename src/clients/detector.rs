@@ -19,13 +19,13 @@ use std::collections::HashMap;
 
 use hyper::StatusCode;
 use serde::{Deserialize, Serialize};
-use tracing::warn;
 
-use super::{create_http_clients, Error, HealthCheck, HealthProbe, HttpClient};
+use super::{create_http_clients, Error, HttpClient};
+use crate::health::HealthCheckResult;
 use crate::{
     config::ServiceConfig,
+    health::{HealthCheck, HealthProbe},
     models::{DetectionResult, DetectorParams},
-    orchestrator::HealthStatus,
 };
 
 const DETECTOR_ID_HEADER_NAME: &str = "detector-id";
@@ -38,14 +38,10 @@ pub struct DetectorClient {
 }
 
 impl HealthProbe for DetectorClient {
-    async fn ready(&self) -> Result<HashMap<String, HealthStatus>, Error> {
+    async fn ready(&self) -> Result<HashMap<String, HealthCheckResult>, Error> {
         let mut results = HashMap::new();
         for (model_id, client) in self.clients() {
-            let status = client.check().await.unwrap_or_else(|err| {
-                warn!("{}", err);
-                HealthStatus::Unknown
-            });
-            results.insert(model_id.to_string(), status);
+            results.insert(model_id.to_string(), client.check().await);
         }
         Ok(results)
     }

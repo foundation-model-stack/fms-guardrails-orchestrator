@@ -17,7 +17,7 @@
 
 #![allow(dead_code)]
 // Import error for adding `source` trait
-use std::{collections::HashMap, error::Error as _, pin::Pin, time::Duration};
+use std::{collections::HashMap, error::Error as _, fmt::Display, pin::Pin, time::Duration};
 
 use futures::{future::join_all, Stream};
 use ginepro::LoadBalancedChannel;
@@ -28,7 +28,7 @@ use url::Url;
 
 use crate::{
     config::{ServiceConfig, Tls},
-    orchestrator::HealthStatus,
+    health::{HealthCheck, HealthCheckResult, HealthStatus, OptionalHealthCheckResponseBody},
 };
 
 pub mod chunker;
@@ -132,14 +132,18 @@ impl From<tonic::Status> for Error {
     }
 }
 
-pub trait HealthCheck {
-    async fn check(&self) -> Result<HealthStatus, Error>;
+#[derive(Debug, Clone, PartialEq)]
+pub enum ClientCode {
+    Http(StatusCode),
+    Grpc(tonic::Code),
 }
 
-pub trait HealthProbe {
-    async fn ready(&self) -> Result<HashMap<String, HealthStatus>, Error>;
-    async fn live(&self) -> Result<HashMap<String, HealthStatus>, Error> {
-        unimplemented!()
+impl Display for ClientCode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ClientCode::Http(code) => write!(f, "HTTP {}", code),
+            ClientCode::Grpc(code) => write!(f, "gRPC {:?} {}", code, code),
+        }
     }
 }
 
@@ -166,20 +170,65 @@ impl HttpClient {
 }
 
 impl HealthCheck for HttpClient {
-    async fn check(&self) -> Result<HealthStatus, Error> {
-        self.get(self.health_endpoint().as_str())
-            .send()
-            .await
-            .map(|response| Ok(response.status().into()))
-            .unwrap_or_else(|error| {
-                if error.is_status() {
-                    Ok(error.status().unwrap().into())
+    async fn check(&self) -> HealthCheckResult {
+        let res = self.get(self.health_endpoint().as_str()).send().await;
+        match res {
+            Ok(response) => {
+                if response.status() == StatusCode::OK {
+                    if let Ok(body) = response.json::<OptionalHealthCheckResponseBody>().await {
+                        // If the service provided a body, we only anticipate a minimal health status and optional reason.
+                        HealthCheckResult {
+                            health_status: body.health_status.clone(),
+                            response_code: ClientCode::Http(StatusCode::OK),
+                            reason: match body.health_status {
+                                HealthStatus::Ready => None,
+                                _ => body.reason,
+                            },
+                        }
+                    } else {
+                        // If the service did not provide a body, we assume it is ready.
+                        HealthCheckResult {
+                            health_status: HealthStatus::Ready,
+                            response_code: ClientCode::Http(StatusCode::OK),
+                            reason: None,
+                        }
+                    }
                 } else {
-                    Err(Error::HealthCheckRequestFailed {
-                        model_id: self.base_url().as_str().to_string(),
-                    })
+                    HealthCheckResult {
+                        // The most we can presume is that 5xx errors are likely indicating service issues, implying the service is not ready,
+                        // and that 4xx errors are more likely indicating health check failures, i.e. due to configuration/implementation issues.
+                        // Regardless we can't be certain, so the reason is also provided.
+                        health_status: if response.status().as_u16() >= 500
+                            && response.status().as_u16() < 600
+                        {
+                            HealthStatus::NotReady
+                        } else if response.status().as_u16() >= 400
+                            && response.status().as_u16() < 500
+                        {
+                            HealthStatus::Unknown
+                        } else {
+                            error!(
+                                "unexpected http health check status code: {}",
+                                response.status()
+                            );
+                            HealthStatus::Unknown
+                        },
+                        response_code: ClientCode::Http(response.status()),
+                        reason: response.error_for_status().err().map(|e| e.to_string()),
+                    }
                 }
-            })
+            }
+            Err(e) => {
+                error!("error checking health: {}", e);
+                HealthCheckResult {
+                    health_status: HealthStatus::Unknown,
+                    response_code: ClientCode::Http(
+                        e.status().unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+                    ),
+                    reason: Some(e.to_string()),
+                }
+            }
+        }
     }
 }
 

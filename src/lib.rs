@@ -19,6 +19,7 @@
 
 mod clients;
 pub mod config;
+pub mod health;
 mod models;
 pub mod orchestrator;
 mod pb;

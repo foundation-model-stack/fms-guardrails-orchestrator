@@ -18,13 +18,13 @@ use futures::{StreamExt, TryStreamExt};
 use std::collections::HashMap;
 use tracing::debug;
 
-use super::{BoxStream, Error, HealthProbe, NlpClient, TgisClient};
+use super::{BoxStream, Error, NlpClient, TgisClient};
 use crate::{
+    health::{HealthCheckResult, HealthProbe},
     models::{
         ClassifiedGeneratedTextResult, ClassifiedGeneratedTextStreamResult,
         GuardrailsTextGenerationParameters,
     },
-    orchestrator::HealthStatus,
     pb::{
         caikit::runtime::nlp::{
             ServerStreamingTextGenerationTaskRequest, TextGenerationTaskRequest,
@@ -49,7 +49,7 @@ enum GenerationClientInner {
 
 #[cfg_attr(test, faux::methods)]
 impl HealthProbe for GenerationClient {
-    async fn ready(&self) -> Result<HashMap<String, HealthStatus>, Error> {
+    async fn ready(&self) -> Result<HashMap<String, HealthCheckResult>, Error> {
         match &self.0 {
             Some(GenerationClientInner::Tgis(client)) => client.ready().await,
             Some(GenerationClientInner::Nlp(client)) => client.ready().await,

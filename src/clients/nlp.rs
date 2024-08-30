@@ -21,11 +21,12 @@ use futures::{StreamExt, TryStreamExt};
 use ginepro::LoadBalancedChannel;
 use tonic::Request;
 
-use super::{create_grpc_clients, BoxStream, Error, HealthProbe};
+use super::{create_grpc_clients, BoxStream, Error};
+use crate::health::HealthCheckResult;
 use crate::{
     clients::COMMON_ROUTER_KEY,
     config::ServiceConfig,
-    orchestrator::HealthStatus,
+    health::HealthProbe,
     pb::{
         caikit::runtime::nlp::{
             nlp_service_client::NlpServiceClient, ServerStreamingTextGenerationTaskRequest,
@@ -49,22 +50,18 @@ pub struct NlpClient {
 }
 
 impl HealthProbe for NlpClient {
-    async fn ready(&self) -> Result<HashMap<String, HealthStatus>, Error> {
+    async fn ready(&self) -> Result<HashMap<String, HealthCheckResult>, Error> {
         let mut results = HashMap::new();
         for (model_id, mut client) in self.health_clients() {
-            let response = client
-                .check(HealthCheckRequest {
-                    service: model_id.clone(),
-                })
-                .await;
-            let status = response.map(|_| HealthStatus::Ready).unwrap_or_else(|e| {
-                if e.code() == tonic::Code::Unknown {
-                    HealthStatus::Unknown
-                } else {
-                    Error::from(e).status_code().into()
-                }
-            });
-            results.insert(model_id, status);
+            results.insert(
+                model_id.clone(),
+                client
+                    .check(HealthCheckRequest {
+                        service: model_id.clone(),
+                    })
+                    .await
+                    .into(),
+            );
         }
         Ok(results)
     }

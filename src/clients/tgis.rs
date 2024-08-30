@@ -19,16 +19,13 @@ use std::collections::HashMap;
 
 use futures::{StreamExt, TryStreamExt};
 use ginepro::LoadBalancedChannel;
-use tracing::warn;
 
-use super::{
-    create_grpc_clients, create_http_clients, BoxStream, Error, HealthCheck, HealthProbe,
-    HttpClient,
-};
+use super::{create_grpc_clients, create_http_clients, BoxStream, Error, HttpClient};
+use crate::health::{HealthCheck, HealthCheckResult};
 use crate::{
     clients::COMMON_ROUTER_KEY,
     config::ServiceConfig,
-    orchestrator::HealthStatus,
+    health::HealthProbe,
     pb::fmaas::{
         generation_service_client::GenerationServiceClient, BatchedGenerationRequest,
         BatchedGenerationResponse, BatchedTokenizeRequest, BatchedTokenizeResponse,
@@ -44,14 +41,10 @@ pub struct TgisClient {
 }
 
 impl HealthProbe for TgisClient {
-    async fn ready(&self) -> Result<HashMap<String, HealthStatus>, Error> {
+    async fn ready(&self) -> Result<HashMap<String, HealthCheckResult>, Error> {
         let mut results = HashMap::new();
         for (model_id, client) in self.health_clients() {
-            let status = client.check().await.unwrap_or_else(|err| {
-                warn!("{}", err);
-                HealthStatus::Unknown
-            });
-            results.insert(model_id.to_string(), status);
+            results.insert(model_id.to_string(), client.check().await);
         }
         Ok(results)
     }

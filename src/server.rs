@@ -43,6 +43,7 @@ use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 use webpki::types::{CertificateDer, PrivateKeyDer};
 
+use crate::health::{HealthCheckCache, HealthStatus, ReadinessProbeResponse};
 use crate::{
     models::{self},
     orchestrator::{
@@ -291,7 +292,18 @@ async fn ready(
     State(state): State<Arc<ServerState>>,
     Query(params): Query<ReadyCheckParams>,
 ) -> Result<impl IntoResponse, ()> {
-    Ok(state.orchestrator.ready(params.probe).await.unwrap())
+    let res = state
+        .orchestrator
+        .ready(params.probe)
+        .await
+        .unwrap_or_else(|e| {
+            error!("Unexpected error checking readiness: {:?}", e);
+            ReadinessProbeResponse {
+                health_status: HealthStatus::Unknown,
+                services: HealthCheckCache::default(),
+            }
+        });
+    Ok(res.clone())
 }
 
 async fn classification_with_gen(
