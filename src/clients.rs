@@ -21,7 +21,7 @@ use std::{collections::HashMap, error::Error as _, fmt::Display, pin::Pin, time:
 
 use futures::{future::join_all, Stream};
 use ginepro::LoadBalancedChannel;
-use reqwest::StatusCode;
+use reqwest::{Response, StatusCode};
 use tokio::{fs::File, io::AsyncReadExt};
 use tracing::{debug, error};
 use url::Url;
@@ -163,11 +163,11 @@ impl HttpClient {
         url.set_path("/health");
         url
     }
-}
 
-impl HealthCheck for HttpClient {
-    async fn check(&self) -> HealthCheckResult {
-        let res = self.get(self.health_endpoint().as_str()).send().await;
+    /// This is sectioned off to allow for testing.
+    pub(super) async fn http_response_to_health_check_result(
+        res: Result<Response, reqwest::Error>,
+    ) -> HealthCheckResult {
         match res {
             Ok(response) => {
                 if response.status() == StatusCode::OK {
@@ -210,7 +210,19 @@ impl HealthCheck for HttpClient {
                             HealthStatus::Unknown
                         },
                         response_code: ClientCode::Http(response.status()),
-                        reason: response.error_for_status().err().map(|e| e.to_string()),
+                        reason: Some(format!(
+                            "{}{}",
+                            response.error_for_status_ref().unwrap_err(),
+                            response
+                                .text()
+                                .await
+                                .map(|s| if s.is_empty() {
+                                    "".to_string()
+                                } else {
+                                    format!(": {}", s)
+                                })
+                                .unwrap_or("".to_string())
+                        )),
                     }
                 }
             }
@@ -225,6 +237,13 @@ impl HealthCheck for HttpClient {
                 }
             }
         }
+    }
+}
+
+impl HealthCheck for HttpClient {
+    async fn check(&self) -> HealthCheckResult {
+        let res = self.get(self.health_endpoint().as_str()).send().await;
+        Self::http_response_to_health_check_result(res).await
     }
 }
 
@@ -357,4 +376,169 @@ async fn create_grpc_clients<C>(
         })
         .collect::<Vec<_>>();
     join_all(clients).await.into_iter().collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use hyper::http;
+
+    async fn mock_response(status: StatusCode, body: &str) -> Result<Response, reqwest::Error> {
+        Ok(reqwest::Response::from(
+            http::Response::builder()
+                .status(status)
+                .body(body.to_string())
+                .unwrap(),
+        ))
+    }
+
+    #[tokio::test]
+    async fn test_http_health_check_responses() {
+        // READY responses from HTTP 200 OK with or without reason
+        let ready_response = [
+            (StatusCode::OK, r#"{}"#),
+            (StatusCode::OK, r#"{ "health_status": "READY" }"#),
+            (
+                StatusCode::OK,
+                r#"{ "health_status": "meaningless status" }"#,
+            ),
+            (
+                StatusCode::OK,
+                r#"{ "health_status": "READY", "reason": "needless reason" }"#,
+            ),
+        ];
+        for (status, body) in ready_response.iter() {
+            let response = mock_response(*status, body).await;
+            let result = HttpClient::http_response_to_health_check_result(response).await;
+            assert_eq!(result.health_status, HealthStatus::Ready);
+            assert_eq!(result.response_code, ClientCode::Http(StatusCode::OK));
+            assert_eq!(result.reason, None);
+            let serialized = serde_json::to_string(&result).unwrap();
+            assert_eq!(serialized, r#""READY""#);
+        }
+
+        // NOT_READY response from HTTP 200 OK without reason
+        let response = mock_response(StatusCode::OK, r#"{ "health_status": "NOT_READY" }"#).await;
+        let result = HttpClient::http_response_to_health_check_result(response).await;
+        assert_eq!(result.health_status, HealthStatus::NotReady);
+        assert_eq!(result.response_code, ClientCode::Http(StatusCode::OK));
+        assert_eq!(result.reason, None);
+        let serialized = serde_json::to_string(&result).unwrap();
+        assert_eq!(
+            serialized,
+            r#"{"health_status":"NOT_READY","response_code":"HTTP 200 OK"}"#
+        );
+
+        // UNKNOWN response from HTTP 200 OK without reason
+        let response = mock_response(StatusCode::OK, r#"{ "health_status": "UNKNOWN" }"#).await;
+        let result = HttpClient::http_response_to_health_check_result(response).await;
+        assert_eq!(result.health_status, HealthStatus::Unknown);
+        assert_eq!(result.response_code, ClientCode::Http(StatusCode::OK));
+        assert_eq!(result.reason, None);
+        let serialized = serde_json::to_string(&result).unwrap();
+        assert_eq!(
+            serialized,
+            r#"{"health_status":"UNKNOWN","response_code":"HTTP 200 OK"}"#
+        );
+
+        // NOT_READY response from HTTP 200 OK with reason
+        let response = mock_response(
+            StatusCode::OK,
+            r#"{ "health_status": "NOT_READY", "reason": "some reason" }"#,
+        )
+        .await;
+        let result = HttpClient::http_response_to_health_check_result(response).await;
+        assert_eq!(result.health_status, HealthStatus::NotReady);
+        assert_eq!(result.response_code, ClientCode::Http(StatusCode::OK));
+        assert_eq!(result.reason, Some("some reason".to_string()));
+        let serialized = serde_json::to_string(&result).unwrap();
+        assert_eq!(
+            serialized,
+            r#"{"health_status":"NOT_READY","response_code":"HTTP 200 OK","reason":"some reason"}"#
+        );
+
+        // UNKNOWN response from HTTP 200 OK with reason
+        let response = mock_response(
+            StatusCode::OK,
+            r#"{ "health_status": "UNKNOWN", "reason": "some reason" }"#,
+        )
+        .await;
+        let result = HttpClient::http_response_to_health_check_result(response).await;
+        assert_eq!(result.health_status, HealthStatus::Unknown);
+        assert_eq!(result.response_code, ClientCode::Http(StatusCode::OK));
+        assert_eq!(result.reason, Some("some reason".to_string()));
+        let serialized = serde_json::to_string(&result).unwrap();
+        assert_eq!(
+            serialized,
+            r#"{"health_status":"UNKNOWN","response_code":"HTTP 200 OK","reason":"some reason"}"#
+        );
+
+        // NOT_READY response from HTTP 503 SERVICE UNAVAILABLE with reason
+        let response = mock_response(
+            StatusCode::SERVICE_UNAVAILABLE,
+            r#"{ "message": "some error message" }"#,
+        )
+        .await;
+        let result = HttpClient::http_response_to_health_check_result(response).await;
+        assert_eq!(result.health_status, HealthStatus::NotReady);
+        assert_eq!(
+            result.response_code,
+            ClientCode::Http(StatusCode::SERVICE_UNAVAILABLE)
+        );
+        assert_eq!(result.reason, Some(r#"HTTP status server error (503 Service Unavailable) for url (http://no.url.provided.local/): { "message": "some error message" }"#.to_string()));
+        let serialized = serde_json::to_string(&result).unwrap();
+        assert_eq!(
+            serialized,
+            r#"{"health_status":"NOT_READY","response_code":"HTTP 503 Service Unavailable","reason":"HTTP status server error (503 Service Unavailable) for url (http://no.url.provided.local/): { \"message\": \"some error message\" }"}"#
+        );
+
+        // UNKNOWN response from HTTP 404 NOT FOUND with reason
+        let response = mock_response(
+            StatusCode::NOT_FOUND,
+            r#"{ "message": "service not found" }"#,
+        )
+        .await;
+        let result = HttpClient::http_response_to_health_check_result(response).await;
+        assert_eq!(result.health_status, HealthStatus::Unknown);
+        assert_eq!(
+            result.response_code,
+            ClientCode::Http(StatusCode::NOT_FOUND)
+        );
+        assert_eq!(result.reason, Some(r#"HTTP status client error (404 Not Found) for url (http://no.url.provided.local/): { "message": "service not found" }"#.to_string()));
+        let serialized = serde_json::to_string(&result).unwrap();
+        assert_eq!(
+            serialized,
+            r#"{"health_status":"UNKNOWN","response_code":"HTTP 404 Not Found","reason":"HTTP status client error (404 Not Found) for url (http://no.url.provided.local/): { \"message\": \"service not found\" }"}"#
+        );
+
+        // NOT_READY response from HTTP 500 INTERNAL SERVER ERROR without reason
+        let response = mock_response(StatusCode::INTERNAL_SERVER_ERROR, r#""#).await;
+        let result = HttpClient::http_response_to_health_check_result(response).await;
+        assert_eq!(result.health_status, HealthStatus::NotReady);
+        assert_eq!(
+            result.response_code,
+            ClientCode::Http(StatusCode::INTERNAL_SERVER_ERROR)
+        );
+        assert_eq!(result.reason, Some("HTTP status server error (500 Internal Server Error) for url (http://no.url.provided.local/)".to_string()));
+        let serialized = serde_json::to_string(&result).unwrap();
+        assert_eq!(
+            serialized,
+            r#"{"health_status":"NOT_READY","response_code":"HTTP 500 Internal Server Error","reason":"HTTP status server error (500 Internal Server Error) for url (http://no.url.provided.local/)"}"#
+        );
+
+        // UNKNOWN response from HTTP 400 BAD REQUEST without reason
+        let response = mock_response(StatusCode::BAD_REQUEST, r#""#).await;
+        let result = HttpClient::http_response_to_health_check_result(response).await;
+        assert_eq!(result.health_status, HealthStatus::Unknown);
+        assert_eq!(
+            result.response_code,
+            ClientCode::Http(StatusCode::BAD_REQUEST)
+        );
+        assert_eq!(result.reason, Some("HTTP status client error (400 Bad Request) for url (http://no.url.provided.local/)".to_string()));
+        let serialized = serde_json::to_string(&result).unwrap();
+        assert_eq!(
+            serialized,
+            r#"{"health_status":"UNKNOWN","response_code":"HTTP 400 Bad Request","reason":"HTTP status client error (400 Bad Request) for url (http://no.url.provided.local/)"}"#
+        );
+    }
 }

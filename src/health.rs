@@ -33,20 +33,20 @@ pub trait HealthProbe {
 }
 
 /// Health status determined for or returned by a client service.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum HealthStatus {
     /// The service is ready to serve requests.
     /// From successful health check responses that do not indicate the service is not ready/unknown.
-    #[serde(rename = "ready to serve")]
+    #[serde(rename = "READY")]
     Ready,
     /// The service is not ready to serve requests.
     /// The health check response indicated the service is not ready to serve requests or failed in a way indicating the service is not ready.
-    #[serde(rename = "not ready to serve")]
+    #[serde(rename = "NOT_READY")]
     NotReady,
     /// The health status of the service (and possibly the service itself) is unknown.
     /// The health check response indicated the service's health is unknown or the health request failed in a way that could have been a misconfiguration,
     /// meaning the actual service could still be healthy.
-    #[serde(rename = "unknown")]
+    #[serde(rename = "UNKNOWN")]
     Unknown,
 }
 
@@ -66,7 +66,7 @@ pub struct OptionalHealthCheckResponseBody {
 #[derive(Debug, Clone)]
 pub struct HealthCheckResult {
     /// Overall health status of client service.
-    /// `Ready to serve`, `Not ready to serve`, or `Unknown`.
+    /// `READY`, `NOT_READY`, or `UNKNOWN`.
     /// TODO: We potentially want to expand this to distinguish `Live` and `Ready to serve` statuses.
     pub health_status: HealthStatus,
     /// Response code of the latest health check request.
