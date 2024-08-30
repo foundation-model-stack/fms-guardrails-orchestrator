@@ -35,7 +35,6 @@ use futures::{stream, Stream, StreamExt};
 use hyper::body::Incoming;
 use hyper_util::rt::{TokioExecutor, TokioIo};
 use rustls::{server::WebPkiClientVerifier, RootCertStore, ServerConfig};
-use serde::Deserialize;
 use tokio::{net::TcpListener, signal};
 use tokio_rustls::TlsAcceptor;
 use tower_service::Service;
@@ -43,8 +42,8 @@ use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 use webpki::types::{CertificateDer, PrivateKeyDer};
 
-use crate::health::{HealthCheckCache, HealthStatus, ReadinessProbeResponse};
 use crate::{
+    health::{HealthCheckCache, HealthStatus, ReadinessProbeResponse, ReadyCheckParams},
     models::{self},
     orchestrator::{
         self, ClassificationWithGenTask, ContextDocsDetectionTask, DetectionOnGenerationTask,
@@ -489,18 +488,6 @@ fn load_private_key(filename: &PathBuf) -> PrivateKeyDer<'static> {
         "no keys found in {:?} (encrypted keys not supported)",
         filename
     );
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct ReadyCheckParams {
-    #[serde(default = "ReadyCheckParams::de_default")]
-    probe: bool,
-}
-
-impl ReadyCheckParams {
-    pub fn de_default() -> bool {
-        false
-    }
 }
 
 /// High-level errors to return to clients.

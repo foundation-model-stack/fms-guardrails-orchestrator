@@ -50,16 +50,6 @@ pub enum HealthStatus {
     Unknown,
 }
 
-impl Display for HealthStatus {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            HealthStatus::Ready => write!(f, "ready to serve"),
-            HealthStatus::NotReady => write!(f, "not ready to serve"),
-            HealthStatus::Unknown => write!(f, "unknown"),
-        }
-    }
-}
-
 /// An optional response body that can be interpreted from an HTTP health check response.
 /// This is a minimal contract that allows HTTP health requests to opt in to more detailed health check responses than just the status code.
 /// If the body omitted, the health check response is considered successful if the status code is `HTTP 200 OK`.
@@ -87,27 +77,13 @@ pub struct HealthCheckResult {
     pub reason: Option<String>,
 }
 
+/// A cache to hold the latest health check results for each client service.
+/// Orchestrator has a reference-counted mutex-protected instance of this cache.
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct HealthCheckCache {
     pub detectors: HashMap<String, HealthCheckResult>,
     pub chunkers: HashMap<String, HealthCheckResult>,
     pub generation: HashMap<String, HealthCheckResult>,
-}
-
-impl Display for HealthCheckCache {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut services = vec![];
-        if !self.detectors.is_empty() {
-            services.push(format!("\ndetectors: {:?}", self.detectors));
-        }
-        if !self.chunkers.is_empty() {
-            services.push(format!("\nchunkers: {:?}", self.chunkers));
-        }
-        if !self.generation.is_empty() {
-            services.push(format!("\ngeneration: {:?}", self.generation));
-        }
-        write!(f, "services: {{{}}}", services.join(", "))
-    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -116,54 +92,11 @@ pub struct ReadinessProbeResponse {
     pub services: HealthCheckCache,
 }
 
-impl ReadinessProbeResponse {
-    pub fn is_ready(&self) -> bool {
-        matches!(self.health_status, HealthStatus::Ready)
-    }
-
-    pub fn is_not_ready(&self) -> bool {
-        matches!(self.health_status, HealthStatus::NotReady)
-    }
-
-    pub fn is_unknown(&self) -> bool {
-        matches!(self.health_status, HealthStatus::Unknown)
-    }
-}
-
-impl Display for ReadinessProbeResponse {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "overall health status: {}\n{}",
-            self.health_status, self.services
-        )
-    }
-}
-
-impl Serialize for HealthCheckResult {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        match self.health_status {
-            HealthStatus::Ready => self.health_status.serialize(serializer),
-            _ => match &self.reason {
-                Some(reason) => {
-                    let mut state = serializer.serialize_struct("HealthCheckResult", 3)?;
-                    state.serialize_field("health_status", &self.health_status)?;
-                    state.serialize_field("response_code", &self.response_code.to_string())?;
-                    state.serialize_field("reason", reason)?;
-                    state.end()
-                }
-                None => {
-                    let mut state = serializer.serialize_struct("HealthCheckResult", 2)?;
-                    state.serialize_field("health_status", &self.health_status)?;
-                    state.serialize_field("response_code", &self.response_code.to_string())?;
-                    state.end()
-                }
-            },
-        }
-    }
+#[derive(Debug, Clone, Deserialize)]
+pub struct ReadyCheckParams {
+    /// Whether to probe the service for readiness or just return the cached health status.
+    #[serde(default = "ReadyCheckParams::de_default")]
+    pub probe: bool,
 }
 
 impl HealthCheckResult {
@@ -203,6 +136,135 @@ impl HealthCheckResult {
                     response.status
                 ))
             }
+        }
+    }
+}
+
+impl HealthCheckCache {
+    pub fn is_initialized(&self) -> bool {
+        !self.detectors.is_empty() && !self.chunkers.is_empty() && !self.generation.is_empty()
+    }
+
+    pub fn status_code(&self) -> StatusCode {
+        if self.detectors.values().any(|status| !status.is_ready())
+            || self.chunkers.values().any(|status| !status.is_ready())
+            || self.generation.values().any(|status| !status.is_ready())
+        {
+            StatusCode::SERVICE_UNAVAILABLE
+        } else {
+            StatusCode::OK
+        }
+    }
+
+    pub fn health_status(&self) -> HealthStatus {
+        if self.detectors.values().any(|status| !status.is_ready())
+            || self.chunkers.values().any(|status| !status.is_ready())
+            || self.generation.values().any(|status| !status.is_ready())
+        {
+            HealthStatus::NotReady
+        } else if !self.is_initialized()
+            || (self.detectors.values().any(|status| status.is_unknown())
+                && self.chunkers.values().any(|status| status.is_unknown())
+                && self.generation.values().any(|status| status.is_unknown()))
+        {
+            HealthStatus::Unknown
+        } else {
+            HealthStatus::Ready
+        }
+    }
+}
+
+impl ReadinessProbeResponse {
+    pub async fn from_cache(cache: Arc<Mutex<HealthCheckCache>>) -> Self {
+        let guard = cache.lock().await;
+        let services = guard.clone();
+        let health_status = services.health_status();
+
+        Self {
+            health_status,
+            services,
+        }
+    }
+}
+
+impl ReadinessProbeResponse {
+    pub fn is_ready(&self) -> bool {
+        matches!(self.health_status, HealthStatus::Ready)
+    }
+
+    pub fn is_not_ready(&self) -> bool {
+        matches!(self.health_status, HealthStatus::NotReady)
+    }
+
+    pub fn is_unknown(&self) -> bool {
+        matches!(self.health_status, HealthStatus::Unknown)
+    }
+}
+
+impl ReadyCheckParams {
+    pub fn de_default() -> bool {
+        false
+    }
+}
+
+impl Display for HealthStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            HealthStatus::Ready => write!(f, "ready to serve"),
+            HealthStatus::NotReady => write!(f, "not ready to serve"),
+            HealthStatus::Unknown => write!(f, "unknown"),
+        }
+    }
+}
+
+impl Display for HealthCheckCache {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut services = vec![];
+        if !self.detectors.is_empty() {
+            services.push(format!("\ndetectors: {:?}", self.detectors));
+        }
+        if !self.chunkers.is_empty() {
+            services.push(format!("\nchunkers: {:?}", self.chunkers));
+        }
+        if !self.generation.is_empty() {
+            services.push(format!("\ngeneration: {:?}", self.generation));
+        }
+        write!(f, "services: {{{}}}", services.join(", "))
+    }
+}
+
+impl Display for ReadinessProbeResponse {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "overall health status: {}\n{}",
+            self.health_status, self.services
+        )
+    }
+}
+
+impl Serialize for HealthCheckResult {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self.health_status {
+            HealthStatus::Ready => self.health_status.serialize(serializer),
+            _ => match &self.reason {
+                Some(reason) => {
+                    let mut state = serializer.serialize_struct("HealthCheckResult", 3)?;
+                    state.serialize_field("health_status", &self.health_status)?;
+                    state.serialize_field("response_code", &self.response_code.to_string())?;
+                    state.serialize_field("reason", reason)?;
+                    state.end()
+                }
+                None => {
+                    let mut state = serializer.serialize_struct("HealthCheckResult", 2)?;
+                    state.serialize_field("health_status", &self.health_status)?;
+                    state.serialize_field("response_code", &self.response_code.to_string())?;
+                    state.end()
+                }
+            },
         }
     }
 }
@@ -264,53 +326,6 @@ impl From<StatusCode> for HealthStatus {
                 );
                 Self::Unknown
             }
-        }
-    }
-}
-
-impl HealthCheckCache {
-    pub fn is_initialized(&self) -> bool {
-        !self.detectors.is_empty() && !self.chunkers.is_empty() && !self.generation.is_empty()
-    }
-
-    pub fn status_code(&self) -> StatusCode {
-        if self.detectors.values().any(|status| !status.is_ready())
-            || self.chunkers.values().any(|status| !status.is_ready())
-            || self.generation.values().any(|status| !status.is_ready())
-        {
-            StatusCode::SERVICE_UNAVAILABLE
-        } else {
-            StatusCode::OK
-        }
-    }
-
-    pub fn health_status(&self) -> HealthStatus {
-        if self.detectors.values().any(|status| !status.is_ready())
-            || self.chunkers.values().any(|status| !status.is_ready())
-            || self.generation.values().any(|status| !status.is_ready())
-        {
-            HealthStatus::NotReady
-        } else if !self.is_initialized()
-            || (self.detectors.values().any(|status| status.is_unknown())
-                && self.chunkers.values().any(|status| status.is_unknown())
-                && self.generation.values().any(|status| status.is_unknown()))
-        {
-            HealthStatus::Unknown
-        } else {
-            HealthStatus::Ready
-        }
-    }
-}
-
-impl ReadinessProbeResponse {
-    pub async fn from_cache(cache: Arc<Mutex<HealthCheckCache>>) -> Self {
-        let guard = cache.lock().await;
-        let services = guard.clone();
-        let health_status = services.health_status();
-
-        Self {
-            health_status,
-            services,
         }
     }
 }
