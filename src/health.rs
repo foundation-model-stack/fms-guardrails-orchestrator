@@ -1,15 +1,20 @@
-use crate::clients::{ClientCode, Error};
-use crate::pb::grpc::health::v1::HealthCheckResponse;
-use axum::http::StatusCode;
-use axum::response::{IntoResponse, Response};
-use axum::Json;
-use serde::ser::SerializeStruct;
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
+
+use axum::{
+    http::StatusCode,
+    response::{IntoResponse, Response},
+    Json,
+};
+use serde::{ser::SerializeStruct, Deserialize, Serialize};
 use tokio::sync::Mutex;
 use tonic::Code;
 use tracing::{error, warn};
+
+use crate::{
+    clients::{ClientCode, Error},
+    pb::grpc::health::v1::HealthCheckResponse,
+};
 
 /// A health check endpoint for a singular client.
 /// NOTE: Only implemented by HTTP clients, gRPC clients with health check support should use the generated `grpc::health::v1::health_client::HealthClient` service.

@@ -65,8 +65,6 @@ pub enum Error {
     Http { code: StatusCode, message: String },
     #[error("model not found: {model_id}")]
     ModelNotFound { model_id: String },
-    #[error("health check request failed for model `{model_id}`: health status is unknown")]
-    HealthCheckRequestFailed { model_id: String },
 }
 
 impl Error {
@@ -80,8 +78,6 @@ impl Error {
             Error::Http { code, .. } => *code,
             // Return 404 for model not found
             Error::ModelNotFound { .. } => StatusCode::NOT_FOUND,
-            // Return 500 for health check failures
-            Error::HealthCheckRequestFailed { .. } => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 }
