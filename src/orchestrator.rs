@@ -25,7 +25,6 @@ use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
-use crate::orchestrator::Error::BadHealth;
 use crate::{
     clients::{
         self, detector::ContextType, ChunkerClient, DetectorClient, GenerationClient, NlpClient,
@@ -81,9 +80,9 @@ impl Orchestrator {
             Ok(response) if response.is_ready() => Ok(()),
             Ok(response) => {
                 let message = format!("{}", response);
-                Err(BadHealth { message })
+                Err(Error::BadHealth { message })
             }
-            Err(err) => Err(BadHealth {
+            Err(err) => Err(Error::BadHealth {
                 message: err.to_string(),
             }),
         }

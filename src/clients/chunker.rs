@@ -25,10 +25,9 @@ use tonic::{Request, Response, Status, Streaming};
 use tracing::info;
 
 use super::{create_grpc_clients, BoxStream, Error};
-use crate::health::HealthCheckResult;
 use crate::{
     config::ServiceConfig,
-    health::HealthProbe,
+    health::{HealthCheckResult, HealthProbe},
     pb::{
         caikit::runtime::chunkers::{
             chunkers_service_client::ChunkersServiceClient,
@@ -53,6 +52,7 @@ pub struct ChunkerClient {
     health_clients: HashMap<String, HealthClient<LoadBalancedChannel>>,
 }
 
+#[cfg_attr(test, faux::methods)]
 impl HealthProbe for ChunkerClient {
     async fn ready(&self) -> Result<HashMap<String, HealthCheckResult>, Error> {
         let mut results = HashMap::new();

@@ -86,12 +86,14 @@ pub struct HealthCheckCache {
     pub generation: HashMap<String, HealthCheckResult>,
 }
 
+/// Response for the readiness probe endpoint that holds a serialized cache of health check results for each client service.
 #[derive(Debug, Clone, Serialize)]
 pub struct ReadinessProbeResponse {
     pub health_status: HealthStatus,
     pub services: HealthCheckCache,
 }
 
+/// Probe query param for the readiness probe endpoint.
 #[derive(Debug, Clone, Deserialize)]
 pub struct ReadyCheckParams {
     /// Whether to probe the service for readiness or just return the cached health status.

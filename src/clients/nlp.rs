@@ -22,11 +22,10 @@ use ginepro::LoadBalancedChannel;
 use tonic::Request;
 
 use super::{create_grpc_clients, BoxStream, Error};
-use crate::health::HealthCheckResult;
 use crate::{
     clients::COMMON_ROUTER_KEY,
     config::ServiceConfig,
-    health::HealthProbe,
+    health::{HealthCheckResult, HealthProbe},
     pb::{
         caikit::runtime::nlp::{
             nlp_service_client::NlpServiceClient, ServerStreamingTextGenerationTaskRequest,
@@ -49,6 +48,7 @@ pub struct NlpClient {
     health_clients: HashMap<String, HealthClient<LoadBalancedChannel>>,
 }
 
+#[cfg_attr(test, faux::methods)]
 impl HealthProbe for NlpClient {
     async fn ready(&self) -> Result<HashMap<String, HealthCheckResult>, Error> {
         let mut results = HashMap::new();

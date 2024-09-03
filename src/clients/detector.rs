@@ -21,10 +21,9 @@ use hyper::StatusCode;
 use serde::{Deserialize, Serialize};
 
 use super::{create_http_clients, Error, HttpClient};
-use crate::health::HealthCheckResult;
 use crate::{
     config::ServiceConfig,
-    health::{HealthCheck, HealthProbe},
+    health::{HealthCheck, HealthCheckResult, HealthProbe},
     models::{DetectionResult, DetectorParams},
 };
 
@@ -37,6 +36,7 @@ pub struct DetectorClient {
     clients: HashMap<String, HttpClient>,
 }
 
+#[cfg_attr(test, faux::methods)]
 impl HealthProbe for DetectorClient {
     async fn ready(&self) -> Result<HashMap<String, HealthCheckResult>, Error> {
         let mut results = HashMap::new();

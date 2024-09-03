@@ -21,11 +21,10 @@ use futures::{StreamExt, TryStreamExt};
 use ginepro::LoadBalancedChannel;
 
 use super::{create_grpc_clients, create_http_clients, BoxStream, Error, HttpClient};
-use crate::health::{HealthCheck, HealthCheckResult};
 use crate::{
     clients::COMMON_ROUTER_KEY,
     config::ServiceConfig,
-    health::HealthProbe,
+    health::{HealthCheck, HealthCheckResult, HealthProbe},
     pb::fmaas::{
         generation_service_client::GenerationServiceClient, BatchedGenerationRequest,
         BatchedGenerationResponse, BatchedTokenizeRequest, BatchedTokenizeResponse,
@@ -40,6 +39,7 @@ pub struct TgisClient {
     health_clients: HashMap<String, HttpClient>,
 }
 
+#[cfg_attr(test, faux::methods)]
 impl HealthProbe for TgisClient {
     async fn ready(&self) -> Result<HashMap<String, HealthCheckResult>, Error> {
         let mut results = HashMap::new();
