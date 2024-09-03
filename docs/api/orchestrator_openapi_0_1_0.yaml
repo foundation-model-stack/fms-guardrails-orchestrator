@@ -10,6 +10,49 @@ tags:
     - name: Task - Chat Completions, with detection
       description: Detections on list of messages comprising a conversation and/or completions from a model
 paths:
+  /health:
+    get:
+      tags:
+        - Health
+      summary: Performs quick liveliness check of the orchestrator service
+      operationId: health
+      responses:
+        '200':
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  fms-guardrails-orchestr8:
+                    type: string
+                    example: 0.1.0
+  /ready:
+    get:
+      tags:
+        - Health
+      summary: Returns the readiness status of the service based on the health of configured clients
+      operationId: ready
+      parameters:
+        - name: probe
+          in: query
+          description: Trigger a probe into the readiness of client services if true or just report the latest known status from cache if false, default is false
+          required: false
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: Orchestrator is ready to serve
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadinessResponse'
+        '503':
+          description: Orchestrator is not ready to serve
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadinessResponse'
   /api/v1/task/classification-with-text-generation:
     post:
       tags:
@@ -240,6 +283,61 @@ paths:
 
 components:
   schemas:
+    HealthStatus:
+        type: string
+        enum:
+            - READY
+            - NOT_READY
+            - UNKNOWN
+        title: Health Status
+    HealthCheckResponse:
+      oneOf:
+        - properties:
+            health_status:
+              $ref: '#/components/schemas/HealthStatus'
+            response_code:
+              type: string
+              title: Response Code
+              example: "HTTP 200 OK"
+            reason:
+              type: string
+              title: Reason
+              example: "Service not found"
+          required:
+            - health_status
+            - response_code
+        - additionalProperties:
+            $ref: '#/components/schemas/HealthStatus'
+      type: object
+      title: Health Check Response
+    ReadinessResponse:
+      properties:
+        health_status:
+          $ref: '#/components/schemas/HealthStatus'
+        services:
+          type: object
+          title: Readiness status for each client service
+          properties:
+            generation:
+              type: object
+              title: Generation Services
+              items:
+                $ref: '#/components/schemas/HealthCheckResponse'
+            detectors:
+              type: object
+              title: Detector Services
+              items:
+                $ref: '#/components/schemas/HealthCheckResponse'
+            chunkers:
+              type: object
+              title: Chunker Services
+              items:
+                $ref: '#/components/schemas/HealthCheckResponse'
+      required:
+        - ready
+        - services
+      type: object
+      title: Readiness Response
     DetectionContentRequest:
       properties:
         detectors:
