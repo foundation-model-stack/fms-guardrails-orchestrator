@@ -159,15 +159,15 @@ impl HealthCheckCache {
     }
 
     pub fn health_status(&self) -> HealthStatus {
-        if self.detectors.values().any(|status| !status.is_ready())
-            || self.chunkers.values().any(|status| !status.is_ready())
-            || self.generation.values().any(|status| !status.is_ready())
+        if self.detectors.values().any(|status| status.is_not_ready())
+            || self.chunkers.values().any(|status| status.is_not_ready())
+            || self.generation.values().any(|status| status.is_not_ready())
         {
             HealthStatus::NotReady
         } else if !self.is_initialized()
             || (self.detectors.values().any(|status| status.is_unknown())
-                && self.chunkers.values().any(|status| status.is_unknown())
-                && self.generation.values().any(|status| status.is_unknown()))
+                || self.chunkers.values().any(|status| status.is_unknown())
+                || self.generation.values().any(|status| status.is_unknown()))
         {
             HealthStatus::Unknown
         } else {

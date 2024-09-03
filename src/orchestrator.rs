@@ -25,6 +25,7 @@ use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
+use crate::health::HealthStatus;
 use crate::{
     clients::{
         self, detector::ContextType, ChunkerClient, DetectorClient, GenerationClient, NlpClient,
@@ -77,14 +78,20 @@ impl Orchestrator {
     pub async fn start_up_checks(&self) -> Result<(), Error> {
         let res = self.ready(true).await;
         match res {
-            Ok(response) if response.is_ready() => Ok(()),
-            Ok(response) => {
-                let message = format!("{}", response);
-                Err(Error::BadHealth { message })
-            }
-            Err(err) => Err(Error::BadHealth {
-                message: err.to_string(),
-            }),
+            Ok(response) => match response.health_status {
+                // `UNKNOWN` health status is not treated as fatal behaviour for the orchestrator, we can not guarantee all clients have implemented health check and done so properly.
+                HealthStatus::Ready | HealthStatus::Unknown => Ok(()),
+                // In contrast, `NOT_READY` signals that the client's health is determined, and it can not serve.
+                HealthStatus::NotReady => Err(Error::BadHealth {
+                    message: format!("Orchestrator client services are not ready: {}", response),
+                }),
+            },
+            // Instead of propagating a fatal error for graceful shutdown, we choose to panic since no error propagation to here is currently expected, and so if such case occurs it should be investigated.
+            // TODO: Perhaps `Result<..., Error>` should be omitted entirely from `ready()` for now?
+            Err(err) => panic!(
+                "Unexpected error during start-up readiness probing: {}",
+                err
+            ),
         }
     }
 
