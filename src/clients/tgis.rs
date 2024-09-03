@@ -41,9 +41,9 @@ pub struct TgisClient {
 
 #[cfg_attr(test, faux::methods)]
 impl HealthProbe for TgisClient {
-    async fn ready(&self) -> Result<HashMap<String, HealthCheckResult>, Error> {
-        let mut results = HashMap::new();
-        for (model_id, client) in self.health_clients() {
+    async fn health(&self) -> Result<HashMap<String, HealthCheckResult>, Error> {
+        let mut results = HashMap::with_capacity(self.health_clients.len());
+        for (model_id, client) in self.health_clients.clone() {
             results.insert(model_id.to_string(), client.check().await);
         }
         Ok(results)
@@ -74,10 +74,6 @@ impl TgisClient {
                 model_id: model_id.to_string(),
             })?
             .clone())
-    }
-
-    fn health_clients(&self) -> HashMap<String, HttpClient> {
-        self.health_clients.clone()
     }
 
     pub async fn generate(

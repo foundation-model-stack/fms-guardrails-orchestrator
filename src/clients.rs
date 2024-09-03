@@ -158,12 +158,6 @@ impl HttpClient {
         &self.base_url
     }
 
-    pub fn health_endpoint(&self) -> Url {
-        let mut url = self.base_url.clone();
-        url.set_path("/health");
-        url
-    }
-
     /// This is sectioned off to allow for testing.
     pub(super) async fn http_response_to_health_check_result(
         res: Result<Response, reqwest::Error>,
@@ -242,7 +236,8 @@ impl HttpClient {
 
 impl HealthCheck for HttpClient {
     async fn check(&self) -> HealthCheckResult {
-        let res = self.get(self.health_endpoint().as_str()).send().await;
+        let url = self.base_url.join("health").unwrap();
+        let res = self.get(url).send().await;
         Self::http_response_to_health_check_result(res).await
     }
 }

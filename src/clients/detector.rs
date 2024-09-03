@@ -38,8 +38,8 @@ pub struct DetectorClient {
 
 #[cfg_attr(test, faux::methods)]
 impl HealthProbe for DetectorClient {
-    async fn ready(&self) -> Result<HashMap<String, HealthCheckResult>, Error> {
-        let mut results = HashMap::new();
+    async fn health(&self) -> Result<HashMap<String, HealthCheckResult>, Error> {
+        let mut results = HashMap::with_capacity(self.clients.len());
         for (model_id, client) in self.clients() {
             results.insert(model_id.to_string(), client.check().await);
         }

@@ -82,7 +82,7 @@ impl Orchestrator {
                 // `UNKNOWN` health status is not treated as fatal behaviour for the orchestrator, we can not guarantee all clients have implemented health check and done so properly.
                 HealthStatus::Ready | HealthStatus::Unknown => Ok(()),
                 // In contrast, `NOT_READY` signals that the client's health is determined, and it can not serve.
-                HealthStatus::NotReady => Err(Error::BadHealth {
+                HealthStatus::NotReady => Err(Error::Unhealthy {
                     message: format!("Orchestrator client services are not ready: {}", response),
                 }),
             },
@@ -98,9 +98,9 @@ impl Orchestrator {
     pub async fn ready(&self, probe: bool) -> Result<ReadinessProbeResponse, Error> {
         let mut health_cache = self.health_cache.lock().await;
         if probe || !health_cache.is_initialized() {
-            health_cache.detectors = self.ctx.detector_client.ready().await?;
-            health_cache.chunkers = self.ctx.chunker_client.ready().await?;
-            health_cache.generation = self.ctx.generation_client.ready().await?;
+            health_cache.detectors = self.ctx.detector_client.health().await?;
+            health_cache.chunkers = self.ctx.chunker_client.health().await?;
+            health_cache.generation = self.ctx.generation_client.health().await?;
         }
 
         Ok(ReadinessProbeResponse::from_cache(self.health_cache.clone()).await)

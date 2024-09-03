@@ -50,10 +50,10 @@ enum GenerationClientInner {
 
 #[cfg_attr(test, faux::methods)]
 impl HealthProbe for GenerationClient {
-    async fn ready(&self) -> Result<HashMap<String, HealthCheckResult>, Error> {
+    async fn health(&self) -> Result<HashMap<String, HealthCheckResult>, Error> {
         match &self.0 {
-            Some(GenerationClientInner::Tgis(client)) => client.ready().await,
-            Some(GenerationClientInner::Nlp(client)) => client.ready().await,
+            Some(GenerationClientInner::Tgis(client)) => client.health().await,
+            Some(GenerationClientInner::Nlp(client)) => client.health().await,
             None => Ok(HashMap::new()),
         }
     }

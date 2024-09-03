@@ -27,7 +27,7 @@ pub trait HealthCheck {
 /// A health probe for aggregated health check results of multiple client services.
 pub trait HealthProbe {
     /// Makes a health check request to each client and returns a map of client service ids to health check results.
-    fn ready(
+    fn health(
         &self,
     ) -> impl std::future::Future<Output = Result<HashMap<String, HealthCheckResult>, Error>> + Send;
 }
@@ -97,7 +97,7 @@ pub struct ReadinessProbeResponse {
 #[derive(Debug, Clone, Deserialize)]
 pub struct ReadyCheckParams {
     /// Whether to probe the service for readiness or just return the cached health status.
-    #[serde(default = "ReadyCheckParams::de_default")]
+    #[serde(default)]
     pub probe: bool,
 }
 
@@ -200,12 +200,6 @@ impl ReadinessProbeResponse {
 
     pub fn is_unknown(&self) -> bool {
         matches!(self.health_status, HealthStatus::Unknown)
-    }
-}
-
-impl ReadyCheckParams {
-    pub fn de_default() -> bool {
-        false
     }
 }
 
