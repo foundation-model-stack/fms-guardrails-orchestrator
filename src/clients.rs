@@ -381,9 +381,13 @@ async fn create_grpc_clients<C>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::pb::grpc::health::v1::{health_check_response::ServingStatus, HealthCheckResponse};
     use hyper::http;
 
-    async fn mock_response(status: StatusCode, body: &str) -> Result<Response, reqwest::Error> {
+    async fn mock_http_response(
+        status: StatusCode,
+        body: &str,
+    ) -> Result<Response, reqwest::Error> {
         Ok(reqwest::Response::from(
             http::Response::builder()
                 .status(status)
@@ -392,10 +396,23 @@ mod tests {
         ))
     }
 
+    async fn mock_grpc_response(
+        health_status: Option<i32>,
+        tonic_status: Option<tonic::Status>,
+    ) -> Result<tonic::Response<HealthCheckResponse>, tonic::Status> {
+        match health_status {
+            Some(health_status) => Ok(tonic::Response::new(HealthCheckResponse {
+                status: health_status,
+            })),
+            None => Err(tonic_status
+                .expect("tonic_status must be provided for test if health_status is None")),
+        }
+    }
+
     #[tokio::test]
     async fn test_http_health_check_responses() {
         // READY responses from HTTP 200 OK with or without reason
-        let ready_response = [
+        let response = [
             (StatusCode::OK, r#"{}"#),
             (StatusCode::OK, r#"{ "health_status": "READY" }"#),
             (
@@ -407,8 +424,8 @@ mod tests {
                 r#"{ "health_status": "READY", "reason": "needless reason" }"#,
             ),
         ];
-        for (status, body) in ready_response.iter() {
-            let response = mock_response(*status, body).await;
+        for (status, body) in response.iter() {
+            let response = mock_http_response(*status, body).await;
             let result = HttpClient::http_response_to_health_check_result(response).await;
             assert_eq!(result.health_status, HealthStatus::Ready);
             assert_eq!(result.response_code, ClientCode::Http(StatusCode::OK));
@@ -418,7 +435,8 @@ mod tests {
         }
 
         // NOT_READY response from HTTP 200 OK without reason
-        let response = mock_response(StatusCode::OK, r#"{ "health_status": "NOT_READY" }"#).await;
+        let response =
+            mock_http_response(StatusCode::OK, r#"{ "health_status": "NOT_READY" }"#).await;
         let result = HttpClient::http_response_to_health_check_result(response).await;
         assert_eq!(result.health_status, HealthStatus::NotReady);
         assert_eq!(result.response_code, ClientCode::Http(StatusCode::OK));
@@ -430,7 +448,8 @@ mod tests {
         );
 
         // UNKNOWN response from HTTP 200 OK without reason
-        let response = mock_response(StatusCode::OK, r#"{ "health_status": "UNKNOWN" }"#).await;
+        let response =
+            mock_http_response(StatusCode::OK, r#"{ "health_status": "UNKNOWN" }"#).await;
         let result = HttpClient::http_response_to_health_check_result(response).await;
         assert_eq!(result.health_status, HealthStatus::Unknown);
         assert_eq!(result.response_code, ClientCode::Http(StatusCode::OK));
@@ -442,7 +461,7 @@ mod tests {
         );
 
         // NOT_READY response from HTTP 200 OK with reason
-        let response = mock_response(
+        let response = mock_http_response(
             StatusCode::OK,
             r#"{ "health_status": "NOT_READY", "reason": "some reason" }"#,
         )
@@ -458,7 +477,7 @@ mod tests {
         );
 
         // UNKNOWN response from HTTP 200 OK with reason
-        let response = mock_response(
+        let response = mock_http_response(
             StatusCode::OK,
             r#"{ "health_status": "UNKNOWN", "reason": "some reason" }"#,
         )
@@ -474,7 +493,7 @@ mod tests {
         );
 
         // NOT_READY response from HTTP 503 SERVICE UNAVAILABLE with reason
-        let response = mock_response(
+        let response = mock_http_response(
             StatusCode::SERVICE_UNAVAILABLE,
             r#"{ "message": "some error message" }"#,
         )
@@ -493,7 +512,7 @@ mod tests {
         );
 
         // UNKNOWN response from HTTP 404 NOT FOUND with reason
-        let response = mock_response(
+        let response = mock_http_response(
             StatusCode::NOT_FOUND,
             r#"{ "message": "service not found" }"#,
         )
@@ -512,7 +531,7 @@ mod tests {
         );
 
         // NOT_READY response from HTTP 500 INTERNAL SERVER ERROR without reason
-        let response = mock_response(StatusCode::INTERNAL_SERVER_ERROR, r#""#).await;
+        let response = mock_http_response(StatusCode::INTERNAL_SERVER_ERROR, r#""#).await;
         let result = HttpClient::http_response_to_health_check_result(response).await;
         assert_eq!(result.health_status, HealthStatus::NotReady);
         assert_eq!(
@@ -527,7 +546,7 @@ mod tests {
         );
 
         // UNKNOWN response from HTTP 400 BAD REQUEST without reason
-        let response = mock_response(StatusCode::BAD_REQUEST, r#""#).await;
+        let response = mock_http_response(StatusCode::BAD_REQUEST, r#""#).await;
         let result = HttpClient::http_response_to_health_check_result(response).await;
         assert_eq!(result.health_status, HealthStatus::Unknown);
         assert_eq!(
@@ -540,5 +559,100 @@ mod tests {
             serialized,
             r#"{"health_status":"UNKNOWN","response_code":"HTTP 400 Bad Request","reason":"HTTP status client error (400 Bad Request) for url (http://no.url.provided.local/)"}"#
         );
+    }
+
+    #[tokio::test]
+    async fn test_grpc_health_check_responses() {
+        // READY responses from gRPC 0 OK from serving status 1 SERVING
+        let response = mock_grpc_response(Some(ServingStatus::Serving as i32), None).await;
+        let result = HealthCheckResult::from(response);
+        assert_eq!(result.health_status, HealthStatus::Ready);
+        assert_eq!(result.response_code, ClientCode::Grpc(tonic::Code::Ok));
+        assert_eq!(result.reason, None);
+        let serialized = serde_json::to_string(&result).unwrap();
+        assert_eq!(serialized, r#""READY""#);
+
+        // NOT_READY response from gRPC 0 OK form serving status 2 NOT_SERVING
+        let response = mock_grpc_response(Some(ServingStatus::NotServing as i32), None).await;
+        let result = HealthCheckResult::from(response);
+        assert_eq!(result.health_status, HealthStatus::NotReady);
+        assert_eq!(result.response_code, ClientCode::Grpc(tonic::Code::Ok));
+        assert_eq!(
+            result.reason,
+            Some(
+                "gRPC serving status NOT_SERVING: Service is not ready to serve requests"
+                    .to_string()
+            )
+        );
+        let serialized = serde_json::to_string(&result).unwrap();
+        assert_eq!(
+            serialized,
+            r#"{"health_status":"NOT_READY","response_code":"gRPC Ok The operation completed successfully","reason":"gRPC serving status NOT_SERVING: Service is not ready to serve requests"}"#
+        );
+
+        // UNKNOWN response from gRPC 0 OK from serving status 0 UNKNOWN
+        let response = mock_grpc_response(Some(ServingStatus::Unknown as i32), None).await;
+        let result = HealthCheckResult::from(response);
+        assert_eq!(result.health_status, HealthStatus::Unknown);
+        assert_eq!(result.response_code, ClientCode::Grpc(tonic::Code::Ok));
+        assert_eq!(
+            result.reason,
+            Some(
+                "gRPC serving status UNKNOWN: Service's health is unexpectedly unknown".to_string()
+            )
+        );
+        let serialized = serde_json::to_string(&result).unwrap();
+        assert_eq!(
+            serialized,
+            r#"{"health_status":"UNKNOWN","response_code":"gRPC Ok The operation completed successfully","reason":"gRPC serving status UNKNOWN: Service's health is unexpectedly unknown"}"#
+        );
+
+        // UNKNOWN response from gRPC 0 OK from serving status 3 SERVICE_UNKNOWN
+        let response = mock_grpc_response(Some(ServingStatus::ServiceUnknown as i32), None).await;
+        let result = HealthCheckResult::from(response);
+        assert_eq!(result.health_status, HealthStatus::Unknown);
+        assert_eq!(result.response_code, ClientCode::Grpc(tonic::Code::Ok));
+        assert_eq!(
+            result.reason,
+            Some(
+                "gRPC serving status SERVICE_UNKNOWN: Service's heath is currently unknown"
+                    .to_string()
+            )
+        );
+        let serialized = serde_json::to_string(&result).unwrap();
+        assert_eq!(
+            serialized,
+            r#"{"health_status":"UNKNOWN","response_code":"gRPC Ok The operation completed successfully","reason":"gRPC serving status SERVICE_UNKNOWN: Service's heath is currently unknown"}"#
+        );
+
+        // UNKNOWN response from other gRPC error codes (covering main ones)
+        let response_codes = [
+            tonic::Code::InvalidArgument,
+            tonic::Code::Internal,
+            tonic::Code::NotFound,
+            tonic::Code::Unimplemented,
+            tonic::Code::Unauthenticated,
+            tonic::Code::PermissionDenied,
+            tonic::Code::Unavailable,
+        ];
+        for code in response_codes.iter() {
+            let status = tonic::Status::new(*code, "some error message");
+            let response = mock_grpc_response(None, Some(status.clone())).await;
+            let result = HealthCheckResult::from(response);
+            assert_eq!(result.health_status, HealthStatus::Unknown);
+            assert_eq!(result.response_code, ClientCode::Grpc(*code));
+            assert_eq!(
+                result.reason,
+                Some(format!("gRPC health check failed: {}", status.clone()))
+            );
+            let serialized = serde_json::to_string(&result).unwrap();
+            assert_eq!(
+                serialized,
+                format!(
+                    r#"{{"health_status":"UNKNOWN","response_code":"gRPC {:?} {}","reason":"gRPC health check failed: status: {:?}, message: \"some error message\", details: [], metadata: MetadataMap {{ headers: {{}} }}"}}"#,
+                    code, code, code
+                )
+            );
+        }
     }
 }
