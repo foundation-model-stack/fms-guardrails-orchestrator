@@ -446,10 +446,7 @@ mod tests {
     use super::*;
     use crate::{
         models::TokenClassificationResult,
-        pb::{
-            caikit::runtime::chunkers::ChunkerTokenizationStreamResult,
-            caikit_data_model::nlp::Token,
-        },
+        pb::caikit_data_model::nlp::{ChunkerTokenizationStreamResult, Token},
     };
 
     fn get_detection_obj(

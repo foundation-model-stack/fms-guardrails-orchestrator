@@ -1,4 +1,4 @@
-
+// Ref. https://github.com/caikit/caikit/blob/main/caikit/interfaces/nlp/data_model/text.py
 /*------------------------------------------------------------------------------
  * AUTO GENERATED
  *----------------------------------------------------------------------------*/
@@ -27,6 +27,16 @@
 
  /*-- MESSAGES ----------------------------------------------------------------*/
 
+  message ChunkerTokenizationStreamResult {
+
+    /*-- fields --*/
+    repeated caikit_data_model.nlp.Token results = 1;
+    int64 token_count = 4;
+    int64 processed_index = 2;
+    int64 start_index = 3;
+    int64 input_start_index = 20;
+    int64 input_end_index = 21;
+  }
 
  message GeneratedTextResult {
 

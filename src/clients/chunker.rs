@@ -30,10 +30,9 @@ use crate::{
     pb::{
         caikit::runtime::chunkers::{
             chunkers_service_client::ChunkersServiceClient,
-            BidiStreamingChunkerTokenizationTaskRequest, ChunkerTokenizationStreamResult,
-            ChunkerTokenizationTaskRequest,
+            BidiStreamingChunkerTokenizationTaskRequest, ChunkerTokenizationTaskRequest,
         },
-        caikit_data_model::nlp::{Token, TokenizationResults},
+        caikit_data_model::nlp::{ChunkerTokenizationStreamResult, Token, TokenizationResults},
     },
 };
 
