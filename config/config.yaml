@@ -1,3 +1,7 @@
+# This is an example config provided with the orchestrator and can be overwritten with
+# environment variable `ORCHESTRATOR_CONFIG` pointing to a configuration file path
+# at application deploy time.
+
 # Generation server that will be used on any orchestrator endpoints requiring generation
 generation:
     # The `provider` refers to the specific generation API to be used, currently text generation:
