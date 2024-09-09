@@ -49,6 +49,7 @@ tonic-build = "0.12.1"
 
 [dev-dependencies]
 faux = "0.1.10"
+axum-test = "15.7.1"
 
 [profile.release]
 debug = false
