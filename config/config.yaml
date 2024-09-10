@@ -1,24 +1,46 @@
+# This is an example config provided with the orchestrator and can be overwritten with
+# environment variable `ORCHESTRATOR_CONFIG` pointing to a configuration file path
+# at application deploy time.
+
+# Generation server that will be used on any orchestrator endpoints requiring generation
 generation:
+    # The `provider` refers to the specific generation API to be used, currently text generation:
+    # - `tgis` refers to the [TGIS generation API](https://github.com/IBM/text-generation-inference/blob/main/proto/generation.proto)
+    # - `nlp` refers to the [caikit-nlp API](https://github.com/caikit/caikit-nlp/tree/main/caikit_nlp/modules/text_generation)
     provider: tgis # tgis or nlp
     service:
         hostname: localhost
         port: 8033
+# Any chunker servers that will be used by any detectors
 chunkers:
+    # Chunker ID/name
     en_regex:
         type: sentence
         service:
             hostname: localhost
             port: 8085
+            # TLS ID/name, optional (detailed in `tls` section)
             tls: caikit
+# Any detector servers that will be used by an application to provide detections.
+# Users will refer to detectors by ID/name in their requests
 detectors:
+    # Detector ID/name to be used in user requests
     hap-en:
         service:
-            hostname: https://localhost/api/v1/text/contents # full url / endpoint currently expected
+            hostname: https://localhost/api/v1/text/contents # Full url / endpoint currently expected
             port: 8080
+            # TLS ID/name, optional (detailed in `tls` section)
             tls: detector
+        # Chunker ID/name from `chunkers` section if applicable
         chunker_id: en_regex
+        # Default score threshold for a detector. If a user
+        # request does not provide threshold, this will be used to filter
+        # out detector results by score below this threshold
         default_threshold: 0.5
+# For flexibility for use across multiple servers (e.g. multiple detector servers),
+# TLS configuration information can be referred to by name.
 tls:
+    # Chosen ID/name for particular TLS config
     caikit:
         cert_path: /path/to/tls.crt
         key_path: /path/to/tls.key
