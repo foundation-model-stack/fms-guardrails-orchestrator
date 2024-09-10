@@ -97,12 +97,15 @@ impl Orchestrator {
     pub async fn clients_health(&self, probe: bool) -> Result<HealthProbeResponse, Error> {
         let initialized = self.client_health_cache.read().await.is_empty();
         if probe || !initialized {
-            let mut health_cache = self.client_health_cache.write().await;
             debug!("refreshing health cache");
             let now = Instant::now();
-            health_cache.detectors = self.ctx.detector_client.health().await?;
-            health_cache.chunkers = self.ctx.chunker_client.health().await?;
-            health_cache.generation = self.ctx.generation_client.health().await?;
+            let detectors = self.ctx.detector_client.health().await?;
+            let chunkers = self.ctx.chunker_client.health().await?;
+            let generation = self.ctx.generation_client.health().await?;
+            let mut health_cache = self.client_health_cache.write().await;
+            health_cache.detectors = detectors;
+            health_cache.chunkers = chunkers;
+            health_cache.generation = generation;
             debug!(
                 "refreshing health cache completed in {:.2?}ms",
                 now.elapsed().as_millis()
