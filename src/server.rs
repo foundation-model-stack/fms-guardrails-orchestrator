@@ -87,7 +87,7 @@ pub async fn run(
     let shared_state = Arc::new(ServerState { orchestrator });
 
     // (1) Separate HTTP health server without TLS for probes
-    let health_app: Router = Router::new().route("/health", get(health));
+    let health_app = get_health_app();
     let health_listener = TcpListener::bind(&health_http_addr)
         .await
         .unwrap_or_else(|_| panic!("failed to bind to {health_http_addr}"));
@@ -261,6 +261,11 @@ pub async fn run(
     guardrails_res.unwrap();
     info!("Shutdown complete for servers");
     Ok(())
+}
+
+pub fn get_health_app() -> Router {
+    let health_app: Router = Router::new().route("/health", get(health));
+    health_app
 }
 
 async fn health() -> Result<impl IntoResponse, ()> {
