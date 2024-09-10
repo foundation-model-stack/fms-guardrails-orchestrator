@@ -23,7 +23,7 @@ use futures::{future::join_all, Stream};
 use ginepro::LoadBalancedChannel;
 use reqwest::{Response, StatusCode};
 use tokio::{fs::File, io::AsyncReadExt};
-use tracing::{debug, error};
+use tracing::error;
 use url::Url;
 
 use crate::{
@@ -146,12 +146,18 @@ impl Display for ClientCode {
 #[derive(Clone)]
 pub struct HttpClient {
     base_url: Url,
+    health_url: Url,
     client: reqwest::Client,
 }
 
 impl HttpClient {
     pub fn new(base_url: Url, client: reqwest::Client) -> Self {
-        Self { base_url, client }
+        let health_url = extract_base_url(&base_url).join("health").unwrap();
+        Self {
+            base_url,
+            health_url,
+            client,
+        }
     }
 
     pub fn base_url(&self) -> &Url {
@@ -236,8 +242,7 @@ impl HttpClient {
 
 impl HealthCheck for HttpClient {
     async fn check(&self) -> HealthCheckResult {
-        let url = self.base_url.join("health").unwrap();
-        let res = self.get(url).send().await;
+        let res = self.get(self.health_url.clone()).send().await;
         Self::http_response_to_health_check_result(res).await
     }
 }
@@ -295,8 +300,6 @@ pub async fn create_http_clients(
                 });
 
                 builder = builder.use_rustls_tls().identity(identity);
-
-                debug!(?tls_config.insecure);
                 builder = builder.danger_accept_invalid_certs(tls_config.insecure.unwrap_or(false));
 
                 if let Some(client_ca_cert_path) = &tls_config.client_ca_cert_path {
@@ -373,11 +376,26 @@ async fn create_grpc_clients<C>(
     join_all(clients).await.into_iter().collect()
 }
 
+/// Extracts a base url from a url including path segments.
+fn extract_base_url(url: &Url) -> Url {
+    let mut url = url.clone();
+    match url.path_segments_mut() {
+        Ok(mut path) => {
+            path.clear();
+        }
+        Err(_) => {
+            panic!("url cannot be a base");
+        }
+    }
+    url
+}
+
 #[cfg(test)]
 mod tests {
+    use hyper::http;
+
     use super::*;
     use crate::pb::grpc::health::v1::{health_check_response::ServingStatus, HealthCheckResponse};
-    use hyper::http;
 
     async fn mock_http_response(
         status: StatusCode,
@@ -649,5 +667,21 @@ mod tests {
                 )
             );
         }
+    }
+
+    #[test]
+    fn test_extract_base_url() {
+        let url =
+            Url::parse("https://example-detector.route.example.com/api/v1/text/contents").unwrap();
+        let base_url = extract_base_url(&url);
+        assert_eq!(
+            Url::parse("https://example-detector.route.example.com/").unwrap(),
+            base_url
+        );
+        let health_url = base_url.join("/health").unwrap();
+        assert_eq!(
+            Url::parse("https://example-detector.route.example.com/health").unwrap(),
+            health_url
+        );
     }
 }

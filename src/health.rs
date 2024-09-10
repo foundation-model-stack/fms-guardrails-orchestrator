@@ -1,6 +1,4 @@
-use std::collections::HashMap;
-use std::fmt::Display;
-use std::sync::Arc;
+use std::{collections::HashMap, fmt::Display, sync::Arc};
 
 use axum::{
     http::StatusCode,
@@ -8,7 +6,7 @@ use axum::{
     Json,
 };
 use serde::{ser::SerializeStruct, Deserialize, Serialize};
-use tokio::sync::Mutex;
+use tokio::sync::RwLock;
 use tonic::Code;
 use tracing::{error, warn};
 
@@ -148,9 +146,8 @@ impl HealthCheckCache {
 }
 
 impl HealthProbeResponse {
-    pub async fn from_cache(cache: Arc<Mutex<HealthCheckCache>>) -> Self {
-        let guard = cache.lock().await;
-        let services = guard.clone();
+    pub async fn from_cache(cache: Arc<RwLock<HealthCheckCache>>) -> Self {
+        let services = cache.read().await.clone();
         Self { services }
     }
 }

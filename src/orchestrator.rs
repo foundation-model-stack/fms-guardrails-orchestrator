@@ -22,8 +22,8 @@ pub mod unary;
 
 use std::{collections::HashMap, sync::Arc};
 
-use tokio::sync::Mutex;
-use tracing::info;
+use tokio::{sync::RwLock, time::Instant};
+use tracing::{debug, info};
 use uuid::Uuid;
 
 use crate::{
@@ -56,7 +56,7 @@ pub struct Context {
 #[cfg_attr(any(test, feature = "mock"), derive(Default))]
 pub struct Orchestrator {
     ctx: Arc<Context>,
-    client_health_cache: Arc<Mutex<HealthCheckCache>>,
+    client_health_cache: Arc<RwLock<HealthCheckCache>>,
 }
 
 impl Orchestrator {
@@ -70,9 +70,11 @@ impl Orchestrator {
         });
         let orchestrator = Self {
             ctx,
-            client_health_cache: Arc::new(Mutex::new(HealthCheckCache::default())),
+            client_health_cache: Arc::new(RwLock::new(HealthCheckCache::default())),
         };
+        debug!("running start up checks");
         orchestrator.on_start_up().await?;
+        debug!("start up checks completed");
         Ok(orchestrator)
     }
 
@@ -93,14 +95,19 @@ impl Orchestrator {
     }
 
     pub async fn clients_health(&self, probe: bool) -> Result<HealthProbeResponse, Error> {
-        let mut health_cache = self.client_health_cache.lock().await;
-        if probe || !health_cache.is_empty() {
+        let initialized = self.client_health_cache.read().await.is_empty();
+        if probe || !initialized {
+            let mut health_cache = self.client_health_cache.write().await;
+            debug!("refreshing health cache");
+            let now = Instant::now();
             health_cache.detectors = self.ctx.detector_client.health().await?;
             health_cache.chunkers = self.ctx.chunker_client.health().await?;
             health_cache.generation = self.ctx.generation_client.health().await?;
+            debug!(
+                "refreshing health cache completed in {:.2?}ms",
+                now.elapsed().as_millis()
+            );
         }
-        // Explicit drop so HealthCheckResponse::from_cache can lock
-        drop(health_cache);
 
         Ok(HealthProbeResponse::from_cache(self.client_health_cache.clone()).await)
     }

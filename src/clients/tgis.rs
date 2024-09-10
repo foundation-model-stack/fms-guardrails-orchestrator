@@ -19,12 +19,13 @@ use std::collections::HashMap;
 
 use futures::{StreamExt, TryStreamExt};
 use ginepro::LoadBalancedChannel;
+use tonic::Code;
 
-use super::{create_grpc_clients, create_http_clients, BoxStream, Error, HttpClient};
+use super::{create_grpc_clients, BoxStream, ClientCode, Error};
 use crate::{
     clients::COMMON_ROUTER_KEY,
     config::ServiceConfig,
-    health::{HealthCheck, HealthCheckResult, HealthProbe},
+    health::{HealthCheckResult, HealthProbe, HealthStatus},
     pb::fmaas::{
         generation_service_client::GenerationServiceClient, BatchedGenerationRequest,
         BatchedGenerationResponse, BatchedTokenizeRequest, BatchedTokenizeResponse,
@@ -36,15 +37,38 @@ use crate::{
 #[derive(Clone)]
 pub struct TgisClient {
     clients: HashMap<String, GenerationServiceClient<LoadBalancedChannel>>,
-    health_clients: HashMap<String, HttpClient>,
 }
 
 #[cfg_attr(any(test, feature = "mock"), faux::methods)]
 impl HealthProbe for TgisClient {
     async fn health(&self) -> Result<HashMap<String, HealthCheckResult>, Error> {
-        let mut results = HashMap::with_capacity(self.health_clients.len());
-        for (model_id, client) in self.health_clients.clone() {
-            results.insert(model_id.to_string(), client.check().await);
+        let mut results = HashMap::with_capacity(self.clients.len());
+        for (model_id, mut client) in self.clients.clone() {
+            let response = client
+                .model_info(ModelInfoRequest {
+                    model_id: "".into(),
+                })
+                .await;
+            let code = match response {
+                Ok(_) => Code::Ok,
+                Err(status) if matches!(status.code(), Code::InvalidArgument | Code::NotFound) => {
+                    Code::Ok
+                }
+                Err(status) => status.code(),
+            };
+            let health_status = if matches!(code, Code::Ok) {
+                HealthStatus::Ready
+            } else {
+                HealthStatus::NotReady
+            };
+            results.insert(
+                model_id,
+                HealthCheckResult {
+                    health_status,
+                    response_code: ClientCode::Grpc(code),
+                    reason: None,
+                },
+            );
         }
         Ok(results)
     }
@@ -54,11 +78,7 @@ impl HealthProbe for TgisClient {
 impl TgisClient {
     pub async fn new(default_port: u16, config: &[(String, ServiceConfig)]) -> Self {
         let clients = create_grpc_clients(default_port, config, GenerationServiceClient::new).await;
-        let health_clients = create_http_clients(default_port, config).await;
-        Self {
-            clients,
-            health_clients,
-        }
+        Self { clients }
     }
 
     fn client(
