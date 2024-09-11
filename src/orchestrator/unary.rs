@@ -73,10 +73,12 @@ impl Orchestrator {
                 let (input_token_count, _tokens) =
                     tokenize(&ctx, task.model_id.clone(), task.inputs.clone()).await?;
                 // Send result with input detections
+                let mut some_input_detections = input_detections.unwrap();
+                some_input_detections.sort_by_key(|r| r.start);
                 Ok(ClassifiedGeneratedTextResult {
                     input_token_count,
                     token_classification_results: TextGenTokenClassificationResults {
-                        input: input_detections,
+                        input: Some(some_input_detections),
                         output: None,
                     },
                     warnings: Some(vec![InputWarning {
@@ -110,7 +112,10 @@ impl Orchestrator {
                 };
                 debug!(?output_detections);
                 if output_detections.is_some() {
-                    generation_results.token_classification_results.output = output_detections;
+                    let mut some_output_detections = output_detections.unwrap();
+                    some_output_detections.sort_by_key(|r| r.start);
+                    generation_results.token_classification_results.output =
+                        Some(some_output_detections);
                 }
                 Ok(generation_results)
             }
@@ -235,7 +240,7 @@ impl Orchestrator {
             let chunks = chunk_task(&ctx, chunker_ids, text_with_offsets).await?;
 
             // Call detectors
-            let detections = try_join_all(
+            let mut detections = try_join_all(
                 task.detectors
                     .iter()
                     .map(|(detector_id, detector_params)| {
@@ -268,6 +273,7 @@ impl Orchestrator {
             .flatten()
             .collect::<Vec<_>>();
 
+            detections.sort_by_key(|r| r.start);
             // Send result with detections
             Ok(TextContentDetectionResult { detections })
         });
