@@ -96,12 +96,14 @@ impl Orchestrator {
                             return;
                         }
                     };
+                let mut some_input_detections = input_detections.unwrap();
+                some_input_detections.sort_by_key(|r| r.start);
                 // Send result with input detections
                 let _ = response_tx
                     .send(Ok(ClassifiedGeneratedTextStreamResult {
                         input_token_count,
                         token_classification_results: TextGenTokenClassificationResults {
-                            input: input_detections,
+                            input: Some(some_input_detections),
                             output: None,
                         },
                         warnings: Some(vec![InputWarning {

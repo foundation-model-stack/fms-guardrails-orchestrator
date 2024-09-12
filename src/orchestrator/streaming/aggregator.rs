@@ -234,7 +234,9 @@ impl AggregationActor {
             // Take first span and send to result actor
             if let Some((_key, value)) = self.tracker.pop_first() {
                 let chunk = value.chunk;
-                let detections = value.detections.into_iter().flatten().collect();
+                let mut detections: Detections = value.detections.into_iter().flatten().collect();
+                // Provide sorted detections within each chunk
+                detections.sort_by_key(|r| r.start);
                 let _ = self.result_actor.send(chunk, detections).await;
             }
         }
