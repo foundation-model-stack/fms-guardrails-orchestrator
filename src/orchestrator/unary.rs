@@ -67,18 +67,17 @@ impl Orchestrator {
                 _ => None,
             };
             debug!(?input_detections);
-            if input_detections.is_some() {
+            if let Some(mut input_detections) = input_detections {
                 // Detected HAP/PII
                 // Do tokenization to get input_token_count
                 let (input_token_count, _tokens) =
                     tokenize(&ctx, task.model_id.clone(), task.inputs.clone()).await?;
                 // Send result with input detections
-                let mut some_input_detections = input_detections.unwrap();
-                some_input_detections.sort_by_key(|r| r.start);
+                input_detections.sort_by_key(|r| r.start);
                 Ok(ClassifiedGeneratedTextResult {
                     input_token_count,
                     token_classification_results: TextGenTokenClassificationResults {
-                        input: Some(some_input_detections),
+                        input: Some(input_detections),
                         output: None,
                     },
                     warnings: Some(vec![InputWarning {
@@ -111,11 +110,10 @@ impl Orchestrator {
                     _ => None,
                 };
                 debug!(?output_detections);
-                if output_detections.is_some() {
-                    let mut some_output_detections = output_detections.unwrap();
-                    some_output_detections.sort_by_key(|r| r.start);
+                if let Some(mut output_detections) = output_detections {
+                    output_detections.sort_by_key(|r| r.start);
                     generation_results.token_classification_results.output =
-                        Some(some_output_detections);
+                        Some(output_detections);
                 }
                 Ok(generation_results)
             }
