@@ -41,14 +41,14 @@ use crate::{
 
 const MODEL_ID_HEADER_NAME: &str = "mm-model-id";
 
-#[cfg_attr(test, faux::create, derive(Default))]
+#[cfg_attr(any(test, feature = "mock"), faux::create, derive(Default))]
 #[derive(Clone)]
 pub struct NlpClient {
     clients: HashMap<String, NlpServiceClient<LoadBalancedChannel>>,
     health_clients: HashMap<String, HealthClient<LoadBalancedChannel>>,
 }
 
-#[cfg_attr(test, faux::methods)]
+#[cfg_attr(any(test, feature = "mock"), faux::methods)]
 impl HealthProbe for NlpClient {
     async fn health(&self) -> Result<HashMap<String, HealthCheckResult>, Error> {
         let mut results = HashMap::with_capacity(self.health_clients.len());
@@ -67,7 +67,7 @@ impl HealthProbe for NlpClient {
     }
 }
 
-#[cfg_attr(test, faux::methods)]
+#[cfg_attr(any(test, feature = "mock"), faux::methods)]
 impl NlpClient {
     pub async fn new(default_port: u16, config: &[(String, ServiceConfig)]) -> Self {
         let clients = create_grpc_clients(default_port, config, NlpServiceClient::new).await;

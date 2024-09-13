@@ -45,14 +45,14 @@ pub const DEFAULT_MODEL_ID: &str = "whole_doc_chunker";
 type StreamingTokenizationResult =
     Result<Response<Streaming<ChunkerTokenizationStreamResult>>, Status>;
 
-#[cfg_attr(test, faux::create, derive(Default))]
+#[cfg_attr(any(test, feature = "mock"), faux::create, derive(Default))]
 #[derive(Clone)]
 pub struct ChunkerClient {
     clients: HashMap<String, ChunkersServiceClient<LoadBalancedChannel>>,
     health_clients: HashMap<String, HealthClient<LoadBalancedChannel>>,
 }
 
-#[cfg_attr(test, faux::methods)]
+#[cfg_attr(any(test, feature = "mock"), faux::methods)]
 impl HealthProbe for ChunkerClient {
     async fn health(&self) -> Result<HashMap<String, HealthCheckResult>, Error> {
         let mut results = HashMap::with_capacity(self.health_clients.len());
@@ -69,7 +69,7 @@ impl HealthProbe for ChunkerClient {
     }
 }
 
-#[cfg_attr(test, faux::methods)]
+#[cfg_attr(any(test, feature = "mock"), faux::methods)]
 impl ChunkerClient {
     pub async fn new(default_port: u16, config: &[(String, ServiceConfig)]) -> Self {
         let clients = create_grpc_clients(default_port, config, ChunkersServiceClient::new).await;

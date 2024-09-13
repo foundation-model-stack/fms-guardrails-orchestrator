@@ -32,8 +32,6 @@ pub enum Error {
     GenerateRequestFailed { id: String, error: clients::Error },
     #[error("tokenize request failed for `{id}`: {error}")]
     TokenizeRequestFailed { id: String, error: clients::Error },
-    #[error("orchestrator or configured clients are unhealthy: {message}")]
-    Unhealthy { message: String },
     #[error("{0}")]
     Other(String),
     #[error("cancelled")]

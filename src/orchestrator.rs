@@ -23,16 +23,16 @@ pub mod unary;
 use std::{collections::HashMap, sync::Arc};
 
 use tokio::sync::Mutex;
+use tracing::info;
 use uuid::Uuid;
 
-use crate::health::HealthStatus;
 use crate::{
     clients::{
         self, detector::ContextType, ChunkerClient, DetectorClient, GenerationClient, NlpClient,
         TgisClient, COMMON_ROUTER_KEY,
     },
     config::{GenerationProvider, OrchestratorConfig},
-    health::{HealthCheckCache, HealthProbe, ReadinessProbeResponse},
+    health::{HealthCheckCache, HealthProbe, HealthProbeResponse},
     models::{
         ContextDocsHttpRequest, DetectionOnGeneratedHttpRequest, DetectorParams,
         GenerationWithDetectionHttpRequest, GuardrailsConfig, GuardrailsHttpRequest,
@@ -44,7 +44,7 @@ const UNSUITABLE_INPUT_MESSAGE: &str = "Unsuitable input detected. \
     Please check the detected entities on your input and try again \
     with the unsuitable input removed.";
 
-#[cfg_attr(test, derive(Default))]
+#[cfg_attr(any(test, feature = "mock"), derive(Default))]
 pub struct Context {
     config: OrchestratorConfig,
     generation_client: GenerationClient,
@@ -53,9 +53,10 @@ pub struct Context {
 }
 
 /// Handles orchestrator tasks.
+#[cfg_attr(any(test, feature = "mock"), derive(Default))]
 pub struct Orchestrator {
     ctx: Arc<Context>,
-    health_cache: Arc<Mutex<HealthCheckCache>>,
+    client_health_cache: Arc<Mutex<HealthCheckCache>>,
 }
 
 impl Orchestrator {
@@ -69,41 +70,37 @@ impl Orchestrator {
         });
         let orchestrator = Self {
             ctx,
-            health_cache: Arc::new(Mutex::new(HealthCheckCache::default())),
+            client_health_cache: Arc::new(Mutex::new(HealthCheckCache::default())),
         };
-        orchestrator.start_up_checks().await?;
+        orchestrator.on_start_up().await?;
         Ok(orchestrator)
     }
 
-    pub async fn start_up_checks(&self) -> Result<(), Error> {
-        let res = self.ready(true).await;
-        match res {
-            Ok(response) => match response.health_status {
-                // `UNKNOWN` health status is not treated as fatal behaviour for the orchestrator, we can not guarantee all clients have implemented health check and done so properly.
-                HealthStatus::Ready | HealthStatus::Unknown => Ok(()),
-                // In contrast, `NOT_READY` signals that the client's health is determined, and it can not serve.
-                HealthStatus::NotReady => Err(Error::Unhealthy {
-                    message: format!("Orchestrator client services are not ready: {}", response),
-                }),
-            },
-            // Instead of propagating a fatal error for graceful shutdown, we choose to panic since no error propagation to here is currently expected, and so if such case occurs it should be investigated.
-            // TODO: Perhaps `Result<..., Error>` should be omitted entirely from `ready()` for now?
-            Err(err) => panic!(
-                "Unexpected error during start-up readiness probing: {}",
-                err
-            ),
-        }
+    /// Perform any start-up actions required by the orchestrator.
+    /// This should only error when the orchestrator is unable to start up.
+    /// Currently only performs client health probing to have results loaded into the cache.
+    pub async fn on_start_up(&self) -> Result<(), Error> {
+        // Run probe, update cache
+        let res = self.clients_health(true).await.unwrap_or_else(|e| {
+            // Panic for unexpected behaviour as there are currently no errors propagated to here.
+            panic!("Unexpected error during client health probing: {}", e);
+        });
+        // Results of probe do not affect orchestrator start-up.
+        info!("Orchestrator client health probe results: {}", res);
+        Ok(())
     }
 
-    pub async fn ready(&self, probe: bool) -> Result<ReadinessProbeResponse, Error> {
-        let mut health_cache = self.health_cache.lock().await;
-        if probe || !health_cache.is_initialized() {
+    pub async fn clients_health(&self, probe: bool) -> Result<HealthProbeResponse, Error> {
+        let mut health_cache = self.client_health_cache.lock().await;
+        if probe || !health_cache.is_empty() {
             health_cache.detectors = self.ctx.detector_client.health().await?;
             health_cache.chunkers = self.ctx.chunker_client.health().await?;
             health_cache.generation = self.ctx.generation_client.health().await?;
         }
+        // Explicit drop so HealthCheckResponse::from_cache can lock
+        drop(health_cache);
 
-        Ok(ReadinessProbeResponse::from_cache(self.health_cache.clone()).await)
+        Ok(HealthProbeResponse::from_cache(self.client_health_cache.clone()).await)
     }
 }
 

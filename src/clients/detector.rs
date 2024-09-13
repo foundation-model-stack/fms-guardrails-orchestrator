@@ -30,13 +30,13 @@ use crate::{
 const DETECTOR_ID_HEADER_NAME: &str = "detector-id";
 
 // For some reason the order matters here. #[cfg_attr(test, derive(Default), faux::create)] doesn't work. (rustc --explain E0560)
-#[cfg_attr(test, faux::create, derive(Default))]
+#[cfg_attr(any(test, feature = "mock"), faux::create, derive(Default))]
 #[derive(Clone)]
 pub struct DetectorClient {
     clients: HashMap<String, HttpClient>,
 }
 
-#[cfg_attr(test, faux::methods)]
+#[cfg_attr(any(test, feature = "mock"), faux::methods)]
 impl HealthProbe for DetectorClient {
     async fn health(&self) -> Result<HashMap<String, HealthCheckResult>, Error> {
         let mut results = HashMap::with_capacity(self.clients.len());
@@ -47,7 +47,7 @@ impl HealthProbe for DetectorClient {
     }
 }
 
-#[cfg_attr(test, faux::methods)]
+#[cfg_attr(any(test, feature = "mock"), faux::methods)]
 impl DetectorClient {
     pub async fn new(default_port: u16, config: &[(String, ServiceConfig)]) -> Self {
         let clients: HashMap<String, HttpClient> = create_http_clients(default_port, config).await;

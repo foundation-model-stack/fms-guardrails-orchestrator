@@ -69,7 +69,7 @@ pub enum Tls {
 }
 
 /// Client TLS configuration
-#[cfg_attr(test, derive(Default))]
+#[cfg_attr(any(test, feature = "mock"), derive(Default))]
 #[derive(Clone, Debug, Deserialize)]
 pub struct TlsConfig {
     pub cert_path: Option<PathBuf>,
@@ -79,17 +79,17 @@ pub struct TlsConfig {
 }
 
 /// Generation service provider
-#[cfg_attr(test, derive(Default))]
+#[cfg_attr(any(test, feature = "mock"), derive(Default))]
 #[derive(Clone, Copy, Debug, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum GenerationProvider {
-    #[cfg_attr(test, default)]
+    #[cfg_attr(any(test, feature = "mock"), default)]
     Tgis,
     Nlp,
 }
 
 /// Generate service configuration
-#[cfg_attr(test, derive(Default))]
+#[cfg_attr(any(test, feature = "mock"), derive(Default))]
 #[derive(Clone, Debug, Deserialize)]
 pub struct GenerationConfig {
     /// Generation service provider
@@ -99,17 +99,17 @@ pub struct GenerationConfig {
 }
 
 /// Chunker parser type
-#[cfg_attr(test, derive(Default))]
+#[cfg_attr(any(test, feature = "mock"), derive(Default))]
 #[derive(Clone, Copy, Debug, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ChunkerType {
-    #[cfg_attr(test, default)]
+    #[cfg_attr(any(test, feature = "mock"), default)]
     Sentence,
     All,
 }
 
 /// Configuration for each chunker
-#[cfg_attr(test, derive(Default))]
+#[cfg_attr(any(test, feature = "mock"), derive(Default))]
 #[allow(dead_code)]
 #[derive(Clone, Debug, Deserialize)]
 pub struct ChunkerConfig {
@@ -131,7 +131,7 @@ pub struct DetectorConfig {
 }
 
 /// Overall orchestrator server configuration
-#[cfg_attr(test, derive(Default))]
+#[cfg_attr(any(test, feature = "mock"), derive(Default))]
 #[derive(Clone, Debug, Deserialize)]
 pub struct OrchestratorConfig {
     /// Generation service and associated configuration, can be omitted if configuring for generation is not wanted
@@ -242,7 +242,7 @@ fn apply_named_tls_config(
     Ok(())
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "mock"))]
 impl Default for Tls {
     fn default() -> Self {
         Tls::Name("dummy_tls".to_string())

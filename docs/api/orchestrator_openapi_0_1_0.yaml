@@ -27,32 +27,33 @@ paths:
                   fms-guardrails-orchestr8:
                     type: string
                     example: 0.1.0
-  /ready:
+  /info:
     get:
       tags:
         - Health
-      summary: Returns the readiness status of the service based on the health of configured clients
-      operationId: ready
+      summary: Returns the latest results of a health check probe of clients currently configured for the orchestrator
+      operationId: info
       parameters:
         - name: probe
           in: query
-          description: Trigger a probe into the readiness of client services if true or just report the latest known status from cache if false, default is false
+          description: Toggle whether to trigger the actual probe or just return the latest results from cache. If the health cache is empty then probing will occur regardless. Running the probe will take longer but will also update the cache.
           required: false
           schema:
             type: boolean
+            default: false
       responses:
         '200':
           description: Orchestrator is ready to serve
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ReadinessResponse'
+                $ref: '#/components/schemas/HealthProbeResponse'
         '503':
           description: Orchestrator is not ready to serve
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ReadinessResponse'
+                $ref: '#/components/schemas/HealthProbeResponse'
   /api/v1/task/classification-with-text-generation:
     post:
       tags:
@@ -310,7 +311,7 @@ components:
             $ref: '#/components/schemas/HealthStatus'
       type: object
       title: Health Check Response
-    ReadinessResponse:
+    HealthProbeResponse:
       properties:
         health_status:
           $ref: '#/components/schemas/HealthStatus'

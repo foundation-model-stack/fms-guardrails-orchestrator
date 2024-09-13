@@ -88,8 +88,7 @@ pub struct HealthCheckCache {
 
 /// Response for the readiness probe endpoint that holds a serialized cache of health check results for each client service.
 #[derive(Debug, Clone, Serialize)]
-pub struct ReadinessProbeResponse {
-    pub health_status: HealthStatus,
+pub struct HealthProbeResponse {
     pub services: HealthCheckCache,
 }
 
@@ -143,63 +142,16 @@ impl HealthCheckResult {
 }
 
 impl HealthCheckCache {
-    pub fn is_initialized(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         !self.detectors.is_empty() && !self.chunkers.is_empty() && !self.generation.is_empty()
-    }
-
-    pub fn status_code(&self) -> StatusCode {
-        if self.detectors.values().any(|status| !status.is_ready())
-            || self.chunkers.values().any(|status| !status.is_ready())
-            || self.generation.values().any(|status| !status.is_ready())
-        {
-            StatusCode::SERVICE_UNAVAILABLE
-        } else {
-            StatusCode::OK
-        }
-    }
-
-    pub fn health_status(&self) -> HealthStatus {
-        if self.detectors.values().any(|status| status.is_not_ready())
-            || self.chunkers.values().any(|status| status.is_not_ready())
-            || self.generation.values().any(|status| status.is_not_ready())
-        {
-            HealthStatus::NotReady
-        } else if !self.is_initialized()
-            || (self.detectors.values().any(|status| status.is_unknown())
-                || self.chunkers.values().any(|status| status.is_unknown())
-                || self.generation.values().any(|status| status.is_unknown()))
-        {
-            HealthStatus::Unknown
-        } else {
-            HealthStatus::Ready
-        }
     }
 }
 
-impl ReadinessProbeResponse {
+impl HealthProbeResponse {
     pub async fn from_cache(cache: Arc<Mutex<HealthCheckCache>>) -> Self {
         let guard = cache.lock().await;
         let services = guard.clone();
-        let health_status = services.health_status();
-
-        Self {
-            health_status,
-            services,
-        }
-    }
-}
-
-impl ReadinessProbeResponse {
-    pub fn is_ready(&self) -> bool {
-        matches!(self.health_status, HealthStatus::Ready)
-    }
-
-    pub fn is_not_ready(&self) -> bool {
-        matches!(self.health_status, HealthStatus::NotReady)
-    }
-
-    pub fn is_unknown(&self) -> bool {
-        matches!(self.health_status, HealthStatus::Unknown)
+        Self { services }
     }
 }
 
@@ -229,13 +181,9 @@ impl Display for HealthCheckCache {
     }
 }
 
-impl Display for ReadinessProbeResponse {
+impl Display for HealthProbeResponse {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "overall health status: {}\n{}",
-            self.health_status, self.services
-        )
+        write!(f, "client health info: {}", self.services)
     }
 }
 
@@ -326,8 +274,8 @@ impl From<StatusCode> for HealthStatus {
     }
 }
 
-impl IntoResponse for ReadinessProbeResponse {
+impl IntoResponse for HealthProbeResponse {
     fn into_response(self) -> Response {
-        (self.services.status_code(), Json(self)).into_response()
+        (StatusCode::OK, Json(self)).into_response()
     }
 }

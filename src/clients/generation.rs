@@ -38,7 +38,7 @@ use crate::{
     },
 };
 
-#[cfg_attr(test, faux::create, derive(Default))]
+#[cfg_attr(any(test, feature = "mock"), faux::create, derive(Default))]
 #[derive(Clone)]
 pub struct GenerationClient(Option<GenerationClientInner>);
 
@@ -48,7 +48,7 @@ enum GenerationClientInner {
     Nlp(NlpClient),
 }
 
-#[cfg_attr(test, faux::methods)]
+#[cfg_attr(any(test, feature = "mock"), faux::methods)]
 impl HealthProbe for GenerationClient {
     async fn health(&self) -> Result<HashMap<String, HealthCheckResult>, Error> {
         match &self.0 {
@@ -59,14 +59,14 @@ impl HealthProbe for GenerationClient {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "mock"))]
 impl Default for GenerationClientInner {
     fn default() -> Self {
         Self::Tgis(TgisClient::default())
     }
 }
 
-#[cfg_attr(test, faux::methods)]
+#[cfg_attr(any(test, feature = "mock"), faux::methods)]
 impl GenerationClient {
     pub fn tgis(client: TgisClient) -> Self {
         Self(Some(GenerationClientInner::Tgis(client)))

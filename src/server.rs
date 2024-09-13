@@ -43,8 +43,8 @@ use uuid::Uuid;
 use webpki::types::{CertificateDer, PrivateKeyDer};
 
 use crate::{
-    health::{HealthCheckCache, HealthStatus, ReadinessProbeResponse, ReadyCheckParams},
-    models::{self},
+    health::ReadyCheckParams,
+    models,
     orchestrator::{
         self, ClassificationWithGenTask, ContextDocsDetectionTask, DetectionOnGenerationTask,
         GenerationWithDetectionTask, Orchestrator, StreamingClassificationWithGenTask,
@@ -273,7 +273,7 @@ pub async fn run(
 pub fn get_health_app(state: Arc<ServerState>) -> Router {
     let health_app: Router = Router::new()
         .route("/health", get(health))
-        .route("/ready", get(ready))
+        .route("/info", get(info))
         .with_state(state);
     health_app
 }
@@ -287,22 +287,20 @@ async fn health() -> Result<impl IntoResponse, ()> {
     Ok(Json(info_object).into_response())
 }
 
-async fn ready(
+async fn info(
     State(state): State<Arc<ServerState>>,
     Query(params): Query<ReadyCheckParams>,
-) -> Result<impl IntoResponse, ()> {
-    let res = state
-        .orchestrator
-        .ready(params.probe)
-        .await
-        .unwrap_or_else(|e| {
-            error!("Unexpected error checking readiness: {:?}", e);
-            ReadinessProbeResponse {
-                health_status: HealthStatus::Unknown,
-                services: HealthCheckCache::default(),
-            }
-        });
-    Ok(res)
+) -> Result<impl IntoResponse, Error> {
+    match state.orchestrator.clients_health(params.probe).await {
+        Ok(client_health_info) => Ok(client_health_info),
+        Err(error) => {
+            error!(
+                "Unexpected internal error while checking client health info: {:?}",
+                error
+            );
+            Err(error.into())
+        }
+    }
 }
 
 async fn classification_with_gen(
