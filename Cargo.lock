@@ -606,7 +606,6 @@ dependencies = [
  "ginepro",
  "hyper",
  "hyper-util",
- "log",
  "mio",
  "prost",
  "reqwest",
