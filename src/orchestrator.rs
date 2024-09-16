@@ -80,13 +80,15 @@ impl Orchestrator {
     /// This should only error when the orchestrator is unable to start up.
     /// Currently only performs client health probing to have results loaded into the cache.
     pub async fn on_start_up(&self) -> Result<(), Error> {
+        info!("Performing start-up actions for orchestrator...");
+        info!("Probing health status of configured clients...");
         // Run probe, update cache
         let res = self.clients_health(true).await.unwrap_or_else(|e| {
             // Panic for unexpected behaviour as there are currently no errors propagated to here.
             panic!("Unexpected error during client health probing: {}", e);
         });
         // Results of probe do not affect orchestrator start-up.
-        info!("Orchestrator client health probe results: {}", res);
+        info!("Orchestrator client health probe results:\n{}", res);
         Ok(())
     }
 

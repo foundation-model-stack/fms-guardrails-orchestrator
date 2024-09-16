@@ -168,22 +168,38 @@ impl Display for HealthStatus {
 impl Display for HealthCheckCache {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut services = vec![];
+        let mut detectors = vec![];
+        let mut chunkers = vec![];
+        let mut generation = vec![];
+        for (service, result) in &self.detectors {
+            detectors.push(format!("\t\t{}: {}", service, result));
+        }
+        for (service, result) in &self.chunkers {
+            chunkers.push(format!("\t\t{}: {}", service, result));
+        }
+        for (service, result) in &self.generation {
+            generation.push(format!("\t\t{}: {}", service, result));
+        }
         if !self.detectors.is_empty() {
-            services.push(format!("\ndetectors: {:?}", self.detectors));
+            services.push(format!("\tdetectors: {{\n{}\t}}", detectors.join(",\n")));
         }
         if !self.chunkers.is_empty() {
-            services.push(format!("\nchunkers: {:?}", self.chunkers));
+            services.push(format!("\tchunkers: {{\n{}\t}}", chunkers.join(",\n")));
         }
         if !self.generation.is_empty() {
-            services.push(format!("\ngeneration: {:?}", self.generation));
+            services.push(format!("\tgeneration: {{\n{}\t}}", generation.join(",\n")));
         }
-        write!(f, "services: {{{}}}", services.join(", "))
+        write!(
+            f,
+            "configured client services: {{\n{}\n}}",
+            services.join(",\n")
+        )
     }
 }
 
 impl Display for HealthProbeResponse {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "client health info: {}", self.services)
+        write!(f, "{}", self.services)
     }
 }
 
@@ -209,6 +225,19 @@ impl Serialize for HealthCheckResult {
                     state.end()
                 }
             },
+        }
+    }
+}
+
+impl Display for HealthCheckResult {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.reason {
+            Some(reason) => write!(
+                f,
+                "{} ({})\n\t\t\t{}",
+                self.health_status, self.response_code, reason
+            ),
+            None => write!(f, "{} ({})", self.health_status, self.response_code),
         }
     }
 }
