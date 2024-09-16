@@ -95,7 +95,7 @@ impl Orchestrator {
     }
 
     pub async fn clients_health(&self, probe: bool) -> Result<HealthProbeResponse, Error> {
-        let initialized = self.client_health_cache.read().await.is_empty();
+        let initialized = self.client_health_cache.read().await.is_initialized();
         if probe || !initialized {
             debug!("refreshing health cache");
             let now = Instant::now();

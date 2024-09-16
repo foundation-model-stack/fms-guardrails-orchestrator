@@ -140,7 +140,7 @@ impl HealthCheckResult {
 }
 
 impl HealthCheckCache {
-    pub fn is_empty(&self) -> bool {
+    pub fn is_initialized(&self) -> bool {
         !self.detectors.is_empty() && !self.chunkers.is_empty() && !self.generation.is_empty()
     }
 }

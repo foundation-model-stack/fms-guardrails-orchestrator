@@ -15,8 +15,9 @@
 
 */
 
-use futures::{StreamExt, TryStreamExt};
 use std::collections::HashMap;
+
+use futures::{StreamExt, TryStreamExt};
 use tracing::debug;
 
 use super::{BoxStream, Error, NlpClient, TgisClient};
