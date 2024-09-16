@@ -67,16 +67,17 @@ impl Orchestrator {
                 _ => None,
             };
             debug!(?input_detections);
-            if input_detections.is_some() {
+            if let Some(mut input_detections) = input_detections {
                 // Detected HAP/PII
                 // Do tokenization to get input_token_count
                 let (input_token_count, _tokens) =
                     tokenize(&ctx, task.model_id.clone(), task.inputs.clone()).await?;
                 // Send result with input detections
+                input_detections.sort_by_key(|r| r.start);
                 Ok(ClassifiedGeneratedTextResult {
                     input_token_count,
                     token_classification_results: TextGenTokenClassificationResults {
-                        input: input_detections,
+                        input: Some(input_detections),
                         output: None,
                     },
                     warnings: Some(vec![InputWarning {
@@ -109,8 +110,10 @@ impl Orchestrator {
                     _ => None,
                 };
                 debug!(?output_detections);
-                if output_detections.is_some() {
-                    generation_results.token_classification_results.output = output_detections;
+                if let Some(mut output_detections) = output_detections {
+                    output_detections.sort_by_key(|r| r.start);
+                    generation_results.token_classification_results.output =
+                        Some(output_detections);
                 }
                 Ok(generation_results)
             }
@@ -235,7 +238,7 @@ impl Orchestrator {
             let chunks = chunk_task(&ctx, chunker_ids, text_with_offsets).await?;
 
             // Call detectors
-            let detections = try_join_all(
+            let mut detections = try_join_all(
                 task.detectors
                     .iter()
                     .map(|(detector_id, detector_params)| {
@@ -268,6 +271,7 @@ impl Orchestrator {
             .flatten()
             .collect::<Vec<_>>();
 
+            detections.sort_by_key(|r| r.start);
             // Send result with detections
             Ok(TextContentDetectionResult { detections })
         });

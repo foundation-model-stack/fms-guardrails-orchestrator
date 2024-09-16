@@ -234,7 +234,9 @@ impl AggregationActor {
             // Take first span and send to result actor
             if let Some((_key, value)) = self.tracker.pop_first() {
                 let chunk = value.chunk;
-                let detections = value.detections.into_iter().flatten().collect();
+                let mut detections: Detections = value.detections.into_iter().flatten().collect();
+                // Provide sorted detections within each chunk
+                detections.sort_by_key(|r| r.start);
                 let _ = self.result_actor.send(chunk, detections).await;
             }
         }
@@ -490,17 +492,20 @@ mod tests {
         for chunk in &chunks {
             let chunk_token = chunk.results[0].clone();
             let text = &chunk_token.text;
-            let span = (chunk_token.start, chunk_token.end);
+            let whole_span = (chunk_token.start, chunk_token.end);
+            let partial_span = (chunk_token.start + 2, chunk_token.end - 2);
 
             let (detector_tx1, detector_rx1) = mpsc::channel(1);
-            let detection = get_detection_obj(span, text, "has_HAP", "HAP");
+            let detection = get_detection_obj(whole_span, text, "has_HAP", "HAP");
             let _ = detector_tx1.send((chunk.clone(), vec![detection])).await;
-            detection_streams.push(("hap-1".into(), detector_rx1));
 
             let (detector_tx2, detector_rx2) = mpsc::channel(1);
-            let detection = get_detection_obj(span, text, "email_ID", "PII");
+            let detection = get_detection_obj(partial_span, text, "email_ID", "PII");
             let _ = detector_tx2.send((chunk.clone(), vec![detection])).await;
+
+            // Push HAP after PII to make sure detection ordering is not coincidental
             detection_streams.push(("pii-1".into(), detector_rx2));
+            detection_streams.push(("hap-1".into(), detector_rx1));
         }
 
         let (generation_tx, generation_rx) = broadcast::channel(1);
@@ -516,6 +521,7 @@ mod tests {
                 .output
                 .unwrap_or_default();
             assert_eq!(detection.len(), detector_count);
+            // Expect HAP first since whole_span start is before partial_span start
             assert_eq!(detection[0].entity_group, "HAP");
             assert_eq!(detection[1].entity_group, "PII");
             chunk_count += 1;

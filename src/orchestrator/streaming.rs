@@ -84,7 +84,7 @@ impl Orchestrator {
                 _ => None,
             };
             debug!(?input_detections);
-            if input_detections.is_some() {
+            if let Some(mut input_detections) = input_detections {
                 // Detected HAP/PII
                 // Do tokenization to get input_token_count
                 let (input_token_count, _tokens) =
@@ -96,12 +96,13 @@ impl Orchestrator {
                             return;
                         }
                     };
+                input_detections.sort_by_key(|r| r.start);
                 // Send result with input detections
                 let _ = response_tx
                     .send(Ok(ClassifiedGeneratedTextStreamResult {
                         input_token_count,
                         token_classification_results: TextGenTokenClassificationResults {
-                            input: input_detections,
+                            input: Some(input_detections),
                             output: None,
                         },
                         warnings: Some(vec![InputWarning {
