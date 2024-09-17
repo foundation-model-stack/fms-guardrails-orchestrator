@@ -607,6 +607,7 @@ dependencies = [
  "hyper",
  "hyper-util",
  "mio",
+ "once_cell",
  "prost",
  "reqwest",
  "rustls",
