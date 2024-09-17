@@ -59,7 +59,7 @@ pub enum Error {
     #[error("{}", .message)]
     Grpc { code: StatusCode, message: String },
     #[error("{}", .message)]
-    Http { code: StatusCode, message: String},
+    Http { code: StatusCode, message: String },
     #[error("model not found: {model_id}")]
     ModelNotFound { model_id: String },
 }
@@ -81,12 +81,14 @@ impl Error {
 
 impl From<reqwest::Error> for Error {
     fn from(value: reqwest::Error) -> Self {
-
-        // Log lower level source of error. 
-        // Examples: 
+        // Log lower level source of error.
+        // Examples:
         // 1. client error (Connect) // Cases like connection error, wrong port etc.
         // 2. client error (SendRequest) // Cases like cert issues
-        error!("http request failed. Source: {}", value.source().unwrap().to_string());
+        error!(
+            "http request failed. Source: {}",
+            value.source().unwrap().to_string()
+        );
         // Return http status code for error responses
         // and 500 for other errors
         let code = match value.status() {
