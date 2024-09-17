@@ -40,5 +40,8 @@ async fn test_health() {
     debug!("{}", serde_json::to_string_pretty(&body).unwrap());
     response.assert_status(StatusCode::OK);
     let response = server.get("/info").await;
+    println!("{:#?}", response);
+    let body: Value = serde_json::from_str(response.text().as_str()).unwrap();
+    println!("{}", serde_json::to_string_pretty(&body).unwrap());
     response.assert_status(StatusCode::OK);
 }

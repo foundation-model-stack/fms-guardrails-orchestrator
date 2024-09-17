@@ -41,6 +41,8 @@ struct Args {
     tls_key_path: Option<PathBuf>,
     #[clap(long, env)]
     tls_client_ca_cert_path: Option<PathBuf>,
+    #[clap(default_value = "true", long, env)] // Do we want this to be true by default?
+    start_up_health_check: bool,
 }
 
 fn main() -> Result<(), anyhow::Error> {
@@ -76,7 +78,7 @@ fn main() -> Result<(), anyhow::Error> {
         .unwrap()
         .block_on(async {
             let config = OrchestratorConfig::load(args.config_path).await?;
-            let orchestrator = Orchestrator::new(config).await?;
+            let orchestrator = Orchestrator::new(config, args.start_up_health_check).await?;
 
             server::run(
                 http_addr,

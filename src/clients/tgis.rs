@@ -33,13 +33,13 @@ use crate::{
     },
 };
 
-#[cfg_attr(any(test, feature = "mock"), faux::create, derive(Default))]
+#[cfg_attr(test, faux::create, derive(Default))]
 #[derive(Clone)]
 pub struct TgisClient {
     clients: HashMap<String, GenerationServiceClient<LoadBalancedChannel>>,
 }
 
-#[cfg_attr(any(test, feature = "mock"), faux::methods)]
+#[cfg_attr(test, faux::methods)]
 impl HealthProbe for TgisClient {
     async fn health(&self) -> Result<HashMap<String, HealthCheckResult>, Error> {
         let mut results = HashMap::with_capacity(self.clients.len());
@@ -74,7 +74,7 @@ impl HealthProbe for TgisClient {
     }
 }
 
-#[cfg_attr(any(test, feature = "mock"), faux::methods)]
+#[cfg_attr(test, faux::methods)]
 impl TgisClient {
     pub async fn new(default_port: u16, config: &[(String, ServiceConfig)]) -> Self {
         let clients = create_grpc_clients(default_port, config, GenerationServiceClient::new).await;

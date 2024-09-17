@@ -18,7 +18,6 @@ anyhow = "1.0.86"
 axum = { version = "0.7.5", features = ["json"] }
 axum-extra = "0.9.3"
 clap = { version = "4.5.15", features = ["derive", "env"] }
-faux = { version = "0.1.10", optional = true }
 futures = "0.3.30"
 ginepro = "0.8.1"
 hyper = { version = "1.4.1", features = ["http1", "http2", "server"] }
@@ -58,10 +57,3 @@ debug = false
 incremental = true
 lto = true
 strip = "symbols"
-
-[features]
-mock = ["dep:faux"]
-
-[[test]]
-name = "canary_test"
-required-features = ["mock"]
