@@ -16,13 +16,14 @@
 */
 
 #![allow(dead_code)]
-use std::{collections::HashMap, pin::Pin, time::Duration};
+// Import error for adding `source` trait
+use std::{collections::HashMap, error::Error as _, pin::Pin, time::Duration};
 
 use futures::{future::join_all, Stream};
 use ginepro::LoadBalancedChannel;
 use reqwest::StatusCode;
 use tokio::{fs::File, io::AsyncReadExt};
-use tracing::debug;
+use tracing::{debug, error};
 use url::Url;
 
 use crate::config::{ServiceConfig, Tls};
@@ -80,6 +81,14 @@ impl Error {
 
 impl From<reqwest::Error> for Error {
     fn from(value: reqwest::Error) -> Self {
+        // Log lower level source of error.
+        // Examples:
+        // 1. client error (Connect) // Cases like connection error, wrong port etc.
+        // 2. client error (SendRequest) // Cases like cert issues
+        error!(
+            "http request failed. Source: {}",
+            value.source().unwrap().to_string()
+        );
         // Return http status code for error responses
         // and 500 for other errors
         let code = match value.status() {
