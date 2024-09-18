@@ -271,11 +271,10 @@ pub async fn run(
 }
 
 pub fn get_health_app(state: Arc<ServerState>) -> Router {
-    let health_app: Router = Router::new()
+    Router::new()
         .route("/health", get(health))
         .route("/info", get(info))
-        .with_state(state);
-    health_app
+        .with_state(state)
 }
 
 async fn health() -> Result<impl IntoResponse, ()> {
