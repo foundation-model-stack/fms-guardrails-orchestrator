@@ -60,7 +60,9 @@ impl HealthProbe for ChunkerClient {
             results.insert(
                 model_id.clone(),
                 client
-                    .check(HealthCheckRequest { service: model_id })
+                    .check(HealthCheckRequest {
+                        service: "".to_string(),
+                    }) // Caikit does not expect a service_id to be specified
                     .await
                     .into(),
             );
