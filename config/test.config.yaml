@@ -1,0 +1,18 @@
+generation:
+  provider: nlp # tgis or nlp
+  service:
+    hostname: localhost
+    port: 443
+chunkers:
+  test_chunker:
+    type: sentence
+    service:
+      hostname: localhost
+      port: 8085
+detectors:
+  test_detector:
+    service:
+      hostname: https://localhost/api/v1/text/contents
+      port: 8000
+    chunker_id: test_chunker
+    default_threshold: 0.5

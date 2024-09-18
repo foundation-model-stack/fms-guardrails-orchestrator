@@ -63,6 +63,12 @@ pub struct ServerState {
     orchestrator: Orchestrator,
 }
 
+impl ServerState {
+    pub fn new(orchestrator: Orchestrator) -> Self {
+        Self { orchestrator }
+    }
+}
+
 /// Run the orchestrator server
 pub async fn run(
     http_addr: SocketAddr,
@@ -84,10 +90,10 @@ pub async fn run(
     // with rustls, the hyper and tower crates [what axum is built on] had to
     // be used directly
 
-    let shared_state = Arc::new(ServerState { orchestrator });
+    let shared_state = Arc::new(ServerState::new(orchestrator));
 
     // (1) Separate HTTP health server without TLS for probes
-    let health_app = get_health_app();
+    let health_app = get_health_app(shared_state.clone());
     let health_listener = TcpListener::bind(&health_http_addr)
         .await
         .unwrap_or_else(|_| panic!("failed to bind to {health_http_addr}"));
@@ -263,8 +269,10 @@ pub async fn run(
     Ok(())
 }
 
-pub fn get_health_app() -> Router {
-    let health_app: Router = Router::new().route("/health", get(health));
+pub fn get_health_app(state: Arc<ServerState>) -> Router {
+    let health_app: Router = Router::new()
+        .route("/health", get(health))
+        .with_state(state);
     health_app
 }
 
