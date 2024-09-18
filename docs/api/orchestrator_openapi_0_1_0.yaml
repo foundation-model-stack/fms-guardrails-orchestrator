@@ -2,11 +2,18 @@ openapi: 3.0.1
 info:
   title: FMS Orchestrator API
   version: 0.1.0
+tags:
+    - name: Text Generation with detections
+      description: Detections on text generation model input and/or output
+    - name: Detection tasks
+      description: Standalone detections
+    - name: Chat Completions with detections
+      description: Detections on list of messages comprising a conversation and/or completions from a model
 paths:
   /api/v1/task/classification-with-text-generation:
     post:
       tags:
-        - Text Generation with detectors
+        - Text Generation with detections
       summary: Guardrails Unary Handler
       operationId: >-
         guardrails_unary_handler_api_v1_text_classification_with_text_generation_post
@@ -38,7 +45,7 @@ paths:
   /api/v1/task/server-streaming-classification-with-text-generation:
     post:
       tags:
-        - Text Generation with detectors
+        - Text Generation with detections
       summary: Guardrails Server Stream Handler
       operationId: >-
         guardrails_server_stream_handler_api_v1_text_server_streaming_classification_with_text_generation_post
@@ -67,6 +74,39 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /api/v2/text/generation-detection:
+    post:
+      tags:
+        - Text Generation with detections
+      summary: Generation task performing detection on prompt and generated text
+      operationId: >-
+        api_v2_detection_text_generation_detection_unary_handler
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenerationDetectionRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenerationDetectionResponse'
+        '404':
+          description: Resource Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /api/v2/text/detection/content:
     post:
       tags:
@@ -164,40 +204,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-   
-  /api/v2/text/generation-detection:
-    post:
-      tags:
-        - Text Generation with detectors
-      summary: Generation task performing detection on prompt and generated text
-      operationId: >-
-        api_v2_detection_text_generation_detection_unary_handler
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/GenerationDetectionRequest'
-        required: true
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GenerationDetectionResponse'
-        '404':
-          description: Resource Not Found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'              
-                
   /api/v2/text/detection/generated:
     post:
       tags:
@@ -229,7 +235,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'              
+                $ref: '#/components/schemas/Error'
      
 
 components:
