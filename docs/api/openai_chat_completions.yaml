@@ -1037,4 +1037,91 @@ components:
                 name: The chat completion object
                 group: chat
                 example: *chat_completion_example
-
+        
+        CreateChatCompletionStreamResponse:
+            type: object
+            description: Represents a streamed chunk of a chat completion response returned by model, based on the provided input.
+            properties:
+                id:
+                    type: string
+                    description: A unique identifier for the chat completion. Each chunk has the same ID.
+                choices:
+                    type: array
+                    description: |
+                        A list of chat completion choices. Can contain more than one elements if `n` is greater than 1. Can also be empty for the
+                        last chunk if you set `stream_options: {"include_usage": true}`.
+                    items:
+                        type: object
+                        required:
+                            - delta
+                            - finish_reason
+                            - index
+                        properties:
+                            delta:
+                                $ref: "https://raw.githubusercontent.com/openai/openai-openapi/master/openapi.yaml#/components/schemas/ChatCompletionStreamResponseDelta"
+                            logprobs: *chat_completion_response_logprobs
+                            finish_reason:
+                                type: string
+                                description: *chat_completion_finish_reason_description
+                                enum:
+                                    [
+                                        "stop",
+                                        "length",
+                                        "tool_calls",
+                                        "content_filter",
+                                        "function_call",
+                                    ]
+                                nullable: true
+                            index:
+                                type: integer
+                                description: The index of the choice in the list of choices.
+                created:
+                    type: integer
+                    description: The Unix timestamp (in seconds) of when the chat completion was created. Each chunk has the same timestamp.
+                model:
+                    type: string
+                    description: The model to generate the completion.
+                service_tier:
+                    description: The service tier used for processing the request. This field is only included if the `service_tier` parameter is specified in the request.
+                    type: string
+                    enum: ["scale", "default"]
+                    example: "scale"
+                    nullable: true
+                system_fingerprint:
+                    type: string
+                    description: |
+                        This fingerprint represents the backend configuration that the model runs with.
+                        Can be used in conjunction with the `seed` request parameter to understand when backend changes have been made that might impact determinism.
+                object:
+                    type: string
+                    description: The object type, which is always `chat.completion.chunk`.
+                    enum: [chat.completion.chunk]
+                usage:
+                    type: object
+                    description: |
+                        An optional field that will only be present when you set `stream_options: {"include_usage": true}` in your request.
+                        When present, it contains a null value except for the last chunk which contains the token usage statistics for the entire request.
+                    properties:
+                        completion_tokens:
+                            type: integer
+                            description: Number of tokens in the generated completion.
+                        prompt_tokens:
+                            type: integer
+                            description: Number of tokens in the prompt.
+                        total_tokens:
+                            type: integer
+                            description: Total number of tokens used in the request (prompt + completion).
+                    required:
+                        - prompt_tokens
+                        - completion_tokens
+                        - total_tokens
+            required:
+                - choices
+                - created
+                - id
+                - model
+                - object
+            x-oaiMeta:
+                name: The chat completion chunk object
+                group: chat
+                example: *chat_completion_chunk_example
