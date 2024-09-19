@@ -17,7 +17,7 @@ static ONCE: OnceCell<Arc<ServerState>> = OnceCell::const_new();
 
 /// The actual async function that initializes the shared state if not already initialized
 async fn shared_state() -> Arc<ServerState> {
-    let config = OrchestratorConfig::load("config/test.config.yaml")
+    let config = OrchestratorConfig::load("tests/test.config.yaml")
         .await
         .unwrap();
     let orchestrator = Orchestrator::new(config).await.unwrap();
