@@ -20,7 +20,7 @@ async fn shared_state() -> Arc<ServerState> {
     let config = OrchestratorConfig::load("tests/test.config.yaml")
         .await
         .unwrap();
-    let orchestrator = Orchestrator::new(config).await.unwrap();
+    let orchestrator = Orchestrator::new(config, false).await.unwrap();
     Arc::new(ServerState::new(orchestrator))
 }
 
