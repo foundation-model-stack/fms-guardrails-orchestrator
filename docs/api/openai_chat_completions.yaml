@@ -1027,6 +1027,12 @@ components:
                           }
                         ]
                       }
+                
+                warnings:
+                  type: object
+                  example:
+                    - type: incompatible-generation
+                      message: detector X could not run because of no content in choice 1
             required:
                 - choices
                 - created
