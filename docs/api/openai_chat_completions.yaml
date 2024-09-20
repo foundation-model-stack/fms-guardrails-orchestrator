@@ -892,11 +892,22 @@ components:
 
                 detectors:
                   type: object
+                  title: Detectors
+                  properties:
+                    input:
+                      type: object
+                      title: Input Detectors
+                      default: {}
+                    output:
+                      type: object
+                      title: Output Detectors
+                      default: {}
+                  default: {}
                   example:
                     input:
-                      "hap-v1": {}
-                    ouput:
-                      "pii-v1": {}
+                      hap-v1-model-en: {}
+                    output:
+                      pii-v1: {}
                       egregious_conversation: {}
             required:
                 - model
@@ -1002,13 +1013,13 @@ components:
                             "text": "string",
                             "detection_type": "HAP",
                             "detection": "has_HAP",
-                            "detector_id": "hap-v1-en",
+                            "detector_id": "hap-v1-model-en",
                             "score": 0.999
                           },
                           {
                             "detection_type": "string",
                             "detection": "string",
-                            "detector_id": "answer-relevance-v1-en",
+                            "detector_id": "relevance-v1-en",
                             "score": 0
                           }
                         ]

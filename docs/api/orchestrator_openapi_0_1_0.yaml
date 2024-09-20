@@ -337,6 +337,27 @@ paths:
 
 components:
   schemas:
+    Detectors:
+      properties:
+        detectors:
+          type: object
+          title: Detectors
+          properties:
+            input:
+              type: object
+              title: Input Detectors
+              default: {}
+            output:
+              type: object
+              title: Output Detectors
+              default: {}
+          default: {}
+          example:
+            input:
+              hap-v1-model-en: {}
+            output:
+              pii-v1: {}
+              egregious_conversation: {}
     DetectionContentRequest:
       properties:
         detectors:
