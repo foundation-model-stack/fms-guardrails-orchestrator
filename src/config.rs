@@ -292,6 +292,7 @@ detectors:
             port: 9000
         chunker_id: sentence-en
         default_threshold: 0.5
+        type: content
 tls: {}
         "#;
         let config: OrchestratorConfig = serde_yml::from_str(s).unwrap();
@@ -333,6 +334,7 @@ detectors:
             tls: detector
         chunker_id: sentence-en
         default_threshold: 0.5
+        type: content
 tls:
     detector:
         cert_path: /certs/client.pem
@@ -385,6 +387,7 @@ detectors:
             tls: detector
         chunker_id: sentence-en
         default_threshold: 0.5
+        type: content
 tls:
     detector:
         client_ca_cert_path: /certs/ca.pem
@@ -479,6 +482,7 @@ detectors:
             tls: notadetector
         chunker_id: sentence-en
         default_threshold: 0.5
+        type: content
 tls:
     detector:
         client_ca_cert_path: /certs/ca.pem
@@ -519,6 +523,7 @@ detectors:
             tls: detector
         chunker_id: sentence-fr
         default_threshold: 0.5
+        type: content
 tls:
     detector:
         client_ca_cert_path: /certs/ca.pem
