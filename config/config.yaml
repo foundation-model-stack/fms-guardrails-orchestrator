@@ -26,8 +26,9 @@ chunkers:
 detectors:
     # Detector ID/name to be used in user requests
     hap-en:
+        type: content # content, chat, context, generated
         service:
-            hostname: https://localhost/api/v1/text/contents # Full url / endpoint currently expected
+            hostname: localhost
             port: 8080
             # TLS ID/name, optional (detailed in `tls` section)
             tls: detector
