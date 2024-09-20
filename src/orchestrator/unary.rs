@@ -518,14 +518,14 @@ pub async fn detect(
     let detector_id = detector_id.clone();
     let threshold = detector_params.threshold().unwrap_or(default_threshold);
     let contents: Vec<_> = chunks.iter().map(|chunk| chunk.text.clone()).collect();
-    let response = if contents.is_empty() {
+    let response: Vec<Vec<ContentAnalysisResponse>> = if contents.is_empty() {
         // skip detector call as contents is empty
         Vec::default()
     } else {
         let request = ContentAnalysisRequest::new(contents);
         debug!(%detector_id, ?request, "sending detector request");
         ctx.detector_client
-            .text_contents(&detector_id, request)
+            .invoke(&detector_id, request)
             .await
             .map_err(|error| {
                 debug!(%detector_id, ?error, "error received from detector");
@@ -572,14 +572,14 @@ pub async fn detect_content(
     let detector_id = detector_id.clone();
     let threshold = detector_params.threshold().unwrap_or(default_threshold);
     let contents: Vec<_> = chunks.iter().map(|chunk| chunk.text.clone()).collect();
-    let response = if contents.is_empty() {
+    let response: Vec<Vec<ContentAnalysisResponse>> = if contents.is_empty() {
         // skip detector call as contents is empty
         Vec::default()
     } else {
         let request = ContentAnalysisRequest::new(contents);
         debug!(%detector_id, ?request, "sending detector request");
         ctx.detector_client
-            .text_contents(&detector_id, request)
+            .invoke(&detector_id, request)
             .await
             .map_err(|error| {
                 debug!(%detector_id, ?error, "error received from detector");
@@ -634,9 +634,9 @@ pub async fn detect_for_generation(
     debug!(%detector_id, ?request, "sending generation detector request");
     let response = ctx
         .detector_client
-        .text_generation(&detector_id, request)
+        .invoke(&detector_id, request)
         .await
-        .map(|results| {
+        .map(|results: Vec<DetectionResult>| {
             results
                 .into_iter()
                 .filter(|detection| detection.score > threshold)
@@ -673,9 +673,9 @@ pub async fn detect_for_context(
     debug!(%detector_id, ?request, "sending context detector request");
     let response = ctx
         .detector_client
-        .text_context_doc(&detector_id, request)
+        .invoke(&detector_id, request)
         .await
-        .map(|results| {
+        .map(|results: Vec<DetectionResult>| {
             results
                 .into_iter()
                 .filter(|detection| detection.score > threshold)
@@ -909,7 +909,7 @@ mod tests {
             token_count: None,
         }];
 
-        faux::when!(mock_detector_client.text_contents(
+        faux::when!(mock_detector_client.invoke(
             detector_id,
             ContentAnalysisRequest::new(vec![first_sentence.clone(), second_sentence.clone()]),
         ))
@@ -977,7 +977,7 @@ mod tests {
             },
         };
 
-        faux::when!(mock_detector_client.text_contents(
+        faux::when!(mock_detector_client.invoke(
             detector_id,
             ContentAnalysisRequest::new(vec![sentence.clone()]),
         ))
@@ -1018,7 +1018,7 @@ mod tests {
             text: first_sentence.clone(),
         }];
 
-        faux::when!(mock_detector_client.text_contents(
+        faux::when!(mock_detector_client.invoke(
             detector_id,
             ContentAnalysisRequest::new(vec![first_sentence.clone()]),
         ))
@@ -1069,7 +1069,7 @@ mod tests {
             ),
         }];
 
-        faux::when!(mock_detector_client.text_generation(
+        faux::when!(mock_detector_client.invoke(
             detector_id,
             GenerationDetectionRequest::new(prompt.clone(), generated_text.clone())
         ))
@@ -1130,7 +1130,7 @@ mod tests {
 
         let expected_response: Vec<DetectionResult> = vec![];
 
-        faux::when!(mock_detector_client.text_generation(
+        faux::when!(mock_detector_client.invoke(
             detector_id,
             GenerationDetectionRequest::new(prompt.clone(), generated_text.clone())
         ))
