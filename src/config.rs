@@ -119,6 +119,17 @@ pub struct ChunkerConfig {
     pub service: ServiceConfig,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Default)]
+#[cfg_attr(test, derive(PartialEq))]
+#[serde(rename_all = "lowercase")]
+pub enum DetectorType {
+    #[default]
+    Content,
+    Chat,
+    Context,
+    Generated,
+}
+
 /// Configuration for each detector
 #[derive(Clone, Debug, Default, Deserialize)]
 pub struct DetectorConfig {
@@ -128,6 +139,8 @@ pub struct DetectorConfig {
     pub chunker_id: String,
     /// Default threshold with which to filter detector results by score
     pub default_threshold: f64,
+    /// Type of detection this detector performs
+    pub r#type: DetectorType,
 }
 
 /// Overall orchestrator server configuration

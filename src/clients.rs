@@ -27,7 +27,7 @@ use tracing::error;
 use url::Url;
 
 use crate::{
-    config::{ServiceConfig, Tls},
+    config::{DetectorConfig, DetectorType, ServiceConfig, Tls},
     health::{HealthCheck, HealthCheckResult, HealthStatus, OptionalHealthCheckResponseBody},
 };
 
@@ -148,20 +148,32 @@ pub struct HttpClient {
     base_url: Url,
     health_url: Url,
     client: reqwest::Client,
+    detector_type: DetectorType,
 }
 
 impl HttpClient {
-    pub fn new(base_url: Url, client: reqwest::Client) -> Self {
+    pub fn new(base_url: Url, client: reqwest::Client, detector_type: DetectorType) -> Self {
         let health_url = extract_base_url(&base_url).join("health").unwrap();
         Self {
             base_url,
             health_url,
             client,
+            detector_type,
         }
     }
 
     pub fn base_url(&self) -> &Url {
         &self.base_url
+    }
+
+    pub fn endpoint(&self) -> String {
+        let path = match self.detector_type {
+            DetectorType::Content => "/api/v1/text/contents",
+            DetectorType::Generated => "/api/v1/text/generation",
+            DetectorType::Chat => "/api/v1/text/context/chat",
+            DetectorType::Context => "/api/v1/text/context/doc",
+        };
+        self.base_url.join(path).unwrap().to_string()
     }
 
     /// This is sectioned off to allow for testing.
@@ -259,23 +271,32 @@ impl std::ops::Deref for HttpClient {
 
 pub async fn create_http_clients(
     default_port: u16,
-    config: &[(String, ServiceConfig)],
+    config: &[(String, DetectorConfig)],
 ) -> HashMap<String, HttpClient> {
     let clients = config
         .iter()
-        .map(|(name, service_config)| async move {
-            let port = service_config.port.unwrap_or(default_port);
-            let mut base_url = Url::parse(&service_config.hostname).unwrap();
+        .map(|(name, detector_config)| async move {
+            let port = detector_config.service.port.unwrap_or(default_port);
+            let protocol = match detector_config.service.tls {
+                Some(_) => "https",
+                None => "http",
+            };
+            let mut base_url = Url::parse(&format!(
+                "{}://{}",
+                protocol, detector_config.service.hostname
+            ))
+            .unwrap();
             base_url.set_port(Some(port)).unwrap();
             let request_timeout = Duration::from_secs(
-                service_config
+                detector_config
+                    .service
                     .request_timeout
                     .unwrap_or(DEFAULT_REQUEST_TIMEOUT_SEC),
             );
             let mut builder = reqwest::ClientBuilder::new()
                 .connect_timeout(DEFAULT_CONNECT_TIMEOUT)
                 .timeout(request_timeout);
-            if let Some(Tls::Config(tls_config)) = &service_config.tls {
+            if let Some(Tls::Config(tls_config)) = &detector_config.service.tls {
                 let mut cert_buf = Vec::new();
                 let cert_path = tls_config.cert_path.as_ref().unwrap().as_path();
                 File::open(cert_path)
@@ -319,7 +340,7 @@ pub async fn create_http_clients(
             let client = builder
                 .build()
                 .unwrap_or_else(|error| panic!("error creating http client for {name}: {error}"));
-            let client = HttpClient::new(base_url, client);
+            let client = HttpClient::new(base_url, client, detector_config.r#type);
             (name.clone(), client)
         })
         .collect::<Vec<_>>();

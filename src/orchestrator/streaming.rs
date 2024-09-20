@@ -37,8 +37,7 @@ use crate::{
         unary::{input_detection_task, tokenize},
         UNSUITABLE_INPUT_MESSAGE,
     },
-    pb::caikit::runtime::chunkers,
-    pb::caikit_data_model::nlp::ChunkerTokenizationStreamResult,
+    pb::{caikit::runtime::chunkers, caikit_data_model::nlp::ChunkerTokenizationStreamResult},
 };
 
 pub type Chunk = ChunkerTokenizationStreamResult;

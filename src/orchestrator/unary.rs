@@ -911,7 +911,7 @@ mod tests {
 
         faux::when!(mock_detector_client.text_contents(
             detector_id,
-            ContentAnalysisRequest::new(vec![first_sentence.clone(), second_sentence.clone()])
+            ContentAnalysisRequest::new(vec![first_sentence.clone(), second_sentence.clone()]),
         ))
         .once()
         .then_return(Ok(vec![
@@ -979,7 +979,7 @@ mod tests {
 
         faux::when!(mock_detector_client.text_contents(
             detector_id,
-            ContentAnalysisRequest::new(vec![sentence.clone()])
+            ContentAnalysisRequest::new(vec![sentence.clone()]),
         ))
         .once()
         .then_return(Err(clients::Error::Http {
@@ -1020,7 +1020,7 @@ mod tests {
 
         faux::when!(mock_detector_client.text_contents(
             detector_id,
-            ContentAnalysisRequest::new(vec![first_sentence.clone()])
+            ContentAnalysisRequest::new(vec![first_sentence.clone()]),
         ))
         .once()
         .then_return(Ok(vec![vec![]]));

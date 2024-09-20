@@ -195,7 +195,7 @@ async fn create_clients(
     let detector_config = config
         .detectors
         .iter()
-        .map(|(detector_id, config)| (detector_id.clone(), config.service.clone()))
+        .map(|(detector_id, config)| (detector_id.clone(), config.clone()))
         .collect::<Vec<_>>();
     let detector_client =
         DetectorClient::new(clients::DEFAULT_DETECTOR_PORT, &detector_config).await;
