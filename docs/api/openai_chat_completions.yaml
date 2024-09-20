@@ -891,24 +891,25 @@ components:
                         $ref: "https://raw.githubusercontent.com/openai/openai-openapi/master/openapi.yaml#/components/schemas/ChatCompletionFunctions"
 
                 detectors:
-                  type: object
-                  title: Detectors
-                  properties:
-                    input:
-                      type: object
-                      title: Input Detectors
-                      default: {}
-                    output:
-                      type: object
-                      title: Output Detectors
-                      default: {}
-                  default: {}
-                  example:
-                    input:
-                      hap-v1-model-en: {}
-                    output:
-                      pii-v1: {}
-                      egregious_conversation: {}
+                  $ref: "https://raw.githubusercontent.com/evaline-ju/fms-guardrails-orchestrator/refs/heads/chat-detections-api/docs/api/orchestrator_openapi_0_1_0.yaml#/components/schemas/Detectors"
+                  # type: object
+                  # title: Detectors
+                  # properties:
+                  #   input:
+                  #     type: object
+                  #     title: Input Detectors
+                  #     default: {}
+                  #   output:
+                  #     type: object
+                  #     title: Output Detectors
+                  #     default: {}
+                  # default: {}
+                  # example:
+                  #   input:
+                  #     hap-v1-model-en: {}
+                  #   output:
+                  #     pii-v1: {}
+                  #     egregious_conversation: {}
             required:
                 - model
                 - messages
