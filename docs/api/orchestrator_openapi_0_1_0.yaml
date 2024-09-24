@@ -337,27 +337,6 @@ paths:
 
 components:
   schemas:
-    Detectors:
-      properties:
-        detectors:
-          type: object
-          title: Detectors
-          properties:
-            input:
-              type: object
-              title: Input Detectors
-              default: {}
-            output:
-              type: object
-              title: Output Detectors
-              default: {}
-          default: {}
-          example:
-            input:
-              hap-v1-model-en: {}
-            output:
-              pii-v1: {}
-              egregious_conversation: {}
     DetectionContentRequest:
       properties:
         detectors:
@@ -516,6 +495,7 @@ components:
                   type: array
       required: ["detections"]
       title: Detection Context Docs Response
+
     GenerationDetectionRequest:
       properties:
         model_id:
@@ -699,6 +679,60 @@ components:
       required: ["input_token_count", "token_classification_results"]
       type: object
       title: Classified Generated Text Stream Result
+
+    Detectors:
+      properties:
+        detectors:
+          type: object
+          title: Detectors
+          properties:
+            input:
+              type: object
+              title: Input Detectors
+              default: {}
+            output:
+              type: object
+              title: Output Detectors
+              default: {}
+          default: {}
+          example:
+            input:
+              hap-v1-model-en: {}
+            output:
+              pii-v1: {}
+              egregious_conversation: {}
+    ChatCompletionsDetections:
+      title: Chat Completions Detections
+      properties:
+        detections:
+          type: object
+          properties:
+            input:
+              $ref: '#/components/schemas/ChoiceDetections'
+              title: Detections on input to chat completions
+              default: {}
+            output:
+              $ref: '#/components/schemas/ChoiceDetections'
+              title: Detections on output of chat completions
+              default: {}
+          default: {}
+    ChoiceDetections:
+      title: Choice Detections
+      properties:
+        choice:
+          oneOf:
+            - type: string
+            - type: integer
+          title: Choice
+        results:
+          title: Detection results
+          type: array
+          items:
+            oneOf:
+              - $ref: '#/components/schemas/DetectionContentResponseObject'
+              # Refactor to add non-span ones
+      required: ["choice"]
+
     Error:
       type: object
       properties:
