@@ -249,14 +249,14 @@ paths:
             content:
                 application/json:
                     schema:
-                        $ref: "#/components/schemas/CreateChatCompletionRequest"
+                        $ref: "#/components/schemas/GuardrailsCreateChatCompletionRequest"
         responses:
             "200":
                 description: OK
                 content:
                     application/json:
                         schema:
-                            $ref: "#/components/schemas/CreateChatCompletionResponse"
+                            $ref: "#/components/schemas/GuardrailsCreateChatCompletionResponse"
 
         x-oaiMeta:
             name: Create chat completion
@@ -382,6 +382,16 @@ components:
         score:
           type: number
           title: Score
+      example:
+        - {
+            "start": 0,
+            "end": 20,
+            "text": "string",
+            "detection_type": "HAP",
+            "detection": "has_HAP",
+            "detector_id": "hap-v1-model-en",
+            "score": 0.999
+          }
 
     DetectionChatRequest:
       properties:
@@ -680,58 +690,117 @@ components:
       type: object
       title: Classified Generated Text Stream Result
 
-    Detectors:
+    ########################## Chat Completion #################################
+    GuardrailsCreateChatCompletionRequest:
+      title: Guardrails Chat Completion Request
+      description: Guardrails chat completion request (adds detectors on OpenAI chat completion)
+      allOf:
+        - $ref: https://raw.githubusercontent.com/openai/openai-openapi/master/openapi.yaml#/components/schemas/CreateChatCompletionRequest
+        - type: object
       properties:
         detectors:
-          type: object
-          title: Detectors
-          properties:
-            input:
-              type: object
-              title: Input Detectors
-              default: {}
-            output:
-              type: object
-              title: Output Detectors
-              default: {}
+          $ref: "#/components/schemas/Detectors"
           default: {}
-          example:
-            input:
-              hap-v1-model-en: {}
-            output:
-              pii-v1: {}
-              egregious_conversation: {}
+      required:
+        - detectors
+      
+    GuardrailsCreateChatCompletionResponse:
+      allOf:
+        - $ref: https://raw.githubusercontent.com/openai/openai-openapi/master/openapi.yaml#/components/schemas/CreateChatCompletionResponse
+        - type: object
+      properties:
+        detections:
+          $ref: "#/components/schemas/ChatCompletionsDetections"
+      required:
+        - detections
+
+    
+    Detectors:
+      title: Guardrails Detectors
+      description: Specify detectors for guardrails
+      properties:
+        input:
+          type: object
+          title: Input Detectors
+          default: {}
+        output:
+          type: object
+          title: Output Detectors
+          default: {}
+      example:
+        input:
+          hap-v1-model-en: {}
+        output:
+          pii-v1: {}
+          conversation-detector: {}
+    
     ChatCompletionsDetections:
       title: Chat Completions Detections
       properties:
-        detections:
-          type: object
-          properties:
-            input:
-              $ref: '#/components/schemas/ChoiceDetections'
-              title: Detections on input to chat completions
-              default: {}
-            output:
-              $ref: '#/components/schemas/ChoiceDetections'
-              title: Detections on output of chat completions
-              default: {}
+        input:
+          title: Detections on input to chat completions
           default: {}
+          properties:
+            results:
+              type: array
+              items:
+                anyOf:
+                  - $ref: '#/components/schemas/DetectionContentResponseObject'
+        output:
+          $ref: '#/components/schemas/ChoiceDetections'
+          title: Detections on output of chat completions
+          default: {}
+      default: {}
+      example:
+        input:
+          results: 
+            - {
+                "start": 0,
+                "end": 80,
+                "text": "string",
+                "detection_type": "HAP",
+                "detection": "has_HAP",
+                "detector_id": "hap-v1-model-en", # To be added in future
+                "score": 0.999
+              }
+        output:
+          choice_index: 1
+          results:
+            - {
+                "start": 0,
+                "end": 20,
+                "text": "string",
+                "detection_type": "HAP",
+                "detection": "has_HAP",
+                "detector_id": "hap-v1-model-en", # To be added in future
+                "score": 0.999
+              }
+            - {
+                "detection_type": "string",
+                "detection": "string",
+                "detector_id": "relevance-v1-en", # To be added in future
+                "score": 0
+              }
+          
+
+    
     ChoiceDetections:
       title: Choice Detections
       properties:
-        choice:
+        choice_index:
           oneOf:
-            - type: string
-            - type: integer
-          title: Choice
+            - type: string # "all"
+            - type: integer # index
+          title: Index of choice
         results:
           title: Detection results
           type: array
           items:
-            oneOf:
+            anyOf:
               - $ref: '#/components/schemas/DetectionContentResponseObject'
               # Refactor to add non-span ones
-      required: ["choice"]
+      required:
+        - choice_index
 
     Error:
       type: object
