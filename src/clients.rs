@@ -177,27 +177,29 @@ impl HttpClient {
                             health_status: body.health_status.clone(),
                             response_code: ClientCode::Http(StatusCode::OK),
                             reason: match body.health_status {
-                                HealthStatus::Ready => None,
+                                HealthStatus::Healthy => None,
                                 _ => body.reason,
                             },
                         }
                     } else {
-                        // If the service did not provide a body, we assume it is ready.
+                        // If the service did not provide a body, we assume it is healthy.
                         HealthCheckResult {
-                            health_status: HealthStatus::Ready,
+                            health_status: HealthStatus::Healthy,
                             response_code: ClientCode::Http(StatusCode::OK),
                             reason: None,
                         }
                     }
                 } else {
                     HealthCheckResult {
-                        // The most we can presume is that 5xx errors are likely indicating service issues, implying the service is not ready,
+                        // The most we can presume is that 5xx errors are likely indicating service issues, implying the service is unhealthy.
                         // and that 4xx errors are more likely indicating health check failures, i.e. due to configuration/implementation issues.
                         // Regardless we can't be certain, so the reason is also provided.
+                        // TODO: We will likely circle back to re-evaluate this logic in the future
+                        // when we know more about how the client health results will be used.
                         health_status: if response.status().as_u16() >= 500
                             && response.status().as_u16() < 600
                         {
-                            HealthStatus::NotReady
+                            HealthStatus::Unhealthy
                         } else if response.status().as_u16() >= 400
                             && response.status().as_u16() < 500
                         {
@@ -427,37 +429,37 @@ mod tests {
         // READY responses from HTTP 200 OK with or without reason
         let response = [
             (StatusCode::OK, r#"{}"#),
-            (StatusCode::OK, r#"{ "health_status": "READY" }"#),
+            (StatusCode::OK, r#"{ "health_status": "HEALTHY" }"#),
             (
                 StatusCode::OK,
                 r#"{ "health_status": "meaningless status" }"#,
             ),
             (
                 StatusCode::OK,
-                r#"{ "health_status": "READY", "reason": "needless reason" }"#,
+                r#"{ "health_status": "HEALTHY", "reason": "needless reason" }"#,
             ),
         ];
         for (status, body) in response.iter() {
             let response = mock_http_response(*status, body).await;
             let result = HttpClient::http_response_to_health_check_result(response).await;
-            assert_eq!(result.health_status, HealthStatus::Ready);
+            assert_eq!(result.health_status, HealthStatus::Healthy);
             assert_eq!(result.response_code, ClientCode::Http(StatusCode::OK));
             assert_eq!(result.reason, None);
             let serialized = serde_json::to_string(&result).unwrap();
-            assert_eq!(serialized, r#""READY""#);
+            assert_eq!(serialized, r#""HEALTHY""#);
         }
 
         // NOT_READY response from HTTP 200 OK without reason
         let response =
-            mock_http_response(StatusCode::OK, r#"{ "health_status": "NOT_READY" }"#).await;
+            mock_http_response(StatusCode::OK, r#"{ "health_status": "UNHEALTHY" }"#).await;
         let result = HttpClient::http_response_to_health_check_result(response).await;
-        assert_eq!(result.health_status, HealthStatus::NotReady);
+        assert_eq!(result.health_status, HealthStatus::Unhealthy);
         assert_eq!(result.response_code, ClientCode::Http(StatusCode::OK));
         assert_eq!(result.reason, None);
         let serialized = serde_json::to_string(&result).unwrap();
         assert_eq!(
             serialized,
-            r#"{"health_status":"NOT_READY","response_code":"HTTP 200 OK"}"#
+            r#"{"health_status":"UNHEALTHY","response_code":"HTTP 200 OK"}"#
         );
 
         // UNKNOWN response from HTTP 200 OK without reason
@@ -476,17 +478,17 @@ mod tests {
         // NOT_READY response from HTTP 200 OK with reason
         let response = mock_http_response(
             StatusCode::OK,
-            r#"{ "health_status": "NOT_READY", "reason": "some reason" }"#,
+            r#"{ "health_status": "UNHEALTHY", "reason": "some reason" }"#,
         )
         .await;
         let result = HttpClient::http_response_to_health_check_result(response).await;
-        assert_eq!(result.health_status, HealthStatus::NotReady);
+        assert_eq!(result.health_status, HealthStatus::Unhealthy);
         assert_eq!(result.response_code, ClientCode::Http(StatusCode::OK));
         assert_eq!(result.reason, Some("some reason".to_string()));
         let serialized = serde_json::to_string(&result).unwrap();
         assert_eq!(
             serialized,
-            r#"{"health_status":"NOT_READY","response_code":"HTTP 200 OK","reason":"some reason"}"#
+            r#"{"health_status":"UNHEALTHY","response_code":"HTTP 200 OK","reason":"some reason"}"#
         );
 
         // UNKNOWN response from HTTP 200 OK with reason
@@ -512,7 +514,7 @@ mod tests {
         )
         .await;
         let result = HttpClient::http_response_to_health_check_result(response).await;
-        assert_eq!(result.health_status, HealthStatus::NotReady);
+        assert_eq!(result.health_status, HealthStatus::Unhealthy);
         assert_eq!(
             result.response_code,
             ClientCode::Http(StatusCode::SERVICE_UNAVAILABLE)
@@ -521,7 +523,7 @@ mod tests {
         let serialized = serde_json::to_string(&result).unwrap();
         assert_eq!(
             serialized,
-            r#"{"health_status":"NOT_READY","response_code":"HTTP 503 Service Unavailable","reason":"HTTP status server error (503 Service Unavailable) for url (http://no.url.provided.local/): { \"message\": \"some error message\" }"}"#
+            r#"{"health_status":"UNHEALTHY","response_code":"HTTP 503 Service Unavailable","reason":"HTTP status server error (503 Service Unavailable) for url (http://no.url.provided.local/): { \"message\": \"some error message\" }"}"#
         );
 
         // UNKNOWN response from HTTP 404 NOT FOUND with reason
@@ -546,7 +548,7 @@ mod tests {
         // NOT_READY response from HTTP 500 INTERNAL SERVER ERROR without reason
         let response = mock_http_response(StatusCode::INTERNAL_SERVER_ERROR, r#""#).await;
         let result = HttpClient::http_response_to_health_check_result(response).await;
-        assert_eq!(result.health_status, HealthStatus::NotReady);
+        assert_eq!(result.health_status, HealthStatus::Unhealthy);
         assert_eq!(
             result.response_code,
             ClientCode::Http(StatusCode::INTERNAL_SERVER_ERROR)
@@ -555,7 +557,7 @@ mod tests {
         let serialized = serde_json::to_string(&result).unwrap();
         assert_eq!(
             serialized,
-            r#"{"health_status":"NOT_READY","response_code":"HTTP 500 Internal Server Error","reason":"HTTP status server error (500 Internal Server Error) for url (http://no.url.provided.local/)"}"#
+            r#"{"health_status":"UNHEALTHY","response_code":"HTTP 500 Internal Server Error","reason":"HTTP status server error (500 Internal Server Error) for url (http://no.url.provided.local/)"}"#
         );
 
         // UNKNOWN response from HTTP 400 BAD REQUEST without reason
@@ -579,28 +581,25 @@ mod tests {
         // READY responses from gRPC 0 OK from serving status 1 SERVING
         let response = mock_grpc_response(Some(ServingStatus::Serving as i32), None).await;
         let result = HealthCheckResult::from(response);
-        assert_eq!(result.health_status, HealthStatus::Ready);
+        assert_eq!(result.health_status, HealthStatus::Healthy);
         assert_eq!(result.response_code, ClientCode::Grpc(tonic::Code::Ok));
         assert_eq!(result.reason, None);
         let serialized = serde_json::to_string(&result).unwrap();
-        assert_eq!(serialized, r#""READY""#);
+        assert_eq!(serialized, r#""HEALTHY""#);
 
         // NOT_READY response from gRPC 0 OK form serving status 2 NOT_SERVING
         let response = mock_grpc_response(Some(ServingStatus::NotServing as i32), None).await;
         let result = HealthCheckResult::from(response);
-        assert_eq!(result.health_status, HealthStatus::NotReady);
+        assert_eq!(result.health_status, HealthStatus::Unhealthy);
         assert_eq!(result.response_code, ClientCode::Grpc(tonic::Code::Ok));
         assert_eq!(
             result.reason,
-            Some(
-                "gRPC serving status NOT_SERVING: Service is not ready to serve requests"
-                    .to_string()
-            )
+            Some("from gRPC health check serving status: NOT_SERVING".to_string())
         );
         let serialized = serde_json::to_string(&result).unwrap();
         assert_eq!(
             serialized,
-            r#"{"health_status":"NOT_READY","response_code":"gRPC Ok The operation completed successfully","reason":"gRPC serving status NOT_SERVING: Service is not ready to serve requests"}"#
+            r#"{"health_status":"UNHEALTHY","response_code":"gRPC Ok The operation completed successfully","reason":"from gRPC health check serving status: NOT_SERVING"}"#
         );
 
         // UNKNOWN response from gRPC 0 OK from serving status 0 UNKNOWN
@@ -610,14 +609,12 @@ mod tests {
         assert_eq!(result.response_code, ClientCode::Grpc(tonic::Code::Ok));
         assert_eq!(
             result.reason,
-            Some(
-                "gRPC serving status UNKNOWN: Service's health is unexpectedly unknown".to_string()
-            )
+            Some("from gRPC health check serving status: UNKNOWN".to_string())
         );
         let serialized = serde_json::to_string(&result).unwrap();
         assert_eq!(
             serialized,
-            r#"{"health_status":"UNKNOWN","response_code":"gRPC Ok The operation completed successfully","reason":"gRPC serving status UNKNOWN: Service's health is unexpectedly unknown"}"#
+            r#"{"health_status":"UNKNOWN","response_code":"gRPC Ok The operation completed successfully","reason":"from gRPC health check serving status: UNKNOWN"}"#
         );
 
         // UNKNOWN response from gRPC 0 OK from serving status 3 SERVICE_UNKNOWN
@@ -627,15 +624,12 @@ mod tests {
         assert_eq!(result.response_code, ClientCode::Grpc(tonic::Code::Ok));
         assert_eq!(
             result.reason,
-            Some(
-                "gRPC serving status SERVICE_UNKNOWN: Service's heath is currently unknown"
-                    .to_string()
-            )
+            Some("from gRPC health check serving status: SERVICE_UNKNOWN".to_string())
         );
         let serialized = serde_json::to_string(&result).unwrap();
         assert_eq!(
             serialized,
-            r#"{"health_status":"UNKNOWN","response_code":"gRPC Ok The operation completed successfully","reason":"gRPC serving status SERVICE_UNKNOWN: Service's heath is currently unknown"}"#
+            r#"{"health_status":"UNKNOWN","response_code":"gRPC Ok The operation completed successfully","reason":"from gRPC health check serving status: SERVICE_UNKNOWN"}"#
         );
 
         // UNKNOWN response from other gRPC error codes (covering main ones)

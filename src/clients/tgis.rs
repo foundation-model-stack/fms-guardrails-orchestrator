@@ -57,9 +57,9 @@ impl HealthProbe for TgisClient {
                 Err(status) => status.code(),
             };
             let health_status = if matches!(code, Code::Ok) {
-                HealthStatus::Ready
+                HealthStatus::Healthy
             } else {
-                HealthStatus::NotReady
+                HealthStatus::Unhealthy
             };
             results.insert(
                 model_id,

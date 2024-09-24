@@ -33,14 +33,12 @@ pub trait HealthProbe {
 /// Health status determined for or returned by a client service.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum HealthStatus {
-    /// The service is ready to serve requests.
-    /// From successful health check responses that do not indicate the service is not ready/unknown.
-    #[serde(rename = "READY")]
-    Ready,
-    /// The service is not ready to serve requests.
-    /// The health check response indicated the service is not ready to serve requests or failed in a way indicating the service is not ready.
-    #[serde(rename = "NOT_READY")]
-    NotReady,
+    /// The service is healthy and should be considered ready to serve requests.
+    #[serde(rename = "HEALTHY")]
+    Healthy,
+    /// The service is unhealthy and should be considered not ready to serve requests.
+    #[serde(rename = "UNHEALTHY")]
+    Unhealthy,
     /// The health status of the service (and possibly the service itself) is unknown.
     /// The health check response indicated the service's health is unknown or the health request failed in a way that could have been a misconfiguration,
     /// meaning the actual service could still be healthy.
@@ -53,9 +51,10 @@ pub enum HealthStatus {
 /// If the body omitted, the health check response is considered successful if the status code is `HTTP 200 OK`.
 #[derive(serde::Deserialize)]
 pub struct OptionalHealthCheckResponseBody {
-    /// `READY`, `NOT_READY`, or `UNKNOWN`. Although `READY` is already implied without a body.
+    /// `HEALTHY`, `UNHEALTHY`, or `UNKNOWN`. Although `HEALTHY` is already implied without a body.
     pub health_status: HealthStatus,
-    /// Optional reason for the health check result status being `NOT_READY` or `UNKNOWN`.
+    /// Optional reason for the health check result status being `UNHEALTHY` or `UNKNOWN`.
+    /// May be omitted overall if the health check was successful.
     #[serde(default)]
     pub reason: Option<String>,
 }
@@ -64,13 +63,12 @@ pub struct OptionalHealthCheckResponseBody {
 #[derive(Debug, Clone)]
 pub struct HealthCheckResult {
     /// Overall health status of client service.
-    /// `READY`, `NOT_READY`, or `UNKNOWN`.
-    /// TODO: We potentially want to expand this to distinguish `Live` and `Ready to serve` statuses.
+    /// `HEALTHY`, `UNHEALTHY`, or `UNKNOWN`.
     pub health_status: HealthStatus,
     /// Response code of the latest health check request.
     /// This should be omitted on serialization if the health check was successful (when the response is `HTTP 200 OK` or `gRPC 0 OK`).
     pub response_code: ClientCode,
-    /// Optional reason for the health check result status being `Not ready to serve` or `Unknown`.
+    /// Optional reason for the health check result status being `UNHEALTHY` or `UNKNOWN`.
     /// May be omitted overall if the health check was successful.
     pub reason: Option<String>,
 }
@@ -90,48 +88,28 @@ pub struct HealthProbeResponse {
     pub services: HealthCheckCache,
 }
 
-/// Probe query param for the readiness probe endpoint.
+/// Query param for triggering the client health check probe on the `/info` endpoint.
 #[derive(Debug, Clone, Deserialize)]
-pub struct ReadyCheckParams {
-    /// Whether to probe the service for readiness or just return the cached health status.
+pub struct HealthCheckProbeParams {
+    /// Whether to probe the client services' health checks or just return the cached health status.
     #[serde(default)]
     pub probe: bool,
 }
 
 impl HealthCheckResult {
-    pub fn is_ready(&self) -> bool {
-        matches!(self.health_status, HealthStatus::Ready)
-    }
-
-    pub fn is_not_ready(&self) -> bool {
-        matches!(self.health_status, HealthStatus::NotReady)
-    }
-
-    pub fn is_unknown(&self) -> bool {
-        matches!(self.health_status, HealthStatus::Unknown)
-    }
-
     pub fn reason_from_health_check_response(response: &HealthCheckResponse) -> Option<String> {
         match response.status {
-            0 => Some(
-                "gRPC serving status UNKNOWN: Service's health is unexpectedly unknown".to_string(),
-            ),
+            0 => Some("from gRPC health check serving status: UNKNOWN".to_string()),
             1 => None,
-            2 => Some(
-                "gRPC serving status NOT_SERVING: Service is not ready to serve requests"
-                    .to_string(),
-            ),
-            3 => Some(
-                "gRPC serving status SERVICE_UNKNOWN: Service's heath is currently unknown"
-                    .to_string(),
-            ),
+            2 => Some("from gRPC health check serving status: NOT_SERVING".to_string()),
+            3 => Some("from gRPC health check serving status: SERVICE_UNKNOWN".to_string()),
             _ => {
                 error!(
-                    "Unexpected gRPC health check response status: {}",
+                    "Unexpected gRPC health check serving status: {}",
                     response.status
                 );
                 Some(format!(
-                    "Unexpected gRPC health check response status: {}",
+                    "Unexpected gRPC health check serving status: {}",
                     response.status
                 ))
             }
@@ -155,9 +133,9 @@ impl HealthProbeResponse {
 impl Display for HealthStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            HealthStatus::Ready => write!(f, "ready to serve"),
-            HealthStatus::NotReady => write!(f, "not ready to serve"),
-            HealthStatus::Unknown => write!(f, "unknown"),
+            HealthStatus::Healthy => write!(f, "HEALTHY"),
+            HealthStatus::Unhealthy => write!(f, "UNHEALTHY"),
+            HealthStatus::Unknown => write!(f, "UNKNOWN"),
         }
     }
 }
@@ -206,7 +184,7 @@ impl Serialize for HealthCheckResult {
         S: serde::Serializer,
     {
         match self.health_status {
-            HealthStatus::Ready => self.health_status.serialize(serializer),
+            HealthStatus::Healthy => self.health_status.serialize(serializer),
             _ => match &self.reason {
                 Some(reason) => {
                     let mut state = serializer.serialize_struct("HealthCheckResult", 3)?;
@@ -263,8 +241,8 @@ impl From<HealthCheckResponse> for HealthStatus {
     fn from(value: HealthCheckResponse) -> Self {
         // NOTE: gRPC Health v1 status codes: 0 = UNKNOWN, 1 = SERVING, 2 = NOT_SERVING, 3 = SERVICE_UNKNOWN
         match value.status {
-            1 => Self::Ready,
-            2 => Self::NotReady,
+            1 => Self::Healthy,
+            2 => Self::Unhealthy,
             _ => Self::Unknown,
         }
     }
@@ -273,21 +251,21 @@ impl From<HealthCheckResponse> for HealthStatus {
 impl From<StatusCode> for HealthStatus {
     fn from(code: StatusCode) -> Self {
         match code.as_u16() {
-            200 => Self::Ready,
+            200 => Self::Healthy,
             201..=299 => {
                 warn!(
                     "Unexpected HTTP successful health check response status code: {}",
                     code
                 );
-                Self::Ready
+                Self::Healthy
             }
-            503 => Self::NotReady,
+            503 => Self::Unhealthy,
             500..=502 | 504..=599 => {
                 warn!(
                     "Unexpected HTTP server error health check response status code: {}",
                     code
                 );
-                Self::NotReady
+                Self::Unhealthy
             }
             _ => {
                 warn!(

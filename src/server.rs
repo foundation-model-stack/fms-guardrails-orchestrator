@@ -43,7 +43,7 @@ use uuid::Uuid;
 use webpki::types::{CertificateDer, PrivateKeyDer};
 
 use crate::{
-    health::ReadyCheckParams,
+    health::HealthCheckProbeParams,
     models,
     orchestrator::{
         self, ClassificationWithGenTask, ContextDocsDetectionTask, DetectionOnGenerationTask,
@@ -288,7 +288,7 @@ async fn health() -> Result<impl IntoResponse, ()> {
 
 async fn info(
     State(state): State<Arc<ServerState>>,
-    Query(params): Query<ReadyCheckParams>,
+    Query(params): Query<HealthCheckProbeParams>,
 ) -> Result<impl IntoResponse, Error> {
     match state.orchestrator.clients_health(params.probe).await {
         Ok(client_health_info) => Ok(client_health_info),
