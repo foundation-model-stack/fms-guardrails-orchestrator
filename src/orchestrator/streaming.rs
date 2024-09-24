@@ -27,7 +27,7 @@ use tracing::{debug, error, info, instrument};
 
 use super::{get_chunker_ids, Context, Error, Orchestrator, StreamingClassificationWithGenTask};
 use crate::{
-    clients::detector::{ContentAnalysisRequest, ContentAnalysisResponse},
+    clients::detector::ContentAnalysisRequest,
     models::{
         ClassifiedGeneratedTextStreamResult, DetectorParams, GuardrailsTextGenerationParameters,
         InputWarning, InputWarningReason, TextGenTokenClassificationResults,
@@ -362,7 +362,7 @@ async fn detection_task(
                             debug!(%detector_id, ?request, "sending detector request");
                             match ctx
                                 .detector_client
-                                .invoke::<ContentAnalysisRequest, Vec<Vec<ContentAnalysisResponse>>>(&detector_id, request)
+                                .text_contents(&detector_id, request)
                                 .await
                                 .map_err(|error| Error::DetectorRequestFailed { id: detector_id.clone(), error }) {
                                     Ok(response) => {
