@@ -22,8 +22,8 @@ use serde::{Deserialize, Serialize};
 
 use super::{create_http_clients, Error, HttpClient};
 use crate::{
-    health::{HealthCheck, HealthCheckResult, HealthProbe},
     config::DetectorConfig,
+    health::{HealthCheck, HealthCheckResult, HealthProbe},
     models::{DetectionResult, DetectorParams},
 };
 
