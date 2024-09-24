@@ -11,8 +11,9 @@ chunkers:
       port: 8085
 detectors:
   test_detector:
+    type: content
     service:
-      hostname: https://localhost/api/v1/text/contents
+      hostname: localhost
       port: 8000
     chunker_id: test_chunker
     default_threshold: 0.5
