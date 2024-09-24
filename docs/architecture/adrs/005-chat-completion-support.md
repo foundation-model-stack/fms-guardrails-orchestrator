@@ -23,18 +23,20 @@ To enable running guardrails on chat completion use-cases, we want to provide a 
 This is particular to the [`choices` array](https://platform.openai.com/docs/api-reference/chat/object#chat/object-choices) on the chat completion response.
 1. Each choice is independent.
 2. Each choice is generated with the same input.
-3. We will run all requested `output` detectors on all choices.
+3. Each requested `output` detector will be run on each choice in `choices`.
 
 #### Response
 1. If the LLM (model used to generate chat completions) doesn't generate `content` in any `message` in `choices`, then we will ignore the `choices` and return a warning about `detections.output`.
 1. We will run all detectors mentioned in `output` part on all `choices` (that have `message.content`), unless there are certain detectors that are supposed to be run across choices.
 1. We will order all detections that include span by `start` and move all the other ones towards the end (by not ordering them in any particular order), but grouping the remaining ones based on `detector_id`.
 
-##### Streaming
-The streaming response with guardrails is built off the [chat completion chunk responses](https://platform.openai.com/docs/api-reference/chat/streaming).
-[TODO: Add particulars for streaming]
-- `delta.content` to be processed
-- Detections on second-last event regardless of presence of usage
+##### Streaming response
+The streaming response with guardrails is built off the [chat completion chunk responses](https://platform.openai.com/docs/api-reference/chat/streaming). This applies when output detectors are requested.
+- Each choice's `delta.content`, if present, will be the `content` used for `detections`. Like the unary case, if there is no `content` overall, a warning will be returned.
+- Since detector use will cause content to be "chunked" (e.g. collected into sentences for sentence detectors), to prevent ambiguity, the `delta.role` will be provided on each stream event, and `delta.content` will include the "chunked" text. This will apply to each `choice` in `choices`.
+- A `detections` block will be added to each stream event. Each processed `choice` will be noted with the inclusion of the choice's `index` by a `choice_index` field, even if there are no particular `results` from running the output detectors.
+- For output detectors that run on the contents of an entire output stream, results will be included as `detections` on the second-last event of the stream, regardless of presence of `usage`.
+- Implementation-wise, this is complicated since currently for the openAI chat completions API, each stream event returns content for only one choice.
 
 
 #### User interactions
