@@ -238,12 +238,12 @@ paths:
                 $ref: '#/components/schemas/Error'
   
   /api/v2/chat/completions-detection:
-    # TODO: update below
     post:
-        operationId: createChatCompletion
         tags:
             - Chat Completions with detections
-        summary: Creates a model response for the given chat conversation.
+        operationId: >-
+          api_v2_chat_completions_detection_handler
+        summary: Creates a model response with detections for the given chat conversation.
         requestBody:
             required: true
             content:
@@ -251,89 +251,24 @@ paths:
                     schema:
                         $ref: "#/components/schemas/GuardrailsCreateChatCompletionRequest"
         responses:
-            "200":
-                description: OK
-                content:
-                    application/json:
-                        schema:
-                            $ref: "#/components/schemas/GuardrailsCreateChatCompletionResponse"
-
-        x-oaiMeta:
-            name: Create chat completion
-            group: chat
-            returns: |
-                Returns a [chat completion](/docs/api-reference/chat/object) object, or a streamed sequence of [chat completion chunk](/docs/api-reference/chat/streaming) objects if the request is streamed.
-            path: create
-            examples:
-                - title: Default
-                  request:
-                      curl: |
-                          curl https://api.openai.com/v1/chat/completions \
-                            -H "Content-Type: application/json" \
-                            -H "Authorization: Bearer $OPENAI_API_KEY" \
-                            -d '{
-                              "model": "VAR_model_id",
-                              "messages": [
-                                {
-                                  "role": "system",
-                                  "content": "You are a helpful assistant."
-                                },
-                                {
-                                  "role": "user",
-                                  "content": "Hello!"
-                                }
-                              ]
-                            }'
-                      python: |
-                          from openai import OpenAI
-                          client = OpenAI()
-
-                          completion = client.chat.completions.create(
-                            model="VAR_model_id",
-                            messages=[
-                              {"role": "system", "content": "You are a helpful assistant."},
-                              {"role": "user", "content": "Hello!"}
-                            ]
-                          )
-
-                          print(completion.choices[0].message)
-                      node.js: |-
-                          import OpenAI from "openai";
-
-                          const openai = new OpenAI();
-
-                          async function main() {
-                            const completion = await openai.chat.completions.create({
-                              messages: [{ role: "system", content: "You are a helpful assistant." }],
-                              model: "VAR_model_id",
-                            });
-
-                            console.log(completion.choices[0]);
-                          }
-
-                          main();
-                  response: &chat_completion_example |
-                      {
-                        "id": "chatcmpl-123",
-                        "object": "chat.completion",
-                        "created": 1677652288,
-                        "model": "gpt-4o-mini",
-                        "system_fingerprint": "fp_44709d6fcb",
-                        "choices": [{
-                          "index": 0,
-                          "message": {
-                            "role": "assistant",
-                            "content": "\n\nHello there, how may I assist you today?",
-                          },
-                          "logprobs": null,
-                          "finish_reason": "stop"
-                        }],
-                        "usage": {
-                          "prompt_tokens": 9,
-                          "completion_tokens": 12,
-                          "total_tokens": 21
-                        }
-                      }
+            '200':
+              description: Successful Response
+              content:
+                  application/json:
+                      schema:
+                          $ref: "#/components/schemas/GuardrailsCreateChatCompletionResponse"
+            '404':
+              description: Resource Not Found
+              content:
+                application/json:
+                  schema:
+                    $ref: '#/components/schemas/Error'
+            '422':
+              description: Validation Error
+              content:
+                application/json:
+                  schema:
+                    $ref: '#/components/schemas/Error'
 
 components:
   schemas:
@@ -382,6 +317,7 @@ components:
         score:
           type: number
           title: Score
+      title: Content Detection Response Object
       example:
         - {
             "start": 0,
@@ -588,8 +524,8 @@ components:
                 title: Score
       required: ["detections"]
       title: Generated Text Detection Docs Response
-      
-    
+
+    ########################## Classification #################################
     ClassifiedGeneratedTextResult:
       properties:
         generated_text:
@@ -705,6 +641,8 @@ components:
         - detectors
       
     GuardrailsCreateChatCompletionResponse:
+      title: Guardrails Chat Completion Response
+      description: Guardrails chat completion response (adds detections on OpenAI chat completion)
       allOf:
         - $ref: https://raw.githubusercontent.com/openai/openai-openapi/master/openapi.yaml#/components/schemas/CreateChatCompletionResponse
         - type: object
@@ -714,7 +652,6 @@ components:
       required:
         - detections
 
-    
     Detectors:
       title: Guardrails Detectors
       description: Specify detectors for guardrails
@@ -781,8 +718,6 @@ components:
                 "detector_id": "relevance-v1-en", # To be added in future
                 "score": 0
               }
-          
-
     
     ChoiceDetections:
       title: Choice Detections
@@ -802,6 +737,7 @@ components:
       required:
         - choice_index
 
+    ########################## General #################################
     Error:
       type: object
       properties:
@@ -867,7 +803,7 @@ components:
       type: object
       required:
         - name
-      title: EvidenceObj
+      title: Evidence Object
     FinishReason:
       type: string
       enum:
