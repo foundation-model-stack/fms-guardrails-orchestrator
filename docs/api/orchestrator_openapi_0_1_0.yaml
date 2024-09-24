@@ -416,31 +416,32 @@ components:
             - "https://en.wikipedia.org/wiki/IBM"
             - "https://research.ibm.com/"
       required: ["detectors", "content", "context_type", "context"]
-      title: Detection Context Docs Request
+      title: Context Docs Detection Request
     DetectionContextDocsResponse:
       properties:
         detections:
           type: array
           items:
-            type: object
-            title: Detection Object
-            properties:
-              detection_type:
-                type: string
-                title: Detection Type
-              detection:
-                type: string
-                title: Detection
-              score:
-                type: number
-                title: Score
-              evidence:
-                anyOf:
-                - items:
-                    $ref: '#/components/schemas/EvidenceObj'
-                  type: array
+            $ref: '#/components/schemas/DetectionContextDocsResponseObject'
       required: ["detections"]
-      title: Detection Context Docs Response
+      title: Context Docs Detection Response
+    DetectionContextDocsResponseObject:
+      properties:
+        detection_type:
+          type: string
+          title: Detection Type
+        detection:
+          type: string
+          title: Detection
+        score:
+          type: number
+          title: Score
+        evidence:
+          anyOf:
+          - items:
+              $ref: '#/components/schemas/EvidenceObj'
+            type: array
+      title: Context Docs Detection Response Object
 
     GenerationDetectionRequest:
       properties:
@@ -510,20 +511,21 @@ components:
         detections:
           type: array
           items:
-            type: object
-            title: Detection Object
-            properties:
-              detection_type:
-                type: string
-                title: Detection Type
-              detection:
-                type: string
-                title: Detection
-              score:
-                type: number
-                title: Score
+            $ref: '#/components/schemas/GeneratedTextDetectionResponseObject'
       required: ["detections"]
-      title: Generated Text Detection Docs Response
+      title: Generated Text Detection Response
+    GeneratedTextDetectionResponseObject:
+      properties:
+        detection_type:
+          type: string
+          title: Detection Type
+        detection:
+          type: string
+          title: Detection
+        score:
+          type: number
+          title: Score
+      title: Generated Text Detection Response Object
 
     ########################## Classification #################################
     ClassifiedGeneratedTextResult:
@@ -625,6 +627,52 @@ components:
       required: ["input_token_count", "token_classification_results"]
       type: object
       title: Classified Generated Text Stream Result
+    TextGenTokenClassificationResults:
+    # By default open-api spec consider all fields as optional
+      properties:
+        input:
+          anyOf:
+            - items:
+                $ref: '#/components/schemas/TokenClassificationResult'
+              type: array
+          title: Input
+        output:
+          anyOf:
+            - items:
+                $ref: '#/components/schemas/TokenClassificationResult'
+              type: array
+          title: Output
+      additionalProperties: false
+      type: object
+      title: Text Gen Token Classification Results
+    TokenClassificationResult:
+      properties:
+        start:
+          type: integer
+          title: Start
+        end:
+          type: integer
+          title: End
+        word:
+          type: string
+          title: Word
+        entity:
+          type: string
+          title: Entity
+        entity_group:
+          type: string
+          title: Entity Group
+        score:
+          type: number
+          title: Score
+        token_count:
+          anyOf:
+            - type: integer
+          title: Token Count
+      additionalProperties: false
+      required: ["start", "end", "word", "entity", "entity_group", "score"]
+      type: object
+      title: Token Classification Result
 
     ########################## Chat Completion #################################
     GuardrailsCreateChatCompletionRequest:
@@ -683,6 +731,8 @@ components:
               items:
                 anyOf:
                   - $ref: '#/components/schemas/DetectionContentResponseObject'
+                  - $ref: '#/components/schemas/DetectionContextDocsResponseObject'
+                  - $ref: '#/components/schemas/GeneratedTextDetectionResponseObject'
         output:
           $ref: '#/components/schemas/ChoiceDetections'
           title: Detections on output of chat completions
@@ -733,7 +783,8 @@ components:
           items:
             anyOf:
               - $ref: '#/components/schemas/DetectionContentResponseObject'
-              # Refactor to add non-span ones
+              - $ref: '#/components/schemas/DetectionContextDocsResponseObject'
+              - $ref: '#/components/schemas/GeneratedTextDetectionResponseObject'
       required:
         - choice_index
 
@@ -953,49 +1004,3 @@ components:
     InputWarningReason:
       enum: [UNSUITABLE_INPUT]
       title: Input Warning Reason
-    TextGenTokenClassificationResults:
-    # By default open-api spec consider all fields as optional
-      properties:
-        input:
-          anyOf:
-            - items:
-                $ref: '#/components/schemas/TokenClassificationResult'
-              type: array
-          title: Input
-        output:
-          anyOf:
-            - items:
-                $ref: '#/components/schemas/TokenClassificationResult'
-              type: array
-          title: Output
-      additionalProperties: false
-      type: object
-      title: Text Gen Token Classification Results
-    TokenClassificationResult:
-      properties:
-        start:
-          type: integer
-          title: Start
-        end:
-          type: integer
-          title: End
-        word:
-          type: string
-          title: Word
-        entity:
-          type: string
-          title: Entity
-        entity_group:
-          type: string
-          title: Entity Group
-        score:
-          type: number
-          title: Score
-        token_count:
-          anyOf:
-            - type: integer
-          title: Token Count
-      additionalProperties: false
-      required: ["start", "end", "word", "entity", "entity_group", "score"]
-      type: object
-      title: Token Classification Result
