@@ -23,6 +23,7 @@ use serde::{Deserialize, Serialize};
 use super::{create_http_clients, Error, HttpClient};
 use crate::{
     config::ServiceConfig,
+    health::{HealthCheck, HealthCheckResult, HealthProbe},
     models::{DetectionResult, DetectorParams},
 };
 
@@ -33,6 +34,17 @@ const DETECTOR_ID_HEADER_NAME: &str = "detector-id";
 #[derive(Clone)]
 pub struct DetectorClient {
     clients: HashMap<String, HttpClient>,
+}
+
+#[cfg_attr(test, faux::methods)]
+impl HealthProbe for DetectorClient {
+    async fn health(&self) -> Result<HashMap<String, HealthCheckResult>, Error> {
+        let mut results = HashMap::with_capacity(self.clients.len());
+        for (model_id, client) in self.clients() {
+            results.insert(model_id.to_string(), client.check().await);
+        }
+        Ok(results)
+    }
 }
 
 #[cfg_attr(test, faux::methods)]
@@ -50,6 +62,10 @@ impl DetectorClient {
                 model_id: model_id.to_string(),
             })?
             .clone())
+    }
+
+    fn clients(&self) -> impl Iterator<Item = (&String, &HttpClient)> {
+        self.clients.iter()
     }
 
     // TODO: Use generics here, since the only thing that changes in comparison to generation_detection()

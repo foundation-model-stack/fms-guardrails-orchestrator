@@ -8,6 +8,7 @@
  import "google/protobuf/struct.proto";
  import "caikit_data_model_nlp.proto";
  import "caikit_data_model_caikit_nlp.proto";
+ import "health_check.proto";
 
 
  /*-- MESSAGES ----------------------------------------------------------------*/

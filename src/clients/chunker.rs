@@ -27,12 +27,14 @@ use tracing::info;
 use super::{create_grpc_clients, BoxStream, Error};
 use crate::{
     config::ServiceConfig,
+    health::{HealthCheckResult, HealthProbe},
     pb::{
         caikit::runtime::chunkers::{
             chunkers_service_client::ChunkersServiceClient,
             BidiStreamingChunkerTokenizationTaskRequest, ChunkerTokenizationTaskRequest,
         },
         caikit_data_model::nlp::{ChunkerTokenizationStreamResult, Token, TokenizationResults},
+        grpc::health::v1::{health_client::HealthClient, HealthCheckRequest},
     },
 };
 
@@ -47,13 +49,37 @@ type StreamingTokenizationResult =
 #[derive(Clone)]
 pub struct ChunkerClient {
     clients: HashMap<String, ChunkersServiceClient<LoadBalancedChannel>>,
+    health_clients: HashMap<String, HealthClient<LoadBalancedChannel>>,
+}
+
+#[cfg_attr(test, faux::methods)]
+impl HealthProbe for ChunkerClient {
+    async fn health(&self) -> Result<HashMap<String, HealthCheckResult>, Error> {
+        let mut results = HashMap::with_capacity(self.health_clients.len());
+        for (model_id, mut client) in self.health_clients.clone() {
+            results.insert(
+                model_id.clone(),
+                client
+                    .check(HealthCheckRequest {
+                        service: "".to_string(),
+                    }) // Caikit does not expect a service_id to be specified
+                    .await
+                    .into(),
+            );
+        }
+        Ok(results)
+    }
 }
 
 #[cfg_attr(test, faux::methods)]
 impl ChunkerClient {
     pub async fn new(default_port: u16, config: &[(String, ServiceConfig)]) -> Self {
         let clients = create_grpc_clients(default_port, config, ChunkersServiceClient::new).await;
-        Self { clients }
+        let health_clients = create_grpc_clients(default_port, config, HealthClient::new).await;
+        Self {
+            clients,
+            health_clients,
+        }
     }
 
     fn client(&self, model_id: &str) -> Result<ChunkersServiceClient<LoadBalancedChannel>, Error> {

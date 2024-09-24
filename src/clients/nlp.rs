@@ -25,6 +25,7 @@ use super::{create_grpc_clients, BoxStream, Error};
 use crate::{
     clients::COMMON_ROUTER_KEY,
     config::ServiceConfig,
+    health::{HealthCheckResult, HealthProbe},
     pb::{
         caikit::runtime::nlp::{
             nlp_service_client::NlpServiceClient, ServerStreamingTextGenerationTaskRequest,
@@ -34,6 +35,7 @@ use crate::{
             GeneratedTextResult, GeneratedTextStreamResult, TokenClassificationResults,
             TokenizationResults,
         },
+        grpc::health::v1::{health_client::HealthClient, HealthCheckRequest},
     },
 };
 
@@ -43,13 +45,37 @@ const MODEL_ID_HEADER_NAME: &str = "mm-model-id";
 #[derive(Clone)]
 pub struct NlpClient {
     clients: HashMap<String, NlpServiceClient<LoadBalancedChannel>>,
+    health_clients: HashMap<String, HealthClient<LoadBalancedChannel>>,
+}
+
+#[cfg_attr(test, faux::methods)]
+impl HealthProbe for NlpClient {
+    async fn health(&self) -> Result<HashMap<String, HealthCheckResult>, Error> {
+        let mut results = HashMap::with_capacity(self.health_clients.len());
+        for (model_id, mut client) in self.health_clients.clone() {
+            results.insert(
+                model_id.clone(),
+                client
+                    .check(HealthCheckRequest {
+                        service: model_id.clone(),
+                    })
+                    .await
+                    .into(),
+            );
+        }
+        Ok(results)
+    }
 }
 
 #[cfg_attr(test, faux::methods)]
 impl NlpClient {
     pub async fn new(default_port: u16, config: &[(String, ServiceConfig)]) -> Self {
         let clients = create_grpc_clients(default_port, config, NlpServiceClient::new).await;
-        Self { clients }
+        let health_clients = create_grpc_clients(default_port, config, HealthClient::new).await;
+        Self {
+            clients,
+            health_clients,
+        }
     }
 
     fn client(&self, _model_id: &str) -> Result<NlpServiceClient<LoadBalancedChannel>, Error> {

@@ -48,8 +48,8 @@ async-stream = "0.3.5"
 tonic-build = "0.12.1"
 
 [dev-dependencies]
-faux = "0.1.10"
 axum-test = "15.7.1"
+faux = "0.1.10"
 tracing-test = "0.2.5"
 
 [profile.release]

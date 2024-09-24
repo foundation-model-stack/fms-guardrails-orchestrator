@@ -21,7 +21,7 @@ use std::{
 };
 
 use axum::{
-    extract::{rejection::JsonRejection, Request, State},
+    extract::{rejection::JsonRejection, Query, Request, State},
     http::StatusCode,
     response::{
         sse::{Event, KeepAlive, Sse},
@@ -43,7 +43,8 @@ use uuid::Uuid;
 use webpki::types::{CertificateDer, PrivateKeyDer};
 
 use crate::{
-    models::{self},
+    health::HealthCheckProbeParams,
+    models,
     orchestrator::{
         self, ClassificationWithGenTask, ContextDocsDetectionTask, DetectionOnGenerationTask,
         GenerationWithDetectionTask, Orchestrator, StreamingClassificationWithGenTask,
@@ -272,6 +273,7 @@ pub async fn run(
 pub fn get_health_app(state: Arc<ServerState>) -> Router {
     Router::new()
         .route("/health", get(health))
+        .route("/info", get(info))
         .with_state(state)
 }
 
@@ -282,6 +284,22 @@ async fn health() -> Result<impl IntoResponse, ()> {
     // should not be added in `health` endpoint`
     let info_object = HashMap::from([(PACKAGE_NAME, PACKAGE_VERSION)]);
     Ok(Json(info_object).into_response())
+}
+
+async fn info(
+    State(state): State<Arc<ServerState>>,
+    Query(params): Query<HealthCheckProbeParams>,
+) -> Result<impl IntoResponse, Error> {
+    match state.orchestrator.clients_health(params.probe).await {
+        Ok(client_health_info) => Ok(client_health_info),
+        Err(error) => {
+            error!(
+                "Unexpected internal error while checking client health info: {:?}",
+                error
+            );
+            Err(error.into())
+        }
+    }
 }
 
 async fn classification_with_gen(

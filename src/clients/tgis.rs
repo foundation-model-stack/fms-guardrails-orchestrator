@@ -19,11 +19,13 @@ use std::collections::HashMap;
 
 use futures::{StreamExt, TryStreamExt};
 use ginepro::LoadBalancedChannel;
+use tonic::Code;
 
-use super::{create_grpc_clients, BoxStream, Error};
+use super::{create_grpc_clients, BoxStream, ClientCode, Error};
 use crate::{
     clients::COMMON_ROUTER_KEY,
     config::ServiceConfig,
+    health::{HealthCheckResult, HealthProbe, HealthStatus},
     pb::fmaas::{
         generation_service_client::GenerationServiceClient, BatchedGenerationRequest,
         BatchedGenerationResponse, BatchedTokenizeRequest, BatchedTokenizeResponse,
@@ -35,6 +37,41 @@ use crate::{
 #[derive(Clone)]
 pub struct TgisClient {
     clients: HashMap<String, GenerationServiceClient<LoadBalancedChannel>>,
+}
+
+#[cfg_attr(test, faux::methods)]
+impl HealthProbe for TgisClient {
+    async fn health(&self) -> Result<HashMap<String, HealthCheckResult>, Error> {
+        let mut results = HashMap::with_capacity(self.clients.len());
+        for (model_id, mut client) in self.clients.clone() {
+            let response = client
+                .model_info(ModelInfoRequest {
+                    model_id: "".into(),
+                })
+                .await;
+            let code = match response {
+                Ok(_) => Code::Ok,
+                Err(status) if matches!(status.code(), Code::InvalidArgument | Code::NotFound) => {
+                    Code::Ok
+                }
+                Err(status) => status.code(),
+            };
+            let health_status = if matches!(code, Code::Ok) {
+                HealthStatus::Healthy
+            } else {
+                HealthStatus::Unhealthy
+            };
+            results.insert(
+                model_id,
+                HealthCheckResult {
+                    health_status,
+                    response_code: ClientCode::Grpc(code),
+                    reason: None,
+                },
+            );
+        }
+        Ok(results)
+    }
 }
 
 #[cfg_attr(test, faux::methods)]

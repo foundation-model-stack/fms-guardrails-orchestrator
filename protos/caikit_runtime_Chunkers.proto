@@ -6,6 +6,7 @@
 syntax = "proto3";
 package caikit.runtime.Chunkers;
 import "caikit_data_model_nlp.proto";
+import "health_check.proto";
 
 
 /*-- MESSAGES ----------------------------------------------------------------*/

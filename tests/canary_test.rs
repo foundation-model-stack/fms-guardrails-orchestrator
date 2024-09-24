@@ -20,7 +20,7 @@ async fn shared_state() -> Arc<ServerState> {
     let config = OrchestratorConfig::load("tests/test.config.yaml")
         .await
         .unwrap();
-    let orchestrator = Orchestrator::new(config).await.unwrap();
+    let orchestrator = Orchestrator::new(config, false).await.unwrap();
     Arc::new(ServerState::new(orchestrator))
 }
 
@@ -38,5 +38,10 @@ async fn test_health() {
     debug!("{:#?}", response);
     let body: Value = serde_json::from_str(response.text().as_str()).unwrap();
     debug!("{}", serde_json::to_string_pretty(&body).unwrap());
+    response.assert_status(StatusCode::OK);
+    let response = server.get("/info").await;
+    println!("{:#?}", response);
+    let body: Value = serde_json::from_str(response.text().as_str()).unwrap();
+    println!("{}", serde_json::to_string_pretty(&body).unwrap());
     response.assert_status(StatusCode::OK);
 }

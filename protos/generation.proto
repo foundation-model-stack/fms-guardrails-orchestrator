@@ -4,6 +4,7 @@
 
  syntax = "proto3";
  package fmaas;
+ import "health_check.proto";
 
 
  service GenerationService {

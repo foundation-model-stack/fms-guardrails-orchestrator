@@ -22,6 +22,8 @@ pub mod unary;
 
 use std::{collections::HashMap, sync::Arc};
 
+use tokio::{sync::RwLock, time::Instant};
+use tracing::{debug, info};
 use uuid::Uuid;
 
 use crate::{
@@ -30,6 +32,7 @@ use crate::{
         TgisClient, COMMON_ROUTER_KEY,
     },
     config::{GenerationProvider, OrchestratorConfig},
+    health::{HealthCheckCache, HealthProbe, HealthProbeResponse},
     models::{
         ContextDocsHttpRequest, DetectionOnGeneratedHttpRequest, DetectorParams,
         GenerationWithDetectionHttpRequest, GuardrailsConfig, GuardrailsHttpRequest,
@@ -50,12 +53,17 @@ pub struct Context {
 }
 
 /// Handles orchestrator tasks.
+#[cfg_attr(test, derive(Default))]
 pub struct Orchestrator {
     ctx: Arc<Context>,
+    client_health_cache: Arc<RwLock<HealthCheckCache>>,
 }
 
 impl Orchestrator {
-    pub async fn new(config: OrchestratorConfig) -> Result<Self, Error> {
+    pub async fn new(
+        config: OrchestratorConfig,
+        start_up_health_check: bool,
+    ) -> Result<Self, Error> {
         let (generation_client, chunker_client, detector_client) = create_clients(&config).await;
         let ctx = Arc::new(Context {
             config,
@@ -63,7 +71,53 @@ impl Orchestrator {
             chunker_client,
             detector_client,
         });
-        Ok(Self { ctx })
+        let orchestrator = Self {
+            ctx,
+            client_health_cache: Arc::new(RwLock::new(HealthCheckCache::default())),
+        };
+        debug!("running start up checks");
+        orchestrator.on_start_up(start_up_health_check).await?;
+        debug!("start up checks completed");
+        Ok(orchestrator)
+    }
+
+    /// Perform any start-up actions required by the orchestrator.
+    /// This should only error when the orchestrator is unable to start up.
+    /// Currently only performs client health probing to have results loaded into the cache.
+    pub async fn on_start_up(&self, health_check: bool) -> Result<(), Error> {
+        info!("Performing start-up actions for orchestrator...");
+        if health_check {
+            info!("Probing health status of configured clients...");
+            // Run probe, update cache
+            let res = self.clients_health(true).await.unwrap_or_else(|e| {
+                // Panic for unexpected behaviour as there are currently no errors propagated to here.
+                panic!("Unexpected error during client health probing: {}", e);
+            });
+            // Results of probe do not affect orchestrator start-up.
+            info!("Orchestrator client health probe results:\n{}", res);
+        }
+        Ok(())
+    }
+
+    pub async fn clients_health(&self, probe: bool) -> Result<HealthProbeResponse, Error> {
+        let initialized = self.client_health_cache.read().await.is_initialized();
+        if probe || !initialized {
+            debug!("refreshing health cache");
+            let now = Instant::now();
+            let detectors = self.ctx.detector_client.health().await?;
+            let chunkers = self.ctx.chunker_client.health().await?;
+            let generation = self.ctx.generation_client.health().await?;
+            let mut health_cache = self.client_health_cache.write().await;
+            health_cache.detectors = detectors;
+            health_cache.chunkers = chunkers;
+            health_cache.generation = generation;
+            debug!(
+                "refreshing health cache completed in {:.2?}ms",
+                now.elapsed().as_millis()
+            );
+        }
+
+        Ok(HealthProbeResponse::from_cache(self.client_health_cache.clone()).await)
     }
 }
 

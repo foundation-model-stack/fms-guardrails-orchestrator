@@ -15,11 +15,14 @@
 
 */
 
+use std::collections::HashMap;
+
 use futures::{StreamExt, TryStreamExt};
 use tracing::debug;
 
 use super::{BoxStream, Error, NlpClient, TgisClient};
 use crate::{
+    health::{HealthCheckResult, HealthProbe},
     models::{
         ClassifiedGeneratedTextResult, ClassifiedGeneratedTextStreamResult,
         GuardrailsTextGenerationParameters,
@@ -44,6 +47,17 @@ pub struct GenerationClient(Option<GenerationClientInner>);
 enum GenerationClientInner {
     Tgis(TgisClient),
     Nlp(NlpClient),
+}
+
+#[cfg_attr(test, faux::methods)]
+impl HealthProbe for GenerationClient {
+    async fn health(&self) -> Result<HashMap<String, HealthCheckResult>, Error> {
+        match &self.0 {
+            Some(GenerationClientInner::Tgis(client)) => client.health().await,
+            Some(GenerationClientInner::Nlp(client)) => client.health().await,
+            None => Ok(HashMap::new()),
+        }
+    }
 }
 
 #[cfg(test)]
