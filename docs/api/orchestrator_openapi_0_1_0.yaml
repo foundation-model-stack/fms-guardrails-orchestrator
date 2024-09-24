@@ -43,13 +43,13 @@ paths:
             default: false
       responses:
         '200':
-          description: Orchestrator is ready to serve
+          description: Orchestrator successfully probed client health statuses
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/HealthProbeResponse'
         '503':
-          description: Orchestrator is not ready to serve
+          description: Orchestrator failed to probe client health statuses
           content:
             application/json:
               schema:
@@ -287,11 +287,11 @@ components:
     HealthStatus:
         type: string
         enum:
-            - READY
-            - NOT_READY
+            - HEALTHY
+            - UNHEALTHY
             - UNKNOWN
         title: Health Status
-    HealthCheckResponse:
+    HealthCheckResult:
       oneOf:
         - properties:
             health_status:
@@ -313,32 +313,29 @@ components:
       title: Health Check Response
     HealthProbeResponse:
       properties:
-        health_status:
-          $ref: '#/components/schemas/HealthStatus'
         services:
           type: object
-          title: Readiness status for each client service
+          title: Health status for each client service
           properties:
             generation:
               type: object
               title: Generation Services
               items:
-                $ref: '#/components/schemas/HealthCheckResponse'
+                $ref: '#/components/schemas/HealthCheckResult'
             detectors:
               type: object
               title: Detector Services
               items:
-                $ref: '#/components/schemas/HealthCheckResponse'
+                $ref: '#/components/schemas/HealthCheckResult'
             chunkers:
               type: object
               title: Chunker Services
               items:
-                $ref: '#/components/schemas/HealthCheckResponse'
+                $ref: '#/components/schemas/HealthCheckResult'
       required:
-        - ready
         - services
       type: object
-      title: Readiness Response
+      title: Health Probe Response
     DetectionContentRequest:
       properties:
         detectors:
