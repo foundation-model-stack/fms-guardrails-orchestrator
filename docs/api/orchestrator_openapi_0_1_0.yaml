@@ -775,7 +775,7 @@ components:
           oneOf:
             - type: string # "all"
             - type: integer # index
-          title: Index of choice
+          title: Index of message
         results:
           title: Detection results
           type: array
