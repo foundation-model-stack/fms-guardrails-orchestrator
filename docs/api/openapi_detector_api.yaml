@@ -216,6 +216,15 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /health:
+    get:
+      tags:
+        - Health
+      summary: Performs quick liveliness check of the detector service
+      operationId: health
+      responses:
+        '200':
+          description: Healthy
 components:
   schemas:
     ChatAnalysisHttpRequest:
