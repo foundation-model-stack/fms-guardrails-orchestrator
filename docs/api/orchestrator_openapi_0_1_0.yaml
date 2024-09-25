@@ -723,52 +723,69 @@ components:
       title: Chat Completions Detections
       properties:
         input:
+          type: array
+          items:
+            $ref: '#/components/schemas/MessageDetections'
           title: Detections on input to chat completions
           default: {}
-          properties:
-            results:
-              type: array
-              items:
-                anyOf:
-                  - $ref: '#/components/schemas/DetectionContentResponseObject'
-                  - $ref: '#/components/schemas/DetectionContextDocsResponseObject'
-                  - $ref: '#/components/schemas/GeneratedTextDetectionResponseObject'
         output:
-          $ref: '#/components/schemas/ChoiceDetections'
+          type: array
+          items:
+            $ref: '#/components/schemas/ChoiceDetections'
           title: Detections on output of chat completions
           default: {}
       default: {}
       example:
         input:
-          results: 
-            - {
-                "start": 0,
-                "end": 80,
-                "text": "string",
-                "detection_type": "HAP",
-                "detection": "has_HAP",
-                "detector_id": "hap-v1-model-en", # To be added in future
-                "score": 0.999
-              }
+          - message_index: 0
+            results: 
+              - {
+                  "start": 0,
+                  "end": 80,
+                  "text": "string",
+                  "detection_type": "HAP",
+                  "detection": "has_HAP",
+                  "detector_id": "hap-v1-model-en", # Future addition
+                  "score": 0.999
+                }
         output:
-          choice_index: 1
-          results:
-            - {
-                "start": 0,
-                "end": 20,
-                "text": "string",
-                "detection_type": "HAP",
-                "detection": "has_HAP",
-                "detector_id": "hap-v1-model-en", # To be added in future
-                "score": 0.999
-              }
-            - {
-                "detection_type": "string",
-                "detection": "string",
-                "detector_id": "relevance-v1-en", # To be added in future
-                "score": 0
-              }
+          - choice_index: 0
+          - choice_index: 1
+            results:
+              - {
+                  "start": 0,
+                  "end": 20,
+                  "text": "string",
+                  "detection_type": "HAP",
+                  "detection": "has_HAP",
+                  "detector_id": "hap-v1-model-en", # Future addition
+                  "score": 0.999
+                }
+              - {
+                  "detection_type": "string",
+                  "detection": "string",
+                  "detector_id": "relevance-v1-en", # Future addition
+                  "score": 0
+                }
     
+    MessageDetections:
+      title: Message Detections
+      properties:
+        message_index:
+          oneOf:
+            - type: string # "all"
+            - type: integer # index
+          title: Index of choice
+        results:
+          title: Detection results
+          type: array
+          items:
+            anyOf:
+              - $ref: '#/components/schemas/DetectionContentResponseObject'
+              - $ref: '#/components/schemas/DetectionContextDocsResponseObject'
+              - $ref: '#/components/schemas/GeneratedTextDetectionResponseObject'
+      required:
+        - message_index
     ChoiceDetections:
       title: Choice Detections
       properties:
