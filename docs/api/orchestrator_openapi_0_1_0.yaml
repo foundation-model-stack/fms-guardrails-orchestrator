@@ -697,6 +697,10 @@ components:
       properties:
         detections:
           $ref: "#/components/schemas/ChatCompletionsDetections"
+        warnings:
+          type: array
+          items:
+            $ref: '#/components/schemas/Warning'
       required:
         - detections
 
@@ -1007,6 +1011,7 @@ components:
       additionalProperties: false
       type: object
       title: Guardrails Text Generation Parameters
+    # v1 API warning
     InputWarning:
       properties:
         id:
@@ -1021,3 +1026,16 @@ components:
     InputWarningReason:
       enum: [UNSUITABLE_INPUT]
       title: Input Warning Reason
+    # v2 API warning
+    Warning:
+      type: object
+      properties:
+        type:
+          type: string
+          title: Warning type
+        message:
+          type: string
+          title: Warning message
+      example:
+        type: incompatible-generation
+        message: Detector detector-id could not run because of no content at choice_index 1
