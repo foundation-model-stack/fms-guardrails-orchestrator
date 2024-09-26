@@ -10,6 +10,7 @@ To enable running guardrails on chat completion use-cases, we want to provide a 
 
 ### General
 - We will use the [OpenAI chat completions API](https://platform.openai.com/docs/api-reference/chat) as our the base API for chat completions. Parameters detailed here can be referenced.
+- Different chat completions server solutions like [vllm](https://docs.vllm.ai/en/stable/index.html) may provide [extra parameters](https://docs.vllm.ai/en/stable/serving/openai_compatible_server.html#extra-parameters-for-chat-api). For the orchestrator API to remain more agnostic of particular server implementation, the orchestrator can pass through any additional parameters to the generation server, which can do validation of parameters.
 - Guardrails-related API updates would be additive, and we will not modify any OpenAI API elements, like `messages` or `choices`.
     - We will add a `detectors` block in the request, containing `input` and `output` blocks. This will provide flexibility and control, allowing users to provide list of detectors with parameters for both chat completions input and output separately.
     - Here, `input` and `output` does not strictly refer to whether only the `input` to chat completions is provided to the detectors or that only the `output` to chat completions is provided to the detectors. Detectors specified in `output` can potentially take both input and output of a chat completions model.
