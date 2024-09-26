@@ -187,7 +187,7 @@ paths:
     post:
       tags:
         - Task - Detection
-      summary: Detection task on input chat
+      summary: Detection task on chat messages
       operationId: >-
         api_v2_detection_text_chat_unary_handler
       requestBody:
@@ -390,56 +390,47 @@ components:
           default: {}
           example: 
             chat-v1-model-en: {}
-        chat_history:
+        messages:
+          title: Chat Messages
           type: array
-          title: Chat History
-          default: {}
+          minItems: 1
           items:
-            $ref: '#/components/schemas/ChatHistoryObject'
-          example:
-            - content: "Hi, is this powered by siri or alexa?"
-              author: "user"
-            - content: "Better, it's watsonx"
-              author: "assistant"
-            - content: "You are a helpful assistant."
-              author: "system"
+            allOf:
+              - $ref: https://raw.githubusercontent.com/openai/openai-openapi/master/openapi.yaml#/components/schemas/ChatCompletionRequestMessage
+              - type: object
       additionalProperties: false
-      required: ["detectors", "chat_history"]
+      required: ["detectors", "messages"]
       type: object
       title: Chat Detection Request
-    ChatHistoryObject:
-      properties:
-        content:
-          type: string
-          title: Content
-          default: ""
-          example: "Hi I am AI Agent"
-        author:
-          type: string
-          title: Author
-          default: ""
-          example: "assistant"
-      title: Chat History Object
-      required: ["content", "author"]
     DetectionChatResponse:
       properties:
         detections:
           type: array
           items:
-            type: object
-            title: Detection Object
-            properties:
-              detection_type:
-                type: string
-                title: Detection Type
-              detection:
-                type: string
-                title: Detection
-              score:
-                type: number
-                title: Score
-      title: Detection Chat Response
+            $ref: '#/components/schemas/MessageDetections'
+          title: Detections on input to chat completions
+      title: Chat Detection Response
       required: ["detections"]
+    
+    # NOTE: overlap with https://github.com/foundation-model-stack/fms-guardrails-orchestrator/pull/209
+    MessageDetections:
+      title: Message Detections
+      properties:
+        message_index:
+          oneOf:
+            - type: string # "all"
+            - type: integer # index
+          title: Index of message
+        results:
+          title: Detection results
+          type: array
+          items:
+            anyOf:
+              - $ref: '#/components/schemas/DetectionContentResponseObject'
+              - $ref: '#/components/schemas/DetectionContextDocsResponseObject'
+              - $ref: '#/components/schemas/GeneratedTextDetectionResponseObject'
+      required:
+        - message_index
     
     DetectionContextDocsRequest:
       properties:
@@ -470,30 +461,32 @@ components:
             - "https://research.ibm.com/"
       required: ["detectors", "content", "context_type", "context"]
       title: Detection Context Docs Request
+    # NOTE: overlap with https://github.com/foundation-model-stack/fms-guardrails-orchestrator/pull/209
     DetectionContextDocsResponse:
       properties:
         detections:
           type: array
           items:
-            type: object
-            title: Detection Object
-            properties:
-              detection_type:
-                type: string
-                title: Detection Type
-              detection:
-                type: string
-                title: Detection
-              score:
-                type: number
-                title: Score
-              evidence:
-                anyOf:
-                - items:
-                    $ref: '#/components/schemas/EvidenceObj'
-                  type: array
+            $ref: '#/components/schemas/DetectionContextDocsResponseObject'
       required: ["detections"]
-      title: Detection Context Docs Response
+      title: Context Docs Detection Response
+    DetectionContextDocsResponseObject:
+      properties:
+        detection_type:
+          type: string
+          title: Detection Type
+        detection:
+          type: string
+          title: Detection
+        score:
+          type: number
+          title: Score
+        evidence:
+          anyOf:
+          - items:
+              $ref: '#/components/schemas/EvidenceObj'
+            type: array
+      title: Context Docs Detection Response Object
     GenerationDetectionRequest:
       properties:
         model_id:
@@ -557,25 +550,27 @@ components:
       type: object
       required: ["generated_text", "prompt", "detectors"]
       title: Generated-Text Detection Request
+    # NOTE: overlap with https://github.com/foundation-model-stack/fms-guardrails-orchestrator/pull/209
     GeneratedTextDetectionResponse:
       properties:
         detections:
           type: array
           items:
-            type: object
-            title: Detection Object
-            properties:
-              detection_type:
-                type: string
-                title: Detection Type
-              detection:
-                type: string
-                title: Detection
-              score:
-                type: number
-                title: Score
+            $ref: '#/components/schemas/GeneratedTextDetectionResponseObject'
       required: ["detections"]
-      title: Generated Text Detection Docs Response
+      title: Generated Text Detection Response
+    GeneratedTextDetectionResponseObject:
+      properties:
+        detection_type:
+          type: string
+          title: Detection Type
+        detection:
+          type: string
+          title: Detection
+        score:
+          type: number
+          title: Score
+      title: Generated Text Detection Response Object
       
     
     ClassifiedGeneratedTextResult:
