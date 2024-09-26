@@ -27,7 +27,7 @@ This is particular to the [`choices` array](https://platform.openai.com/docs/api
 2. Each choice is generated with the same input.
 
 #### Response
-- If the LLM (model used to generate chat completions) doesn't generate `content` in any `message` in `choices`, then we will ignore the `choices` and return a warning about `detections.output`.
+- When output detectors are requested, if the LLM (model used to generate chat completions) doesn't generate `content` in any `message` in `choices`, then we will ignore the `choices` and return a warning about `detections.output`.
 - We will run all detectors included in `detectors.output` of the user request on all `choices` (that have `message.content`), unless there are certain detectors that are supposed to be run across choices.
 - We will order all detections that include span by `start` and move all the other ones towards the end (by not ordering them in any particular order), but grouping the remaining ones based on `detector_id`.
     - An alternate consideration made here was to not order the detections and just include `detector_id`. However, since detectors are called in parallel, just collecting results may lead to different ordering each call. This ordering will allow processing of detections with spans in order by `start`.
