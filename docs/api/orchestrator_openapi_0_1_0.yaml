@@ -240,7 +240,7 @@ paths:
   /api/v2/chat/completions-detection:
     post:
         tags:
-            - Chat Completions with detections
+            - Task - Chat Completions, with detection
         operationId: >-
           api_v2_chat_completions_detection_handler
         summary: Creates a model response with detections for the given chat conversation.
