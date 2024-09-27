@@ -47,7 +47,7 @@ The streaming response with guardrails is built off the [chat completion chunk r
 
 This part gives a brief overview of how we would expect a user to access information from the response object.
 - Identifying which choice of potentially multiple choices that results exist for: `detections.output[0].choice_index` (will give index of choice in original `choices`)
-- Result info of a given choice: `detections.output[0].results[1].detection_type`
+- Result info of a given choice: `detections.output[0].results[0].detection_type`
 
 ### New elements
 - We will add a `warnings` element to show cases where the response is not 4xx, but there are issues in processing.
