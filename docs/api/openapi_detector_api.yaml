@@ -117,7 +117,7 @@ paths:
     post:
       summary: Chat Analysis Unary Handler
       description: >-
-        Detectors that work on analysis chat history and provide detections <br>
+        Detectors that analyze chat messages and provide detections <br>
       operationId: chat_analysis_unary_handler_api_v1_text_context_chat_post
       parameters:
         - name: detector-id
@@ -146,12 +146,20 @@ paths:
                   Response Chat Analysis Unary Handler Api V1 Text Context Chat
                   Post
                 example:
-                  - detection: quantity_1
-                    detection_type: dummy_detector_type
-                    score: 0.68
-                  - detection: quantity_2
-                    detection_type: dummy_detector_type
-                    score: 0.79
+                  - message_index: 0
+                    results:
+                      - {
+                          "detection_type": "detection_type",
+                          "detection": "detection",
+                          "score": 0.999
+                        }
+                  - message_index: 1
+                    results:
+                      - {
+                          "detection_type": "detection_type",
+                          "detection": "detection",
+                          "score": 0.5
+                        }
         '404':
           description: Resource Not Found
           content:
@@ -229,25 +237,41 @@ components:
   schemas:
     ChatAnalysisHttpRequest:
       properties:
-        chat_history:
-          items:
-            $ref: '#/components/schemas/Message'
+        messages:
+          title: Chat Messages
           type: array
-          title: Chat History
-          example:
-            - content: You are a helpful assistant.
-              author: system
-            - content: Hi, is this powered by siri or alexa?
-              author: user
-            - content: Better, it's watsonx
-              author: assistant
-            - content: This is awesome!
-              author: user
+          items:
+            allOf:
+              - $ref: https://raw.githubusercontent.com/openai/openai-openapi/master/openapi.yaml#/components/schemas/ChatCompletionRequestMessage
+              - type: object
       type: object
       required:
-        - chat_history
+        - messages
       title: ChatAnalysisHttpRequest
     ChatAnalysisResponse:
+      title: ChatAnalysisResponse
+      properties:
+        message_index:
+          oneOf:
+            - type: string # "all"
+            - type: integer # index
+          title: Index of message
+        results:
+          title: Detection results
+          type: array
+          items:
+            $ref: '#/components/schemas/ChatAnalysisDetection'
+      required:
+        - message_index
+      example:
+        message_index: 0
+        results:
+          - {
+              "detection_type": "detection_type",
+              "detection": "detection",
+              "score": 0.999
+            }
+    ChatAnalysisDetection:
       properties:
         detection:
           type: string
@@ -272,7 +296,7 @@ components:
         - detection
         - detection_type
         - score
-      title: ChatAnalysisResponse
+      title: ChatAnalysisDetection
     ContextAnalysisHttpRequest:
       properties:
         content:
