@@ -280,7 +280,39 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-     
+  
+  /api/v2/chat/completions-detection:
+    post:
+        tags:
+            - Task - Chat Completions, with detection
+        operationId: >-
+          api_v2_chat_completions_detection_handler
+        summary: Creates a model response with detections for the given chat conversation.
+        requestBody:
+            required: true
+            content:
+                application/json:
+                    schema:
+                        $ref: "#/components/schemas/GuardrailsCreateChatCompletionRequest"
+        responses:
+            '200':
+              description: Successful Response
+              content:
+                  application/json:
+                      schema:
+                          $ref: "#/components/schemas/GuardrailsCreateChatCompletionResponse"
+            '404':
+              description: Resource Not Found
+              content:
+                application/json:
+                  schema:
+                    $ref: '#/components/schemas/Error'
+            '422':
+              description: Validation Error
+              content:
+                application/json:
+                  schema:
+                    $ref: '#/components/schemas/Error'
 
 components:
   schemas:
@@ -381,6 +413,17 @@ components:
         score:
           type: number
           title: Score
+      title: Content Detection Response Object
+      example:
+        - {
+            "start": 0,
+            "end": 20,
+            "text": "string",
+            "detection_type": "HAP",
+            "detection": "has_HAP",
+            "detector_id": "hap-v1-model-en",
+            "score": 0.999
+          }
 
     DetectionChatRequest:
       properties:
@@ -469,31 +512,33 @@ components:
             - "https://en.wikipedia.org/wiki/IBM"
             - "https://research.ibm.com/"
       required: ["detectors", "content", "context_type", "context"]
-      title: Detection Context Docs Request
+      title: Context Docs Detection Request
     DetectionContextDocsResponse:
       properties:
         detections:
           type: array
           items:
-            type: object
-            title: Detection Object
-            properties:
-              detection_type:
-                type: string
-                title: Detection Type
-              detection:
-                type: string
-                title: Detection
-              score:
-                type: number
-                title: Score
-              evidence:
-                anyOf:
-                - items:
-                    $ref: '#/components/schemas/EvidenceObj'
-                  type: array
+            $ref: '#/components/schemas/DetectionContextDocsResponseObject'
       required: ["detections"]
-      title: Detection Context Docs Response
+      title: Context Docs Detection Response
+    DetectionContextDocsResponseObject:
+      properties:
+        detection_type:
+          type: string
+          title: Detection Type
+        detection:
+          type: string
+          title: Detection
+        score:
+          type: number
+          title: Score
+        evidence:
+          anyOf:
+          - items:
+              $ref: '#/components/schemas/EvidenceObj'
+            type: array
+      title: Context Docs Detection Response Object
+
     GenerationDetectionRequest:
       properties:
         model_id:
@@ -562,22 +607,23 @@ components:
         detections:
           type: array
           items:
-            type: object
-            title: Detection Object
-            properties:
-              detection_type:
-                type: string
-                title: Detection Type
-              detection:
-                type: string
-                title: Detection
-              score:
-                type: number
-                title: Score
+            $ref: '#/components/schemas/GeneratedTextDetectionResponseObject'
       required: ["detections"]
-      title: Generated Text Detection Docs Response
-      
-    
+      title: Generated Text Detection Response
+    GeneratedTextDetectionResponseObject:
+      properties:
+        detection_type:
+          type: string
+          title: Detection Type
+        detection:
+          type: string
+          title: Detection
+        score:
+          type: number
+          title: Score
+      title: Generated Text Detection Response Object
+
+    ########################## Classification #################################
     ClassifiedGeneratedTextResult:
       properties:
         generated_text:
@@ -677,6 +723,189 @@ components:
       required: ["input_token_count", "token_classification_results"]
       type: object
       title: Classified Generated Text Stream Result
+    TextGenTokenClassificationResults:
+    # By default open-api spec consider all fields as optional
+      properties:
+        input:
+          anyOf:
+            - items:
+                $ref: '#/components/schemas/TokenClassificationResult'
+              type: array
+          title: Input
+        output:
+          anyOf:
+            - items:
+                $ref: '#/components/schemas/TokenClassificationResult'
+              type: array
+          title: Output
+      additionalProperties: false
+      type: object
+      title: Text Gen Token Classification Results
+    TokenClassificationResult:
+      properties:
+        start:
+          type: integer
+          title: Start
+        end:
+          type: integer
+          title: End
+        word:
+          type: string
+          title: Word
+        entity:
+          type: string
+          title: Entity
+        entity_group:
+          type: string
+          title: Entity Group
+        score:
+          type: number
+          title: Score
+        token_count:
+          anyOf:
+            - type: integer
+          title: Token Count
+      additionalProperties: false
+      required: ["start", "end", "word", "entity", "entity_group", "score"]
+      type: object
+      title: Token Classification Result
+
+    ########################## Chat Completion #################################
+    GuardrailsCreateChatCompletionRequest:
+      title: Guardrails Chat Completion Request
+      description: Guardrails chat completion request (adds detectors on OpenAI chat completion)
+      allOf:
+        - $ref: https://raw.githubusercontent.com/openai/openai-openapi/master/openapi.yaml#/components/schemas/CreateChatCompletionRequest
+        - type: object
+      properties:
+        detectors:
+          $ref: "#/components/schemas/Detectors"
+          default: {}
+      required:
+        - detectors
+      
+    GuardrailsCreateChatCompletionResponse:
+      title: Guardrails Chat Completion Response
+      description: Guardrails chat completion response (adds detections on OpenAI chat completion)
+      allOf:
+        - $ref: https://raw.githubusercontent.com/openai/openai-openapi/master/openapi.yaml#/components/schemas/CreateChatCompletionResponse
+        - type: object
+      properties:
+        detections:
+          $ref: "#/components/schemas/ChatCompletionsDetections"
+        warnings:
+          type: array
+          items:
+            $ref: '#/components/schemas/Warning'
+      required:
+        - detections
+
+    Detectors:
+      title: Guardrails Detectors
+      description: Specify detectors for guardrails
+      properties:
+        input:
+          type: object
+          title: Input Detectors
+          default: {}
+        output:
+          type: object
+          title: Output Detectors
+          default: {}
+      example:
+        input:
+          hap-v1-model-en: {}
+        output:
+          pii-v1: {}
+          conversation-detector: {}
+    
+    ChatCompletionsDetections:
+      title: Chat Completions Detections
+      properties:
+        input:
+          type: array
+          items:
+            $ref: '#/components/schemas/MessageDetections'
+          title: Detections on input to chat completions
+          default: {}
+        output:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChoiceDetections'
+          title: Detections on output of chat completions
+          default: {}
+      default: {}
+      example:
+        input:
+          - message_index: 0
+            results: 
+              - {
+                  "start": 0,
+                  "end": 80,
+                  "text": "string",
+                  "detection_type": "HAP",
+                  "detection": "has_HAP",
+                  "detector_id": "hap-v1-model-en", # Future addition
+                  "score": 0.999
+                }
+        output:
+          - choice_index: 0
+          - choice_index: 1
+            results:
+              - {
+                  "start": 0,
+                  "end": 20,
+                  "text": "string",
+                  "detection_type": "HAP",
+                  "detection": "has_HAP",
+                  "detector_id": "hap-v1-model-en", # Future addition
+                  "score": 0.999
+                }
+              - {
+                  "detection_type": "string",
+                  "detection": "string",
+                  "detector_id": "relevance-v1-en", # Future addition
+                  "score": 0
+                }
+    
+    MessageDetections:
+      title: Message Detections
+      properties:
+        message_index:
+          oneOf:
+            - type: string # "all"
+            - type: integer # index
+          title: Index of message
+        results:
+          title: Detection results
+          type: array
+          items:
+            anyOf:
+              - $ref: '#/components/schemas/DetectionContentResponseObject'
+              - $ref: '#/components/schemas/DetectionContextDocsResponseObject'
+              - $ref: '#/components/schemas/GeneratedTextDetectionResponseObject'
+      required:
+        - message_index
+    ChoiceDetections:
+      title: Choice Detections
+      properties:
+        choice_index:
+          oneOf:
+            - type: string # "all"
+            - type: integer # index
+          title: Index of choice
+        results:
+          title: Detection results
+          type: array
+          items:
+            anyOf:
+              - $ref: '#/components/schemas/DetectionContentResponseObject'
+              - $ref: '#/components/schemas/DetectionContextDocsResponseObject'
+              - $ref: '#/components/schemas/GeneratedTextDetectionResponseObject'
+      required:
+        - choice_index
+
+    ########################## General #################################
     Error:
       type: object
       properties:
@@ -742,7 +971,7 @@ components:
       type: object
       required:
         - name
-      title: EvidenceObj
+      title: Evidence Object
     FinishReason:
       type: string
       enum:
@@ -878,6 +1107,7 @@ components:
       additionalProperties: false
       type: object
       title: Guardrails Text Generation Parameters
+    # v1 API warning
     InputWarning:
       properties:
         id:
@@ -892,49 +1122,16 @@ components:
     InputWarningReason:
       enum: [UNSUITABLE_INPUT]
       title: Input Warning Reason
-    TextGenTokenClassificationResults:
-    # By default open-api spec consider all fields as optional
-      properties:
-        input:
-          anyOf:
-            - items:
-                $ref: '#/components/schemas/TokenClassificationResult'
-              type: array
-          title: Input
-        output:
-          anyOf:
-            - items:
-                $ref: '#/components/schemas/TokenClassificationResult'
-              type: array
-          title: Output
-      additionalProperties: false
+    # v2 API warning
+    Warning:
       type: object
-      title: Text Gen Token Classification Results
-    TokenClassificationResult:
       properties:
-        start:
-          type: integer
-          title: Start
-        end:
-          type: integer
-          title: End
-        word:
+        type:
           type: string
-          title: Word
-        entity:
+          title: Warning type
+        message:
           type: string
-          title: Entity
-        entity_group:
-          type: string
-          title: Entity Group
-        score:
-          type: number
-          title: Score
-        token_count:
-          anyOf:
-            - type: integer
-          title: Token Count
-      additionalProperties: false
-      required: ["start", "end", "word", "entity", "entity_group", "score"]
-      type: object
-      title: Token Classification Result
+          title: Warning message
+      example:
+        type: incompatible-generation
+        message: Detector detector-id could not run because of no content at choice_index 1
