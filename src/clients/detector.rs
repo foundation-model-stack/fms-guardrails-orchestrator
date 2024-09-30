@@ -17,7 +17,7 @@
 
 use std::collections::HashMap;
 
-use hyper::StatusCode;
+use hyper::{HeaderMap, StatusCode};
 use serde::{Deserialize, Serialize};
 
 use super::{create_http_clients, Error, HttpClient};
@@ -75,11 +75,13 @@ impl DetectorClient {
         &self,
         model_id: &str,
         request: ContentAnalysisRequest,
+        headers: HeaderMap,
     ) -> Result<Vec<Vec<ContentAnalysisResponse>>, Error> {
         let client = self.client(model_id)?;
         let url = client.base_url().as_str();
         let response = client
             .post(url)
+            .headers(headers)
             .header(DETECTOR_ID_HEADER_NAME, model_id)
             .json(&request)
             .send()
@@ -104,6 +106,7 @@ impl DetectorClient {
         &self,
         model_id: &str,
         request: GenerationDetectionRequest,
+        headers: HeaderMap,
     ) -> Result<Vec<DetectionResult>, Error> {
         let client = self.client(model_id)?;
         let url = client.base_url().as_str();
@@ -133,6 +136,7 @@ impl DetectorClient {
         &self,
         model_id: &str,
         request: ContextDocsDetectionRequest,
+        headers: HeaderMap,
     ) -> Result<Vec<DetectionResult>, Error> {
         let client = self.client(model_id)?;
         let url = client.base_url().as_str();

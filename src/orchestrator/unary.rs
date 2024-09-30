@@ -21,7 +21,7 @@ use futures::{
     future::try_join_all,
     stream::{self, StreamExt},
 };
-use hyper::HeaderMap;
+use hyper::{header, HeaderMap};
 use tracing::{debug, error, info, instrument};
 
 use super::{
@@ -64,7 +64,7 @@ impl Orchestrator {
             // Do input detections
             let input_detections = match input_detectors {
                 Some(detectors) if !detectors.is_empty() => {
-                    input_detection_task(&ctx, detectors, input_text.clone(), masks).await?
+                    input_detection_task(&ctx, detectors, input_text.clone(), masks, headers.clone()).await?
                 }
                 _ => None,
             };
@@ -108,7 +108,7 @@ impl Orchestrator {
                             .generated_text
                             .clone()
                             .unwrap_or_default();
-                        output_detection_task(&ctx, detectors, generated_text).await?
+                        output_detection_task(&ctx, detectors, generated_text, headers).await?
                     }
                     _ => None,
                 };
@@ -185,6 +185,7 @@ impl Orchestrator {
                                 detector_params,
                                 prompt,
                                 generated_text,
+                                headers.clone(),
                             )
                             .await
                         }
@@ -231,6 +232,8 @@ impl Orchestrator {
         );
 
         let ctx = self.ctx.clone();
+        let request_headers = task.headers;
+
         let task_handle = tokio::spawn(async move {
             let content = task.content.clone();
             // No masking applied, so offset change is 0
@@ -238,8 +241,6 @@ impl Orchestrator {
             let text_with_offsets = [(offset, content)].to_vec();
 
             let detectors = task.detectors.clone();
-
-            let headers = task.headers;
 
             let chunker_ids = get_chunker_ids(&ctx, &detectors)?;
             let chunks = chunk_task(&ctx, chunker_ids, text_with_offsets).await?;
@@ -260,6 +261,8 @@ impl Orchestrator {
 
                         let chunk = chunks.get(chunker_id).unwrap().clone();
 
+                        let headers = request_headers.clone();
+
                         async move {
                             detect_content(
                                 ctx,
@@ -267,6 +270,7 @@ impl Orchestrator {
                                 default_threshold,
                                 detector_params,
                                 chunk,
+                                headers,
                             )
                             .await
                         }
@@ -310,6 +314,7 @@ impl Orchestrator {
             "handling context documents detection task"
         );
         let ctx = self.ctx.clone();
+        let request_headers = task.headers;
         let task_handle = tokio::spawn(async move {
             // call detection
             let detections = try_join_all(
@@ -322,6 +327,7 @@ impl Orchestrator {
                         let content = task.content.clone();
                         let context_type = task.context_type.clone();
                         let context = task.context.clone();
+                        let headers = request_headers.clone();
 
                         async {
                             detect_for_context(
@@ -331,6 +337,7 @@ impl Orchestrator {
                                 content,
                                 context_type,
                                 context,
+                                headers,
                             )
                             .await
                         }
@@ -372,6 +379,8 @@ impl Orchestrator {
             "handling detection on generated content task"
         );
         let ctx = self.ctx.clone();
+        let request_headers = task.headers;
+
         let task_handle = tokio::spawn(async move {
             // call detection
             let detections = try_join_all(
@@ -383,6 +392,7 @@ impl Orchestrator {
                         let detector_params = detector_params.clone();
                         let prompt = task.prompt.clone();
                         let generated_text = task.generated_text.clone();
+                        let headers = request_headers.clone();
                         async {
                             detect_for_generation(
                                 ctx,
@@ -390,6 +400,7 @@ impl Orchestrator {
                                 detector_params,
                                 prompt,
                                 generated_text,
+                                headers
                             )
                             .await
                         }
@@ -428,11 +439,12 @@ pub async fn input_detection_task(
     detectors: &HashMap<String, DetectorParams>,
     input_text: String,
     masks: Option<&[(usize, usize)]>,
+    headers: HeaderMap,
 ) -> Result<Option<Vec<TokenClassificationResult>>, Error> {
     let text_with_offsets = apply_masks(input_text, masks);
     let chunker_ids = get_chunker_ids(ctx, detectors)?;
     let chunks = chunk_task(ctx, chunker_ids, text_with_offsets).await?;
-    let detections = detection_task(ctx, detectors, chunks).await?;
+    let detections = detection_task(ctx, detectors, chunks, headers).await?;
     Ok((!detections.is_empty()).then_some(detections))
 }
 
@@ -442,11 +454,12 @@ async fn output_detection_task(
     ctx: &Arc<Context>,
     detectors: &HashMap<String, DetectorParams>,
     generated_text: String,
+    headers: HeaderMap,
 ) -> Result<Option<Vec<TokenClassificationResult>>, Error> {
     let text_with_offsets = apply_masks(generated_text, None);
     let chunker_ids = get_chunker_ids(ctx, detectors)?;
     let chunks = chunk_task(ctx, chunker_ids, text_with_offsets).await?;
-    let detections = detection_task(ctx, detectors, chunks).await?;
+    let detections = detection_task(ctx, detectors, chunks, headers).await?;
     Ok((!detections.is_empty()).then_some(detections))
 }
 
@@ -456,6 +469,7 @@ async fn detection_task(
     ctx: &Arc<Context>,
     detectors: &HashMap<String, DetectorParams>,
     chunks: HashMap<String, Vec<Chunk>>,
+    request_headers: HeaderMap,
 ) -> Result<Vec<TokenClassificationResult>, Error> {
     // Spawn tasks for each detector
     let tasks = detectors
@@ -475,8 +489,9 @@ async fn detection_task(
             // Get chunker for detector
             let chunker_id = detector_config.chunker_id.as_str();
             let chunks = chunks.get(chunker_id).unwrap().clone();
+            let headers = request_headers.clone();
             Ok(tokio::spawn(async move {
-                detect(ctx, detector_id, default_threshold, detector_params, chunks).await
+                detect(ctx, detector_id, default_threshold, detector_params, chunks, headers).await
             }))
         })
         .collect::<Result<Vec<_>, Error>>()?;
@@ -521,6 +536,7 @@ pub async fn detect(
     default_threshold: f64,
     detector_params: DetectorParams,
     chunks: Vec<Chunk>,
+    headers: HeaderMap,
 ) -> Result<Vec<TokenClassificationResult>, Error> {
     let detector_id = detector_id.clone();
     let threshold = detector_params.threshold().unwrap_or(default_threshold);
@@ -532,7 +548,7 @@ pub async fn detect(
         let request = ContentAnalysisRequest::new(contents);
         debug!(%detector_id, ?request, "sending detector request");
         ctx.detector_client
-            .text_contents(&detector_id, request)
+            .text_contents(&detector_id, request, headers)
             .await
             .map_err(|error| {
                 debug!(%detector_id, ?error, "error received from detector");
@@ -575,6 +591,7 @@ pub async fn detect_content(
     default_threshold: f64,
     detector_params: DetectorParams,
     chunks: Vec<Chunk>,
+    headers: HeaderMap,
 ) -> Result<Vec<ContentAnalysisResponse>, Error> {
     let detector_id = detector_id.clone();
     let threshold = detector_params.threshold().unwrap_or(default_threshold);
@@ -586,7 +603,7 @@ pub async fn detect_content(
         let request = ContentAnalysisRequest::new(contents);
         debug!(%detector_id, ?request, "sending detector request");
         ctx.detector_client
-            .text_contents(&detector_id, request)
+            .text_contents(&detector_id, request, headers)
             .await
             .map_err(|error| {
                 debug!(%detector_id, ?error, "error received from detector");
@@ -626,6 +643,7 @@ pub async fn detect_for_generation(
     detector_params: DetectorParams,
     prompt: String,
     generated_text: String,
+    headers: HeaderMap,
 ) -> Result<Vec<DetectionResult>, Error> {
     let detector_id = detector_id.clone();
     let threshold = detector_params.threshold().unwrap_or(
@@ -641,7 +659,7 @@ pub async fn detect_for_generation(
     debug!(%detector_id, ?request, "sending generation detector request");
     let response = ctx
         .detector_client
-        .text_generation(&detector_id, request)
+        .text_generation(&detector_id, request, headers.clone())
         .await
         .map(|results| {
             results
@@ -665,6 +683,7 @@ pub async fn detect_for_context(
     content: String,
     context_type: ContextType,
     context: Vec<String>,
+    headers: HeaderMap,
 ) -> Result<Vec<DetectionResult>, Error> {
     let detector_id = detector_id.clone();
     let threshold = detector_params.threshold().unwrap_or(
@@ -680,7 +699,7 @@ pub async fn detect_for_context(
     debug!(%detector_id, ?request, "sending context detector request");
     let response = ctx
         .detector_client
-        .text_context_doc(&detector_id, request)
+        .text_context_doc(&detector_id, request, headers)
         .await
         .map(|results| {
             results

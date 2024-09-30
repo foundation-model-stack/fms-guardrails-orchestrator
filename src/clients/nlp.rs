@@ -98,7 +98,6 @@ impl NlpClient {
         headers: HeaderMap
     ) -> Result<TokenizationResults, Error> {
         let request = request_with_model_id(request, model_id, headers);
-        println!("request : {:?}", request);
         Ok(self
             .client(model_id)?
             .tokenization_task_predict(request)
@@ -113,7 +112,6 @@ impl NlpClient {
         headers: HeaderMap
     ) -> Result<TokenClassificationResults, Error> {
         let request = request_with_model_id(request, model_id, headers);
-        println!("request : {:?}", request);
         Ok(self
             .client(model_id)?
             .token_classification_task_predict(request)
@@ -128,7 +126,6 @@ impl NlpClient {
         headers: HeaderMap
     ) -> Result<GeneratedTextResult, Error> {
         let request = request_with_model_id(request, model_id, headers);
-        println!("request : {:?}", request);
         Ok(self
             .client(model_id)?
             .text_generation_task_predict(request)
@@ -143,7 +140,6 @@ impl NlpClient {
         headers: HeaderMap
     ) -> Result<BoxStream<Result<GeneratedTextStreamResult, Error>>, Error> {
         let request = request_with_model_id(request, model_id, headers);
-        println!("request : {:?}", request);
         let response_stream = self
             .client(model_id)?
             .server_streaming_text_generation_task_predict(request)
