@@ -63,7 +63,7 @@ pub struct Orchestrator {
 impl Orchestrator {
     pub async fn new(
         config: OrchestratorConfig,
-        _start_up_health_check: bool,
+        start_up_health_check: bool,
     ) -> Result<Self, Error> {
         let (generation_client, chunker_client, detector_client) = create_clients(&config).await;
         let ctx = Arc::new(Context {
@@ -77,7 +77,7 @@ impl Orchestrator {
             client_health_cache: Arc::new(RwLock::new(HealthCheckCache::default())),
         };
         debug!("running start up checks");
-        // orchestrator.on_start_up(start_up_health_check).await?;
+        orchestrator.on_start_up(start_up_health_check).await?;
         debug!("start up checks completed");
         Ok(orchestrator)
     }
