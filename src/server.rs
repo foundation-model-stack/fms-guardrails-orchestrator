@@ -322,6 +322,7 @@ async fn classification_with_gen(
 
 async fn generation_with_detection(
     State(state): State<Arc<ServerState>>,
+    headers: HeaderMap,
     WithRejection(Json(request), _): WithRejection<
         Json<models::GenerationWithDetectionHttpRequest>,
         Error,
@@ -329,7 +330,7 @@ async fn generation_with_detection(
 ) -> Result<impl IntoResponse, Error> {
     let request_id = Uuid::new_v4();
     request.validate()?;
-    let task = GenerationWithDetectionTask::new(request_id, request);
+    let task = GenerationWithDetectionTask::new(request_id, request, headers);
     match state
         .orchestrator
         .handle_generation_with_detection(task)
@@ -342,6 +343,7 @@ async fn generation_with_detection(
 
 async fn stream_classification_with_gen(
     State(state): State<Arc<ServerState>>,
+    headers: HeaderMap,
     WithRejection(Json(request), _): WithRejection<Json<models::GuardrailsHttpRequest>, Error>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
     let request_id = Uuid::new_v4();
@@ -356,7 +358,7 @@ async fn stream_classification_with_gen(
             .boxed(),
         );
     }
-    let task = StreamingClassificationWithGenTask::new(request_id, request);
+    let task = StreamingClassificationWithGenTask::new(request_id, request, headers);
     let response_stream = state
         .orchestrator
         .handle_streaming_classification_with_gen(task)
@@ -382,11 +384,12 @@ async fn stream_classification_with_gen(
 
 async fn detection_content(
     State(state): State<Arc<ServerState>>,
+    headers: HeaderMap,
     Json(request): Json<models::TextContentDetectionHttpRequest>,
 ) -> Result<impl IntoResponse, Error> {
     let request_id = Uuid::new_v4();
     request.validate()?;
-    let task = TextContentDetectionTask::new(request_id, request);
+    let task = TextContentDetectionTask::new(request_id, request, headers);
     match state.orchestrator.handle_text_content_detection(task).await {
         Ok(response) => Ok(Json(response).into_response()),
         Err(error) => Err(error.into()),
@@ -395,11 +398,12 @@ async fn detection_content(
 
 async fn detect_context_documents(
     State(state): State<Arc<ServerState>>,
+    headers: HeaderMap,
     WithRejection(Json(request), _): WithRejection<Json<models::ContextDocsHttpRequest>, Error>,
 ) -> Result<impl IntoResponse, Error> {
     let request_id = Uuid::new_v4();
     request.validate()?;
-    let task = ContextDocsDetectionTask::new(request_id, request);
+    let task = ContextDocsDetectionTask::new(request_id, request, headers);
     match state
         .orchestrator
         .handle_context_documents_detection(task)
@@ -412,6 +416,7 @@ async fn detect_context_documents(
 
 async fn detect_generated(
     State(state): State<Arc<ServerState>>,
+    headers: HeaderMap,
     WithRejection(Json(request), _): WithRejection<
         Json<models::DetectionOnGeneratedHttpRequest>,
         Error,
@@ -419,7 +424,7 @@ async fn detect_generated(
 ) -> Result<impl IntoResponse, Error> {
     let request_id = Uuid::new_v4();
     request.validate()?;
-    let task = DetectionOnGenerationTask::new(request_id, request);
+    let task = DetectionOnGenerationTask::new(request_id, request, headers);
     match state
         .orchestrator
         .handle_generated_text_detection(task)

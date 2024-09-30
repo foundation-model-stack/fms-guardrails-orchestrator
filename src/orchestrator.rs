@@ -256,14 +256,18 @@ pub struct GenerationWithDetectionTask {
 }
 
 impl GenerationWithDetectionTask {
-    pub fn new(request_id: Uuid, request: GenerationWithDetectionHttpRequest) -> Self {
+    pub fn new(
+        request_id: Uuid,
+        request: GenerationWithDetectionHttpRequest,
+        headers: HeaderMap,
+    ) -> Self {
         Self {
             request_id,
             model_id: request.model_id,
             prompt: request.prompt,
             detectors: request.detectors,
             text_gen_parameters: request.text_gen_parameters,
-            headers: HeaderMap::new(),
+            headers,
         }
     }
 }
@@ -285,12 +289,16 @@ pub struct TextContentDetectionTask {
 }
 
 impl TextContentDetectionTask {
-    pub fn new(request_id: Uuid, request: TextContentDetectionHttpRequest) -> Self {
+    pub fn new(
+        request_id: Uuid,
+        request: TextContentDetectionHttpRequest,
+        headers: HeaderMap,
+    ) -> Self {
         Self {
             request_id,
             content: request.content,
             detectors: request.detectors,
-            headers: HeaderMap::new(),
+            headers,
         }
     }
 }
@@ -318,14 +326,14 @@ pub struct ContextDocsDetectionTask {
 }
 
 impl ContextDocsDetectionTask {
-    pub fn new(request_id: Uuid, request: ContextDocsHttpRequest) -> Self {
+    pub fn new(request_id: Uuid, request: ContextDocsHttpRequest, headers: HeaderMap) -> Self {
         Self {
             request_id,
             content: request.content,
             context_type: request.context_type,
             context: request.context,
             detectors: request.detectors,
-            headers: HeaderMap::new(),
+            headers,
         }
     }
 }
@@ -350,13 +358,17 @@ pub struct DetectionOnGenerationTask {
 }
 
 impl DetectionOnGenerationTask {
-    pub fn new(request_id: Uuid, request: DetectionOnGeneratedHttpRequest) -> Self {
+    pub fn new(
+        request_id: Uuid,
+        request: DetectionOnGeneratedHttpRequest,
+        headers: HeaderMap,
+    ) -> Self {
         Self {
             request_id,
             prompt: request.prompt,
             generated_text: request.generated_text,
             detectors: request.detectors,
-            headers: HeaderMap::new(),
+            headers,
         }
     }
 }
@@ -373,14 +385,14 @@ pub struct StreamingClassificationWithGenTask {
 }
 
 impl StreamingClassificationWithGenTask {
-    pub fn new(request_id: Uuid, request: GuardrailsHttpRequest) -> Self {
+    pub fn new(request_id: Uuid, request: GuardrailsHttpRequest, headers: HeaderMap) -> Self {
         Self {
             request_id,
             model_id: request.model_id,
             inputs: request.inputs,
             guardrails_config: request.guardrail_config.unwrap_or_default(),
             text_gen_parameters: request.text_gen_parameters,
-            headers: HeaderMap::new(),
+            headers,
         }
     }
 }
