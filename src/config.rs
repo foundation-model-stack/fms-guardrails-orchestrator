@@ -25,7 +25,8 @@ use tracing::{debug, error, warn};
 
 use crate::clients::chunker::DEFAULT_MODEL_ID;
 
-const DEFAULT_ALLOWED_HEADERS: &[&str] = &["Content-Type"];
+// Place holder to add default allowed headers
+const DEFAULT_ALLOWED_HEADERS: &[&str] = &[];
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
