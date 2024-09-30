@@ -15,9 +15,9 @@
 
 */
 
-use std::{collections::HashMap, pin::Pin};
 use futures::{Future, Stream, StreamExt, TryStreamExt};
 use ginepro::LoadBalancedChannel;
+use std::{collections::HashMap, pin::Pin};
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::{metadata::MetadataMap, Request, Response, Status, Streaming};

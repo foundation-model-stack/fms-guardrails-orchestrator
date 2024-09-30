@@ -64,7 +64,14 @@ impl Orchestrator {
             // Do input detections
             let input_detections = match input_detectors {
                 Some(detectors) if !detectors.is_empty() => {
-                    input_detection_task(&ctx, detectors, input_text.clone(), masks, headers.clone()).await?
+                    input_detection_task(
+                        &ctx,
+                        detectors,
+                        input_text.clone(),
+                        masks,
+                        headers.clone(),
+                    )
+                    .await?
                 }
                 _ => None,
             };
@@ -72,8 +79,13 @@ impl Orchestrator {
             if let Some(mut input_detections) = input_detections {
                 // Detected HAP/PII
                 // Do tokenization to get input_token_count
-                let (input_token_count, _tokens) =
-                    tokenize(&ctx, task.model_id.clone(), task.inputs.clone(), headers.clone()).await?;
+                let (input_token_count, _tokens) = tokenize(
+                    &ctx,
+                    task.model_id.clone(),
+                    task.inputs.clone(),
+                    headers.clone(),
+                )
+                .await?;
                 // Send result with input detections
                 input_detections.sort_by_key(|r| r.start);
                 Ok(ClassifiedGeneratedTextResult {
@@ -400,7 +412,7 @@ impl Orchestrator {
                                 detector_params,
                                 prompt,
                                 generated_text,
-                                headers
+                                headers,
                             )
                             .await
                         }
@@ -491,7 +503,15 @@ async fn detection_task(
             let chunks = chunks.get(chunker_id).unwrap().clone();
             let headers = request_headers.clone();
             Ok(tokio::spawn(async move {
-                detect(ctx, detector_id, default_threshold, detector_params, chunks, headers).await
+                detect(
+                    ctx,
+                    detector_id,
+                    default_threshold,
+                    detector_params,
+                    chunks,
+                    headers,
+                )
+                .await
             }))
         })
         .collect::<Result<Vec<_>, Error>>()?;
@@ -805,7 +825,7 @@ async fn generate(
 
 #[cfg(test)]
 mod tests {
-    use hyper::StatusCode;
+    use hyper::{HeaderMap, StatusCode};
 
     use super::*;
     use crate::{
@@ -879,7 +899,7 @@ mod tests {
         };
 
         // Construct a behavior for the mock object
-        faux::when!(mock_client.generate(expected_generate_req_args))
+        faux::when!(mock_client.generate(expected_generate_req_args, HeaderMap::new()))
             .once() // TODO: Add with_args
             .then_return(Ok(client_generation_response));
 
@@ -889,7 +909,7 @@ mod tests {
 
         // Test request formulation and response processing is as expected
         assert_eq!(
-            generate(&ctx, text_gen_model_id, sample_text, None)
+            generate(&ctx, text_gen_model_id, sample_text, None, HeaderMap::new())
                 .await
                 .unwrap(),
             expected_generate_response
@@ -939,7 +959,8 @@ mod tests {
 
         faux::when!(mock_detector_client.text_contents(
             detector_id,
-            ContentAnalysisRequest::new(vec![first_sentence.clone(), second_sentence.clone()])
+            ContentAnalysisRequest::new(vec![first_sentence.clone(), second_sentence.clone()]),
+            HeaderMap::new(),
         ))
         .once()
         .then_return(Ok(vec![
@@ -972,7 +993,8 @@ mod tests {
                 detector_id.to_string(),
                 threshold,
                 detector_params,
-                chunks
+                chunks,
+                HeaderMap::new(),
             )
             .await
             .unwrap(),
@@ -1007,7 +1029,8 @@ mod tests {
 
         faux::when!(mock_detector_client.text_contents(
             detector_id,
-            ContentAnalysisRequest::new(vec![sentence.clone()])
+            ContentAnalysisRequest::new(vec![sentence.clone()]),
+            HeaderMap::new(),
         ))
         .once()
         .then_return(Err(clients::Error::Http {
@@ -1024,7 +1047,8 @@ mod tests {
                 detector_id.to_string(),
                 threshold,
                 detector_params,
-                chunks
+                chunks,
+                HeaderMap::new(),
             )
             .await
             .unwrap_err(),
@@ -1048,7 +1072,8 @@ mod tests {
 
         faux::when!(mock_detector_client.text_contents(
             detector_id,
-            ContentAnalysisRequest::new(vec![first_sentence.clone()])
+            ContentAnalysisRequest::new(vec![first_sentence.clone()]),
+            HeaderMap::new(),
         ))
         .once()
         .then_return(Ok(vec![vec![]]));
@@ -1062,7 +1087,8 @@ mod tests {
                 detector_id.to_string(),
                 threshold,
                 detector_params,
-                chunks
+                chunks,
+                HeaderMap::new(),
             )
             .await
             .unwrap(),
@@ -1099,7 +1125,8 @@ mod tests {
 
         faux::when!(mock_detector_client.text_generation(
             detector_id,
-            GenerationDetectionRequest::new(prompt.clone(), generated_text.clone())
+            GenerationDetectionRequest::new(prompt.clone(), generated_text.clone()),
+            HeaderMap::new(),
         ))
         .once()
         .then_return(Ok(vec![DetectionResult {
@@ -1134,7 +1161,8 @@ mod tests {
                 detector_id.to_string(),
                 detector_params,
                 prompt,
-                generated_text
+                generated_text,
+                HeaderMap::new(),
             )
             .await
             .unwrap(),
@@ -1160,7 +1188,8 @@ mod tests {
 
         faux::when!(mock_detector_client.text_generation(
             detector_id,
-            GenerationDetectionRequest::new(prompt.clone(), generated_text.clone())
+            GenerationDetectionRequest::new(prompt.clone(), generated_text.clone()),
+            HeaderMap::new(),
         ))
         .once()
         .then_return(Ok(vec![DetectionResult {
@@ -1187,7 +1216,8 @@ mod tests {
                 detector_id.to_string(),
                 detector_params,
                 prompt,
-                generated_text
+                generated_text,
+                HeaderMap::new(),
             )
             .await
             .unwrap(),

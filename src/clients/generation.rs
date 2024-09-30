@@ -17,8 +17,8 @@
 
 use std::collections::HashMap;
 
-use hyper::HeaderMap;
 use futures::{StreamExt, TryStreamExt};
+use hyper::HeaderMap;
 use tracing::debug;
 
 use super::{BoxStream, Error, NlpClient, TgisClient};
@@ -86,7 +86,7 @@ impl GenerationClient {
         &self,
         model_id: String,
         text: String,
-        headers: HeaderMap
+        headers: HeaderMap,
     ) -> Result<(u32, Vec<String>), Error> {
         match &self.0 {
             Some(GenerationClientInner::Tgis(client)) => {
@@ -106,7 +106,9 @@ impl GenerationClient {
             Some(GenerationClientInner::Nlp(client)) => {
                 let request = TokenizationTaskRequest { text };
                 debug!(%model_id, provider = "nlp", ?request, "sending tokenize request");
-                let response = client.tokenization_task_predict(&model_id, request, headers).await?;
+                let response = client
+                    .tokenization_task_predict(&model_id, request, headers)
+                    .await?;
                 debug!(%model_id, provider = "nlp", ?response, "received tokenize response");
                 let tokens = response
                     .results
@@ -124,7 +126,7 @@ impl GenerationClient {
         model_id: String,
         text: String,
         params: Option<GuardrailsTextGenerationParameters>,
-        headers: HeaderMap
+        headers: HeaderMap,
     ) -> Result<ClassifiedGeneratedTextResult, Error> {
         match &self.0 {
             Some(GenerationClientInner::Tgis(client)) => {

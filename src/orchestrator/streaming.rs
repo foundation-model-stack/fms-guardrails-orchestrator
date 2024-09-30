@@ -75,7 +75,15 @@ impl Orchestrator {
             let input_detectors = task.guardrails_config.input_detectors();
             let input_detections = match input_detectors {
                 Some(detectors) if !detectors.is_empty() => {
-                    match input_detection_task(&ctx, detectors, input_text.clone(), masks, request_headers.clone()).await {
+                    match input_detection_task(
+                        &ctx,
+                        detectors,
+                        input_text.clone(),
+                        masks,
+                        request_headers.clone(),
+                    )
+                    .await
+                    {
                         Ok(result) => result,
                         Err(error) => {
                             error!(%request_id, %error, "task failed");
@@ -90,15 +98,21 @@ impl Orchestrator {
             if let Some(mut input_detections) = input_detections {
                 // Detected HAP/PII
                 // Do tokenization to get input_token_count
-                let (input_token_count, _tokens) =
-                    match tokenize(&ctx, model_id.clone(), input_text.clone(), request_headers.clone()).await {
-                        Ok(result) => result,
-                        Err(error) => {
-                            error!(%request_id, %error, "task failed");
-                            let _ = response_tx.send(Err(error)).await;
-                            return;
-                        }
-                    };
+                let (input_token_count, _tokens) = match tokenize(
+                    &ctx,
+                    model_id.clone(),
+                    input_text.clone(),
+                    request_headers.clone(),
+                )
+                .await
+                {
+                    Ok(result) => result,
+                    Err(error) => {
+                        error!(%request_id, %error, "task failed");
+                        let _ = response_tx.send(Err(error)).await;
+                        return;
+                    }
+                };
                 input_detections.sort_by_key(|r| r.start);
                 // Send result with input detections
                 let _ = response_tx
@@ -350,7 +364,7 @@ async fn detection_task(
     request_headers: HeaderMap,
 ) {
     let mut error_rx = error_tx.subscribe();
-    
+
     loop {
         tokio::select! {
             _ = error_rx.recv() => { break },
@@ -496,7 +510,7 @@ async fn generate_stream(
     model_id: String,
     text: String,
     params: Option<GuardrailsTextGenerationParameters>,
-    headers: HeaderMap
+    headers: HeaderMap,
 ) -> Result<
     Pin<Box<dyn Stream<Item = Result<ClassifiedGeneratedTextStreamResult, Error>> + Send>>,
     Error,

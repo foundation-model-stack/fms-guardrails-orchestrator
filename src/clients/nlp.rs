@@ -95,7 +95,7 @@ impl NlpClient {
         &self,
         model_id: &str,
         request: TokenizationTaskRequest,
-        headers: HeaderMap
+        headers: HeaderMap,
     ) -> Result<TokenizationResults, Error> {
         let request = request_with_model_id(request, model_id, headers);
         Ok(self
@@ -109,7 +109,7 @@ impl NlpClient {
         &self,
         model_id: &str,
         request: TokenClassificationTaskRequest,
-        headers: HeaderMap
+        headers: HeaderMap,
     ) -> Result<TokenClassificationResults, Error> {
         let request = request_with_model_id(request, model_id, headers);
         Ok(self
@@ -123,7 +123,7 @@ impl NlpClient {
         &self,
         model_id: &str,
         request: TextGenerationTaskRequest,
-        headers: HeaderMap
+        headers: HeaderMap,
     ) -> Result<GeneratedTextResult, Error> {
         let request = request_with_model_id(request, model_id, headers);
         Ok(self
@@ -137,7 +137,7 @@ impl NlpClient {
         &self,
         model_id: &str,
         request: ServerStreamingTextGenerationTaskRequest,
-        headers: HeaderMap
+        headers: HeaderMap,
     ) -> Result<BoxStream<Result<GeneratedTextStreamResult, Error>>, Error> {
         let request = request_with_model_id(request, model_id, headers);
         let response_stream = self

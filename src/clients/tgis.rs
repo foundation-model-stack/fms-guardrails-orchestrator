@@ -16,9 +16,9 @@
 */
 
 use axum::http::HeaderMap;
-use std::collections::HashMap;
 use futures::{StreamExt, TryStreamExt};
 use ginepro::LoadBalancedChannel;
+use std::collections::HashMap;
 use tonic::Code;
 
 use super::{create_grpc_clients, BoxStream, ClientCode, Error};

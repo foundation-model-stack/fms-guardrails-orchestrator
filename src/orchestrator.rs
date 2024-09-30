@@ -263,7 +263,7 @@ impl GenerationWithDetectionTask {
             prompt: request.prompt,
             detectors: request.detectors,
             text_gen_parameters: request.text_gen_parameters,
-            headers: HeaderMap::new()
+            headers: HeaderMap::new(),
         }
     }
 }
