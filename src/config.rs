@@ -25,6 +25,8 @@ use tracing::{debug, error, warn};
 
 use crate::clients::chunker::DEFAULT_MODEL_ID;
 
+const DEFAULT_ALLOWED_HEADERS: &[&str] = &["Content-Type"];
+
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("failed to read config from `{path}`: {error}")]
@@ -143,6 +145,8 @@ pub struct OrchestratorConfig {
     /// Map of TLS connections, allowing reuse across services
     /// that may require the same TLS information
     pub tls: Option<HashMap<String, TlsConfig>>,
+    // List of header keys allowed to be passed to downstream servers
+    pub allowed_headers_passthrough: Option<Vec<String>>,
 }
 
 impl OrchestratorConfig {
@@ -164,6 +168,26 @@ impl OrchestratorConfig {
         }
         if config.chunkers.is_none() {
             warn!("no chunker configs provided");
+        }
+
+        if config.allowed_headers_passthrough.is_none() {
+            warn!("No allowed headers specified");
+        }
+
+        // Add default headers to allowed_headers list
+        debug!("Adding default headers");
+        // config.allowed_headers_passthrough.unwrap_or_default().extend(DEFAULT_ALLOWED_HEADERS.iter().map(|h| h.to_string()));
+        if let Some(passthroughs) = &mut config.allowed_headers_passthrough {
+            passthroughs.extend(DEFAULT_ALLOWED_HEADERS.iter().map(|h| h.to_string()));
+            // De-duplicate
+            passthroughs.dedup();
+        } else {
+            config.allowed_headers_passthrough = Some(
+                DEFAULT_ALLOWED_HEADERS
+                    .iter()
+                    .map(|h| h.to_string())
+                    .collect(),
+            );
         }
 
         config.apply_named_tls_configs()?;
@@ -520,5 +544,65 @@ tls:
             .validate()
             .expect_err("Config should not have been validated");
         assert!(matches!(error, Error::DetectorChunkerNotFound { .. }))
+    }
+
+    #[test]
+    fn test_allowed_headers_passthrough_empty_config() -> Result<(), Error> {
+        let s = r#"
+generation:
+    provider: tgis
+    service:
+        hostname: localhost
+        port: 8000
+chunkers:
+    sentence-en:
+        type: sentence
+        service:
+            hostname: localhost
+            port: 9000
+detectors:
+    hap:
+        service:
+            hostname: localhost
+            port: 9000
+            tls: detector
+        chunker_id: sentence-fr
+        default_threshold: 0.5   
+        "#;
+        let config: OrchestratorConfig = serde_yml::from_str(s).unwrap();
+        assert!(config.allowed_headers_passthrough.is_none());
+        Ok(())
+    }
+    #[test]
+    fn test_allowed_headers_passthrough_in_config() -> Result<(), Error> {
+        let s = r#"
+generation:
+    provider: tgis
+    service:
+        hostname: localhost
+        port: 8000
+chunkers:
+    sentence-en:
+        type: sentence
+        service:
+            hostname: localhost
+            port: 9000
+detectors:
+    hap:
+        service:
+            hostname: localhost
+            port: 9000
+            tls: detector
+        chunker_id: sentence-fr
+        default_threshold: 0.5   
+
+allowed_headers_passthrough:
+        - test-header
+        "#;
+        let config: OrchestratorConfig = serde_yml::from_str(s).unwrap();
+        assert!(config
+            .allowed_headers_passthrough
+            .eq(&Some(vec![String::from("test-header")])));
+        Ok(())
     }
 }
