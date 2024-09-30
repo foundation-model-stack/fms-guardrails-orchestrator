@@ -187,7 +187,7 @@ paths:
     post:
       tags:
         - Task - Detection
-      summary: Detection task on chat messages
+      summary: Detection task on entire history of chat messages
       operationId: >-
         api_v2_detection_text_chat_unary_handler
       requestBody:
@@ -450,8 +450,19 @@ components:
         detections:
           type: array
           items:
-            $ref: '#/components/schemas/MessageDetections'
-          title: Detections on input to chat completions
+            type: object
+            title: Detection Object
+            properties:
+              detection_type:
+                type: string
+                title: Detection Type
+              detection:
+                type: string
+                title: Detection
+              score:
+                type: number
+                title: Score
+          title: Detections on entire history of chat messages
       title: Chat Detection Response
       required: ["detections"]
     

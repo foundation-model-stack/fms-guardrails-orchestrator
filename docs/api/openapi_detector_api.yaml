@@ -146,20 +146,9 @@ paths:
                   Response Chat Analysis Unary Handler Api V1 Text Context Chat
                   Post
                 example:
-                  - message_index: 0
-                    results:
-                      - {
-                          "detection_type": "detection_type",
-                          "detection": "detection",
-                          "score": 0.999
-                        }
-                  - message_index: 1
-                    results:
-                      - {
-                          "detection_type": "detection_type",
-                          "detection": "detection",
-                          "score": 0.5
-                        }
+                  - detection: "detection_type"
+                    detection_type: "dummy_detector_type"
+                    score: 0.99
         '404':
           description: Resource Not Found
           content:
@@ -249,29 +238,6 @@ components:
         - messages
       title: ChatAnalysisHttpRequest
     ChatAnalysisResponse:
-      title: ChatAnalysisResponse
-      properties:
-        message_index:
-          oneOf:
-            - type: string # "all"
-            - type: integer # index
-          title: Index of message
-        results:
-          title: Detection results
-          type: array
-          items:
-            $ref: '#/components/schemas/ChatAnalysisDetection'
-      required:
-        - message_index
-      example:
-        message_index: 0
-        results:
-          - {
-              "detection_type": "detection_type",
-              "detection": "detection",
-              "score": 0.999
-            }
-    ChatAnalysisDetection:
       properties:
         detection:
           type: string
@@ -296,7 +262,7 @@ components:
         - detection
         - detection_type
         - score
-      title: ChatAnalysisDetection
+      title: ChatAnalysisResponse
     ContextAnalysisHttpRequest:
       properties:
         content:
