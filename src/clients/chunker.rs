@@ -20,7 +20,7 @@ use ginepro::LoadBalancedChannel;
 use std::{collections::HashMap, pin::Pin};
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
-use tonic::{metadata::MetadataMap, Request, Response, Status, Streaming};
+use tonic::{Request, Response, Status, Streaming};
 use tracing::info;
 
 use super::{create_grpc_clients, BoxStream, Error};

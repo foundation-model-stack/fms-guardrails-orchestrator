@@ -63,7 +63,7 @@ pub struct Orchestrator {
 impl Orchestrator {
     pub async fn new(
         config: OrchestratorConfig,
-        start_up_health_check: bool,
+        _start_up_health_check: bool,
     ) -> Result<Self, Error> {
         let (generation_client, chunker_client, detector_client) = create_clients(&config).await;
         let ctx = Arc::new(Context {
@@ -228,7 +228,7 @@ impl ClassificationWithGenTask {
             inputs: request.inputs,
             guardrails_config: request.guardrail_config.unwrap_or_default(),
             text_gen_parameters: request.text_gen_parameters,
-            headers: headers.into(),
+            headers,
         }
     }
 }

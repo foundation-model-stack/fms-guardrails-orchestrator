@@ -309,8 +309,7 @@ async fn classification_with_gen(
 ) -> Result<impl IntoResponse, Error> {
     let request_id = Uuid::new_v4();
     request.validate()?;
-    println!("Headers: ----{:?}", headers);
-    let task = ClassificationWithGenTask::new(request_id, request, headers.into());
+    let task = ClassificationWithGenTask::new(request_id, request, headers);
     match state
         .orchestrator
         .handle_classification_with_gen(task)

@@ -21,7 +21,7 @@ use futures::{
     future::try_join_all,
     stream::{self, StreamExt},
 };
-use hyper::{header, HeaderMap};
+use hyper::HeaderMap;
 use tracing::{debug, error, info, instrument};
 
 use super::{

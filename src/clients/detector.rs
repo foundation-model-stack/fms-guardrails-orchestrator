@@ -112,6 +112,7 @@ impl DetectorClient {
         let url = client.base_url().as_str();
         let response = client
             .post(url)
+            .headers(headers)
             .header(DETECTOR_ID_HEADER_NAME, model_id)
             .json(&request)
             .send()
@@ -142,6 +143,7 @@ impl DetectorClient {
         let url = client.base_url().as_str();
         let response = client
             .post(url)
+            .headers(headers)
             .header(DETECTOR_ID_HEADER_NAME, model_id)
             .json(&request)
             .send()
