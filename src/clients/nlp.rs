@@ -126,6 +126,7 @@ impl NlpClient {
         headers: HeaderMap,
     ) -> Result<GeneratedTextResult, Error> {
         let request = request_with_model_id(request, model_id, headers);
+        println!("request: {:?}", request);
         Ok(self
             .client(model_id)?
             .text_generation_task_predict(request)

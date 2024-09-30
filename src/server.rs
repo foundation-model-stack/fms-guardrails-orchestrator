@@ -43,6 +43,7 @@ use uuid::Uuid;
 use webpki::types::{CertificateDer, PrivateKeyDer};
 
 use crate::{
+    config::OrchestratorConfig,
     health::HealthCheckProbeParams,
     models,
     orchestrator::{
@@ -309,7 +310,8 @@ async fn classification_with_gen(
 ) -> Result<impl IntoResponse, Error> {
     let request_id = Uuid::new_v4();
     request.validate()?;
-    let task = ClassificationWithGenTask::new(request_id, request, headers);
+    let filtered_headers = filter_header(&state.orchestrator.get_config(), headers).await;
+    let task = ClassificationWithGenTask::new(request_id, request, filtered_headers);
     match state
         .orchestrator
         .handle_classification_with_gen(task)
@@ -330,7 +332,8 @@ async fn generation_with_detection(
 ) -> Result<impl IntoResponse, Error> {
     let request_id = Uuid::new_v4();
     request.validate()?;
-    let task = GenerationWithDetectionTask::new(request_id, request, headers);
+    let filtered_headers = filter_header(&state.orchestrator.get_config(), headers).await;
+    let task = GenerationWithDetectionTask::new(request_id, request, filtered_headers);
     match state
         .orchestrator
         .handle_generation_with_detection(task)
@@ -389,7 +392,8 @@ async fn detection_content(
 ) -> Result<impl IntoResponse, Error> {
     let request_id = Uuid::new_v4();
     request.validate()?;
-    let task = TextContentDetectionTask::new(request_id, request, headers);
+    let filtered_headers = filter_header(&state.orchestrator.get_config(), headers).await;
+    let task = TextContentDetectionTask::new(request_id, request, filtered_headers);
     match state.orchestrator.handle_text_content_detection(task).await {
         Ok(response) => Ok(Json(response).into_response()),
         Err(error) => Err(error.into()),
@@ -403,7 +407,8 @@ async fn detect_context_documents(
 ) -> Result<impl IntoResponse, Error> {
     let request_id = Uuid::new_v4();
     request.validate()?;
-    let task = ContextDocsDetectionTask::new(request_id, request, headers);
+    let filtered_headers = filter_header(&state.orchestrator.get_config(), headers).await;
+    let task = ContextDocsDetectionTask::new(request_id, request, filtered_headers);
     match state
         .orchestrator
         .handle_context_documents_detection(task)
@@ -424,7 +429,8 @@ async fn detect_generated(
 ) -> Result<impl IntoResponse, Error> {
     let request_id = Uuid::new_v4();
     request.validate()?;
-    let task = DetectionOnGenerationTask::new(request_id, request, headers);
+    let filtered_headers = filter_header(&state.orchestrator.get_config(), headers).await;
+    let task = DetectionOnGenerationTask::new(request_id, request, filtered_headers);
     match state
         .orchestrator
         .handle_generated_text_detection(task)
@@ -582,4 +588,19 @@ impl From<models::ValidationError> for Error {
     fn from(value: models::ValidationError) -> Self {
         Self::Validation(value.to_string())
     }
+}
+
+async fn filter_header(config: &OrchestratorConfig, headers: HeaderMap) -> HeaderMap {
+    let allowed_headers = config
+        .allowed_headers_passthrough
+        .clone()
+        .unwrap_or_default();
+
+    headers
+        .iter()
+        .filter(|(header_name, _)| allowed_headers.contains(&header_name.to_string()))
+        .fold(HeaderMap::new(), |mut acc, (header_name, header_val)| {
+            acc.append(header_name, header_val.clone());
+            acc
+        })
 }

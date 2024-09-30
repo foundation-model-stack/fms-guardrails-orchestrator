@@ -82,6 +82,10 @@ impl Orchestrator {
         Ok(orchestrator)
     }
 
+    pub fn get_config(&self) -> OrchestratorConfig {
+        self.ctx.config.clone()
+    }
+
     /// Perform any start-up actions required by the orchestrator.
     /// This should only error when the orchestrator is unable to start up.
     /// Currently only performs client health probing to have results loaded into the cache.
