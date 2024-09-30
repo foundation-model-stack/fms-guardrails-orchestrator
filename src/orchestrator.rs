@@ -20,6 +20,7 @@ pub use errors::Error;
 pub mod streaming;
 pub mod unary;
 
+use axum::http::header::HeaderMap;
 use std::{collections::HashMap, sync::Arc};
 
 use tokio::{sync::RwLock, time::Instant};
@@ -76,7 +77,7 @@ impl Orchestrator {
             client_health_cache: Arc::new(RwLock::new(HealthCheckCache::default())),
         };
         debug!("running start up checks");
-        orchestrator.on_start_up(start_up_health_check).await?;
+        // orchestrator.on_start_up(start_up_health_check).await?;
         debug!("start up checks completed");
         Ok(orchestrator)
     }
@@ -216,16 +217,18 @@ pub struct ClassificationWithGenTask {
     pub inputs: String,
     pub guardrails_config: GuardrailsConfig,
     pub text_gen_parameters: Option<GuardrailsTextGenerationParameters>,
+    pub headers: HeaderMap,
 }
 
 impl ClassificationWithGenTask {
-    pub fn new(request_id: Uuid, request: GuardrailsHttpRequest) -> Self {
+    pub fn new(request_id: Uuid, request: GuardrailsHttpRequest, headers: HeaderMap) -> Self {
         Self {
             request_id,
             model_id: request.model_id,
             inputs: request.inputs,
             guardrails_config: request.guardrail_config.unwrap_or_default(),
             text_gen_parameters: request.text_gen_parameters,
+            headers: headers.into(),
         }
     }
 }
@@ -247,6 +250,9 @@ pub struct GenerationWithDetectionTask {
 
     /// LLM Parameters
     pub text_gen_parameters: Option<GuardrailsTextGenerationParameters>,
+
+    // Headermap
+    pub headers: HeaderMap,
 }
 
 impl GenerationWithDetectionTask {
@@ -257,6 +263,7 @@ impl GenerationWithDetectionTask {
             prompt: request.prompt,
             detectors: request.detectors,
             text_gen_parameters: request.text_gen_parameters,
+            headers: HeaderMap::new()
         }
     }
 }
@@ -272,6 +279,9 @@ pub struct TextContentDetectionTask {
 
     /// Detectors configuration
     pub detectors: HashMap<String, DetectorParams>,
+
+    // Headermap
+    pub headers: HeaderMap,
 }
 
 impl TextContentDetectionTask {
@@ -280,6 +290,7 @@ impl TextContentDetectionTask {
             request_id,
             content: request.content,
             detectors: request.detectors,
+            headers: HeaderMap::new(),
         }
     }
 }
@@ -301,6 +312,9 @@ pub struct ContextDocsDetectionTask {
 
     /// Detectors configuration
     pub detectors: HashMap<String, DetectorParams>,
+
+    // Headermap
+    pub headers: HeaderMap,
 }
 
 impl ContextDocsDetectionTask {
@@ -311,6 +325,7 @@ impl ContextDocsDetectionTask {
             context_type: request.context_type,
             context: request.context,
             detectors: request.detectors,
+            headers: HeaderMap::new(),
         }
     }
 }
@@ -329,6 +344,9 @@ pub struct DetectionOnGenerationTask {
 
     /// Detectors configuration
     pub detectors: HashMap<String, DetectorParams>,
+
+    // Headermap
+    pub headers: HeaderMap,
 }
 
 impl DetectionOnGenerationTask {
@@ -338,6 +356,7 @@ impl DetectionOnGenerationTask {
             prompt: request.prompt,
             generated_text: request.generated_text,
             detectors: request.detectors,
+            headers: HeaderMap::new(),
         }
     }
 }
@@ -350,6 +369,7 @@ pub struct StreamingClassificationWithGenTask {
     pub inputs: String,
     pub guardrails_config: GuardrailsConfig,
     pub text_gen_parameters: Option<GuardrailsTextGenerationParameters>,
+    pub headers: HeaderMap,
 }
 
 impl StreamingClassificationWithGenTask {
@@ -360,6 +380,7 @@ impl StreamingClassificationWithGenTask {
             inputs: request.inputs,
             guardrails_config: request.guardrail_config.unwrap_or_default(),
             text_gen_parameters: request.text_gen_parameters,
+            headers: HeaderMap::new(),
         }
     }
 }

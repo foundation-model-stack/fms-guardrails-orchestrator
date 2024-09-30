@@ -22,7 +22,7 @@ use std::{
 
 use axum::{
     extract::{rejection::JsonRejection, Query, Request, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::{
         sse::{Event, KeepAlive, Sse},
         IntoResponse, Response,
@@ -304,11 +304,13 @@ async fn info(
 
 async fn classification_with_gen(
     State(state): State<Arc<ServerState>>,
+    headers: HeaderMap,
     WithRejection(Json(request), _): WithRejection<Json<models::GuardrailsHttpRequest>, Error>,
 ) -> Result<impl IntoResponse, Error> {
     let request_id = Uuid::new_v4();
     request.validate()?;
-    let task = ClassificationWithGenTask::new(request_id, request);
+    println!("Headers: ----{:?}", headers);
+    let task = ClassificationWithGenTask::new(request_id, request, headers.into());
     match state
         .orchestrator
         .handle_classification_with_gen(task)

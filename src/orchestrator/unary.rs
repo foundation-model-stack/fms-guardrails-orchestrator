@@ -21,6 +21,7 @@ use futures::{
     future::try_join_all,
     stream::{self, StreamExt},
 };
+use hyper::HeaderMap;
 use tracing::{debug, error, info, instrument};
 
 use super::{
@@ -54,6 +55,7 @@ impl Orchestrator {
     ) -> Result<ClassifiedGeneratedTextResult, Error> {
         let ctx = self.ctx.clone();
         let request_id = task.request_id;
+        let headers = task.headers;
         info!(%request_id, config = ?task.guardrails_config, "starting task");
         let task_handle = tokio::spawn(async move {
             let input_text = task.inputs.clone();
@@ -71,7 +73,7 @@ impl Orchestrator {
                 // Detected HAP/PII
                 // Do tokenization to get input_token_count
                 let (input_token_count, _tokens) =
-                    tokenize(&ctx, task.model_id.clone(), task.inputs.clone()).await?;
+                    tokenize(&ctx, task.model_id.clone(), task.inputs.clone(), headers.clone()).await?;
                 // Send result with input detections
                 input_detections.sort_by_key(|r| r.start);
                 Ok(ClassifiedGeneratedTextResult {
@@ -94,6 +96,7 @@ impl Orchestrator {
                     task.model_id.clone(),
                     task.inputs.clone(),
                     task.text_gen_parameters.clone(),
+                    headers.clone(),
                 )
                 .await?;
                 debug!(?generation_results);
@@ -151,12 +154,14 @@ impl Orchestrator {
             "handling generation with detection task"
         );
         let ctx = self.ctx.clone();
+        let headers = task.headers;
         let task_handle = tokio::spawn(async move {
             let generation_results = generate(
                 &ctx,
                 task.model_id.clone(),
                 task.prompt.clone(),
                 task.text_gen_parameters.clone(),
+                headers.clone(),
             )
             .await?;
 
@@ -233,6 +238,8 @@ impl Orchestrator {
             let text_with_offsets = [(offset, content)].to_vec();
 
             let detectors = task.detectors.clone();
+
+            let headers = task.headers;
 
             let chunker_ids = get_chunker_ids(&ctx, &detectors)?;
             let chunks = chunk_task(&ctx, chunker_ids, text_with_offsets).await?;
@@ -749,9 +756,10 @@ pub async fn tokenize(
     ctx: &Arc<Context>,
     model_id: String,
     text: String,
+    headers: HeaderMap,
 ) -> Result<(u32, Vec<String>), Error> {
     ctx.generation_client
-        .tokenize(model_id.clone(), text)
+        .tokenize(model_id.clone(), text, headers)
         .await
         .map_err(|error| Error::TokenizeRequestFailed {
             id: model_id,
@@ -765,9 +773,10 @@ async fn generate(
     model_id: String,
     text: String,
     params: Option<GuardrailsTextGenerationParameters>,
+    headers: HeaderMap,
 ) -> Result<ClassifiedGeneratedTextResult, Error> {
     ctx.generation_client
-        .generate(model_id.clone(), text, params)
+        .generate(model_id.clone(), text, params, headers)
         .await
         .map_err(|error| Error::GenerateRequestFailed {
             id: model_id,

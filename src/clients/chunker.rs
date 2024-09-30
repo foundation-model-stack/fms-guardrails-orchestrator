@@ -16,12 +16,11 @@
 */
 
 use std::{collections::HashMap, pin::Pin};
-
 use futures::{Future, Stream, StreamExt, TryStreamExt};
 use ginepro::LoadBalancedChannel;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
-use tonic::{Request, Response, Status, Streaming};
+use tonic::{metadata::MetadataMap, Request, Response, Status, Streaming};
 use tracing::info;
 
 use super::{create_grpc_clients, BoxStream, Error};

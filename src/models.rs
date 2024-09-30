@@ -125,6 +125,7 @@ impl GuardrailsHttpRequest {
     }
 }
 
+
 /// Configuration of guardrails models for either or both input to a text generation model
 /// (e.g. user prompt) and output of a text generation model
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]

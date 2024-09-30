@@ -21,6 +21,8 @@ use std::{collections::HashMap, pin::Pin, sync::Arc, time::Duration};
 
 use aggregator::Aggregator;
 use futures::{future::try_join_all, Stream, StreamExt, TryStreamExt};
+
+use hyper::HeaderMap;
 use tokio::sync::{broadcast, mpsc};
 use tokio_stream::wrappers::{BroadcastStream, ReceiverStream};
 use tracing::{debug, error, info, instrument};
@@ -56,6 +58,7 @@ impl Orchestrator {
         let model_id = task.model_id;
         let params = task.text_gen_parameters;
         let input_text = task.inputs;
+        let request_headers = task.headers;
 
         info!(%request_id, config = ?task.guardrails_config, "starting task");
 
@@ -88,7 +91,7 @@ impl Orchestrator {
                 // Detected HAP/PII
                 // Do tokenization to get input_token_count
                 let (input_token_count, _tokens) =
-                    match tokenize(&ctx, model_id.clone(), input_text.clone()).await {
+                    match tokenize(&ctx, model_id.clone(), input_text.clone(), request_headers.clone()).await {
                         Ok(result) => result,
                         Err(error) => {
                             error!(%request_id, %error, "task failed");
@@ -120,6 +123,7 @@ impl Orchestrator {
                     model_id.clone(),
                     input_text.clone(),
                     params.clone(),
+                    request_headers.clone(),
                 )
                 .await
                 {
@@ -486,13 +490,14 @@ async fn generate_stream(
     model_id: String,
     text: String,
     params: Option<GuardrailsTextGenerationParameters>,
+    headers: HeaderMap
 ) -> Result<
     Pin<Box<dyn Stream<Item = Result<ClassifiedGeneratedTextStreamResult, Error>> + Send>>,
     Error,
 > {
     Ok(ctx
         .generation_client
-        .generate_stream(model_id.clone(), text, params)
+        .generate_stream(model_id.clone(), text, params, headers)
         .await
         .map_err(|error| Error::GenerateRequestFailed {
             id: model_id.clone(),
