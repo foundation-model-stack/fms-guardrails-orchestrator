@@ -187,7 +187,7 @@ paths:
     post:
       tags:
         - Task - Detection
-      summary: Detection task on input chat
+      summary: Detection task on entire history of chat messages
       operationId: >-
         api_v2_detection_text_chat_unary_handler
       requestBody:
@@ -433,37 +433,18 @@ components:
           default: {}
           example: 
             chat-v1-model-en: {}
-        chat_history:
+        messages:
+          title: Chat Messages
           type: array
-          title: Chat History
-          default: {}
+          minItems: 1
           items:
-            $ref: '#/components/schemas/ChatHistoryObject'
-          example:
-            - content: "Hi, is this powered by siri or alexa?"
-              author: "user"
-            - content: "Better, it's watsonx"
-              author: "assistant"
-            - content: "You are a helpful assistant."
-              author: "system"
+            allOf:
+              - $ref: https://raw.githubusercontent.com/openai/openai-openapi/master/openapi.yaml#/components/schemas/ChatCompletionRequestMessage
+              - type: object
       additionalProperties: false
-      required: ["detectors", "chat_history"]
+      required: ["detectors", "messages"]
       type: object
       title: Chat Detection Request
-    ChatHistoryObject:
-      properties:
-        content:
-          type: string
-          title: Content
-          default: ""
-          example: "Hi I am AI Agent"
-        author:
-          type: string
-          title: Author
-          default: ""
-          example: "assistant"
-      title: Chat History Object
-      required: ["content", "author"]
     DetectionChatResponse:
       properties:
         detections:
@@ -481,7 +462,8 @@ components:
               score:
                 type: number
                 title: Score
-      title: Detection Chat Response
+          title: Detections on entire history of chat messages
+      title: Chat Detection Response
       required: ["detections"]
     
     DetectionContextDocsRequest:
