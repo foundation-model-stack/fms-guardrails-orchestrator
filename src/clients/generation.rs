@@ -15,15 +15,14 @@
 
 */
 
-use std::collections::HashMap;
-
+use async_trait::async_trait;
 use futures::{StreamExt, TryStreamExt};
 use hyper::HeaderMap;
 use tracing::debug;
 
-use super::{BoxStream, Error, NlpClient, TgisClient};
+use super::{BoxStream, Client, Error, NlpClient, TgisClient};
 use crate::{
-    health::{HealthCheckResult, HealthProbe},
+    health::HealthCheckResult,
     models::{
         ClassifiedGeneratedTextResult, ClassifiedGeneratedTextStreamResult,
         GuardrailsTextGenerationParameters,
@@ -40,7 +39,7 @@ use crate::{
     },
 };
 
-#[cfg_attr(test, faux::create, derive(Default))]
+#[cfg_attr(test, faux::create)]
 #[derive(Clone)]
 pub struct GenerationClient(Option<GenerationClientInner>);
 
@@ -48,24 +47,6 @@ pub struct GenerationClient(Option<GenerationClientInner>);
 enum GenerationClientInner {
     Tgis(TgisClient),
     Nlp(NlpClient),
-}
-
-#[cfg_attr(test, faux::methods)]
-impl HealthProbe for GenerationClient {
-    async fn health(&self) -> Result<HashMap<String, HealthCheckResult>, Error> {
-        match &self.0 {
-            Some(GenerationClientInner::Tgis(client)) => client.health().await,
-            Some(GenerationClientInner::Nlp(client)) => client.health().await,
-            None => Ok(HashMap::new()),
-        }
-    }
-}
-
-#[cfg(test)]
-impl Default for GenerationClientInner {
-    fn default() -> Self {
-        Self::Tgis(TgisClient::default())
-    }
 }
 
 #[cfg_attr(test, faux::methods)]
@@ -250,6 +231,22 @@ impl GenerationClient {
                 Ok(response_stream)
             }
             None => Err(Error::ModelNotFound { model_id }),
+        }
+    }
+}
+
+#[cfg_attr(test, faux::methods)]
+#[async_trait]
+impl Client for GenerationClient {
+    fn name(&self) -> &str {
+        "generation"
+    }
+
+    async fn health(&self) -> HealthCheckResult {
+        match &self.0 {
+            Some(GenerationClientInner::Tgis(client)) => client.health().await,
+            Some(GenerationClientInner::Nlp(client)) => client.health().await,
+            None => unimplemented!(),
         }
     }
 }

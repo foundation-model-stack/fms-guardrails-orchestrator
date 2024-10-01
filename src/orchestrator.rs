@@ -29,17 +29,37 @@ use uuid::Uuid;
 
 use crate::{
     clients::{
-        self, detector::ContextType, ChunkerClient, DetectorClient, GenerationClient, NlpClient,
-        TgisClient, COMMON_ROUTER_KEY,
+        create_grpc_client, create_http_client,
+        detector::{
+            text_context_doc::ContextType, TextContextChatDetectorClient,
+            TextContextDocDetectorClient, TextGenerationDetectorClient,
+        },
+        openai::OpenAiClient,
+        ChunkerClient, ClientMap, GenerationClient, NlpClient, TextContentsDetectorClient,
+        TgisClient,
     },
-    config::{GenerationProvider, OrchestratorConfig},
-    health::{HealthCheckCache, HealthProbe, HealthProbeResponse},
+    config::{DetectorType, GenerationProvider, OrchestratorConfig},
+    health::ClientHealth,
     models::{
         ContextDocsHttpRequest, DetectionOnGeneratedHttpRequest, DetectorParams,
         GenerationWithDetectionHttpRequest, GuardrailsConfig, GuardrailsHttpRequest,
         GuardrailsTextGenerationParameters, TextContentDetectionHttpRequest,
     },
+    pb::{
+        caikit::runtime::{
+            chunkers::chunkers_service_client::ChunkersServiceClient,
+            nlp::nlp_service_client::NlpServiceClient,
+        },
+        fmaas::generation_service_client::GenerationServiceClient,
+        grpc::health::v1::health_client::HealthClient,
+    },
 };
+
+const DEFAULT_TGIS_PORT: u16 = 8033;
+const DEFAULT_NLP_PORT: u16 = 8085;
+const DEFAULT_CHUNKER_PORT: u16 = 8085;
+const DEFAULT_OPENAI_PORT: u16 = 8080;
+const DEFAULT_DETECTOR_PORT: u16 = 8080;
 
 const UNSUITABLE_INPUT_MESSAGE: &str = "Unsuitable input detected. \
     Please check the detected entities on your input and try again \
@@ -48,16 +68,20 @@ const UNSUITABLE_INPUT_MESSAGE: &str = "Unsuitable input detected. \
 #[cfg_attr(test, derive(Default))]
 pub struct Context {
     config: OrchestratorConfig,
-    generation_client: GenerationClient,
-    chunker_client: ChunkerClient,
-    detector_client: DetectorClient,
+    clients: ClientMap,
+}
+
+impl Context {
+    pub fn new(config: OrchestratorConfig, clients: ClientMap) -> Self {
+        Self { config, clients }
+    }
 }
 
 /// Handles orchestrator tasks.
 #[cfg_attr(test, derive(Default))]
 pub struct Orchestrator {
     ctx: Arc<Context>,
-    client_health_cache: Arc<RwLock<HealthCheckCache>>,
+    client_health: Arc<RwLock<ClientHealth>>,
 }
 
 impl Orchestrator {
@@ -65,16 +89,11 @@ impl Orchestrator {
         config: OrchestratorConfig,
         start_up_health_check: bool,
     ) -> Result<Self, Error> {
-        let (generation_client, chunker_client, detector_client) = create_clients(&config).await;
-        let ctx = Arc::new(Context {
-            config,
-            generation_client,
-            chunker_client,
-            detector_client,
-        });
+        let clients = create_clients(&config).await;
+        let ctx = Arc::new(Context { config, clients });
         let orchestrator = Self {
             ctx,
-            client_health_cache: Arc::new(RwLock::new(HealthCheckCache::default())),
+            client_health: Arc::new(RwLock::new(ClientHealth::default())),
         };
         debug!("running start up checks");
         orchestrator.on_start_up(start_up_health_check).await?;
@@ -92,37 +111,34 @@ impl Orchestrator {
     pub async fn on_start_up(&self, health_check: bool) -> Result<(), Error> {
         info!("Performing start-up actions for orchestrator...");
         if health_check {
-            info!("Probing health status of configured clients...");
-            // Run probe, update cache
-            let res = self.clients_health(true).await.unwrap_or_else(|e| {
-                // Panic for unexpected behaviour as there are currently no errors propagated to here.
-                panic!("Unexpected error during client health probing: {}", e);
-            });
+            info!("Probing client health...");
+            let client_health = self.client_health(true).await;
             // Results of probe do not affect orchestrator start-up.
-            info!("Orchestrator client health probe results:\n{}", res);
+            info!("Client health: {client_health:?}"); // TODO: re-impl Display
         }
         Ok(())
     }
 
-    pub async fn clients_health(&self, probe: bool) -> Result<HealthProbeResponse, Error> {
-        let initialized = self.client_health_cache.read().await.is_initialized();
+    /// Returns client health state.
+    pub async fn client_health(&self, probe: bool) -> ClientHealth {
+        let initialized = !self.client_health.read().await.is_empty();
         if probe || !initialized {
-            debug!("refreshing health cache");
+            debug!("refreshing client health");
             let now = Instant::now();
-            let detectors = self.ctx.detector_client.health().await?;
-            let chunkers = self.ctx.chunker_client.health().await?;
-            let generation = self.ctx.generation_client.health().await?;
-            let mut health_cache = self.client_health_cache.write().await;
-            health_cache.detectors = detectors;
-            health_cache.chunkers = chunkers;
-            health_cache.generation = generation;
+            let mut state = ClientHealth::with_capacity(self.ctx.clients.len());
+            // TODO: perform health checks concurrently?
+            for (key, client) in self.ctx.clients.iter() {
+                let result = client.health().await;
+                state.insert(key.into(), result);
+            }
+            let mut client_health = self.client_health.write().await;
+            *client_health = state;
             debug!(
-                "refreshing health cache completed in {:.2?}ms",
+                "refreshing client health completed in {:.2?}ms",
                 now.elapsed().as_millis()
             );
         }
-
-        Ok(HealthProbeResponse::from_cache(self.client_health_cache.clone()).await)
+        self.client_health.read().await.clone()
     }
 }
 
@@ -162,50 +178,98 @@ fn get_chunker_ids(
         .collect::<Result<Vec<_>, Error>>()
 }
 
-async fn create_clients(
-    config: &OrchestratorConfig,
-) -> (GenerationClient, ChunkerClient, DetectorClient) {
-    // TODO: create better solution for routers
-    let generation_client = match &config.generation {
-        Some(generation) => match &generation.provider {
+async fn create_clients(config: &OrchestratorConfig) -> ClientMap {
+    let mut clients = ClientMap::new();
+
+    // Create generation client
+    if let Some(generation) = &config.generation {
+        match generation.provider {
             GenerationProvider::Tgis => {
-                let client = TgisClient::new(
-                    clients::DEFAULT_TGIS_PORT,
-                    &[(COMMON_ROUTER_KEY.to_string(), generation.service.clone())],
+                let client = create_grpc_client(
+                    DEFAULT_TGIS_PORT,
+                    &generation.service,
+                    GenerationServiceClient::new,
                 )
                 .await;
-                GenerationClient::tgis(client)
+                let tgis_client = TgisClient::new(client);
+                let generation_client = GenerationClient::tgis(tgis_client);
+                clients.insert("generation".to_string(), generation_client);
             }
             GenerationProvider::Nlp => {
-                let client = NlpClient::new(
-                    clients::DEFAULT_CAIKIT_NLP_PORT,
-                    &[(COMMON_ROUTER_KEY.to_string(), generation.service.clone())],
+                let client = create_grpc_client(
+                    DEFAULT_NLP_PORT,
+                    &generation.service,
+                    NlpServiceClient::new,
                 )
                 .await;
-                GenerationClient::nlp(client)
+                let health_client =
+                    create_grpc_client(DEFAULT_NLP_PORT, &generation.service, HealthClient::new)
+                        .await;
+                let nlp_client = NlpClient::new(client, health_client);
+                let generation_client = GenerationClient::nlp(nlp_client);
+                clients.insert("generation".to_string(), generation_client);
             }
-        },
-        None => GenerationClient::not_configured(),
-    };
-    // TODO: simplify all of this
-    let chunker_config = match &config.chunkers {
-        Some(chunkers) => chunkers
-            .iter()
-            .map(|(chunker_id, config)| (chunker_id.clone(), config.service.clone()))
-            .collect::<Vec<_>>(),
-        None => vec![],
-    };
-    let chunker_client = ChunkerClient::new(clients::DEFAULT_CHUNKER_PORT, &chunker_config).await;
+            GenerationProvider::OpenAi => unimplemented!(),
+        }
+    }
 
-    let detector_config = config
-        .detectors
-        .iter()
-        .map(|(detector_id, config)| (detector_id.clone(), config.service.clone()))
-        .collect::<Vec<_>>();
-    let detector_client =
-        DetectorClient::new(clients::DEFAULT_DETECTOR_PORT, &detector_config).await;
+    // Create chat generation client
+    if let Some(chat_generation) = &config.chat_generation {
+        match chat_generation.provider {
+            GenerationProvider::OpenAi => {
+                let client =
+                    create_http_client(DEFAULT_OPENAI_PORT, &chat_generation.service).await;
+                let openai_client = OpenAiClient::new(client);
+                clients.insert("chat_generation".to_string(), openai_client);
+            }
+            _ => unimplemented!(),
+        }
+    }
 
-    (generation_client, chunker_client, detector_client)
+    // Create chunker clients
+    if let Some(chunkers) = &config.chunkers {
+        for (chunker_id, chunker) in chunkers {
+            let client = create_grpc_client(
+                DEFAULT_CHUNKER_PORT,
+                &chunker.service,
+                ChunkersServiceClient::new,
+            )
+            .await;
+            let health_client =
+                create_grpc_client(DEFAULT_CHUNKER_PORT, &chunker.service, HealthClient::new).await;
+            let chunker_client = ChunkerClient::new(client, health_client);
+            clients.insert(chunker_id.to_string(), chunker_client);
+        }
+    }
+
+    // Create detector clients
+    for (detector_id, detector) in &config.detectors {
+        let client = create_http_client(DEFAULT_DETECTOR_PORT, &detector.service).await;
+        match detector.r#type {
+            DetectorType::TextContents => {
+                clients.insert(detector_id.into(), TextContentsDetectorClient::new(client));
+            }
+            DetectorType::TextGeneration => {
+                clients.insert(
+                    detector_id.into(),
+                    TextGenerationDetectorClient::new(client),
+                );
+            }
+            DetectorType::TextContextChat => {
+                clients.insert(
+                    detector_id.into(),
+                    TextContextChatDetectorClient::new(client),
+                );
+            }
+            DetectorType::TextContextDoc => {
+                clients.insert(
+                    detector_id.into(),
+                    TextContextDocDetectorClient::new(client),
+                );
+            }
+        }
+    }
+    clients
 }
 
 #[derive(Debug, Clone)]

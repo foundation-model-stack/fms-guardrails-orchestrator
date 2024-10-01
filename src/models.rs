@@ -23,8 +23,21 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     clients::detector::{ContentAnalysisResponse, ContextType},
+    health::ClientHealth,
     pb,
 };
+
+#[derive(Clone, Debug, Serialize)]
+pub struct InfoResponse {
+    pub client_health: ClientHealth,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct InfoParams {
+    /// Whether to probe the client services' health checks or just return the latest health status.
+    #[serde(default)]
+    pub probe: bool,
+}
 
 /// Parameters relevant to each detector
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]

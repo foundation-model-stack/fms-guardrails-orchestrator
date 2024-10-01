@@ -49,8 +49,7 @@ use uuid::Uuid;
 use webpki::types::{CertificateDer, PrivateKeyDer};
 
 use crate::{
-    health::HealthCheckProbeParams,
-    models,
+    models::{self, InfoParams, InfoResponse},
     orchestrator::{
         self, ClassificationWithGenTask, ContextDocsDetectionTask, DetectionOnGenerationTask,
         GenerationWithDetectionTask, Orchestrator, StreamingClassificationWithGenTask,
@@ -294,18 +293,10 @@ async fn health() -> Result<impl IntoResponse, ()> {
 
 async fn info(
     State(state): State<Arc<ServerState>>,
-    Query(params): Query<HealthCheckProbeParams>,
-) -> Result<impl IntoResponse, Error> {
-    match state.orchestrator.clients_health(params.probe).await {
-        Ok(client_health_info) => Ok(client_health_info),
-        Err(error) => {
-            error!(
-                "Unexpected internal error while checking client health info: {:?}",
-                error
-            );
-            Err(error.into())
-        }
-    }
+    Query(params): Query<InfoParams>,
+) -> Result<Json<InfoResponse>, Error> {
+    let client_health = state.orchestrator.client_health(params.probe).await;
+    Ok(Json(InfoResponse { client_health }))
 }
 
 async fn classification_with_gen(

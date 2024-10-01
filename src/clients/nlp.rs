@@ -15,18 +15,15 @@
 
 */
 
-use std::collections::HashMap;
-
+use async_trait::async_trait;
 use axum::http::{Extensions, HeaderMap};
 use futures::{StreamExt, TryStreamExt};
 use ginepro::LoadBalancedChannel;
-use tonic::{metadata::MetadataMap, Request};
+use tonic::{metadata::MetadataMap, Code, Request};
 
-use super::{create_grpc_clients, BoxStream, Error};
+use super::{BoxStream, Client, ClientCode, Error};
 use crate::{
-    clients::COMMON_ROUTER_KEY,
-    config::ServiceConfig,
-    health::{HealthCheckResult, HealthProbe},
+    health::{HealthCheckResult, HealthStatus},
     pb::{
         caikit::runtime::nlp::{
             nlp_service_client::NlpServiceClient, ServerStreamingTextGenerationTaskRequest,
@@ -42,53 +39,23 @@ use crate::{
 
 const MODEL_ID_HEADER_NAME: &str = "mm-model-id";
 
-#[cfg_attr(test, faux::create, derive(Default))]
+#[cfg_attr(test, faux::create)]
 #[derive(Clone)]
 pub struct NlpClient {
-    clients: HashMap<String, NlpServiceClient<LoadBalancedChannel>>,
-    health_clients: HashMap<String, HealthClient<LoadBalancedChannel>>,
-}
-
-#[cfg_attr(test, faux::methods)]
-impl HealthProbe for NlpClient {
-    async fn health(&self) -> Result<HashMap<String, HealthCheckResult>, Error> {
-        let mut results = HashMap::with_capacity(self.health_clients.len());
-        for (model_id, mut client) in self.health_clients.clone() {
-            results.insert(
-                model_id.clone(),
-                client
-                    .check(HealthCheckRequest {
-                        service: model_id.clone(),
-                    })
-                    .await
-                    .into(),
-            );
-        }
-        Ok(results)
-    }
+    client: NlpServiceClient<LoadBalancedChannel>,
+    health_client: HealthClient<LoadBalancedChannel>,
 }
 
 #[cfg_attr(test, faux::methods)]
 impl NlpClient {
-    pub async fn new(default_port: u16, config: &[(String, ServiceConfig)]) -> Self {
-        let clients = create_grpc_clients(default_port, config, NlpServiceClient::new).await;
-        let health_clients = create_grpc_clients(default_port, config, HealthClient::new).await;
+    pub fn new(
+        client: NlpServiceClient<LoadBalancedChannel>,
+        health_client: HealthClient<LoadBalancedChannel>,
+    ) -> Self {
         Self {
-            clients,
-            health_clients,
+            client,
+            health_client,
         }
-    }
-
-    fn client(&self, _model_id: &str) -> Result<NlpServiceClient<LoadBalancedChannel>, Error> {
-        // NOTE: We currently forward requests to common router, so we use a single client.
-        let model_id = COMMON_ROUTER_KEY;
-        Ok(self
-            .clients
-            .get(model_id)
-            .ok_or_else(|| Error::ModelNotFound {
-                model_id: model_id.to_string(),
-            })?
-            .clone())
     }
 
     pub async fn tokenization_task_predict(
@@ -97,9 +64,9 @@ impl NlpClient {
         request: TokenizationTaskRequest,
         headers: HeaderMap,
     ) -> Result<TokenizationResults, Error> {
+        let mut client = self.client.clone();
         let request = request_with_model_id(request, model_id, headers);
-        Ok(self
-            .client(model_id)?
+        Ok(client
             .tokenization_task_predict(request)
             .await?
             .into_inner())
@@ -111,9 +78,9 @@ impl NlpClient {
         request: TokenClassificationTaskRequest,
         headers: HeaderMap,
     ) -> Result<TokenClassificationResults, Error> {
+        let mut client = self.client.clone();
         let request = request_with_model_id(request, model_id, headers);
-        Ok(self
-            .client(model_id)?
+        Ok(client
             .token_classification_task_predict(request)
             .await?
             .into_inner())
@@ -125,9 +92,9 @@ impl NlpClient {
         request: TextGenerationTaskRequest,
         headers: HeaderMap,
     ) -> Result<GeneratedTextResult, Error> {
+        let mut client = self.client.clone();
         let request = request_with_model_id(request, model_id, headers);
-        Ok(self
-            .client(model_id)?
+        Ok(client
             .text_generation_task_predict(request)
             .await?
             .into_inner())
@@ -139,15 +106,47 @@ impl NlpClient {
         request: ServerStreamingTextGenerationTaskRequest,
         headers: HeaderMap,
     ) -> Result<BoxStream<Result<GeneratedTextStreamResult, Error>>, Error> {
+        let mut client = self.client.clone();
         let request = request_with_model_id(request, model_id, headers);
-        let response_stream = self
-            .client(model_id)?
+        let response_stream = client
             .server_streaming_text_generation_task_predict(request)
             .await?
             .into_inner()
             .map_err(Into::into)
             .boxed();
         Ok(response_stream)
+    }
+}
+
+#[cfg_attr(test, faux::methods)]
+#[async_trait]
+impl Client for NlpClient {
+    fn name(&self) -> &str {
+        "nlp"
+    }
+
+    async fn health(&self) -> HealthCheckResult {
+        let mut client = self.health_client.clone();
+        let response = client
+            .check(HealthCheckRequest { service: "".into() })
+            .await;
+        let code = match response {
+            Ok(_) => Code::Ok,
+            Err(status) if matches!(status.code(), Code::InvalidArgument | Code::NotFound) => {
+                Code::Ok
+            }
+            Err(status) => status.code(),
+        };
+        let health_status = if matches!(code, Code::Ok) {
+            HealthStatus::Healthy
+        } else {
+            HealthStatus::Unhealthy
+        };
+        HealthCheckResult {
+            health_status,
+            response_code: ClientCode::Grpc(code),
+            reason: None,
+        }
     }
 }
 

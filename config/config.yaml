@@ -11,6 +11,12 @@ generation:
     service:
         hostname: localhost
         port: 8033
+# Generation server used for chat endpoints
+# chat_generation:
+#   provider: openai
+#   service:
+#     hostname: http://localhost
+#     port: 8080
 # Any chunker servers that will be used by any detectors
 chunkers:
     # Chunker ID/name
@@ -26,8 +32,10 @@ chunkers:
 detectors:
     # Detector ID/name to be used in user requests
     hap-en:
+        # Detector type (text_contents, text_generation, text_context_chat, text_context_doc)
+        type: text_contents
         service:
-            hostname: https://localhost/api/v1/text/contents # Full url / endpoint currently expected
+            hostname: https://localhost
             port: 8080
             # TLS ID/name, optional (detailed in `tls` section)
             tls: detector

@@ -15,7 +15,7 @@
 
 */
 
-#![allow(clippy::iter_kv_map, clippy::enum_variant_names)]
+#![allow(clippy::iter_kv_map, clippy::enum_variant_names, async_fn_in_trait)]
 
 mod clients;
 pub mod config;

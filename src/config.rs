@@ -23,7 +23,7 @@ use std::{
 use serde::Deserialize;
 use tracing::{debug, error, info, warn};
 
-use crate::clients::chunker::DEFAULT_MODEL_ID;
+use crate::clients::{chunker::DEFAULT_MODEL_ID, http::is_base_url};
 
 // Placeholder to add default allowed headers
 const DEFAULT_ALLOWED_HEADERS: &[&str] = &[];
@@ -47,6 +47,10 @@ pub enum Error {
         detector_id: String,
         chunker_id: String,
     },
+    #[error("invalid generation provider: {0}")]
+    InvalidGenerationProvider(String),
+    #[error("invalid hostname: {0}")]
+    InvalidHostname(String),
 }
 
 /// Configuration for service needed for
@@ -84,17 +88,30 @@ pub struct TlsConfig {
 /// Generation service provider
 #[cfg_attr(test, derive(Default))]
 #[derive(Clone, Copy, Debug, Deserialize)]
-#[serde(rename_all = "lowercase")]
 pub enum GenerationProvider {
     #[cfg_attr(test, default)]
+    #[serde(rename = "tgis")]
     Tgis,
+    #[serde(rename = "nlp")]
     Nlp,
+    #[serde(rename = "openai")]
+    OpenAi,
 }
 
-/// Generate service configuration
+/// Generation service configuration
 #[cfg_attr(test, derive(Default))]
 #[derive(Clone, Debug, Deserialize)]
 pub struct GenerationConfig {
+    /// Generation service provider
+    pub provider: GenerationProvider,
+    /// Generation service connection information
+    pub service: ServiceConfig,
+}
+
+/// Chat generation service configuration
+#[cfg_attr(test, derive(Default))]
+#[derive(Clone, Debug, Deserialize)]
+pub struct ChatGenerationConfig {
     /// Generation service provider
     pub provider: GenerationProvider,
     /// Generation service connection information
@@ -131,6 +148,20 @@ pub struct DetectorConfig {
     pub chunker_id: String,
     /// Default threshold with which to filter detector results by score
     pub default_threshold: f64,
+    /// Type of detection this detector performs
+    #[serde(rename = "type")]
+    pub r#type: DetectorType,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum DetectorType {
+    #[default]
+    TextContents,
+    TextGeneration,
+    TextContextChat,
+    TextContextDoc,
 }
 
 /// Overall orchestrator server configuration
@@ -139,6 +170,8 @@ pub struct DetectorConfig {
 pub struct OrchestratorConfig {
     /// Generation service and associated configuration, can be omitted if configuring for generation is not wanted
     pub generation: Option<GenerationConfig>,
+    /// Chat generation service and associated configuration, can be omitted if configuring for chat generation is not wanted
+    pub chat_generation: Option<ChatGenerationConfig>,
     /// Chunker services and associated configurations, if omitted the default value "whole_doc_chunker" is used
     pub chunkers: Option<HashMap<String, ChunkerConfig>>,
     /// Detector services and associated configurations
@@ -206,6 +239,10 @@ impl OrchestratorConfig {
             if let Some(generation) = &mut self.generation {
                 apply_named_tls_config(&mut generation.service, tls_configs)?;
             }
+            // Chat generation
+            if let Some(chat_generation) = &mut self.chat_generation {
+                apply_named_tls_config(&mut chat_generation.service, tls_configs)?;
+            }
             // Chunkers
             if let Some(chunkers) = &mut self.chunkers {
                 for chunker in chunkers.values_mut() {
@@ -221,25 +258,66 @@ impl OrchestratorConfig {
     }
 
     fn validate(&self) -> Result<(), Error> {
+        // Detectors are configured
         if self.detectors.is_empty() {
-            Err(Error::NoDetectorsConfigured)
-        } else {
-            for (detector_id, detector) in &self.detectors {
-                // Chunker is valid
-                let valid_chunker = detector.chunker_id == DEFAULT_MODEL_ID
-                    || self
-                        .chunkers
-                        .as_ref()
-                        .is_some_and(|chunkers| chunkers.contains_key(&detector.chunker_id));
-                if !valid_chunker {
-                    return Err(Error::DetectorChunkerNotFound {
-                        detector_id: detector_id.clone(),
-                        chunker_id: detector.chunker_id.clone(),
-                    });
-                }
-            }
-            Ok(())
+            return Err(Error::NoDetectorsConfigured);
         }
+
+        // Detector configs are valid
+        for (detector_id, detector) in &self.detectors {
+            // Hostname is valid
+            if !is_base_url(&detector.service.hostname) {
+                return Err(Error::InvalidHostname(format!(
+                    "detector `{detector_id}` has an invalid hostname; \
+                    must be a base url, e.g. `https://service.route.example.com"
+                )));
+            }
+            // Chunker is valid
+            let valid_chunker = detector.chunker_id == DEFAULT_MODEL_ID
+                || self
+                    .chunkers
+                    .as_ref()
+                    .is_some_and(|chunkers| chunkers.contains_key(&detector.chunker_id));
+            if !valid_chunker {
+                return Err(Error::DetectorChunkerNotFound {
+                    detector_id: detector_id.clone(),
+                    chunker_id: detector.chunker_id.clone(),
+                });
+            }
+        }
+
+        // Generation config is valid
+        if let Some(generation) = &self.generation {
+            // Provider is valid
+            if !matches!(
+                generation.provider,
+                GenerationProvider::Tgis | GenerationProvider::Nlp
+            ) {
+                return Err(Error::InvalidGenerationProvider(
+                    "`generation` requires `tgis` or `nlp` provider".into(),
+                ));
+            }
+        }
+
+        // Chat generation config is valid
+        if let Some(chat_generation) = &self.chat_generation {
+            // Provider is valid
+            if !matches!(chat_generation.provider, GenerationProvider::OpenAi) {
+                return Err(Error::InvalidGenerationProvider(
+                    "`chat_generation` requires `openai` provider".into(),
+                ));
+            }
+            // Hostname is valid
+            if !is_base_url(&chat_generation.service.hostname) {
+                return Err(Error::InvalidHostname(
+                    "`chat_generation` has an invalid hostname; \
+                    must be a base url, e.g. `https://service.route.example.com"
+                        .into(),
+                ));
+            }
+        }
+
+        Ok(())
     }
 
     /// Get ID of chunker associated with a particular detector
@@ -301,6 +379,7 @@ chunkers:
             port: 9000
 detectors:
     hap-en:
+        type: text_contents
         service:
             hostname: localhost
             port: 9000
@@ -341,6 +420,7 @@ chunkers:
             port: 9000
 detectors:
     hap:
+        type: text_contents
         service:
             hostname: localhost
             port: 9000
@@ -393,6 +473,7 @@ chunkers:
             port: 9000
 detectors:
     hap:
+        type: text_contents
         service:
             hostname: localhost
             port: 9000
@@ -487,6 +568,7 @@ chunkers:
             port: 9000
 detectors:
     hap:
+        type: text_contents
         service:
             hostname: localhost
             port: 9000
@@ -527,6 +609,7 @@ chunkers:
             port: 9000
 detectors:
     hap:
+        type: text_contents
         service:
             hostname: localhost
             port: 9000
@@ -543,10 +626,9 @@ tls:
         config
             .apply_named_tls_configs()
             .expect("Apply named TLS configs should have succeeded");
-        let error = config
+        config
             .validate()
             .expect_err("Config should not have been validated");
-        assert!(matches!(error, Error::DetectorChunkerNotFound { .. }))
     }
 
     #[test]

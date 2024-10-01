@@ -22,14 +22,16 @@ use std::{collections::HashMap, pin::Pin, sync::Arc, time::Duration};
 use aggregator::Aggregator;
 use axum::http::HeaderMap;
 use futures::{future::try_join_all, Stream, StreamExt, TryStreamExt};
-
 use tokio::sync::{broadcast, mpsc};
 use tokio_stream::wrappers::{BroadcastStream, ReceiverStream};
 use tracing::{debug, error, info, instrument};
 
 use super::{get_chunker_ids, Context, Error, Orchestrator, StreamingClassificationWithGenTask};
 use crate::{
-    clients::detector::ContentAnalysisRequest,
+    clients::{
+        detector::ContentAnalysisRequest, ChunkerClient, GenerationClient,
+        TextContentsDetectorClient,
+    },
     models::{
         ClassifiedGeneratedTextStreamResult, DetectorParams, GuardrailsTextGenerationParameters,
         InputWarning, InputWarningReason, TextGenTokenClassificationResults,
@@ -39,8 +41,7 @@ use crate::{
         unary::{input_detection_task, tokenize},
         UNSUITABLE_INPUT_MESSAGE,
     },
-    pb::caikit::runtime::chunkers,
-    pb::caikit_data_model::nlp::ChunkerTokenizationStreamResult,
+    pb::{caikit::runtime::chunkers, caikit_data_model::nlp::ChunkerTokenizationStreamResult},
 };
 
 pub type Chunk = ChunkerTokenizationStreamResult;
@@ -381,9 +382,11 @@ async fn detection_task(
                             let request = ContentAnalysisRequest::new(contents.clone());
                             let headers = headers.clone();
                             debug!(%detector_id, ?request, "sending detector request");
-                            match ctx
-                                .detector_client
-                                .text_contents(&detector_id, request, headers)
+                            let client = ctx
+                                .clients
+                                .get_as::<TextContentsDetectorClient>(&detector_id)
+                                .unwrap();
+                            match client.text_contents(&detector_id, request, headers)
                                 .await
                                 .map_err(|error| Error::DetectorRequestFailed { id: detector_id.clone(), error }) {
                                     Ok(response) => {
@@ -452,8 +455,8 @@ async fn chunk_broadcast_task(
         .boxed();
     debug!(%chunker_id, "creating chunker output stream");
     let id = chunker_id.clone(); // workaround for StreamExt::map_err
-    let mut output_stream = ctx
-        .chunker_client
+    let client = ctx.clients.get_as::<ChunkerClient>(&chunker_id).unwrap();
+    let mut output_stream = client
         .bidi_streaming_tokenization_task_predict(&chunker_id, input_stream)
         .await
         .map_err(|error| Error::ChunkerRequestFailed {
@@ -511,8 +514,11 @@ async fn generate_stream(
     Pin<Box<dyn Stream<Item = Result<ClassifiedGeneratedTextStreamResult, Error>> + Send>>,
     Error,
 > {
-    Ok(ctx
-        .generation_client
+    let client = ctx
+        .clients
+        .get_as::<GenerationClient>("generation")
+        .unwrap();
+    Ok(client
         .generate_stream(model_id.clone(), text, params, headers)
         .await
         .map_err(|error| Error::GenerateRequestFailed {

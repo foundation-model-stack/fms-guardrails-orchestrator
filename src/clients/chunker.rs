@@ -15,19 +15,19 @@
 
 */
 
-use std::{collections::HashMap, pin::Pin};
+use std::pin::Pin;
 
+use async_trait::async_trait;
 use futures::{Future, Stream, StreamExt, TryStreamExt};
 use ginepro::LoadBalancedChannel;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
-use tonic::{Request, Response, Status, Streaming};
+use tonic::{Code, Request, Response, Status, Streaming};
 use tracing::info;
 
-use super::{create_grpc_clients, BoxStream, Error};
+use super::{BoxStream, Client, ClientCode, Error};
 use crate::{
-    config::ServiceConfig,
-    health::{HealthCheckResult, HealthProbe},
+    health::{HealthCheckResult, HealthStatus},
     pb::{
         caikit::runtime::chunkers::{
             chunkers_service_client::ChunkersServiceClient,
@@ -45,51 +45,23 @@ pub const DEFAULT_MODEL_ID: &str = "whole_doc_chunker";
 type StreamingTokenizationResult =
     Result<Response<Streaming<ChunkerTokenizationStreamResult>>, Status>;
 
-#[cfg_attr(test, faux::create, derive(Default))]
+#[cfg_attr(test, faux::create)]
 #[derive(Clone)]
 pub struct ChunkerClient {
-    clients: HashMap<String, ChunkersServiceClient<LoadBalancedChannel>>,
-    health_clients: HashMap<String, HealthClient<LoadBalancedChannel>>,
-}
-
-#[cfg_attr(test, faux::methods)]
-impl HealthProbe for ChunkerClient {
-    async fn health(&self) -> Result<HashMap<String, HealthCheckResult>, Error> {
-        let mut results = HashMap::with_capacity(self.health_clients.len());
-        for (model_id, mut client) in self.health_clients.clone() {
-            results.insert(
-                model_id.clone(),
-                client
-                    .check(HealthCheckRequest {
-                        service: "".to_string(),
-                    }) // Caikit does not expect a service_id to be specified
-                    .await
-                    .into(),
-            );
-        }
-        Ok(results)
-    }
+    client: ChunkersServiceClient<LoadBalancedChannel>,
+    health_client: HealthClient<LoadBalancedChannel>,
 }
 
 #[cfg_attr(test, faux::methods)]
 impl ChunkerClient {
-    pub async fn new(default_port: u16, config: &[(String, ServiceConfig)]) -> Self {
-        let clients = create_grpc_clients(default_port, config, ChunkersServiceClient::new).await;
-        let health_clients = create_grpc_clients(default_port, config, HealthClient::new).await;
+    pub fn new(
+        client: ChunkersServiceClient<LoadBalancedChannel>,
+        health_client: HealthClient<LoadBalancedChannel>,
+    ) -> Self {
         Self {
-            clients,
-            health_clients,
+            client,
+            health_client,
         }
-    }
-
-    fn client(&self, model_id: &str) -> Result<ChunkersServiceClient<LoadBalancedChannel>, Error> {
-        Ok(self
-            .clients
-            .get(model_id)
-            .ok_or_else(|| Error::ModelNotFound {
-                model_id: model_id.to_string(),
-            })?
-            .clone())
     }
 
     pub async fn tokenization_task_predict(
@@ -102,9 +74,9 @@ impl ChunkerClient {
             info!("Using default whole doc chunker");
             return Ok(tokenize_whole_doc(request));
         }
+        let mut client = self.client.clone();
         let request = request_with_model_id(request, model_id);
-        Ok(self
-            .client(model_id)?
+        Ok(client
             .chunker_tokenization_task_predict(request)
             .await?
             .into_inner())
@@ -126,7 +98,7 @@ impl ChunkerClient {
             });
             ReceiverStream::new(response_rx).boxed()
         } else {
-            let mut client = self.client(model_id)?;
+            let mut client = self.client.clone();
             let request = request_with_model_id(request_stream, model_id);
             // NOTE: this is an ugly workaround to avoid bogus higher-ranked lifetime errors.
             // https://github.com/rust-lang/rust/issues/110338
@@ -140,6 +112,38 @@ impl ChunkerClient {
                 .boxed()
         };
         Ok(response_stream)
+    }
+}
+
+#[cfg_attr(test, faux::methods)]
+#[async_trait]
+impl Client for ChunkerClient {
+    fn name(&self) -> &str {
+        "chunker"
+    }
+
+    async fn health(&self) -> HealthCheckResult {
+        let mut client = self.health_client.clone();
+        let response = client
+            .check(HealthCheckRequest { service: "".into() })
+            .await;
+        let code = match response {
+            Ok(_) => Code::Ok,
+            Err(status) if matches!(status.code(), Code::InvalidArgument | Code::NotFound) => {
+                Code::Ok
+            }
+            Err(status) => status.code(),
+        };
+        let health_status = if matches!(code, Code::Ok) {
+            HealthStatus::Healthy
+        } else {
+            HealthStatus::Unhealthy
+        };
+        HealthCheckResult {
+            health_status,
+            response_code: ClientCode::Grpc(code),
+            reason: None,
+        }
     }
 }
 

@@ -606,6 +606,7 @@ dependencies = [
  "ginepro",
  "hyper",
  "hyper-util",
+ "indexmap 2.5.0",
  "mio",
  "prost",
  "reqwest",
@@ -1045,6 +1046,7 @@ checksum = "68b900aa2f7301e21c36462b170ee99994de34dff39a4a6a528e80e7376d07e5"
 dependencies = [
  "equivalent",
  "hashbrown 0.14.5",
+ "serde",
 ]
 
 [[package]]
