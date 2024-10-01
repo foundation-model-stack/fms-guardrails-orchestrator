@@ -53,3 +53,8 @@ tls:
     detector_bundle_no_ca:
         cert_path: /path/to/client-bundle.pem
         insecure: true
+
+# Following section can be used to configure the allowed headers that orchestrator will pass to
+# NLP provider and detectors. Note that, this section takes header keys, not values.
+# allowed_headers_passthrough:
+#     - "header-key"
