@@ -7,7 +7,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build_server(true)
         .out_dir("src/pb")
         .include_file("mod.rs")
-        .compile(
+        .compile_protos(
             &[
                 "protos/caikit_runtime_Chunkers.proto",
                 "protos/caikit_runtime_Nlp.proto",
