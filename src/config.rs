@@ -25,7 +25,7 @@ use tracing::{debug, error, warn};
 
 use crate::clients::chunker::DEFAULT_MODEL_ID;
 
-// Place holder to add default allowed headers
+// Placeholder to add default allowed headers
 const DEFAULT_ALLOWED_HEADERS: &[&str] = &[];
 
 #[derive(Debug, thiserror::Error)]
@@ -172,12 +172,11 @@ impl OrchestratorConfig {
         }
 
         if config.allowed_headers_passthrough.is_none() {
-            warn!("No allowed headers specified");
+            info!("No allowed headers specified");
         }
 
         // Add default headers to allowed_headers list
         debug!("Adding default headers");
-        // config.allowed_headers_passthrough.unwrap_or_default().extend(DEFAULT_ALLOWED_HEADERS.iter().map(|h| h.to_string()));
         if let Some(passthroughs) = &mut config.allowed_headers_passthrough {
             passthroughs.extend(DEFAULT_ALLOWED_HEADERS.iter().map(|h| h.to_string()));
             // De-duplicate
