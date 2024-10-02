@@ -181,9 +181,19 @@ impl OrchestratorConfig {
             "Adding default headers: [{}]. ",
             DEFAULT_ALLOWED_HEADERS.join(", ")
         );
-        config
+
+        // Lowercase all header for case-insensitive comparison
+        config.passthrough_headers = config
             .passthrough_headers
-            .extend(DEFAULT_ALLOWED_HEADERS.iter().map(|h| h.to_string()));
+            .into_iter()
+            .map(|h| h.to_lowercase())
+            .collect::<HashSet<String>>();
+
+        config.passthrough_headers.extend(
+            DEFAULT_ALLOWED_HEADERS
+                .iter()
+                .map(|h| h.to_string().to_lowercase()),
+        );
 
         config.apply_named_tls_configs()?;
         config.validate()?;

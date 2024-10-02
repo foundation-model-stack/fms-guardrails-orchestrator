@@ -599,7 +599,7 @@ impl From<models::ValidationError> for Error {
 fn filter_headers(passthrough_headers: &HashSet<String>, headers: HeaderMap) -> HeaderMap {
     headers
         .iter()
-        .filter(|(name, _)| passthrough_headers.contains(name.as_str()))
+        .filter(|(name, _)| passthrough_headers.contains(&name.as_str().to_lowercase()))
         .map(|(name, value)| (name.clone(), value.clone()))
         .collect()
 }
