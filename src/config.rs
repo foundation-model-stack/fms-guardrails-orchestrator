@@ -21,7 +21,7 @@ use std::{
 };
 
 use serde::Deserialize;
-use tracing::{debug, error, warn};
+use tracing::{debug, error, info, warn};
 
 use crate::clients::chunker::DEFAULT_MODEL_ID;
 
@@ -176,7 +176,11 @@ impl OrchestratorConfig {
         }
 
         // Add default headers to allowed_headers list
-        debug!("Adding default headers");
+        debug!(
+            "Adding default headers: [{}]. ",
+            DEFAULT_ALLOWED_HEADERS.join(", ")
+        );
+        // config.allowed_headers_passthrough.unwrap_or_default().extend(DEFAULT_ALLOWED_HEADERS.iter().map(|h| h.to_string()));
         if let Some(passthroughs) = &mut config.allowed_headers_passthrough {
             passthroughs.extend(DEFAULT_ALLOWED_HEADERS.iter().map(|h| h.to_string()));
             // De-duplicate

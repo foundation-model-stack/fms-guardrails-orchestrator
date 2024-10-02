@@ -20,9 +20,9 @@ mod aggregator;
 use std::{collections::HashMap, pin::Pin, sync::Arc, time::Duration};
 
 use aggregator::Aggregator;
+use axum::http::HeaderMap;
 use futures::{future::try_join_all, Stream, StreamExt, TryStreamExt};
 
-use hyper::HeaderMap;
 use tokio::sync::{broadcast, mpsc};
 use tokio_stream::wrappers::{BroadcastStream, ReceiverStream};
 use tracing::{debug, error, info, instrument};

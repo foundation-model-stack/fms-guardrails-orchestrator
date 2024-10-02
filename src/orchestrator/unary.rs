@@ -17,11 +17,11 @@
 
 use std::{collections::HashMap, sync::Arc};
 
+use axum::http::HeaderMap;
 use futures::{
     future::try_join_all,
     stream::{self, StreamExt},
 };
-use hyper::HeaderMap;
 use tracing::{debug, error, info, instrument};
 
 use super::{
