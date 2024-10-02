@@ -597,14 +597,6 @@ impl From<models::ValidationError> for Error {
 }
 
 fn filter_headers(passthrough_headers: &HashSet<String>, headers: HeaderMap) -> HeaderMap {
-    // headers
-    //     .iter()
-    //     .filter(|(header_name, _)| passthrough_headers.contains(&header_name.to_string()))
-    //     .fold(HeaderMap::new(), |mut acc, (header_name, header_val)| {
-    //         acc.append(header_name, header_val.clone());
-    //         acc
-    //     })
-
     headers
         .iter()
         .filter(|(name, _)| passthrough_headers.contains(name.as_str()))
