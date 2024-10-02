@@ -15,7 +15,7 @@ generation:
 # chat_generation:
 #   provider: openai
 #   service:
-#     hostname: http://localhost
+#     hostname: localhost
 #     port: 8080
 # Any chunker servers that will be used by any detectors
 chunkers:
@@ -35,7 +35,7 @@ detectors:
         # Detector type (text_contents, text_generation, text_context_chat, text_context_doc)
         type: text_contents
         service:
-            hostname: https://localhost
+            hostname: localhost
             port: 8080
             # TLS ID/name, optional (detailed in `tls` section)
             tls: detector

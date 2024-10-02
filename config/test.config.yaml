@@ -6,7 +6,7 @@ generation:
 # chat_generation:
 #   provider: openai
 #   service:
-#     hostname: http://localhost
+#     hostname: localhost
 #     port: 8080
 chunkers:
   test_chunker:
@@ -18,7 +18,7 @@ detectors:
   test_detector:
     type: text_contents
     service:
-      hostname: https://localhost
+      hostname: localhost
       port: 8000
     chunker_id: test_chunker
     default_threshold: 0.5

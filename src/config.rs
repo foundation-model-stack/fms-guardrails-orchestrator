@@ -23,7 +23,7 @@ use std::{
 use serde::Deserialize;
 use tracing::{debug, error, info, warn};
 
-use crate::clients::{chunker::DEFAULT_MODEL_ID, http::is_base_url};
+use crate::clients::{chunker::DEFAULT_MODEL_ID, is_valid_hostname};
 
 // Placeholder to add default allowed headers
 const DEFAULT_ALLOWED_HEADERS: &[&str] = &[];
@@ -266,10 +266,9 @@ impl OrchestratorConfig {
         // Detector configs are valid
         for (detector_id, detector) in &self.detectors {
             // Hostname is valid
-            if !is_base_url(&detector.service.hostname) {
+            if !is_valid_hostname(&detector.service.hostname) {
                 return Err(Error::InvalidHostname(format!(
-                    "detector `{detector_id}` has an invalid hostname; \
-                    must be a base url, e.g. `https://service.route.example.com"
+                    "detector `{detector_id}` has an invalid hostname"
                 )));
             }
             // Chunker is valid
@@ -286,6 +285,18 @@ impl OrchestratorConfig {
             }
         }
 
+        // Chunker config is valid
+        if let Some(chunkers) = &self.chunkers {
+            for (chunker_id, chunker) in chunkers {
+                // Hostname is valid
+                if !is_valid_hostname(&chunker.service.hostname) {
+                    return Err(Error::InvalidHostname(format!(
+                        "chunker `{chunker_id}` has an invalid hostname"
+                    )));
+                }
+            }
+        }
+
         // Generation config is valid
         if let Some(generation) = &self.generation {
             // Provider is valid
@@ -295,6 +306,12 @@ impl OrchestratorConfig {
             ) {
                 return Err(Error::InvalidGenerationProvider(
                     "`generation` requires `tgis` or `nlp` provider".into(),
+                ));
+            }
+            // Hostname is valid
+            if !is_valid_hostname(&generation.service.hostname) {
+                return Err(Error::InvalidHostname(
+                    "`generation` has an invalid hostname".into(),
                 ));
             }
         }
@@ -308,11 +325,9 @@ impl OrchestratorConfig {
                 ));
             }
             // Hostname is valid
-            if !is_base_url(&chat_generation.service.hostname) {
+            if !is_valid_hostname(&chat_generation.service.hostname) {
                 return Err(Error::InvalidHostname(
-                    "`chat_generation` has an invalid hostname; \
-                    must be a base url, e.g. `https://service.route.example.com"
-                        .into(),
+                    "`chat_generation` has an invalid hostname".into(),
                 ));
             }
         }

@@ -132,16 +132,6 @@ pub fn extract_base_url(url: &Url) -> Option<Url> {
     Some(url)
 }
 
-/// Returns `true` if url is a valid base url.
-pub fn is_base_url(url: &str) -> bool {
-    if let Ok(url) = Url::parse(url) {
-        if let Some(base_url) = extract_base_url(&url) {
-            return url == base_url;
-        }
-    }
-    false
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -160,23 +150,5 @@ mod tests {
             Some(Url::parse("https://example-detector.route.example.com/health").unwrap()),
             health_url
         );
-    }
-
-    #[test]
-    fn test_is_base_url() {
-        let url = "http://localhost";
-        assert!(is_base_url(url));
-
-        let url = "https://example-detector.route.example.com/";
-        assert!(is_base_url(url));
-
-        let url = "https://example-detector.route.example.com";
-        assert!(is_base_url(url));
-
-        let url = "https://example-detector.route.example.com/api/v1/text/contents";
-        assert!(!is_base_url(url));
-
-        let url = "https://example-detector.route.example.com/api/v1/";
-        assert!(!is_base_url(url));
     }
 }

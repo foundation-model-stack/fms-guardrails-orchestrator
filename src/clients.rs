@@ -196,7 +196,11 @@ impl ClientMap {
 
 pub async fn create_http_client(default_port: u16, service_config: &ServiceConfig) -> HttpClient {
     let port = service_config.port.unwrap_or(default_port);
-    let mut base_url = Url::parse(&service_config.hostname).unwrap();
+    let protocol = match service_config.tls {
+        Some(_) => "https",
+        None => "http",
+    };
+    let mut base_url = Url::parse(&format!("{}://{}", protocol, &service_config.hostname)).unwrap();
     base_url.set_port(Some(port)).unwrap();
     let request_timeout = Duration::from_secs(
         service_config
@@ -300,6 +304,32 @@ pub async fn create_grpc_client<C>(
         .await
         .unwrap_or_else(|error| panic!("error creating grpc client: {error}"));
     new(channel)
+}
+
+/// Returns `true` if hostname is valid according to [IETF RFC 1123](https://tools.ietf.org/html/rfc1123).
+///
+/// Conditions:
+/// - It does not start or end with `-` or `.`.
+/// - It does not contain any characters outside of the alphanumeric range, except for `-` and `.`.
+/// - It is not empty.
+/// - It is 253 or fewer characters.
+/// - Its labels (characters separated by `.`) are not empty.
+/// - Its labels are 63 or fewer characters.
+/// - Its labels do not start or end with '-' or '.'.
+pub fn is_valid_hostname(hostname: &str) -> bool {
+    fn is_valid_char(byte: u8) -> bool {
+        byte.is_ascii_lowercase()
+            || byte.is_ascii_uppercase()
+            || byte.is_ascii_digit()
+            || byte == b'-'
+            || byte == b'.'
+    }
+    !(hostname.bytes().any(|byte| !is_valid_char(byte))
+        || hostname.split('.').any(|label| {
+            label.is_empty() || label.len() > 63 || label.starts_with('-') || label.ends_with('-')
+        })
+        || hostname.is_empty()
+        || hostname.len() > 253)
 }
 
 #[cfg(test)]
@@ -574,6 +604,24 @@ mod tests {
                     code, code, code
                 )
             );
+        }
+    }
+
+    #[test]
+    fn test_is_valid_hostname() {
+        let valid_hostnames = ["localhost", "example.route.cloud.com", "127.0.0.1"];
+        for hostname in valid_hostnames {
+            assert!(is_valid_hostname(hostname));
+        }
+        let invalid_hostnames = [
+            "-LoCaLhOST_",
+            ".invalid",
+            "invalid.ending-.char",
+            "@asdf",
+            "too-long-of-a-hostnameeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        ];
+        for hostname in invalid_hostnames {
+            assert!(!is_valid_hostname(hostname));
         }
     }
 }
