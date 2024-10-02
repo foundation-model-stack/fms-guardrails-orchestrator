@@ -24,12 +24,11 @@ use std::{
     net::SocketAddr,
     path::PathBuf,
     sync::Arc,
-    time::Duration,
 };
 
 use axum::{
     extract::{rejection::JsonRejection, Query, Request, State},
-    http::{HeaderMap, StatusCode},
+    http::StatusCode,
     response::{
         sse::{Event, KeepAlive, Sse},
         IntoResponse, Response,
@@ -41,14 +40,12 @@ use axum_extra::extract::WithRejection;
 use futures::{stream, Stream, StreamExt};
 use hyper::body::Incoming;
 use hyper_util::rt::{TokioExecutor, TokioIo};
-use opentelemetry::trace::TraceContextExt;
 use rustls::{server::WebPkiClientVerifier, RootCertStore, ServerConfig};
 use tokio::{net::TcpListener, signal};
 use tokio_rustls::TlsAcceptor;
 use tower_http::trace::TraceLayer;
 use tower_service::Service;
-use tracing::{debug, error, info, info_span, instrument, warn, Span};
-use tracing_opentelemetry::OpenTelemetrySpanExt;
+use tracing::{debug, error, info, instrument, warn};
 use uuid::Uuid;
 use webpki::types::{CertificateDer, PrivateKeyDer};
 
@@ -59,6 +56,7 @@ use crate::{
         GenerationWithDetectionTask, Orchestrator, StreamingClassificationWithGenTask,
         TextContentDetectionTask,
     },
+    tracing_utils,
 };
 
 const API_PREFIX: &str = r#"/api/v1/task"#;
@@ -183,60 +181,10 @@ pub async fn run(
         )
         .with_state(shared_state)
         .layer(TraceLayer::new_for_http()
-            .make_span_with(|request: &Request| {
-                info_span!(
-                    "incoming_orchestrator_request",
-                    request_method = request.method().to_string(),
-                    request_path = request.uri().path().to_string(),
-                    response_status_code = tracing::field::Empty,
-                    request_duration_ms = tracing::field::Empty,
-                    stream_response = tracing::field::Empty,
-                    // Empty fields are not recorded if they are never set.
-                    stream_response_event_count = tracing::field::Empty,
-                    stream_response_error_count = tracing::field::Empty,
-                    stream_response_duration_ms = tracing::field::Empty,
-                )
-            })
-            .on_request({move |request: &Request, span: &Span| {
-                let _guard = span.enter();
-                info!("incoming request to {} {} with trace_id {}",
-                            request.method(),
-                            request.uri().path(),
-                            span.context().span().span_context().trace_id().to_string());
-                info!(monotonic_counter.incoming_request_count = 1, request_method = request.method().as_str(), request_path = request.uri().path());
-            }})
-            .on_response(|response: &Response, latency: Duration, span: &Span| {
-                let _guard = span.enter();
-                info!("response {} for request with with trace_id {} generated in {} ms",
-                                &response.status(),
-                                span.context().span().span_context().trace_id().to_string(),
-                                latency.as_millis());
-                span.record("response_status_code", response.status().as_u16());
-                span.record("request_duration_ms", latency.as_millis());
-
-                info!(monotonic_counter.handled_request_count = 1, response_status = response.status().as_u16(), request_duration = latency.as_millis());
-                if response.status().is_server_error() {
-                    info!(monotonic_counter.server_error_response_count = 1, response_status = response.status().as_u16(), request_duration = latency.as_millis());
-                } else if response.status().is_client_error() {
-                    info!(monotonic_counter.client_error_response_count = 1, response_status = response.status().as_u16(), request_duration = latency.as_millis());
-                } else if response.status().is_success() {
-                    info!(monotonic_counter.success_response_count = 1, response_status = response.status().as_u16(), request_duration = latency.as_millis());
-                } else {
-                    error!("unexpected response status code: {}", response.status().as_u16());
-                }
-                info!(histogram.service_request_duration = latency.as_millis(), response_status = response.status().as_u16());
-            })
-            .on_eos(|trailers: Option<&HeaderMap>, stream_duration: Duration, span: &Span| {
-                let _guard = span.enter();
-                info!("stream response for request with trace_id {} closed after {} ms with trailers: {:?}",
-                       span.context().span().span_context().trace_id().to_string(),
-                       stream_duration.as_millis(),
-                       trailers);
-                span.record("stream_response", true);
-                span.record("stream_response_duration_ms", stream_duration.as_millis());
-                info!(monotonic_counter.service_stream_response_count = 1, stream_duration = stream_duration.as_millis());
-                info!(monotonic_histogram.service_stream_response_duration = stream_duration.as_millis());
-            }));
+            .make_span_with(tracing_utils::incoming_request_span)
+            .on_request(tracing_utils::on_incoming_request)
+            .on_response(tracing_utils::on_outgoing_response)
+            .on_eos(tracing_utils::on_outgoing_eos));
 
     // (2c) Generate main guardrails server handle based on whether TLS is needed
     let listener: TcpListener = TcpListener::bind(&http_addr)
