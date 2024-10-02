@@ -37,9 +37,7 @@ use tracing::{error, info};
 use tracing_opentelemetry::MetricsLayer;
 use tracing_subscriber::{layer::SubscriberExt, EnvFilter, Layer};
 
-use crate::{
-    args::{OtlpExportConfig, OtlpProtocol, StdoutLogConfig},
-};
+use crate::args::{OtlpExportConfig, OtlpProtocol, StdoutLogConfig};
 
 #[derive(Debug, thiserror::Error)]
 pub enum TracingError {
@@ -69,12 +67,15 @@ fn init_tracer_provider(
                         .with_timeout(Duration::from_secs(3)),
                 ),
             }
-                .with_trace_config(
-                    Config::default()
-                        .with_resource(Resource::new(vec![KeyValue::new("service.name", otlp_export_config.service_name)]))
-                        .with_sampler(Sampler::AlwaysOn),
-                )
-                .install_batch(runtime::Tokio)?,
+            .with_trace_config(
+                Config::default()
+                    .with_resource(Resource::new(vec![KeyValue::new(
+                        "service.name",
+                        otlp_export_config.service_name,
+                    )]))
+                    .with_sampler(Sampler::AlwaysOn),
+            )
+            .install_batch(runtime::Tokio)?,
         ))
     } else {
         Ok(None)
@@ -103,12 +104,15 @@ fn init_meter_provider(
                             .with_endpoint(endpoint),
                     ),
             }
-                .with_resource(Resource::new(vec![KeyValue::new("service.name", otlp_export_config.service_name)]))
-                .with_timeout(Duration::from_secs(10))
-                .with_period(Duration::from_secs(3))
-                .with_aggregation_selector(DefaultAggregationSelector::new())
-                .with_temporality_selector(DefaultTemporalitySelector::new())
-                .build()?,
+            .with_resource(Resource::new(vec![KeyValue::new(
+                "service.name",
+                otlp_export_config.service_name,
+            )]))
+            .with_timeout(Duration::from_secs(10))
+            .with_period(Duration::from_secs(3))
+            .with_aggregation_selector(DefaultAggregationSelector::new())
+            .with_temporality_selector(DefaultTemporalitySelector::new())
+            .build()?,
         ))
     } else {
         Ok(None)

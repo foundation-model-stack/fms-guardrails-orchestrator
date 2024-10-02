@@ -45,7 +45,11 @@ pub struct Args {
     pub otlp_export: Vec<OtlpExport>,
     #[clap(default_value_t = StdoutLogConfig::default(), long, env)]
     pub stdout_log: StdoutLogConfig,
-    #[clap(default_value = "fms_guardrails_orchestr8", long, env = "OTLP_SERVICE_NAME")]
+    #[clap(
+        default_value = "fms_guardrails_orchestr8",
+        long,
+        env = "OTLP_SERVICE_NAME"
+    )]
     pub otlp_service_name: String,
     #[clap(long, env = "OTEL_EXPORTER_OTLP_ENDPOINT")]
     pub otlp_endpoint: Option<String>,
@@ -53,7 +57,11 @@ pub struct Args {
     pub otlp_traces_endpoint: Option<String>,
     #[clap(long, env = "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT")]
     pub otlp_metrics_endpoint: Option<String>,
-    #[clap(default_value_t = OtlpProtocol::Grpc, long, env = "OTEL_EXPORTER_OTLP_PROTOCOL")]
+    #[clap(
+        default_value_t = OtlpProtocol::Grpc,
+        long,
+        env = "OTEL_EXPORTER_OTLP_PROTOCOL"
+    )]
     pub otlp_protocol: OtlpProtocol,
     #[clap(long, env = "OTEL_EXPORTER_OTLP_TRACES_PROTOCOL")]
     pub otlp_traces_protocol: Option<OtlpProtocol>,
@@ -191,12 +199,8 @@ impl From<Args> for OtlpExportConfig {
             .unwrap_or(otlp_protocol.default_endpoint().to_string());
         let otlp_traces_endpoint = args.otlp_traces_endpoint.unwrap_or(otlp_endpoint.clone());
         let otlp_metrics_endpoint = args.otlp_metrics_endpoint.unwrap_or(otlp_endpoint.clone());
-        let otlp_traces_protocol = args
-            .otlp_traces_protocol
-            .unwrap_or(otlp_protocol);
-        let otlp_metrics_protocol = args
-            .otlp_metrics_protocol
-            .unwrap_or(otlp_protocol);
+        let otlp_traces_protocol = args.otlp_traces_protocol.unwrap_or(otlp_protocol);
+        let otlp_metrics_protocol = args.otlp_metrics_protocol.unwrap_or(otlp_protocol);
         let stdout_log = args.stdout_log;
 
         OtlpExportConfig {
