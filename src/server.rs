@@ -16,8 +16,14 @@
 */
 
 use std::{
-    collections::HashMap, convert::Infallible, error::Error as _, fs::File, io::BufReader,
-    net::SocketAddr, path::PathBuf, sync::Arc,
+    collections::{HashMap, HashSet},
+    convert::Infallible,
+    error::Error as _,
+    fs::File,
+    io::BufReader,
+    net::SocketAddr,
+    path::PathBuf,
+    sync::Arc,
 };
 
 use axum::{
@@ -43,7 +49,6 @@ use uuid::Uuid;
 use webpki::types::{CertificateDer, PrivateKeyDer};
 
 use crate::{
-    config::OrchestratorConfig,
     health::HealthCheckProbeParams,
     models,
     orchestrator::{
@@ -591,17 +596,18 @@ impl From<models::ValidationError> for Error {
     }
 }
 
-async fn filter_header(config: &OrchestratorConfig, headers: HeaderMap) -> HeaderMap {
-    let allowed_headers = config
-        .allowed_headers_passthrough
-        .clone()
-        .unwrap_or_default();
+fn filter_headers(passthrough_headers: &HashSet<String>, headers: HeaderMap) -> HeaderMap {
+    // headers
+    //     .iter()
+    //     .filter(|(header_name, _)| passthrough_headers.contains(&header_name.to_string()))
+    //     .fold(HeaderMap::new(), |mut acc, (header_name, header_val)| {
+    //         acc.append(header_name, header_val.clone());
+    //         acc
+    //     })
 
     headers
         .iter()
-        .filter(|(header_name, _)| allowed_headers.contains(&header_name.to_string()))
-        .fold(HeaderMap::new(), |mut acc, (header_name, header_val)| {
-            acc.append(header_name, header_val.clone());
-            acc
-        })
+        .filter(|(name, _)| passthrough_headers.contains(name.as_str()))
+        .map(|(name, value)| (name.clone(), value.clone()))
+        .collect()
 }

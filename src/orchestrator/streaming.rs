@@ -58,7 +58,7 @@ impl Orchestrator {
         let model_id = task.model_id;
         let params = task.text_gen_parameters;
         let input_text = task.inputs;
-        let request_headers = task.headers;
+        let headers = task.headers;
 
         info!(%request_id, config = ?task.guardrails_config, "starting task");
 
@@ -80,7 +80,7 @@ impl Orchestrator {
                         detectors,
                         input_text.clone(),
                         masks,
-                        request_headers.clone(),
+                        headers.clone(),
                     )
                     .await
                     {
@@ -98,21 +98,17 @@ impl Orchestrator {
             if let Some(mut input_detections) = input_detections {
                 // Detected HAP/PII
                 // Do tokenization to get input_token_count
-                let (input_token_count, _tokens) = match tokenize(
-                    &ctx,
-                    model_id.clone(),
-                    input_text.clone(),
-                    request_headers.clone(),
-                )
-                .await
-                {
-                    Ok(result) => result,
-                    Err(error) => {
-                        error!(%request_id, %error, "task failed");
-                        let _ = response_tx.send(Err(error)).await;
-                        return;
-                    }
-                };
+                let (input_token_count, _tokens) =
+                    match tokenize(&ctx, model_id.clone(), input_text.clone(), headers.clone())
+                        .await
+                    {
+                        Ok(result) => result,
+                        Err(error) => {
+                            error!(%request_id, %error, "task failed");
+                            let _ = response_tx.send(Err(error)).await;
+                            return;
+                        }
+                    };
                 input_detections.sort_by_key(|r| r.start);
                 // Send result with input detections
                 let _ = response_tx
@@ -137,7 +133,7 @@ impl Orchestrator {
                     model_id.clone(),
                     input_text.clone(),
                     params.clone(),
-                    request_headers.clone(),
+                    headers.clone(),
                 )
                 .await
                 {
@@ -167,7 +163,7 @@ impl Orchestrator {
                             detectors,
                             generation_stream,
                             error_tx.clone(),
-                            request_headers.clone(),
+                            headers.clone(),
                         )
                         .await
                         {
@@ -361,7 +357,7 @@ async fn detection_task(
     detector_tx: mpsc::Sender<(Chunk, Detections)>,
     mut chunk_rx: broadcast::Receiver<Chunk>,
     error_tx: broadcast::Sender<Error>,
-    request_headers: HeaderMap,
+    headers: HeaderMap,
 ) {
     let mut error_rx = error_tx.subscribe();
 
@@ -383,7 +379,7 @@ async fn detection_task(
                             break;
                         } else {
                             let request = ContentAnalysisRequest::new(contents.clone());
-                            let headers = request_headers.clone();
+                            let headers = headers.clone();
                             debug!(%detector_id, ?request, "sending detector request");
                             match ctx
                                 .detector_client

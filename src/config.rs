@@ -16,7 +16,7 @@
 */
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     path::{Path, PathBuf},
 };
 
@@ -172,7 +172,7 @@ impl OrchestratorConfig {
             warn!("no chunker configs provided");
         }
 
-        if config.allowed_headers_passthrough.is_none() {
+        if config.passthrough_headers.is_empty() {
             info!("No allowed headers specified");
         }
 
@@ -181,19 +181,9 @@ impl OrchestratorConfig {
             "Adding default headers: [{}]. ",
             DEFAULT_ALLOWED_HEADERS.join(", ")
         );
-        // config.allowed_headers_passthrough.unwrap_or_default().extend(DEFAULT_ALLOWED_HEADERS.iter().map(|h| h.to_string()));
-        if let Some(passthroughs) = &mut config.allowed_headers_passthrough {
-            passthroughs.extend(DEFAULT_ALLOWED_HEADERS.iter().map(|h| h.to_string()));
-            // De-duplicate
-            passthroughs.dedup();
-        } else {
-            config.allowed_headers_passthrough = Some(
-                DEFAULT_ALLOWED_HEADERS
-                    .iter()
-                    .map(|h| h.to_string())
-                    .collect(),
-            );
-        }
+        config
+            .passthrough_headers
+            .extend(DEFAULT_ALLOWED_HEADERS.iter().map(|h| h.to_string()));
 
         config.apply_named_tls_configs()?;
         config.validate()?;
@@ -552,7 +542,7 @@ tls:
     }
 
     #[test]
-    fn test_allowed_headers_passthrough_empty_config() -> Result<(), Error> {
+    fn test_passthrough_headers_empty_config() -> Result<(), Error> {
         let s = r#"
 generation:
     provider: tgis

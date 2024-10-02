@@ -98,7 +98,7 @@ impl GenerationClient {
                     truncate_input_tokens: 0,
                 };
                 debug!(%model_id, provider = "tgis", ?request, "sending tokenize request");
-                let mut response = client.tokenize(request, headers.clone()).await?;
+                let mut response = client.tokenize(request, headers).await?;
                 debug!(%model_id, provider = "tgis", ?response, "received tokenize response");
                 let response = response.responses.swap_remove(0);
                 Ok((response.token_count, response.tokens))
@@ -138,7 +138,7 @@ impl GenerationClient {
                     params,
                 };
                 debug!(%model_id, provider = "tgis", ?request, "sending generate request");
-                let response = client.generate(request, headers.clone()).await?;
+                let response = client.generate(request, headers).await?;
                 debug!(%model_id, provider = "tgis", ?response, "received generate response");
                 Ok(response.into())
             }
@@ -203,7 +203,7 @@ impl GenerationClient {
                 };
                 debug!(%model_id, provider = "tgis", ?request, "sending generate_stream request");
                 let response_stream = client
-                    .generate_stream(request, headers.clone())
+                    .generate_stream(request, headers)
                     .await?
                     .map_ok(Into::into)
                     .boxed();

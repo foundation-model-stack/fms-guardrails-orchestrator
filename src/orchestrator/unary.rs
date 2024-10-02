@@ -244,7 +244,7 @@ impl Orchestrator {
         );
 
         let ctx = self.ctx.clone();
-        let request_headers = task.headers;
+        let headers = task.headers;
 
         let task_handle = tokio::spawn(async move {
             let content = task.content.clone();
@@ -273,7 +273,7 @@ impl Orchestrator {
 
                         let chunk = chunks.get(chunker_id).unwrap().clone();
 
-                        let headers = request_headers.clone();
+                        let headers = headers.clone();
 
                         async move {
                             detect_content(
@@ -326,7 +326,7 @@ impl Orchestrator {
             "handling context documents detection task"
         );
         let ctx = self.ctx.clone();
-        let request_headers = task.headers;
+        let headers = task.headers;
         let task_handle = tokio::spawn(async move {
             // call detection
             let detections = try_join_all(
@@ -339,7 +339,7 @@ impl Orchestrator {
                         let content = task.content.clone();
                         let context_type = task.context_type.clone();
                         let context = task.context.clone();
-                        let headers = request_headers.clone();
+                        let headers = headers.clone();
 
                         async {
                             detect_for_context(
@@ -391,7 +391,7 @@ impl Orchestrator {
             "handling detection on generated content task"
         );
         let ctx = self.ctx.clone();
-        let request_headers = task.headers;
+        let headers = task.headers;
 
         let task_handle = tokio::spawn(async move {
             // call detection
@@ -404,7 +404,7 @@ impl Orchestrator {
                         let detector_params = detector_params.clone();
                         let prompt = task.prompt.clone();
                         let generated_text = task.generated_text.clone();
-                        let headers = request_headers.clone();
+                        let headers = headers.clone();
                         async {
                             detect_for_generation(
                                 ctx,
@@ -481,7 +481,7 @@ async fn detection_task(
     ctx: &Arc<Context>,
     detectors: &HashMap<String, DetectorParams>,
     chunks: HashMap<String, Vec<Chunk>>,
-    request_headers: HeaderMap,
+    headers: HeaderMap,
 ) -> Result<Vec<TokenClassificationResult>, Error> {
     // Spawn tasks for each detector
     let tasks = detectors
@@ -501,7 +501,7 @@ async fn detection_task(
             // Get chunker for detector
             let chunker_id = detector_config.chunker_id.as_str();
             let chunks = chunks.get(chunker_id).unwrap().clone();
-            let headers = request_headers.clone();
+            let headers = headers.clone();
             Ok(tokio::spawn(async move {
                 detect(
                     ctx,
