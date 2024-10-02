@@ -20,9 +20,9 @@ pub use errors::Error;
 pub mod streaming;
 pub mod unary;
 
-use axum::http::header::HeaderMap;
 use std::{collections::HashMap, sync::Arc};
 
+use axum::http::header::HeaderMap;
 use tokio::{sync::RwLock, time::Instant};
 use tracing::{debug, info};
 use uuid::Uuid;
