@@ -15,14 +15,21 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow = "1.0.86"
+async-trait = "0.1.81"
+async-stream = "0.3.5"
 axum = { version = "0.7.5", features = ["json"] }
 axum-extra = "0.9.3"
 clap = { version = "4.5.15", features = ["derive", "env"] }
 futures = "0.3.30"
 ginepro = "0.8.1"
+http-serde = "2.1.1"
 hyper = { version = "1.4.1", features = ["http1", "http2", "server"] }
 hyper-util = { version = "0.1.7", features = ["server-auto", "server-graceful", "tokio"] }
 mio = "1.0.2"
+opentelemetry = { version = "0.24.0", features = ["trace", "metrics"] }
+opentelemetry-http = { version = "0.13.0", features = ["reqwest"] }
+opentelemetry-otlp = { version = "0.17.0", features = ["http-proto"] }
+opentelemetry_sdk = { version = "0.24.1", features = ["rt-tokio", "metrics"] }
 prost = "0.13.1"
 reqwest = { version = "0.12.5", features = ["blocking", "rustls-tls", "json"] }
 rustls = {version = "0.23.12", default-features = false, features = ["std"]}
@@ -36,14 +43,13 @@ tokio = { version = "1.39.2", features = ["rt", "rt-multi-thread", "parking_lot"
 tokio-rustls = { version = "0.26.0" }
 tokio-stream = { version = "0.1.15", features = ["sync"] }
 tonic = { version = "0.12.1", features = ["tls", "tls-roots", "tls-webpki-roots"] }
+tower-http = { version = "0.5.2", features = ["trace"] }
 tower-service = "0.3"
 tracing = "0.1.40"
+tracing-opentelemetry = "0.25.0"
 tracing-subscriber = { version = "0.3.18", features = ["json", "env-filter"] }
 url = "2.5.2"
 uuid = { version = "1.10.0", features = ["v4", "fast-rng"] }
-async-trait = "0.1.81"
-async-stream = "0.3.5"
-http-serde = "2.1.1"
 
 [build-dependencies]
 tonic-build = "0.12.1"
