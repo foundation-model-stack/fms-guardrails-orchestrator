@@ -15,13 +15,11 @@
 
 */
 
-use std::{
-    net::{IpAddr, Ipv4Addr, SocketAddr},
-};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
 use clap::Parser;
 use fms_guardrails_orchestr8::{
-    args::Args, config::OrchestratorConfig, orchestrator::Orchestrator, server, tracing_utils
+    args::Args, config::OrchestratorConfig, orchestrator::Orchestrator, server, tracing_utils,
 };
 
 fn main() -> Result<(), anyhow::Error> {
