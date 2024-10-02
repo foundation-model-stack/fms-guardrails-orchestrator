@@ -310,8 +310,8 @@ async fn classification_with_gen(
 ) -> Result<impl IntoResponse, Error> {
     let request_id = Uuid::new_v4();
     request.validate()?;
-    let filtered_headers = filter_header(&state.orchestrator.get_config(), headers).await;
-    let task = ClassificationWithGenTask::new(request_id, request, filtered_headers);
+    let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
+    let task = ClassificationWithGenTask::new(request_id, request, headers);
     match state
         .orchestrator
         .handle_classification_with_gen(task)
@@ -332,8 +332,8 @@ async fn generation_with_detection(
 ) -> Result<impl IntoResponse, Error> {
     let request_id = Uuid::new_v4();
     request.validate()?;
-    let filtered_headers = filter_header(&state.orchestrator.get_config(), headers).await;
-    let task = GenerationWithDetectionTask::new(request_id, request, filtered_headers);
+    let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
+    let task = GenerationWithDetectionTask::new(request_id, request, headers);
     match state
         .orchestrator
         .handle_generation_with_detection(task)
@@ -361,6 +361,7 @@ async fn stream_classification_with_gen(
             .boxed(),
         );
     }
+    let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
     let task = StreamingClassificationWithGenTask::new(request_id, request, headers);
     let response_stream = state
         .orchestrator
@@ -392,8 +393,8 @@ async fn detection_content(
 ) -> Result<impl IntoResponse, Error> {
     let request_id = Uuid::new_v4();
     request.validate()?;
-    let filtered_headers = filter_header(&state.orchestrator.get_config(), headers).await;
-    let task = TextContentDetectionTask::new(request_id, request, filtered_headers);
+    let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
+    let task = TextContentDetectionTask::new(request_id, request, headers);
     match state.orchestrator.handle_text_content_detection(task).await {
         Ok(response) => Ok(Json(response).into_response()),
         Err(error) => Err(error.into()),
@@ -407,8 +408,8 @@ async fn detect_context_documents(
 ) -> Result<impl IntoResponse, Error> {
     let request_id = Uuid::new_v4();
     request.validate()?;
-    let filtered_headers = filter_header(&state.orchestrator.get_config(), headers).await;
-    let task = ContextDocsDetectionTask::new(request_id, request, filtered_headers);
+    let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
+    let task = ContextDocsDetectionTask::new(request_id, request, headers);
     match state
         .orchestrator
         .handle_context_documents_detection(task)
@@ -429,8 +430,8 @@ async fn detect_generated(
 ) -> Result<impl IntoResponse, Error> {
     let request_id = Uuid::new_v4();
     request.validate()?;
-    let filtered_headers = filter_header(&state.orchestrator.get_config(), headers).await;
-    let task = DetectionOnGenerationTask::new(request_id, request, filtered_headers);
+    let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
+    let task = DetectionOnGenerationTask::new(request_id, request, headers);
     match state
         .orchestrator
         .handle_generated_text_detection(task)

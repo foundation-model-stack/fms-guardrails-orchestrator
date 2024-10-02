@@ -56,5 +56,5 @@ tls:
 
 # Following section can be used to configure the allowed headers that orchestrator will pass to
 # NLP provider and detectors. Note that, this section takes header keys, not values.
-# allowed_headers_passthrough:
+# passthrough_headers:
 #     - header-key

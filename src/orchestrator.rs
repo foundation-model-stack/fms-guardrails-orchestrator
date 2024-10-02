@@ -82,8 +82,8 @@ impl Orchestrator {
         Ok(orchestrator)
     }
 
-    pub fn get_config(&self) -> OrchestratorConfig {
-        self.ctx.config.clone()
+    pub fn config(&self) -> &OrchestratorConfig {
+        &self.ctx.config
     }
 
     /// Perform any start-up actions required by the orchestrator.

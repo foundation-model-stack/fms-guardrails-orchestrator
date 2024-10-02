@@ -679,7 +679,7 @@ pub async fn detect_for_generation(
     debug!(%detector_id, ?request, "sending generation detector request");
     let response = ctx
         .detector_client
-        .text_generation(&detector_id, request, headers.clone())
+        .text_generation(&detector_id, request, headers)
         .await
         .map(|results| {
             results

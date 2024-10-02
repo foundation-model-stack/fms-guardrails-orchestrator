@@ -147,7 +147,8 @@ pub struct OrchestratorConfig {
     /// that may require the same TLS information
     pub tls: Option<HashMap<String, TlsConfig>>,
     // List of header keys allowed to be passed to downstream servers
-    pub allowed_headers_passthrough: Option<Vec<String>>,
+    #[serde(default)]
+    pub passthrough_headers: HashSet<String>,
 }
 
 impl OrchestratorConfig {
@@ -574,7 +575,7 @@ detectors:
         default_threshold: 0.5   
         "#;
         let config: OrchestratorConfig = serde_yml::from_str(s).unwrap();
-        assert!(config.allowed_headers_passthrough.is_none());
+        assert!(config.passthrough_headers.is_empty());
         Ok(())
     }
     #[test]
@@ -600,13 +601,14 @@ detectors:
         chunker_id: sentence-fr
         default_threshold: 0.5   
 
-allowed_headers_passthrough:
+passthrough_headers:
         - test-header
         "#;
         let config: OrchestratorConfig = serde_yml::from_str(s).unwrap();
-        assert!(config
-            .allowed_headers_passthrough
-            .eq(&Some(vec![String::from("test-header")])));
+        assert_eq!(
+            config.passthrough_headers,
+            HashSet::from(["test-header".to_string()])
+        );
         Ok(())
     }
 }
