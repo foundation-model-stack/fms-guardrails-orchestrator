@@ -113,12 +113,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-  /api/v1/text/context/chat:
+  /api/v1/text/chat:
     post:
       summary: Chat Analysis Unary Handler
       description: >-
         Detectors that analyze chat messages and provide detections <br>
-      operationId: chat_analysis_unary_handler_api_v1_text_context_chat_post
+      operationId: chat_analysis_unary_handler_api_v1_text_chat_post
       parameters:
         - name: detector-id
           in: header
@@ -143,8 +143,7 @@ paths:
                 items:
                   $ref: '#/components/schemas/ChatAnalysisResponse'
                 title: >-
-                  Response Chat Analysis Unary Handler Api V1 Text Context Chat
-                  Post
+                  Response Chat Analysis Unary Handler Api V1 Text Chat Post
                 example:
                   - detection: "detection_type"
                     detection_type: "dummy_detector_type"
