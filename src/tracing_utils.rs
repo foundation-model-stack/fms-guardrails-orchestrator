@@ -16,6 +16,7 @@
 */
 
 use std::time::Duration;
+
 use axum::extract::Request;
 use axum::http::HeaderMap;
 use axum::response::Response;
@@ -229,13 +230,17 @@ pub fn incoming_request_span(request: &Request) -> Span {
 
 pub fn on_incoming_request(request: &Request, span: &Span) {
     let _guard = span.enter();
-    info!("incoming request to {} {} with trace_id {}",
+    info!(
+        "incoming request to {} {} with trace_id {}",
         request.method(),
         request.uri().path(),
-        span.context().span().span_context().trace_id().to_string());
-    info!(monotonic_counter.incoming_request_count = 1,
+        span.context().span().span_context().trace_id().to_string()
+    );
+    info!(
+        monotonic_counter.incoming_request_count = 1,
         request_method = request.method().as_str(),
-        request_path = request.uri().path());
+        request_path = request.uri().path()
+    );
 }
 
 pub fn on_outgoing_response(response: &Response, latency: Duration, span: &Span) {
@@ -243,35 +248,50 @@ pub fn on_outgoing_response(response: &Response, latency: Duration, span: &Span)
     span.record("response_status_code", response.status().as_u16());
     span.record("request_duration_ms", latency.as_millis());
 
-    info!("response {} for request with with trace_id {} generated in {} ms",
+    info!(
+        "response {} for request with with trace_id {} generated in {} ms",
         &response.status(),
         span.context().span().span_context().trace_id().to_string(),
-        latency.as_millis());
+        latency.as_millis()
+    );
 
     // On every response
-    info!(monotonic_counter.handled_request_count = 1,
+    info!(
+        monotonic_counter.handled_request_count = 1,
         response_status = response.status().as_u16(),
-        request_duration = latency.as_millis());
-    info!(histogram.service_request_duration = latency.as_millis(),
-        response_status = response.status().as_u16());
+        request_duration = latency.as_millis()
+    );
+    info!(
+        histogram.service_request_duration = latency.as_millis(),
+        response_status = response.status().as_u16()
+    );
 
     if response.status().is_server_error() {
         // On every server error (HTTP 5xx) response
-        info!(monotonic_counter.server_error_response_count = 1,
+        info!(
+            monotonic_counter.server_error_response_count = 1,
             response_status = response.status().as_u16(),
-            request_duration = latency.as_millis());
+            request_duration = latency.as_millis()
+        );
     } else if response.status().is_client_error() {
         // On every client error (HTTP 4xx) response
-        info!(monotonic_counter.client_error_response_count = 1,
+        info!(
+            monotonic_counter.client_error_response_count = 1,
             response_status = response.status().as_u16(),
-            request_duration = latency.as_millis());
+            request_duration = latency.as_millis()
+        );
     } else if response.status().is_success() {
         // On every successful (HTTP 2xx) response
-        info!(monotonic_counter.success_response_count = 1,
+        info!(
+            monotonic_counter.success_response_count = 1,
             response_status = response.status().as_u16(),
-            request_duration = latency.as_millis());
+            request_duration = latency.as_millis()
+        );
     } else {
-        error!("unexpected response status code: {}", response.status().as_u16());
+        error!(
+            "unexpected response status code: {}",
+            response.status().as_u16()
+        );
     }
 }
 
@@ -281,12 +301,15 @@ pub fn on_outgoing_eos(trailers: Option<&HeaderMap>, stream_duration: Duration, 
     span.record("stream_response", true);
     span.record("stream_response_duration_ms", stream_duration.as_millis());
 
-    info!("stream response for request with trace_id {} closed after {} ms with trailers: {:?}",
+    info!(
+        "stream response for request with trace_id {} closed after {} ms with trailers: {:?}",
         span.context().span().span_context().trace_id().to_string(),
         stream_duration.as_millis(),
-        trailers);
-
-    info!(monotonic_counter.service_stream_response_count = 1,
-        stream_duration = stream_duration.as_millis());
+        trailers
+    );
+    info!(
+        monotonic_counter.service_stream_response_count = 1,
+        stream_duration = stream_duration.as_millis()
+    );
     info!(monotonic_histogram.service_stream_response_duration = stream_duration.as_millis());
 }
