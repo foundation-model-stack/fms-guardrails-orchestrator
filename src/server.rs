@@ -180,11 +180,13 @@ pub async fn run(
             post(detect_generated),
         )
         .with_state(shared_state)
-        .layer(TraceLayer::new_for_http()
-            .make_span_with(tracing_utils::incoming_request_span)
-            .on_request(tracing_utils::on_incoming_request)
-            .on_response(tracing_utils::on_outgoing_response)
-            .on_eos(tracing_utils::on_outgoing_eos));
+        .layer(
+            TraceLayer::new_for_http()
+                .make_span_with(tracing_utils::incoming_request_span)
+                .on_request(tracing_utils::on_incoming_request)
+                .on_response(tracing_utils::on_outgoing_response)
+                .on_eos(tracing_utils::on_outgoing_eos),
+        );
 
     // (2c) Generate main guardrails server handle based on whether TLS is needed
     let listener: TcpListener = TcpListener::bind(&http_addr)
