@@ -3,7 +3,6 @@ use reqwest::Response;
 use tracing::error;
 use url::Url;
 
-use super::ClientCode;
 use crate::health::{HealthCheckResult, HealthStatus, OptionalHealthCheckResponseBody};
 
 #[derive(Clone)]
@@ -37,9 +36,9 @@ impl HttpClient {
                     if let Ok(body) = response.json::<OptionalHealthCheckResponseBody>().await {
                         // If the service provided a body, we only anticipate a minimal health status and optional reason.
                         HealthCheckResult {
-                            health_status: body.health_status.clone(),
-                            response_code: ClientCode::Http(StatusCode::OK),
-                            reason: match body.health_status {
+                            status: body.status.clone(),
+                            code: StatusCode::OK,
+                            reason: match body.status {
                                 HealthStatus::Healthy => None,
                                 _ => body.reason,
                             },
@@ -47,8 +46,8 @@ impl HttpClient {
                     } else {
                         // If the service did not provide a body, we assume it is healthy.
                         HealthCheckResult {
-                            health_status: HealthStatus::Healthy,
-                            response_code: ClientCode::Http(StatusCode::OK),
+                            status: HealthStatus::Healthy,
+                            code: StatusCode::OK,
                             reason: None,
                         }
                     }
@@ -59,7 +58,7 @@ impl HttpClient {
                         // Regardless we can't be certain, so the reason is also provided.
                         // TODO: We will likely circle back to re-evaluate this logic in the future
                         // when we know more about how the client health results will be used.
-                        health_status: if response.status().as_u16() >= 500
+                        status: if response.status().as_u16() >= 500
                             && response.status().as_u16() < 600
                         {
                             HealthStatus::Unhealthy
@@ -74,30 +73,16 @@ impl HttpClient {
                             );
                             HealthStatus::Unknown
                         },
-                        response_code: ClientCode::Http(response.status()),
-                        reason: Some(format!(
-                            "{}{}",
-                            response.error_for_status_ref().unwrap_err(),
-                            response
-                                .text()
-                                .await
-                                .map(|s| if s.is_empty() {
-                                    "".to_string()
-                                } else {
-                                    format!(": {}", s)
-                                })
-                                .unwrap_or("".to_string())
-                        )),
+                        code: response.status(),
+                        reason: response.status().canonical_reason().map(|v| v.to_string()),
                     }
                 }
             }
             Err(e) => {
                 error!("error checking health: {}", e);
                 HealthCheckResult {
-                    health_status: HealthStatus::Unknown,
-                    response_code: ClientCode::Http(
-                        e.status().unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
-                    ),
+                    status: HealthStatus::Unknown,
+                    code: e.status().unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
                     reason: Some(e.to_string()),
                 }
             }

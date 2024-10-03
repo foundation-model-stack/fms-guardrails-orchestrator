@@ -23,13 +23,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     clients::detector::{ContentAnalysisResponse, ContextType},
-    health::ClientHealth,
+    health::HealthCheckCache,
     pb,
 };
 
 #[derive(Clone, Debug, Serialize)]
 pub struct InfoResponse {
-    pub client_health: ClientHealth,
+    pub services: HealthCheckCache,
 }
 
 #[derive(Debug, Clone, Deserialize)]

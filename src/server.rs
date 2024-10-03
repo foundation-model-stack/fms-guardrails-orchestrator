@@ -295,8 +295,8 @@ async fn info(
     State(state): State<Arc<ServerState>>,
     Query(params): Query<InfoParams>,
 ) -> Result<Json<InfoResponse>, Error> {
-    let client_health = state.orchestrator.client_health(params.probe).await;
-    Ok(Json(InfoResponse { client_health }))
+    let services = state.orchestrator.client_health(params.probe).await;
+    Ok(Json(InfoResponse { services }))
 }
 
 async fn classification_with_gen(

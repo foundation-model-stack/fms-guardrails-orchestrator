@@ -54,38 +54,26 @@ impl From<reqwest::Error> for Error {
 
 impl From<tonic::Status> for Error {
     fn from(value: tonic::Status) -> Self {
-        use tonic::Code::*;
-        // Return equivalent http status code for grpc status code
-        let code = match value.code() {
-            InvalidArgument => StatusCode::BAD_REQUEST,
-            Internal => StatusCode::INTERNAL_SERVER_ERROR,
-            NotFound => StatusCode::NOT_FOUND,
-            DeadlineExceeded => StatusCode::REQUEST_TIMEOUT,
-            Unimplemented => StatusCode::NOT_IMPLEMENTED,
-            Unauthenticated => StatusCode::UNAUTHORIZED,
-            PermissionDenied => StatusCode::FORBIDDEN,
-            Unavailable => StatusCode::SERVICE_UNAVAILABLE,
-            Ok => StatusCode::OK,
-            _ => StatusCode::INTERNAL_SERVER_ERROR,
-        };
         Self::Grpc {
-            code,
+            code: grpc_to_http_code(value.code()),
             message: value.message().to_string(),
         }
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum ClientCode {
-    Http(StatusCode),
-    Grpc(tonic::Code),
-}
-
-impl std::fmt::Display for ClientCode {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ClientCode::Http(code) => write!(f, "HTTP {}", code),
-            ClientCode::Grpc(code) => write!(f, "gRPC {:?} {}", code, code),
-        }
+/// Returns equivalent http status code for grpc status code
+pub fn grpc_to_http_code(value: tonic::Code) -> StatusCode {
+    use tonic::Code::*;
+    match value {
+        InvalidArgument => StatusCode::BAD_REQUEST,
+        Internal => StatusCode::INTERNAL_SERVER_ERROR,
+        NotFound => StatusCode::NOT_FOUND,
+        DeadlineExceeded => StatusCode::REQUEST_TIMEOUT,
+        Unimplemented => StatusCode::NOT_IMPLEMENTED,
+        Unauthenticated => StatusCode::UNAUTHORIZED,
+        PermissionDenied => StatusCode::FORBIDDEN,
+        Unavailable => StatusCode::SERVICE_UNAVAILABLE,
+        Ok => StatusCode::OK,
+        _ => StatusCode::INTERNAL_SERVER_ERROR,
     }
 }

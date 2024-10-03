@@ -39,7 +39,7 @@ use crate::{
         TgisClient,
     },
     config::{DetectorType, GenerationProvider, OrchestratorConfig},
-    health::ClientHealth,
+    health::HealthCheckCache,
     models::{
         ContextDocsHttpRequest, DetectionOnGeneratedHttpRequest, DetectorParams,
         GenerationWithDetectionHttpRequest, GuardrailsConfig, GuardrailsHttpRequest,
@@ -81,7 +81,7 @@ impl Context {
 #[cfg_attr(test, derive(Default))]
 pub struct Orchestrator {
     ctx: Arc<Context>,
-    client_health: Arc<RwLock<ClientHealth>>,
+    client_health: Arc<RwLock<HealthCheckCache>>,
 }
 
 impl Orchestrator {
@@ -93,7 +93,7 @@ impl Orchestrator {
         let ctx = Arc::new(Context { config, clients });
         let orchestrator = Self {
             ctx,
-            client_health: Arc::new(RwLock::new(ClientHealth::default())),
+            client_health: Arc::new(RwLock::new(HealthCheckCache::default())),
         };
         debug!("running start up checks");
         orchestrator.on_start_up(start_up_health_check).await?;
@@ -114,25 +114,25 @@ impl Orchestrator {
             info!("Probing client health...");
             let client_health = self.client_health(true).await;
             // Results of probe do not affect orchestrator start-up.
-            info!("Client health: {client_health:?}"); // TODO: re-impl Display
+            info!("Client health:\n{client_health}");
         }
         Ok(())
     }
 
     /// Returns client health state.
-    pub async fn client_health(&self, probe: bool) -> ClientHealth {
+    pub async fn client_health(&self, probe: bool) -> HealthCheckCache {
         let initialized = !self.client_health.read().await.is_empty();
         if probe || !initialized {
             debug!("refreshing client health");
             let now = Instant::now();
-            let mut state = ClientHealth::with_capacity(self.ctx.clients.len());
+            let mut health = HealthCheckCache::with_capacity(self.ctx.clients.len());
             // TODO: perform health checks concurrently?
             for (key, client) in self.ctx.clients.iter() {
                 let result = client.health().await;
-                state.insert(key.into(), result);
+                health.insert(key.into(), result);
             }
             let mut client_health = self.client_health.write().await;
-            *client_health = state;
+            *client_health = health;
             debug!(
                 "refreshing client health completed in {:.2?}ms",
                 now.elapsed().as_millis()

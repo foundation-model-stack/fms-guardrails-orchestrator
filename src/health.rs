@@ -1,11 +1,12 @@
 use std::{collections::HashMap, fmt::Display};
 
 use axum::http::StatusCode;
-use serde::{ser::SerializeStruct, Deserialize, Serialize};
-use tonic::Code;
-use tracing::{error, warn};
+use serde::{Deserialize, Serialize};
 
-use crate::{clients::ClientCode, pb::grpc::health::v1::HealthCheckResponse};
+use crate::{
+    clients::errors::grpc_to_http_code,
+    pb::grpc::health::v1::{health_check_response::ServingStatus, HealthCheckResponse},
+};
 
 /// Health status determined for or returned by a client service.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -31,11 +32,10 @@ impl Display for HealthStatus {
 
 impl From<HealthCheckResponse> for HealthStatus {
     fn from(value: HealthCheckResponse) -> Self {
-        // NOTE: gRPC Health v1 status codes: 0 = UNKNOWN, 1 = SERVING, 2 = NOT_SERVING, 3 = SERVICE_UNKNOWN
-        match value.status {
-            1 => Self::Healthy,
-            2 => Self::Unhealthy,
-            _ => Self::Unknown,
+        match value.status() {
+            ServingStatus::Serving => Self::Healthy,
+            ServingStatus::NotServing => Self::Unhealthy,
+            ServingStatus::Unknown | ServingStatus::ServiceUnknown => Self::Unknown,
         }
     }
 }
@@ -43,38 +43,19 @@ impl From<HealthCheckResponse> for HealthStatus {
 impl From<StatusCode> for HealthStatus {
     fn from(code: StatusCode) -> Self {
         match code.as_u16() {
-            200 => Self::Healthy,
-            201..=299 => {
-                warn!(
-                    "Unexpected HTTP successful health check response status code: {}",
-                    code
-                );
-                Self::Healthy
-            }
-            503 => Self::Unhealthy,
-            500..=502 | 504..=599 => {
-                warn!(
-                    "Unexpected HTTP server error health check response status code: {}",
-                    code
-                );
-                Self::Unhealthy
-            }
-            _ => {
-                warn!(
-                    "Unexpected HTTP client error health check response status code: {}",
-                    code
-                );
-                Self::Unknown
-            }
+            200..=299 => Self::Healthy,
+            500..=599 => Self::Unhealthy,
+            _ => Self::Unknown,
         }
     }
 }
 
-/// Holds health check results for all clients.
+/// A cache to hold the latest health check results for each client service.
+/// Orchestrator has a reference-counted mutex-protected instance of this cache.
 #[derive(Debug, Clone, Default, Serialize)]
-pub struct ClientHealth(HashMap<String, HealthCheckResult>);
+pub struct HealthCheckCache(HashMap<String, HealthCheckResult>);
 
-impl ClientHealth {
+impl HealthCheckCache {
     pub fn new() -> Self {
         Self(HashMap::new())
     }
@@ -83,15 +64,16 @@ impl ClientHealth {
         Self(HashMap::with_capacity(capacity))
     }
 
+    /// Returns `true` if all services are healthy or unknown.
     pub fn healthy(&self) -> bool {
         !self
             .0
             .iter()
-            .any(|(_, value)| matches!(value.health_status, HealthStatus::Unhealthy))
+            .any(|(_, value)| matches!(value.status, HealthStatus::Unhealthy))
     }
 }
 
-impl std::ops::Deref for ClientHealth {
+impl std::ops::Deref for HealthCheckCache {
     type Target = HashMap<String, HealthCheckResult>;
 
     fn deref(&self) -> &Self::Target {
@@ -99,82 +81,48 @@ impl std::ops::Deref for ClientHealth {
     }
 }
 
-impl std::ops::DerefMut for ClientHealth {
+impl std::ops::DerefMut for HealthCheckCache {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
 }
 
+impl Display for HealthCheckCache {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", serde_json::to_string_pretty(self).unwrap())
+    }
+}
+
+impl HealthCheckResponse {
+    pub fn reason(&self) -> Option<String> {
+        let status = self.status();
+        match status {
+            ServingStatus::Serving => None,
+            _ => Some(status.as_str_name().to_string()),
+        }
+    }
+}
+
 /// Result of a health check request.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct HealthCheckResult {
     /// Overall health status of client service.
-    /// `HEALTHY`, `UNHEALTHY`, or `UNKNOWN`.
-    pub health_status: HealthStatus,
+    pub status: HealthStatus,
     /// Response code of the latest health check request.
-    /// This should be omitted on serialization if the health check was successful (when the response is `HTTP 200 OK` or `gRPC 0 OK`).
-    pub response_code: ClientCode,
-    /// Optional reason for the health check result status being `UNHEALTHY` or `UNKNOWN`.
-    /// May be omitted overall if the health check was successful.
+    #[serde(
+        with = "http_serde::status_code",
+        skip_serializing_if = "StatusCode::is_success"
+    )]
+    pub code: StatusCode,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
-}
-
-impl HealthCheckResult {
-    pub fn reason_from_health_check_response(response: &HealthCheckResponse) -> Option<String> {
-        match response.status {
-            0 => Some("from gRPC health check serving status: UNKNOWN".to_string()),
-            1 => None,
-            2 => Some("from gRPC health check serving status: NOT_SERVING".to_string()),
-            3 => Some("from gRPC health check serving status: SERVICE_UNKNOWN".to_string()),
-            _ => {
-                error!(
-                    "Unexpected gRPC health check serving status: {}",
-                    response.status
-                );
-                Some(format!(
-                    "Unexpected gRPC health check serving status: {}",
-                    response.status
-                ))
-            }
-        }
-    }
-}
-
-impl Serialize for HealthCheckResult {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        match self.health_status {
-            HealthStatus::Healthy => self.health_status.serialize(serializer),
-            _ => match &self.reason {
-                Some(reason) => {
-                    let mut state = serializer.serialize_struct("HealthCheckResult", 3)?;
-                    state.serialize_field("health_status", &self.health_status)?;
-                    state.serialize_field("response_code", &self.response_code.to_string())?;
-                    state.serialize_field("reason", reason)?;
-                    state.end()
-                }
-                None => {
-                    let mut state = serializer.serialize_struct("HealthCheckResult", 2)?;
-                    state.serialize_field("health_status", &self.health_status)?;
-                    state.serialize_field("response_code", &self.response_code.to_string())?;
-                    state.end()
-                }
-            },
-        }
-    }
 }
 
 impl Display for HealthCheckResult {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.reason {
-            Some(reason) => write!(
-                f,
-                "{} ({})\n\t\t\t{}",
-                self.health_status, self.response_code, reason
-            ),
-            None => write!(f, "{} ({})", self.health_status, self.response_code),
+            Some(reason) => write!(f, "{} ({})\n\t\t\t{}", self.status, self.code, reason),
+            None => write!(f, "{} ({})", self.status, self.code),
         }
     }
 }
@@ -185,15 +133,15 @@ impl From<Result<tonic::Response<HealthCheckResponse>, tonic::Status>> for Healt
             Ok(response) => {
                 let response = response.into_inner();
                 Self {
-                    health_status: response.into(),
-                    response_code: ClientCode::Grpc(Code::Ok),
-                    reason: Self::reason_from_health_check_response(&response),
+                    status: response.into(),
+                    code: StatusCode::OK,
+                    reason: response.reason(),
                 }
             }
             Err(status) => Self {
-                health_status: HealthStatus::Unknown,
-                response_code: ClientCode::Grpc(status.code()),
-                reason: Some(format!("gRPC health check failed: {}", status)),
+                status: HealthStatus::Unknown,
+                code: grpc_to_http_code(status.code()),
+                reason: Some(status.message().to_string()),
             },
         }
     }
@@ -205,7 +153,7 @@ impl From<Result<tonic::Response<HealthCheckResponse>, tonic::Status>> for Healt
 #[derive(Deserialize)]
 pub struct OptionalHealthCheckResponseBody {
     /// `HEALTHY`, `UNHEALTHY`, or `UNKNOWN`. Although `HEALTHY` is already implied without a body.
-    pub health_status: HealthStatus,
+    pub status: HealthStatus,
     /// Optional reason for the health check result status being `UNHEALTHY` or `UNKNOWN`.
     /// May be omitted overall if the health check was successful.
     #[serde(default)]

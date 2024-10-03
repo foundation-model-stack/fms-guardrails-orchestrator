@@ -25,7 +25,7 @@ use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Code, Request, Response, Status, Streaming};
 use tracing::info;
 
-use super::{BoxStream, Client, ClientCode, Error};
+use super::{errors::grpc_to_http_code, BoxStream, Client, Error};
 use crate::{
     health::{HealthCheckResult, HealthStatus},
     pb::{
@@ -134,14 +134,14 @@ impl Client for ChunkerClient {
             }
             Err(status) => status.code(),
         };
-        let health_status = if matches!(code, Code::Ok) {
+        let status = if matches!(code, Code::Ok) {
             HealthStatus::Healthy
         } else {
             HealthStatus::Unhealthy
         };
         HealthCheckResult {
-            health_status,
-            response_code: ClientCode::Grpc(code),
+            status,
+            code: grpc_to_http_code(code),
             reason: None,
         }
     }
