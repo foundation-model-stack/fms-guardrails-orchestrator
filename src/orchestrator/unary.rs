@@ -737,7 +737,7 @@ pub async fn detect_for_context(
         .get_as::<TextContextDocDetectorClient>(&detector_id)
         .unwrap();
     let response = client
-        .text_context_docs(&detector_id, request, headers)
+        .text_context_doc(&detector_id, request, headers)
         .await
         .map(|results| {
             results
@@ -908,8 +908,7 @@ mod tests {
         };
 
         // Construct a behavior for the mock object
-        let headers = HeaderMap::new();
-        faux::when!(tgis_client.generate(expected_generate_req_args, headers))
+        faux::when!(tgis_client.generate(expected_generate_req_args, HeaderMap::new()))
             .once() // TODO: Add with_args
             .then_return(Ok(client_generation_response));
 

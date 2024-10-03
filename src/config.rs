@@ -662,6 +662,7 @@ chunkers:
             port: 9000
 detectors:
     hap:
+        type: text_contents
         service:
             hostname: localhost
             port: 9000
@@ -689,6 +690,7 @@ chunkers:
             port: 9000
 detectors:
     hap:
+        type: text_contents
         service:
             hostname: localhost
             port: 9000

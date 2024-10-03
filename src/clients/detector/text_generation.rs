@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use hyper::StatusCode;
+use hyper::{HeaderMap, StatusCode};
 use serde::Serialize;
 
 use super::{DetectorError, DETECTOR_ID_HEADER_NAME};
@@ -25,6 +25,7 @@ impl TextGenerationDetectorClient {
         &self,
         model_id: &str,
         request: GenerationDetectionRequest,
+        headers: HeaderMap,
     ) -> Result<Vec<DetectionResult>, Error> {
         let url = self
             .client
@@ -34,6 +35,7 @@ impl TextGenerationDetectorClient {
         let response = self
             .client
             .post(url)
+            .headers(headers)
             .header(DETECTOR_ID_HEADER_NAME, model_id)
             .json(&request)
             .send()

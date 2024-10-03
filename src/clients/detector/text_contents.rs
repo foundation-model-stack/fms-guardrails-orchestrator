@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use hyper::StatusCode;
+use hyper::{HeaderMap, StatusCode};
 use serde::{Deserialize, Serialize};
 
 use super::{DetectorError, DETECTOR_ID_HEADER_NAME};
@@ -24,6 +24,7 @@ impl TextContentsDetectorClient {
         &self,
         model_id: &str,
         request: ContentAnalysisRequest,
+        headers: HeaderMap,
     ) -> Result<Vec<Vec<ContentAnalysisResponse>>, Error> {
         let url = self
             .client
@@ -33,6 +34,7 @@ impl TextContentsDetectorClient {
         let response = self
             .client
             .post(url)
+            .headers(headers)
             .header(DETECTOR_ID_HEADER_NAME, model_id)
             .json(&request)
             .send()

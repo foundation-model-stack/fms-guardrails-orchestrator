@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use hyper::StatusCode;
+use hyper::{HeaderMap, StatusCode};
 use serde::{Deserialize, Serialize};
 
 use super::{DetectorError, DETECTOR_ID_HEADER_NAME};
@@ -21,10 +21,11 @@ impl TextContextDocDetectorClient {
         Self { client }
     }
 
-    pub async fn text_context_docs(
+    pub async fn text_context_doc(
         &self,
         model_id: &str,
         request: ContextDocsDetectionRequest,
+        headers: HeaderMap,
     ) -> Result<Vec<DetectionResult>, Error> {
         let url = self
             .client
@@ -34,6 +35,7 @@ impl TextContextDocDetectorClient {
         let response = self
             .client
             .post(url)
+            .headers(headers)
             .header(DETECTOR_ID_HEADER_NAME, model_id)
             .json(&request)
             .send()
