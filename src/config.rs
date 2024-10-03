@@ -189,11 +189,9 @@ impl OrchestratorConfig {
             .map(|h| h.to_lowercase())
             .collect::<HashSet<String>>();
 
-        config.passthrough_headers.extend(
-            DEFAULT_ALLOWED_HEADERS
-                .iter()
-                .map(|h| h.to_lowercase()),
-        );
+        config
+            .passthrough_headers
+            .extend(DEFAULT_ALLOWED_HEADERS.iter().map(|h| h.to_lowercase()));
 
         config.apply_named_tls_configs()?;
         config.validate()?;
