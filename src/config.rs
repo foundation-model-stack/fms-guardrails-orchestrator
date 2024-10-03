@@ -192,7 +192,7 @@ impl OrchestratorConfig {
         config.passthrough_headers.extend(
             DEFAULT_ALLOWED_HEADERS
                 .iter()
-                .map(|h| h.to_string().to_lowercase()),
+                .map(|h| h.to_lowercase()),
         );
 
         config.apply_named_tls_configs()?;
