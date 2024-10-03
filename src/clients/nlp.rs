@@ -17,9 +17,10 @@
 
 use std::collections::HashMap;
 
+use axum::http::{Extensions, HeaderMap};
 use futures::{StreamExt, TryStreamExt};
 use ginepro::LoadBalancedChannel;
-use tonic::Request;
+use tonic::{metadata::MetadataMap, Request};
 
 use super::{create_grpc_clients, BoxStream, Error};
 use crate::{
@@ -94,8 +95,9 @@ impl NlpClient {
         &self,
         model_id: &str,
         request: TokenizationTaskRequest,
+        headers: HeaderMap,
     ) -> Result<TokenizationResults, Error> {
-        let request = request_with_model_id(request, model_id);
+        let request = request_with_model_id(request, model_id, headers);
         Ok(self
             .client(model_id)?
             .tokenization_task_predict(request)
@@ -107,8 +109,9 @@ impl NlpClient {
         &self,
         model_id: &str,
         request: TokenClassificationTaskRequest,
+        headers: HeaderMap,
     ) -> Result<TokenClassificationResults, Error> {
-        let request = request_with_model_id(request, model_id);
+        let request = request_with_model_id(request, model_id, headers);
         Ok(self
             .client(model_id)?
             .token_classification_task_predict(request)
@@ -120,8 +123,9 @@ impl NlpClient {
         &self,
         model_id: &str,
         request: TextGenerationTaskRequest,
+        headers: HeaderMap,
     ) -> Result<GeneratedTextResult, Error> {
-        let request = request_with_model_id(request, model_id);
+        let request = request_with_model_id(request, model_id, headers);
         Ok(self
             .client(model_id)?
             .text_generation_task_predict(request)
@@ -133,8 +137,9 @@ impl NlpClient {
         &self,
         model_id: &str,
         request: ServerStreamingTextGenerationTaskRequest,
+        headers: HeaderMap,
     ) -> Result<BoxStream<Result<GeneratedTextStreamResult, Error>>, Error> {
-        let request = request_with_model_id(request, model_id);
+        let request = request_with_model_id(request, model_id, headers);
         let response_stream = self
             .client(model_id)?
             .server_streaming_text_generation_task_predict(request)
@@ -146,8 +151,9 @@ impl NlpClient {
     }
 }
 
-fn request_with_model_id<T>(request: T, model_id: &str) -> Request<T> {
-    let mut request = Request::new(request);
+fn request_with_model_id<T>(request: T, model_id: &str, headers: HeaderMap) -> Request<T> {
+    let metadata = MetadataMap::from_headers(headers);
+    let mut request = Request::from_parts(metadata, Extensions::new(), request);
     request
         .metadata_mut()
         .insert(MODEL_ID_HEADER_NAME, model_id.parse().unwrap());
