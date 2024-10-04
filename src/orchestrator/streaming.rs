@@ -20,7 +20,9 @@ mod aggregator;
 use std::{collections::HashMap, pin::Pin, sync::Arc, time::Duration};
 
 use aggregator::Aggregator;
+use axum::http::HeaderMap;
 use futures::{future::try_join_all, Stream, StreamExt, TryStreamExt};
+
 use tokio::sync::{broadcast, mpsc};
 use tokio_stream::wrappers::{BroadcastStream, ReceiverStream};
 use tracing::{debug, error, info, instrument};
@@ -56,6 +58,7 @@ impl Orchestrator {
         let model_id = task.model_id;
         let params = task.text_gen_parameters;
         let input_text = task.inputs;
+        let headers = task.headers;
 
         info!(%request_id, config = ?task.guardrails_config, "starting task");
 
@@ -72,7 +75,15 @@ impl Orchestrator {
             let input_detectors = task.guardrails_config.input_detectors();
             let input_detections = match input_detectors {
                 Some(detectors) if !detectors.is_empty() => {
-                    match input_detection_task(&ctx, detectors, input_text.clone(), masks).await {
+                    match input_detection_task(
+                        &ctx,
+                        detectors,
+                        input_text.clone(),
+                        masks,
+                        headers.clone(),
+                    )
+                    .await
+                    {
                         Ok(result) => result,
                         Err(error) => {
                             error!(%request_id, %error, "task failed");
@@ -88,7 +99,9 @@ impl Orchestrator {
                 // Detected HAP/PII
                 // Do tokenization to get input_token_count
                 let (input_token_count, _tokens) =
-                    match tokenize(&ctx, model_id.clone(), input_text.clone()).await {
+                    match tokenize(&ctx, model_id.clone(), input_text.clone(), headers.clone())
+                        .await
+                    {
                         Ok(result) => result,
                         Err(error) => {
                             error!(%request_id, %error, "task failed");
@@ -120,6 +133,7 @@ impl Orchestrator {
                     model_id.clone(),
                     input_text.clone(),
                     params.clone(),
+                    headers.clone(),
                 )
                 .await
                 {
@@ -149,6 +163,7 @@ impl Orchestrator {
                             detectors,
                             generation_stream,
                             error_tx.clone(),
+                            headers.clone(),
                         )
                         .await
                         {
@@ -213,6 +228,7 @@ async fn streaming_output_detection_task(
         Box<dyn Stream<Item = Result<ClassifiedGeneratedTextStreamResult, Error>> + Send>,
     >,
     error_tx: broadcast::Sender<Error>,
+    headers: HeaderMap,
 ) -> Result<mpsc::Receiver<Result<ClassifiedGeneratedTextStreamResult, Error>>, Error> {
     // Create generation broadcast stream
     let (generation_tx, generation_rx) = broadcast::channel(1024);
@@ -275,6 +291,7 @@ async fn streaming_output_detection_task(
             detector_tx,
             chunk_rx,
             error_tx,
+            headers.clone(),
         ));
         detection_streams.push((detector_id, detector_rx));
     }
@@ -340,8 +357,10 @@ async fn detection_task(
     detector_tx: mpsc::Sender<(Chunk, Detections)>,
     mut chunk_rx: broadcast::Receiver<Chunk>,
     error_tx: broadcast::Sender<Error>,
+    headers: HeaderMap,
 ) {
     let mut error_rx = error_tx.subscribe();
+
     loop {
         tokio::select! {
             _ = error_rx.recv() => { break },
@@ -360,10 +379,11 @@ async fn detection_task(
                             break;
                         } else {
                             let request = ContentAnalysisRequest::new(contents.clone());
+                            let headers = headers.clone();
                             debug!(%detector_id, ?request, "sending detector request");
                             match ctx
                                 .detector_client
-                                .text_contents(&detector_id, request)
+                                .text_contents(&detector_id, request, headers)
                                 .await
                                 .map_err(|error| Error::DetectorRequestFailed { id: detector_id.clone(), error }) {
                                     Ok(response) => {
@@ -486,13 +506,14 @@ async fn generate_stream(
     model_id: String,
     text: String,
     params: Option<GuardrailsTextGenerationParameters>,
+    headers: HeaderMap,
 ) -> Result<
     Pin<Box<dyn Stream<Item = Result<ClassifiedGeneratedTextStreamResult, Error>> + Send>>,
     Error,
 > {
     Ok(ctx
         .generation_client
-        .generate_stream(model_id.clone(), text, params)
+        .generate_stream(model_id.clone(), text, params, headers)
         .await
         .map_err(|error| Error::GenerateRequestFailed {
             id: model_id.clone(),

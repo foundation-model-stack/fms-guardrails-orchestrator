@@ -113,12 +113,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-  /api/v1/text/context/chat:
+  /api/v1/text/chat:
     post:
       summary: Chat Analysis Unary Handler
       description: >-
-        Detectors that work on analysis chat history and provide detections <br>
-      operationId: chat_analysis_unary_handler_api_v1_text_context_chat_post
+        Detectors that analyze chat messages and provide detections <br>
+      operationId: chat_analysis_unary_handler_api_v1_text_chat_post
       parameters:
         - name: detector-id
           in: header
@@ -143,15 +143,11 @@ paths:
                 items:
                   $ref: '#/components/schemas/ChatAnalysisResponse'
                 title: >-
-                  Response Chat Analysis Unary Handler Api V1 Text Context Chat
-                  Post
+                  Response Chat Analysis Unary Handler Api V1 Text Chat Post
                 example:
-                  - detection: quantity_1
-                    detection_type: dummy_detector_type
-                    score: 0.68
-                  - detection: quantity_2
-                    detection_type: dummy_detector_type
-                    score: 0.79
+                  - detection: "detection_type"
+                    detection_type: "dummy_detector_type"
+                    score: 0.99
         '404':
           description: Resource Not Found
           content:
@@ -229,20 +225,13 @@ components:
   schemas:
     ChatAnalysisHttpRequest:
       properties:
-        chat_history:
-          items:
-            $ref: '#/components/schemas/Message'
+        messages:
+          title: Chat Messages
           type: array
-          title: Chat History
-          example:
-            - content: You are a helpful assistant.
-              author: system
-            - content: Hi, is this powered by siri or alexa?
-              author: user
-            - content: Better, it's watsonx
-              author: assistant
-            - content: This is awesome!
-              author: user
+          items:
+            allOf:
+              - $ref: https://raw.githubusercontent.com/openai/openai-openapi/master/openapi.yaml#/components/schemas/ChatCompletionRequestMessage
+              - type: object
         detector_params:
           type: object
           default: {}
@@ -250,7 +239,7 @@ components:
           description: Optional detector parameters, used on a per-detector basis
       type: object
       required:
-        - chat_history
+        - messages
       title: ChatAnalysisHttpRequest
     ChatAnalysisResponse:
       properties:
@@ -472,54 +461,6 @@ components:
       required:
         - code
         - message
-    Message:
-      properties:
-        author:
-          allOf:
-            - $ref: '#/components/schemas/AuthorEnum'
-          description: 'Who wrote the message: [<enum ''AuthorEnum''>]'
-        content:
-          type: string
-          title: Content
-          description: The text of the message
-      type: object
-      required:
-        - author
-        - content
-      title: Message
-    AuthorEnum:
-      type: string
-      enum:
-        - system
-        - assistant
-        - user
-      title: AuthorEnum
-      description: >-
-        A collection of name/value pairs.
-
-        Access them by:
-
-        - attribute access::
-
-        >>> AuthorEnum.system <AuthorEnum.system: 'system'>
-
-        - value lookup:
-
-        >>> AuthorEnum('system') <AuthorEnum.system: 'system'>
-
-        - name lookup:
-
-        >>> AuthorEnum['system'] <AuthorEnum.system: 'system'>
-
-        Enumerations can be iterated over, and know how many members they have:
-
-        >>> len(AuthorEnum) 3
-
-        >>> list(AuthorEnum) [<AuthorEnum.system: 'system'>, <AuthorEnum.assistant:
-        'assistant'>, <AuthorEnum.user: 'user'>]
-
-        Methods can be added to enumerations, and members can have their own
-        attributes -- see the documentation for details.
     ContentAnalysisHttpRequest:
       properties:
         contents:

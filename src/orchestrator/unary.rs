@@ -17,6 +17,7 @@
 
 use std::{collections::HashMap, sync::Arc};
 
+use axum::http::HeaderMap;
 use futures::{
     future::try_join_all,
     stream::{self, StreamExt},
@@ -54,6 +55,7 @@ impl Orchestrator {
     ) -> Result<ClassifiedGeneratedTextResult, Error> {
         let ctx = self.ctx.clone();
         let request_id = task.request_id;
+        let headers = task.headers;
         info!(%request_id, config = ?task.guardrails_config, "starting task");
         let task_handle = tokio::spawn(async move {
             let input_text = task.inputs.clone();
@@ -62,7 +64,14 @@ impl Orchestrator {
             // Do input detections
             let input_detections = match input_detectors {
                 Some(detectors) if !detectors.is_empty() => {
-                    input_detection_task(&ctx, detectors, input_text.clone(), masks).await?
+                    input_detection_task(
+                        &ctx,
+                        detectors,
+                        input_text.clone(),
+                        masks,
+                        headers.clone(),
+                    )
+                    .await?
                 }
                 _ => None,
             };
@@ -70,8 +79,13 @@ impl Orchestrator {
             if let Some(mut input_detections) = input_detections {
                 // Detected HAP/PII
                 // Do tokenization to get input_token_count
-                let (input_token_count, _tokens) =
-                    tokenize(&ctx, task.model_id.clone(), task.inputs.clone()).await?;
+                let (input_token_count, _tokens) = tokenize(
+                    &ctx,
+                    task.model_id.clone(),
+                    task.inputs.clone(),
+                    headers.clone(),
+                )
+                .await?;
                 // Send result with input detections
                 input_detections.sort_by_key(|r| r.start);
                 Ok(ClassifiedGeneratedTextResult {
@@ -94,6 +108,7 @@ impl Orchestrator {
                     task.model_id.clone(),
                     task.inputs.clone(),
                     task.text_gen_parameters.clone(),
+                    headers.clone(),
                 )
                 .await?;
                 debug!(?generation_results);
@@ -105,7 +120,7 @@ impl Orchestrator {
                             .generated_text
                             .clone()
                             .unwrap_or_default();
-                        output_detection_task(&ctx, detectors, generated_text).await?
+                        output_detection_task(&ctx, detectors, generated_text, headers).await?
                     }
                     _ => None,
                 };
@@ -151,12 +166,14 @@ impl Orchestrator {
             "handling generation with detection task"
         );
         let ctx = self.ctx.clone();
+        let headers = task.headers;
         let task_handle = tokio::spawn(async move {
             let generation_results = generate(
                 &ctx,
                 task.model_id.clone(),
                 task.prompt.clone(),
                 task.text_gen_parameters.clone(),
+                headers.clone(),
             )
             .await?;
 
@@ -180,6 +197,7 @@ impl Orchestrator {
                                 detector_params,
                                 prompt,
                                 generated_text,
+                                headers.clone(),
                             )
                             .await
                         }
@@ -226,6 +244,8 @@ impl Orchestrator {
         );
 
         let ctx = self.ctx.clone();
+        let headers = task.headers;
+
         let task_handle = tokio::spawn(async move {
             let content = task.content.clone();
             // No masking applied, so offset change is 0
@@ -253,6 +273,8 @@ impl Orchestrator {
 
                         let chunk = chunks.get(chunker_id).unwrap().clone();
 
+                        let headers = headers.clone();
+
                         async move {
                             detect_content(
                                 ctx,
@@ -260,6 +282,7 @@ impl Orchestrator {
                                 default_threshold,
                                 detector_params,
                                 chunk,
+                                headers,
                             )
                             .await
                         }
@@ -303,6 +326,7 @@ impl Orchestrator {
             "handling context documents detection task"
         );
         let ctx = self.ctx.clone();
+        let headers = task.headers;
         let task_handle = tokio::spawn(async move {
             // call detection
             let detections = try_join_all(
@@ -315,6 +339,7 @@ impl Orchestrator {
                         let content = task.content.clone();
                         let context_type = task.context_type.clone();
                         let context = task.context.clone();
+                        let headers = headers.clone();
 
                         async {
                             detect_for_context(
@@ -324,6 +349,7 @@ impl Orchestrator {
                                 content,
                                 context_type,
                                 context,
+                                headers,
                             )
                             .await
                         }
@@ -365,6 +391,8 @@ impl Orchestrator {
             "handling detection on generated content task"
         );
         let ctx = self.ctx.clone();
+        let headers = task.headers;
+
         let task_handle = tokio::spawn(async move {
             // call detection
             let detections = try_join_all(
@@ -376,6 +404,7 @@ impl Orchestrator {
                         let detector_params = detector_params.clone();
                         let prompt = task.prompt.clone();
                         let generated_text = task.generated_text.clone();
+                        let headers = headers.clone();
                         async {
                             detect_for_generation(
                                 ctx,
@@ -383,6 +412,7 @@ impl Orchestrator {
                                 detector_params,
                                 prompt,
                                 generated_text,
+                                headers,
                             )
                             .await
                         }
@@ -421,11 +451,12 @@ pub async fn input_detection_task(
     detectors: &HashMap<String, DetectorParams>,
     input_text: String,
     masks: Option<&[(usize, usize)]>,
+    headers: HeaderMap,
 ) -> Result<Option<Vec<TokenClassificationResult>>, Error> {
     let text_with_offsets = apply_masks(input_text, masks);
     let chunker_ids = get_chunker_ids(ctx, detectors)?;
     let chunks = chunk_task(ctx, chunker_ids, text_with_offsets).await?;
-    let detections = detection_task(ctx, detectors, chunks).await?;
+    let detections = detection_task(ctx, detectors, chunks, headers).await?;
     Ok((!detections.is_empty()).then_some(detections))
 }
 
@@ -435,11 +466,12 @@ async fn output_detection_task(
     ctx: &Arc<Context>,
     detectors: &HashMap<String, DetectorParams>,
     generated_text: String,
+    headers: HeaderMap,
 ) -> Result<Option<Vec<TokenClassificationResult>>, Error> {
     let text_with_offsets = apply_masks(generated_text, None);
     let chunker_ids = get_chunker_ids(ctx, detectors)?;
     let chunks = chunk_task(ctx, chunker_ids, text_with_offsets).await?;
-    let detections = detection_task(ctx, detectors, chunks).await?;
+    let detections = detection_task(ctx, detectors, chunks, headers).await?;
     Ok((!detections.is_empty()).then_some(detections))
 }
 
@@ -449,6 +481,7 @@ async fn detection_task(
     ctx: &Arc<Context>,
     detectors: &HashMap<String, DetectorParams>,
     chunks: HashMap<String, Vec<Chunk>>,
+    headers: HeaderMap,
 ) -> Result<Vec<TokenClassificationResult>, Error> {
     // Spawn tasks for each detector
     let tasks = detectors
@@ -468,8 +501,17 @@ async fn detection_task(
             // Get chunker for detector
             let chunker_id = detector_config.chunker_id.as_str();
             let chunks = chunks.get(chunker_id).unwrap().clone();
+            let headers = headers.clone();
             Ok(tokio::spawn(async move {
-                detect(ctx, detector_id, default_threshold, detector_params, chunks).await
+                detect(
+                    ctx,
+                    detector_id,
+                    default_threshold,
+                    detector_params,
+                    chunks,
+                    headers,
+                )
+                .await
             }))
         })
         .collect::<Result<Vec<_>, Error>>()?;
@@ -514,6 +556,7 @@ pub async fn detect(
     default_threshold: f64,
     detector_params: DetectorParams,
     chunks: Vec<Chunk>,
+    headers: HeaderMap,
 ) -> Result<Vec<TokenClassificationResult>, Error> {
     let detector_id = detector_id.clone();
     let threshold = detector_params.threshold().unwrap_or(default_threshold);
@@ -525,7 +568,7 @@ pub async fn detect(
         let request = ContentAnalysisRequest::new(contents);
         debug!(%detector_id, ?request, "sending detector request");
         ctx.detector_client
-            .text_contents(&detector_id, request)
+            .text_contents(&detector_id, request, headers)
             .await
             .map_err(|error| {
                 debug!(%detector_id, ?error, "error received from detector");
@@ -568,6 +611,7 @@ pub async fn detect_content(
     default_threshold: f64,
     detector_params: DetectorParams,
     chunks: Vec<Chunk>,
+    headers: HeaderMap,
 ) -> Result<Vec<ContentAnalysisResponse>, Error> {
     let detector_id = detector_id.clone();
     let threshold = detector_params.threshold().unwrap_or(default_threshold);
@@ -579,7 +623,7 @@ pub async fn detect_content(
         let request = ContentAnalysisRequest::new(contents);
         debug!(%detector_id, ?request, "sending detector request");
         ctx.detector_client
-            .text_contents(&detector_id, request)
+            .text_contents(&detector_id, request, headers)
             .await
             .map_err(|error| {
                 debug!(%detector_id, ?error, "error received from detector");
@@ -619,6 +663,7 @@ pub async fn detect_for_generation(
     detector_params: DetectorParams,
     prompt: String,
     generated_text: String,
+    headers: HeaderMap,
 ) -> Result<Vec<DetectionResult>, Error> {
     let detector_id = detector_id.clone();
     let threshold = detector_params.threshold().unwrap_or(
@@ -634,7 +679,7 @@ pub async fn detect_for_generation(
     debug!(%detector_id, ?request, "sending generation detector request");
     let response = ctx
         .detector_client
-        .text_generation(&detector_id, request)
+        .text_generation(&detector_id, request, headers)
         .await
         .map(|results| {
             results
@@ -658,6 +703,7 @@ pub async fn detect_for_context(
     content: String,
     context_type: ContextType,
     context: Vec<String>,
+    headers: HeaderMap,
 ) -> Result<Vec<DetectionResult>, Error> {
     let detector_id = detector_id.clone();
     let threshold = detector_params.threshold().unwrap_or(
@@ -673,7 +719,7 @@ pub async fn detect_for_context(
     debug!(%detector_id, ?request, "sending context detector request");
     let response = ctx
         .detector_client
-        .text_context_doc(&detector_id, request)
+        .text_context_doc(&detector_id, request, headers)
         .await
         .map(|results| {
             results
@@ -749,9 +795,10 @@ pub async fn tokenize(
     ctx: &Arc<Context>,
     model_id: String,
     text: String,
+    headers: HeaderMap,
 ) -> Result<(u32, Vec<String>), Error> {
     ctx.generation_client
-        .tokenize(model_id.clone(), text)
+        .tokenize(model_id.clone(), text, headers)
         .await
         .map_err(|error| Error::TokenizeRequestFailed {
             id: model_id,
@@ -765,9 +812,10 @@ async fn generate(
     model_id: String,
     text: String,
     params: Option<GuardrailsTextGenerationParameters>,
+    headers: HeaderMap,
 ) -> Result<ClassifiedGeneratedTextResult, Error> {
     ctx.generation_client
-        .generate(model_id.clone(), text, params)
+        .generate(model_id.clone(), text, params, headers)
         .await
         .map_err(|error| Error::GenerateRequestFailed {
             id: model_id,
@@ -777,7 +825,7 @@ async fn generate(
 
 #[cfg(test)]
 mod tests {
-    use hyper::StatusCode;
+    use hyper::{HeaderMap, StatusCode};
 
     use super::*;
     use crate::{
@@ -851,7 +899,7 @@ mod tests {
         };
 
         // Construct a behavior for the mock object
-        faux::when!(mock_client.generate(expected_generate_req_args))
+        faux::when!(mock_client.generate(expected_generate_req_args, HeaderMap::new()))
             .once() // TODO: Add with_args
             .then_return(Ok(client_generation_response));
 
@@ -861,7 +909,7 @@ mod tests {
 
         // Test request formulation and response processing is as expected
         assert_eq!(
-            generate(&ctx, text_gen_model_id, sample_text, None)
+            generate(&ctx, text_gen_model_id, sample_text, None, HeaderMap::new())
                 .await
                 .unwrap(),
             expected_generate_response
@@ -911,7 +959,8 @@ mod tests {
 
         faux::when!(mock_detector_client.text_contents(
             detector_id,
-            ContentAnalysisRequest::new(vec![first_sentence.clone(), second_sentence.clone()])
+            ContentAnalysisRequest::new(vec![first_sentence.clone(), second_sentence.clone()]),
+            HeaderMap::new(),
         ))
         .once()
         .then_return(Ok(vec![
@@ -944,7 +993,8 @@ mod tests {
                 detector_id.to_string(),
                 threshold,
                 detector_params,
-                chunks
+                chunks,
+                HeaderMap::new(),
             )
             .await
             .unwrap(),
@@ -979,7 +1029,8 @@ mod tests {
 
         faux::when!(mock_detector_client.text_contents(
             detector_id,
-            ContentAnalysisRequest::new(vec![sentence.clone()])
+            ContentAnalysisRequest::new(vec![sentence.clone()]),
+            HeaderMap::new(),
         ))
         .once()
         .then_return(Err(clients::Error::Http {
@@ -996,7 +1047,8 @@ mod tests {
                 detector_id.to_string(),
                 threshold,
                 detector_params,
-                chunks
+                chunks,
+                HeaderMap::new(),
             )
             .await
             .unwrap_err(),
@@ -1020,7 +1072,8 @@ mod tests {
 
         faux::when!(mock_detector_client.text_contents(
             detector_id,
-            ContentAnalysisRequest::new(vec![first_sentence.clone()])
+            ContentAnalysisRequest::new(vec![first_sentence.clone()]),
+            HeaderMap::new(),
         ))
         .once()
         .then_return(Ok(vec![vec![]]));
@@ -1034,7 +1087,8 @@ mod tests {
                 detector_id.to_string(),
                 threshold,
                 detector_params,
-                chunks
+                chunks,
+                HeaderMap::new(),
             )
             .await
             .unwrap(),
@@ -1071,7 +1125,8 @@ mod tests {
 
         faux::when!(mock_detector_client.text_generation(
             detector_id,
-            GenerationDetectionRequest::new(prompt.clone(), generated_text.clone())
+            GenerationDetectionRequest::new(prompt.clone(), generated_text.clone()),
+            HeaderMap::new(),
         ))
         .once()
         .then_return(Ok(vec![DetectionResult {
@@ -1106,7 +1161,8 @@ mod tests {
                 detector_id.to_string(),
                 detector_params,
                 prompt,
-                generated_text
+                generated_text,
+                HeaderMap::new(),
             )
             .await
             .unwrap(),
@@ -1132,7 +1188,8 @@ mod tests {
 
         faux::when!(mock_detector_client.text_generation(
             detector_id,
-            GenerationDetectionRequest::new(prompt.clone(), generated_text.clone())
+            GenerationDetectionRequest::new(prompt.clone(), generated_text.clone()),
+            HeaderMap::new(),
         ))
         .once()
         .then_return(Ok(vec![DetectionResult {
@@ -1159,7 +1216,8 @@ mod tests {
                 detector_id.to_string(),
                 detector_params,
                 prompt,
-                generated_text
+                generated_text,
+                HeaderMap::new(),
             )
             .await
             .unwrap(),

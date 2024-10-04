@@ -18,6 +18,7 @@
 use std::collections::HashMap;
 
 use futures::{StreamExt, TryStreamExt};
+use hyper::HeaderMap;
 use tracing::debug;
 
 use super::{BoxStream, Error, NlpClient, TgisClient};
@@ -85,6 +86,7 @@ impl GenerationClient {
         &self,
         model_id: String,
         text: String,
+        headers: HeaderMap,
     ) -> Result<(u32, Vec<String>), Error> {
         match &self.0 {
             Some(GenerationClientInner::Tgis(client)) => {
@@ -96,7 +98,7 @@ impl GenerationClient {
                     truncate_input_tokens: 0,
                 };
                 debug!(%model_id, provider = "tgis", ?request, "sending tokenize request");
-                let mut response = client.tokenize(request).await?;
+                let mut response = client.tokenize(request, headers).await?;
                 debug!(%model_id, provider = "tgis", ?response, "received tokenize response");
                 let response = response.responses.swap_remove(0);
                 Ok((response.token_count, response.tokens))
@@ -104,7 +106,9 @@ impl GenerationClient {
             Some(GenerationClientInner::Nlp(client)) => {
                 let request = TokenizationTaskRequest { text };
                 debug!(%model_id, provider = "nlp", ?request, "sending tokenize request");
-                let response = client.tokenization_task_predict(&model_id, request).await?;
+                let response = client
+                    .tokenization_task_predict(&model_id, request, headers)
+                    .await?;
                 debug!(%model_id, provider = "nlp", ?response, "received tokenize response");
                 let tokens = response
                     .results
@@ -122,6 +126,7 @@ impl GenerationClient {
         model_id: String,
         text: String,
         params: Option<GuardrailsTextGenerationParameters>,
+        headers: HeaderMap,
     ) -> Result<ClassifiedGeneratedTextResult, Error> {
         match &self.0 {
             Some(GenerationClientInner::Tgis(client)) => {
@@ -133,7 +138,7 @@ impl GenerationClient {
                     params,
                 };
                 debug!(%model_id, provider = "tgis", ?request, "sending generate request");
-                let response = client.generate(request).await?;
+                let response = client.generate(request, headers).await?;
                 debug!(%model_id, provider = "tgis", ?response, "received generate response");
                 Ok(response.into())
             }
@@ -171,7 +176,7 @@ impl GenerationClient {
                 };
                 debug!(%model_id, provider = "nlp", ?request, "sending generate request");
                 let response = client
-                    .text_generation_task_predict(&model_id, request)
+                    .text_generation_task_predict(&model_id, request, headers)
                     .await?;
                 debug!(%model_id, provider = "nlp", ?response, "received generate response");
                 Ok(response.into())
@@ -185,6 +190,7 @@ impl GenerationClient {
         model_id: String,
         text: String,
         params: Option<GuardrailsTextGenerationParameters>,
+        headers: HeaderMap,
     ) -> Result<BoxStream<Result<ClassifiedGeneratedTextStreamResult, Error>>, Error> {
         match &self.0 {
             Some(GenerationClientInner::Tgis(client)) => {
@@ -197,7 +203,7 @@ impl GenerationClient {
                 };
                 debug!(%model_id, provider = "tgis", ?request, "sending generate_stream request");
                 let response_stream = client
-                    .generate_stream(request)
+                    .generate_stream(request, headers)
                     .await?
                     .map_ok(Into::into)
                     .boxed();
@@ -237,7 +243,7 @@ impl GenerationClient {
                 };
                 debug!(%model_id, provider = "nlp", ?request, "sending generate_stream request");
                 let response_stream = client
-                    .server_streaming_text_generation_task_predict(&model_id, request)
+                    .server_streaming_text_generation_task_predict(&model_id, request, headers)
                     .await?
                     .map_ok(Into::into)
                     .boxed();

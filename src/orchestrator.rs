@@ -22,6 +22,7 @@ pub mod unary;
 
 use std::{collections::HashMap, sync::Arc};
 
+use axum::http::header::HeaderMap;
 use tokio::{sync::RwLock, time::Instant};
 use tracing::{debug, info};
 use uuid::Uuid;
@@ -79,6 +80,10 @@ impl Orchestrator {
         orchestrator.on_start_up(start_up_health_check).await?;
         debug!("start up checks completed");
         Ok(orchestrator)
+    }
+
+    pub fn config(&self) -> &OrchestratorConfig {
+        &self.ctx.config
     }
 
     /// Perform any start-up actions required by the orchestrator.
@@ -216,16 +221,18 @@ pub struct ClassificationWithGenTask {
     pub inputs: String,
     pub guardrails_config: GuardrailsConfig,
     pub text_gen_parameters: Option<GuardrailsTextGenerationParameters>,
+    pub headers: HeaderMap,
 }
 
 impl ClassificationWithGenTask {
-    pub fn new(request_id: Uuid, request: GuardrailsHttpRequest) -> Self {
+    pub fn new(request_id: Uuid, request: GuardrailsHttpRequest, headers: HeaderMap) -> Self {
         Self {
             request_id,
             model_id: request.model_id,
             inputs: request.inputs,
             guardrails_config: request.guardrail_config.unwrap_or_default(),
             text_gen_parameters: request.text_gen_parameters,
+            headers,
         }
     }
 }
@@ -247,16 +254,24 @@ pub struct GenerationWithDetectionTask {
 
     /// LLM Parameters
     pub text_gen_parameters: Option<GuardrailsTextGenerationParameters>,
+
+    // Headermap
+    pub headers: HeaderMap,
 }
 
 impl GenerationWithDetectionTask {
-    pub fn new(request_id: Uuid, request: GenerationWithDetectionHttpRequest) -> Self {
+    pub fn new(
+        request_id: Uuid,
+        request: GenerationWithDetectionHttpRequest,
+        headers: HeaderMap,
+    ) -> Self {
         Self {
             request_id,
             model_id: request.model_id,
             prompt: request.prompt,
             detectors: request.detectors,
             text_gen_parameters: request.text_gen_parameters,
+            headers,
         }
     }
 }
@@ -272,14 +287,22 @@ pub struct TextContentDetectionTask {
 
     /// Detectors configuration
     pub detectors: HashMap<String, DetectorParams>,
+
+    // Headermap
+    pub headers: HeaderMap,
 }
 
 impl TextContentDetectionTask {
-    pub fn new(request_id: Uuid, request: TextContentDetectionHttpRequest) -> Self {
+    pub fn new(
+        request_id: Uuid,
+        request: TextContentDetectionHttpRequest,
+        headers: HeaderMap,
+    ) -> Self {
         Self {
             request_id,
             content: request.content,
             detectors: request.detectors,
+            headers,
         }
     }
 }
@@ -301,16 +324,20 @@ pub struct ContextDocsDetectionTask {
 
     /// Detectors configuration
     pub detectors: HashMap<String, DetectorParams>,
+
+    // Headermap
+    pub headers: HeaderMap,
 }
 
 impl ContextDocsDetectionTask {
-    pub fn new(request_id: Uuid, request: ContextDocsHttpRequest) -> Self {
+    pub fn new(request_id: Uuid, request: ContextDocsHttpRequest, headers: HeaderMap) -> Self {
         Self {
             request_id,
             content: request.content,
             context_type: request.context_type,
             context: request.context,
             detectors: request.detectors,
+            headers,
         }
     }
 }
@@ -329,15 +356,23 @@ pub struct DetectionOnGenerationTask {
 
     /// Detectors configuration
     pub detectors: HashMap<String, DetectorParams>,
+
+    // Headermap
+    pub headers: HeaderMap,
 }
 
 impl DetectionOnGenerationTask {
-    pub fn new(request_id: Uuid, request: DetectionOnGeneratedHttpRequest) -> Self {
+    pub fn new(
+        request_id: Uuid,
+        request: DetectionOnGeneratedHttpRequest,
+        headers: HeaderMap,
+    ) -> Self {
         Self {
             request_id,
             prompt: request.prompt,
             generated_text: request.generated_text,
             detectors: request.detectors,
+            headers,
         }
     }
 }
@@ -350,16 +385,18 @@ pub struct StreamingClassificationWithGenTask {
     pub inputs: String,
     pub guardrails_config: GuardrailsConfig,
     pub text_gen_parameters: Option<GuardrailsTextGenerationParameters>,
+    pub headers: HeaderMap,
 }
 
 impl StreamingClassificationWithGenTask {
-    pub fn new(request_id: Uuid, request: GuardrailsHttpRequest) -> Self {
+    pub fn new(request_id: Uuid, request: GuardrailsHttpRequest, headers: HeaderMap) -> Self {
         Self {
             request_id,
             model_id: request.model_id,
             inputs: request.inputs,
             guardrails_config: request.guardrail_config.unwrap_or_default(),
             text_gen_parameters: request.text_gen_parameters,
+            headers,
         }
     }
 }

@@ -14,9 +14,9 @@
  limitations under the License.
 
 */
-
 use std::collections::HashMap;
 
+use axum::http::HeaderMap;
 use futures::{StreamExt, TryStreamExt};
 use ginepro::LoadBalancedChannel;
 use tonic::Code;
@@ -99,6 +99,7 @@ impl TgisClient {
     pub async fn generate(
         &self,
         request: BatchedGenerationRequest,
+        _headers: HeaderMap,
     ) -> Result<BatchedGenerationResponse, Error> {
         let model_id = request.model_id.as_str();
         Ok(self.client(model_id)?.generate(request).await?.into_inner())
@@ -107,6 +108,7 @@ impl TgisClient {
     pub async fn generate_stream(
         &self,
         request: SingleGenerationRequest,
+        _headers: HeaderMap,
     ) -> Result<BoxStream<Result<GenerationResponse, Error>>, Error> {
         let model_id = request.model_id.as_str();
         let response_stream = self
@@ -122,6 +124,7 @@ impl TgisClient {
     pub async fn tokenize(
         &self,
         request: BatchedTokenizeRequest,
+        _headers: HeaderMap,
     ) -> Result<BatchedTokenizeResponse, Error> {
         let model_id = request.model_id.as_str();
         Ok(self.client(model_id)?.tokenize(request).await?.into_inner())

@@ -33,7 +33,11 @@ struct Args {
     health_http_port: u16,
     #[clap(long, env)]
     json_output: bool,
-    #[clap(default_value = "config/config.yaml", long, env)]
+    #[clap(
+        default_value = "config/config.yaml",
+        long,
+        env = "ORCHESTRATOR_CONFIG"
+    )]
     config_path: PathBuf,
     #[clap(long, env)]
     tls_cert_path: Option<PathBuf>,
@@ -41,7 +45,7 @@ struct Args {
     tls_key_path: Option<PathBuf>,
     #[clap(long, env)]
     tls_client_ca_cert_path: Option<PathBuf>,
-    #[clap(default_value = "true", long, env)] // Do we want this to be true by default?
+    #[clap(default_value = "false", long, env)]
     start_up_health_check: bool,
 }
 
