@@ -123,7 +123,7 @@ impl Orchestrator {
     pub async fn client_health(&self, probe: bool) -> HealthCheckCache {
         let initialized = !self.client_health.read().await.is_empty();
         if probe || !initialized {
-            debug!("refreshing client health");
+            debug!("refreshing health cache");
             let now = Instant::now();
             let mut health = HealthCheckCache::with_capacity(self.ctx.clients.len());
             // TODO: perform health checks concurrently?
@@ -134,7 +134,7 @@ impl Orchestrator {
             let mut client_health = self.client_health.write().await;
             *client_health = health;
             debug!(
-                "refreshing client health completed in {:.2?}ms",
+                "refreshing health cache completed in {:.2?}ms",
                 now.elapsed().as_millis()
             );
         }

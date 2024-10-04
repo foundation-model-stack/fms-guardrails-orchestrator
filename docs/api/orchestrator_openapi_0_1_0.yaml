@@ -3,12 +3,12 @@ info:
   title: FMS Orchestrator API
   version: 0.1.0
 tags:
-    - name: Task - Text Generation, with detection
-      description: Detections on text generation model input and/or output
-    - name: Task - Detection
-      description: Standalone detections
-    - name: Task - Chat Completions, with detection
-      description: Detections on list of messages comprising a conversation and/or completions from a model
+  - name: Task - Text Generation, with detection
+    description: Detections on text generation model input and/or output
+  - name: Task - Detection
+    description: Standalone detections
+  - name: Task - Chat Completions, with detection
+    description: Detections on list of messages comprising a conversation and/or completions from a model
 paths:
   /health:
     get:
@@ -17,7 +17,7 @@ paths:
       summary: Performs quick liveliness check of the orchestrator service
       operationId: health
       responses:
-        '200':
+        "200":
           description: Healthy
           content:
             application/json:
@@ -42,18 +42,18 @@ paths:
             type: boolean
             default: false
       responses:
-        '200':
+        "200":
           description: Orchestrator successfully probed client health statuses
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HealthProbeResponse'
-        '503':
+                $ref: "#/components/schemas/InfoResponse"
+        "503":
           description: Orchestrator failed to probe client health statuses
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HealthProbeResponse'
+                $ref: "#/components/schemas/InfoResponse"
   /api/v1/task/classification-with-text-generation:
     post:
       tags:
@@ -65,27 +65,27 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/GuardrailsHttpRequest'
+              $ref: "#/components/schemas/GuardrailsHttpRequest"
         required: true
       responses:
-        '200':
+        "200":
           description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ClassifiedGeneratedTextResult'
-        '404':
+                $ref: "#/components/schemas/ClassifiedGeneratedTextResult"
+        "404":
           description: Resource Not Found
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '422':
+                $ref: "#/components/schemas/Error"
+        "422":
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: "#/components/schemas/Error"
   /api/v1/task/server-streaming-classification-with-text-generation:
     post:
       tags:
@@ -97,27 +97,27 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/GuardrailsHttpRequest'
+              $ref: "#/components/schemas/GuardrailsHttpRequest"
         required: true
       responses:
-        '200':
+        "200":
           description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ClassifiedGeneratedTextStreamResult'
-        '404':
+                $ref: "#/components/schemas/ClassifiedGeneratedTextStreamResult"
+        "404":
           description: Resource Not Found
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '422':
+                $ref: "#/components/schemas/Error"
+        "422":
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: "#/components/schemas/Error"
   /api/v2/text/generation-detection:
     post:
       tags:
@@ -129,27 +129,27 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/GenerationDetectionRequest'
+              $ref: "#/components/schemas/GenerationDetectionRequest"
         required: true
       responses:
-        '200':
+        "200":
           description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/GenerationDetectionResponse'
-        '404':
+                $ref: "#/components/schemas/GenerationDetectionResponse"
+        "404":
           description: Resource Not Found
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '422':
+                $ref: "#/components/schemas/Error"
+        "422":
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: "#/components/schemas/Error"
 
   /api/v2/text/detection/content:
     post:
@@ -162,27 +162,27 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/DetectionContentRequest'
+              $ref: "#/components/schemas/DetectionContentRequest"
         required: true
       responses:
-        '200':
+        "200":
           description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/DetectionContentResponse'
-        '404':
+                $ref: "#/components/schemas/DetectionContentResponse"
+        "404":
           description: Resource Not Found
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '422':
+                $ref: "#/components/schemas/Error"
+        "422":
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: "#/components/schemas/Error"
   /api/v2/text/detection/chat:
     post:
       tags:
@@ -194,27 +194,27 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/DetectionChatRequest'
+              $ref: "#/components/schemas/DetectionChatRequest"
         required: true
       responses:
-        '200':
+        "200":
           description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/DetectionChatResponse'
-        '404':
+                $ref: "#/components/schemas/DetectionChatResponse"
+        "404":
           description: Resource Not Found
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '422':
+                $ref: "#/components/schemas/Error"
+        "422":
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: "#/components/schemas/Error"
 
   /api/v2/text/detection/context:
     post:
@@ -227,27 +227,27 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/DetectionContextDocsRequest'
+              $ref: "#/components/schemas/DetectionContextDocsRequest"
         required: true
       responses:
-        '200':
+        "200":
           description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/DetectionContextDocsResponse'
-        '404':
+                $ref: "#/components/schemas/DetectionContextDocsResponse"
+        "404":
           description: Resource Not Found
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '422':
+                $ref: "#/components/schemas/Error"
+        "422":
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: "#/components/schemas/Error"
   /api/v2/text/detection/generated:
     post:
       tags:
@@ -259,122 +259,104 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/GeneratedTextDetectionRequest'
+              $ref: "#/components/schemas/GeneratedTextDetectionRequest"
         required: true
       responses:
-        '200':
+        "200":
           description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/GeneratedTextDetectionResponse'
-        '404':
+                $ref: "#/components/schemas/GeneratedTextDetectionResponse"
+        "404":
           description: Resource Not Found
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '422':
+                $ref: "#/components/schemas/Error"
+        "422":
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-  
+                $ref: "#/components/schemas/Error"
+
   /api/v2/chat/completions-detection:
     post:
-        tags:
-            - Task - Chat Completions, with detection
-        operationId: >-
-          api_v2_chat_completions_detection_handler
-        summary: Creates a model response with detections for the given chat conversation.
-        requestBody:
-            required: true
-            content:
-                application/json:
-                    schema:
-                        $ref: "#/components/schemas/GuardrailsCreateChatCompletionRequest"
-        responses:
-            '200':
-              description: Successful Response
-              content:
-                  application/json:
-                      schema:
-                          $ref: "#/components/schemas/GuardrailsCreateChatCompletionResponse"
-            '404':
-              description: Resource Not Found
-              content:
-                application/json:
-                  schema:
-                    $ref: '#/components/schemas/Error'
-            '422':
-              description: Validation Error
-              content:
-                application/json:
-                  schema:
-                    $ref: '#/components/schemas/Error'
+      tags:
+        - Task - Chat Completions, with detection
+      operationId: >-
+        api_v2_chat_completions_detection_handler
+      summary: Creates a model response with detections for the given chat conversation.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GuardrailsCreateChatCompletionRequest"
+      responses:
+        "200":
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuardrailsCreateChatCompletionResponse"
+        "404":
+          description: Resource Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
 components:
   schemas:
     HealthStatus:
-        type: string
-        enum:
-            - HEALTHY
-            - UNHEALTHY
-            - UNKNOWN
-        title: Health Status
+      type: string
+      enum:
+        - HEALTHY
+        - UNHEALTHY
+        - UNKNOWN
+      title: Health Status
     HealthCheckResult:
-      oneOf:
-        - properties:
-            health_status:
-              $ref: '#/components/schemas/HealthStatus'
-            response_code:
-              type: string
-              title: Response Code
-              example: "HTTP 200 OK"
-            reason:
-              type: string
-              title: Reason
-              example: "Service not found"
-          required:
-            - health_status
-            - response_code
-        - additionalProperties:
-            $ref: '#/components/schemas/HealthStatus'
+      properties:
+        status:
+          $ref: "#/components/schemas/HealthStatus"
+        code:
+          type: string
+          title: Response Code
+          example: 200
+        reason:
+          type: string
+          title: Reason
+          example: "Not Found"
+      required:
+        - status
       type: object
-      title: Health Check Response
-    HealthProbeResponse:
+      title: Health Check Result
+    InfoResponse:
       properties:
         services:
           type: object
           title: Health status for each client service
-          properties:
-            generation:
-              type: object
-              title: Generation Services
-              items:
-                $ref: '#/components/schemas/HealthCheckResult'
-            detectors:
-              type: object
-              title: Detector Services
-              items:
-                $ref: '#/components/schemas/HealthCheckResult'
-            chunkers:
-              type: object
-              title: Chunker Services
-              items:
-                $ref: '#/components/schemas/HealthCheckResult'
+          items:
+            $ref: "#/components/schemas/HealthCheckResult"
       required:
         - services
       type: object
-      title: Health Probe Response
+      title: Info Response
     DetectionContentRequest:
       properties:
         detectors:
           type: object
           title: Detectors
           default: {}
-          example: 
+          example:
             hap-v1-model-en: {}
         content:
           type: string
@@ -388,7 +370,7 @@ components:
         detections:
           type: array
           items:
-            $ref: '#/components/schemas/DetectionContentResponseObject'
+            $ref: "#/components/schemas/DetectionContentResponseObject"
       additionalProperties: false
       required: ["detections"]
       type: object
@@ -422,7 +404,7 @@ components:
             "detection_type": "HAP",
             "detection": "has_HAP",
             "detector_id": "hap-v1-model-en",
-            "score": 0.999
+            "score": 0.999,
           }
 
     DetectionChatRequest:
@@ -431,7 +413,7 @@ components:
           type: object
           title: Detectors
           default: {}
-          example: 
+          example:
             chat-v1-model-en: {}
         messages:
           title: Chat Messages
@@ -465,14 +447,14 @@ components:
           title: Detections on entire history of chat messages
       title: Chat Detection Response
       required: ["detections"]
-    
+
     DetectionContextDocsRequest:
       properties:
         detectors:
           type: object
           title: Detectors
           default: {}
-          example: 
+          example:
             context-v1-model-en: {}
         content:
           type: string
@@ -500,7 +482,7 @@ components:
         detections:
           type: array
           items:
-            $ref: '#/components/schemas/DetectionContextDocsResponseObject'
+            $ref: "#/components/schemas/DetectionContextDocsResponseObject"
       required: ["detections"]
       title: Context Docs Detection Response
     DetectionContextDocsResponseObject:
@@ -516,9 +498,9 @@ components:
           title: Score
         evidence:
           anyOf:
-          - items:
-              $ref: '#/components/schemas/EvidenceObj'
-            type: array
+            - items:
+                $ref: "#/components/schemas/EvidenceObj"
+              type: array
       title: Context Docs Detection Response Object
 
     GenerationDetectionRequest:
@@ -533,11 +515,11 @@ components:
           type: object
           title: Detectors
           default: {}
-          example: 
+          example:
             generation-detection-v1-model-en: {}
         text_gen_parameters:
           allOf:
-            - $ref: '#/components/schemas/GuardrailsTextGenerationParameters'
+            - $ref: "#/components/schemas/GuardrailsTextGenerationParameters"
       type: object
       required: ["model_id", "prompt", "detectors"]
       title: Generation-Detection Request
@@ -566,7 +548,7 @@ components:
           title: Input token Count
       title: Generation Detection Response
       required: ["generated_text", "detections"]
-            
+
     GeneratedTextDetectionRequest:
       properties:
         prompt:
@@ -579,7 +561,7 @@ components:
           type: object
           title: Detectors
           default: {}
-          example: 
+          example:
             generated-detection-v1-model-en: {}
       type: object
       required: ["generated_text", "prompt", "detectors"]
@@ -589,7 +571,7 @@ components:
         detections:
           type: array
           items:
-            $ref: '#/components/schemas/GeneratedTextDetectionResponseObject'
+            $ref: "#/components/schemas/GeneratedTextDetectionResponseObject"
       required: ["detections"]
       title: Generated Text Detection Response
     GeneratedTextDetectionResponseObject:
@@ -614,10 +596,10 @@ components:
           title: Generated Text
         token_classification_results:
           anyOf:
-            - $ref: '#/components/schemas/TextGenTokenClassificationResults'
+            - $ref: "#/components/schemas/TextGenTokenClassificationResults"
         finish_reason:
           anyOf:
-            - $ref: '#/components/schemas/FinishReason'
+            - $ref: "#/components/schemas/FinishReason"
         generated_token_count:
           anyOf:
             - type: integer
@@ -633,19 +615,19 @@ components:
         warnings:
           anyOf:
             - items:
-                $ref: '#/components/schemas/InputWarning'
+                $ref: "#/components/schemas/InputWarning"
               type: array
           title: Warnings
         tokens:
           anyOf:
             - items:
-                $ref: '#/components/schemas/GeneratedToken'
+                $ref: "#/components/schemas/GeneratedToken"
               type: array
           title: Tokens
         input_tokens:
           anyOf:
             - items:
-                $ref: '#/components/schemas/GeneratedToken'
+                $ref: "#/components/schemas/GeneratedToken"
               type: array
           title: Input Tokens
       additionalProperties: false
@@ -660,10 +642,10 @@ components:
           title: Generated Text
         token_classification_results:
           anyOf:
-            - $ref: '#/components/schemas/TextGenTokenClassificationResults'
+            - $ref: "#/components/schemas/TextGenTokenClassificationResults"
         finish_reason:
           anyOf:
-            - $ref: '#/components/schemas/FinishReason'
+            - $ref: "#/components/schemas/FinishReason"
         generated_token_count:
           anyOf:
             - type: integer
@@ -679,19 +661,19 @@ components:
         warnings:
           anyOf:
             - items:
-                $ref: '#/components/schemas/InputWarning'
+                $ref: "#/components/schemas/InputWarning"
               type: array
           title: Warnings
         tokens:
           anyOf:
             - items:
-                $ref: '#/components/schemas/GeneratedToken'
+                $ref: "#/components/schemas/GeneratedToken"
               type: array
           title: Tokens
         input_tokens:
           anyOf:
             - items:
-                $ref: '#/components/schemas/GeneratedToken'
+                $ref: "#/components/schemas/GeneratedToken"
               type: array
           title: Input Tokens
         processed_index:
@@ -706,18 +688,18 @@ components:
       type: object
       title: Classified Generated Text Stream Result
     TextGenTokenClassificationResults:
-    # By default open-api spec consider all fields as optional
+      # By default open-api spec consider all fields as optional
       properties:
         input:
           anyOf:
             - items:
-                $ref: '#/components/schemas/TokenClassificationResult'
+                $ref: "#/components/schemas/TokenClassificationResult"
               type: array
           title: Input
         output:
           anyOf:
             - items:
-                $ref: '#/components/schemas/TokenClassificationResult'
+                $ref: "#/components/schemas/TokenClassificationResult"
               type: array
           title: Output
       additionalProperties: false
@@ -765,7 +747,7 @@ components:
           default: {}
       required:
         - detectors
-      
+
     GuardrailsCreateChatCompletionResponse:
       title: Guardrails Chat Completion Response
       description: Guardrails chat completion response (adds detections on OpenAI chat completion)
@@ -778,7 +760,7 @@ components:
         warnings:
           type: array
           items:
-            $ref: '#/components/schemas/Warning'
+            $ref: "#/components/schemas/Warning"
       required:
         - detections
 
@@ -800,27 +782,27 @@ components:
         output:
           pii-v1: {}
           conversation-detector: {}
-    
+
     ChatCompletionsDetections:
       title: Chat Completions Detections
       properties:
         input:
           type: array
           items:
-            $ref: '#/components/schemas/MessageDetections'
+            $ref: "#/components/schemas/MessageDetections"
           title: Detections on input to chat completions
           default: {}
         output:
           type: array
           items:
-            $ref: '#/components/schemas/ChoiceDetections'
+            $ref: "#/components/schemas/ChoiceDetections"
           title: Detections on output of chat completions
           default: {}
       default: {}
       example:
         input:
           - message_index: 0
-            results: 
+            results:
               - {
                   "start": 0,
                   "end": 80,
@@ -828,7 +810,7 @@ components:
                   "detection_type": "HAP",
                   "detection": "has_HAP",
                   "detector_id": "hap-v1-model-en", # Future addition
-                  "score": 0.999
+                  "score": 0.999,
                 }
         output:
           - choice_index: 0
@@ -841,15 +823,15 @@ components:
                   "detection_type": "HAP",
                   "detection": "has_HAP",
                   "detector_id": "hap-v1-model-en", # Future addition
-                  "score": 0.999
+                  "score": 0.999,
                 }
               - {
                   "detection_type": "string",
                   "detection": "string",
                   "detector_id": "relevance-v1-en", # Future addition
-                  "score": 0
+                  "score": 0,
                 }
-    
+
     MessageDetections:
       title: Message Detections
       properties:
@@ -863,9 +845,9 @@ components:
           type: array
           items:
             anyOf:
-              - $ref: '#/components/schemas/DetectionContentResponseObject'
-              - $ref: '#/components/schemas/DetectionContextDocsResponseObject'
-              - $ref: '#/components/schemas/GeneratedTextDetectionResponseObject'
+              - $ref: "#/components/schemas/DetectionContentResponseObject"
+              - $ref: "#/components/schemas/DetectionContextDocsResponseObject"
+              - $ref: "#/components/schemas/GeneratedTextDetectionResponseObject"
       required:
         - message_index
     ChoiceDetections:
@@ -881,9 +863,9 @@ components:
           type: array
           items:
             anyOf:
-              - $ref: '#/components/schemas/DetectionContentResponseObject'
-              - $ref: '#/components/schemas/DetectionContextDocsResponseObject'
-              - $ref: '#/components/schemas/GeneratedTextDetectionResponseObject'
+              - $ref: "#/components/schemas/DetectionContentResponseObject"
+              - $ref: "#/components/schemas/DetectionContextDocsResponseObject"
+              - $ref: "#/components/schemas/GeneratedTextDetectionResponseObject"
       required:
         - choice_index
 
@@ -948,7 +930,7 @@ components:
         evidence:
           anyOf:
             - items:
-                $ref: '#/components/schemas/Evidence'
+                $ref: "#/components/schemas/Evidence"
               type: array
       type: object
       required:
@@ -1010,7 +992,7 @@ components:
           title: Inputs
         guardrail_config:
           allOf:
-            - $ref: '#/components/schemas/GuardrailsConfig'
+            - $ref: "#/components/schemas/GuardrailsConfig"
           default:
             input:
               masks: []
@@ -1019,7 +1001,7 @@ components:
               models: {}
         text_gen_parameters:
           allOf:
-            - $ref: '#/components/schemas/GuardrailsTextGenerationParameters'
+            - $ref: "#/components/schemas/GuardrailsTextGenerationParameters"
       type: object
       required:
         - model_id
@@ -1059,7 +1041,7 @@ components:
           title: Max Time
         exponential_decay_length_penalty:
           allOf:
-            - $ref: '#/components/schemas/ExponentialDecayLengthPenalty'
+            - $ref: "#/components/schemas/ExponentialDecayLengthPenalty"
         stop_sequences:
           items:
             type: string
@@ -1094,7 +1076,7 @@ components:
       properties:
         id:
           allOf:
-            - $ref: '#/components/schemas/InputWarningReason'
+            - $ref: "#/components/schemas/InputWarningReason"
         message:
           type: string
           title: Message
