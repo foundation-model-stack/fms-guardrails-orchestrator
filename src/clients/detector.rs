@@ -17,8 +17,8 @@
 
 pub mod text_contents;
 pub use text_contents::*;
-pub mod text_context_chat;
-pub use text_context_chat::*;
+pub mod text_chat;
+pub use text_chat::*;
 pub mod text_context_doc;
 pub use text_context_doc::*;
 pub mod text_generation;

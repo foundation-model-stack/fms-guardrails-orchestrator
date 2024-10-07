@@ -160,7 +160,7 @@ pub enum DetectorType {
     #[default]
     TextContents,
     TextGeneration,
-    TextContextChat,
+    TextChat,
     TextContextDoc,
 }
 

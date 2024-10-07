@@ -31,8 +31,8 @@ use crate::{
     clients::{
         create_grpc_client, create_http_client,
         detector::{
-            text_context_doc::ContextType, TextContextChatDetectorClient,
-            TextContextDocDetectorClient, TextGenerationDetectorClient,
+            text_context_doc::ContextType, TextChatDetectorClient, TextContextDocDetectorClient,
+            TextGenerationDetectorClient,
         },
         openai::OpenAiClient,
         ChunkerClient, ClientMap, GenerationClient, NlpClient, TextContentsDetectorClient,
@@ -255,11 +255,8 @@ async fn create_clients(config: &OrchestratorConfig) -> ClientMap {
                     TextGenerationDetectorClient::new(client),
                 );
             }
-            DetectorType::TextContextChat => {
-                clients.insert(
-                    detector_id.into(),
-                    TextContextChatDetectorClient::new(client),
-                );
+            DetectorType::TextChat => {
+                clients.insert(detector_id.into(), TextChatDetectorClient::new(client));
             }
             DetectorType::TextContextDoc => {
                 clients.insert(
