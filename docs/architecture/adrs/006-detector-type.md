@@ -6,7 +6,7 @@ This ADR documents the decision of adding the `type` parameter for detectors in 
 
 The guardrails orchestrator interfaces with different types of detectors. 
 Detectors of a given type are compatible with only a subset of orchestrator endpoints.
-In order to reduce changes of misconfiguration, we need a way to map detectors to be used only with compatible endpoints.
+In order to reduce changes of misconfiguration, we need a way to map detectors to be used only with compatible endpoints. This would additionally provide a way for us to refer to a particular detector type within the code, without looking at its `hostname` (url) , which can be error prone. Good example for this is validating if certain detector would work with certain orchestrator endpoint or not.
 
 
 ## Decision
