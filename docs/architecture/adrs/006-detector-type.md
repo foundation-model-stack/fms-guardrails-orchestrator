@@ -12,7 +12,7 @@ In order to reduce changes of misconfiguration, we need a way to map detectors t
 ## Decision
 
 We decided to add the `type` parameter to the detectors configuration. 
-Possible values are `text_contents`, `text_context_chat`, `text_generation` and `text_context_doc`.
+Possible values are `text_contents`, `text_chat`, `text_generation` and `text_context_doc`.
 Below is an example of detector configuration.
 
 ```yaml
