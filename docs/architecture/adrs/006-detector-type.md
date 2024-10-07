@@ -36,7 +36,7 @@ detectors:
 5. Not including `type` results in a configuration validation error on orchestrator startup.
 6. Detector endpoints are automatically configured based on `type` as follows:
     * `text_contents` -> `/api/v1/text/contents`
-    * `text_context_chat` -> `/api/v1/text/context/chat`
+    * `text_chat` -> `/api/v1/text/chat`
     * `text_context_doc` -> `/api/v1/text/context/doc`
     * `text_generation` -> `/api/v1/text/generation`
 
