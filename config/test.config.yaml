@@ -4,7 +4,6 @@ generation:
     hostname: localhost
     port: 443
 # chat_generation:
-#   provider: openai
 #   service:
 #     hostname: localhost
 #     port: 8080

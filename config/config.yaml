@@ -13,7 +13,6 @@ generation:
         port: 8033
 # Generation server used for chat endpoints
 # chat_generation:
-#   provider: openai
 #   service:
 #     hostname: localhost
 #     port: 8080

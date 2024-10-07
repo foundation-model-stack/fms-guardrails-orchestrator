@@ -209,21 +209,14 @@ async fn create_clients(config: &OrchestratorConfig) -> ClientMap {
                 let generation_client = GenerationClient::nlp(nlp_client);
                 clients.insert("generation".to_string(), generation_client);
             }
-            GenerationProvider::OpenAi => unimplemented!(),
         }
     }
 
     // Create chat generation client
     if let Some(chat_generation) = &config.chat_generation {
-        match chat_generation.provider {
-            GenerationProvider::OpenAi => {
-                let client =
-                    create_http_client(DEFAULT_OPENAI_PORT, &chat_generation.service).await;
-                let openai_client = OpenAiClient::new(client);
-                clients.insert("chat_generation".to_string(), openai_client);
-            }
-            _ => unimplemented!(),
-        }
+        let client = create_http_client(DEFAULT_OPENAI_PORT, &chat_generation.service).await;
+        let openai_client = OpenAiClient::new(client);
+        clients.insert("chat_generation".to_string(), openai_client);
     }
 
     // Create chunker clients

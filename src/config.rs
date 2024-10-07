@@ -94,8 +94,6 @@ pub enum GenerationProvider {
     Tgis,
     #[serde(rename = "nlp")]
     Nlp,
-    #[serde(rename = "openai")]
-    OpenAi,
 }
 
 /// Generation service configuration
@@ -112,8 +110,6 @@ pub struct GenerationConfig {
 #[cfg_attr(test, derive(Default))]
 #[derive(Clone, Debug, Deserialize)]
 pub struct ChatGenerationConfig {
-    /// Generation service provider
-    pub provider: GenerationProvider,
     /// Generation service connection information
     pub service: ServiceConfig,
 }
@@ -299,15 +295,6 @@ impl OrchestratorConfig {
 
         // Generation config is valid
         if let Some(generation) = &self.generation {
-            // Provider is valid
-            if !matches!(
-                generation.provider,
-                GenerationProvider::Tgis | GenerationProvider::Nlp
-            ) {
-                return Err(Error::InvalidGenerationProvider(
-                    "`generation` requires `tgis` or `nlp` provider".into(),
-                ));
-            }
             // Hostname is valid
             if !is_valid_hostname(&generation.service.hostname) {
                 return Err(Error::InvalidHostname(
@@ -318,12 +305,6 @@ impl OrchestratorConfig {
 
         // Chat generation config is valid
         if let Some(chat_generation) = &self.chat_generation {
-            // Provider is valid
-            if !matches!(chat_generation.provider, GenerationProvider::OpenAi) {
-                return Err(Error::InvalidGenerationProvider(
-                    "`chat_generation` requires `openai` provider".into(),
-                ));
-            }
             // Hostname is valid
             if !is_valid_hostname(&chat_generation.service.hostname) {
                 return Err(Error::InvalidHostname(
