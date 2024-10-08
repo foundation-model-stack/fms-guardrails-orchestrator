@@ -259,7 +259,43 @@ impl OrchestratorConfig {
             return Err(Error::NoDetectorsConfigured);
         }
 
-        // Detector configs are valid
+        // Apply validation rules
+        self.validate_generation_config()?;
+        self.validate_chat_generation_config()?;
+        self.validate_detector_configs()?;
+        self.validate_chunker_configs()?;
+
+        Ok(())
+    }
+
+    /// Validates generation config.
+    fn validate_generation_config(&self) -> Result<(), Error> {
+        if let Some(generation) = &self.generation {
+            // Hostname is valid
+            if !is_valid_hostname(&generation.service.hostname) {
+                return Err(Error::InvalidHostname(
+                    "`generation` has an invalid hostname".into(),
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    /// Validates chat generation config.
+    fn validate_chat_generation_config(&self) -> Result<(), Error> {
+        if let Some(chat_generation) = &self.chat_generation {
+            // Hostname is valid
+            if !is_valid_hostname(&chat_generation.service.hostname) {
+                return Err(Error::InvalidHostname(
+                    "`chat_generation` has an invalid hostname".into(),
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    /// Validates detector configs.
+    fn validate_detector_configs(&self) -> Result<(), Error> {
         for (detector_id, detector) in &self.detectors {
             // Hostname is valid
             if !is_valid_hostname(&detector.service.hostname) {
@@ -280,8 +316,11 @@ impl OrchestratorConfig {
                 });
             }
         }
+        Ok(())
+    }
 
-        // Chunker config is valid
+    /// Validates chunker configs.
+    fn validate_chunker_configs(&self) -> Result<(), Error> {
         if let Some(chunkers) = &self.chunkers {
             for (chunker_id, chunker) in chunkers {
                 // Hostname is valid
@@ -292,27 +331,6 @@ impl OrchestratorConfig {
                 }
             }
         }
-
-        // Generation config is valid
-        if let Some(generation) = &self.generation {
-            // Hostname is valid
-            if !is_valid_hostname(&generation.service.hostname) {
-                return Err(Error::InvalidHostname(
-                    "`generation` has an invalid hostname".into(),
-                ));
-            }
-        }
-
-        // Chat generation config is valid
-        if let Some(chat_generation) = &self.chat_generation {
-            // Hostname is valid
-            if !is_valid_hostname(&chat_generation.service.hostname) {
-                return Err(Error::InvalidHostname(
-                    "`chat_generation` has an invalid hostname".into(),
-                ));
-            }
-        }
-
         Ok(())
     }
 
