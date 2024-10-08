@@ -16,6 +16,7 @@ generation:
 #   service:
 #     hostname: localhost
 #     port: 8080
+#   # health_service:
 # Any chunker servers that will be used by any detectors
 chunkers:
     # Chunker ID/name
@@ -38,6 +39,9 @@ detectors:
             port: 8080
             # TLS ID/name, optional (detailed in `tls` section)
             tls: detector
+        health_service:
+            hostname: localhost
+            port: 8081
         # Chunker ID/name from `chunkers` section if applicable
         chunker_id: en_regex
         # Default score threshold for a detector. If a user

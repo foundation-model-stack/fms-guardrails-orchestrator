@@ -13,12 +13,16 @@ use crate::{
 #[derive(Clone)]
 pub struct TextContextDocDetectorClient {
     client: HttpClient,
+    health_client: Option<HttpClient>,
 }
 
 #[cfg_attr(test, faux::methods)]
 impl TextContextDocDetectorClient {
-    pub fn new(client: HttpClient) -> Self {
-        Self { client }
+    pub fn new(client: HttpClient, health_client: Option<HttpClient>) -> Self {
+        Self {
+            client,
+            health_client,
+        }
     }
 
     pub async fn text_context_doc(
@@ -64,7 +68,11 @@ impl Client for TextContextDocDetectorClient {
     }
 
     async fn health(&self) -> HealthCheckResult {
-        self.client.health().await
+        if let Some(health_client) = &self.health_client {
+            health_client.health().await
+        } else {
+            self.client.health().await
+        }
     }
 }
 

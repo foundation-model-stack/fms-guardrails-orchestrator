@@ -11,12 +11,16 @@ use crate::health::HealthCheckResult;
 #[derive(Clone)]
 pub struct OpenAiClient {
     client: HttpClient,
+    health_client: Option<HttpClient>,
 }
 
 #[cfg_attr(test, faux::methods)]
 impl OpenAiClient {
-    pub fn new(client: HttpClient) -> Self {
-        Self { client }
+    pub fn new(client: HttpClient, health_client: Option<HttpClient>) -> Self {
+        Self {
+            client,
+            health_client,
+        }
     }
 
     pub async fn chat_completions(
@@ -43,7 +47,11 @@ impl Client for OpenAiClient {
     }
 
     async fn health(&self) -> HealthCheckResult {
-        self.client.health().await
+        if let Some(health_client) = &self.health_client {
+            health_client.health().await
+        } else {
+            self.client.health().await
+        }
     }
 }
 

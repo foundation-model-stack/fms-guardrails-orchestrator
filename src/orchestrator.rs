@@ -215,7 +215,12 @@ async fn create_clients(config: &OrchestratorConfig) -> ClientMap {
     // Create chat generation client
     if let Some(chat_generation) = &config.chat_generation {
         let client = create_http_client(DEFAULT_OPENAI_PORT, &chat_generation.service).await;
-        let openai_client = OpenAiClient::new(client);
+        let health_client = if let Some(health_service) = &chat_generation.health_service {
+            Some(create_http_client(DEFAULT_OPENAI_PORT, health_service).await)
+        } else {
+            None
+        };
+        let openai_client = OpenAiClient::new(client, health_client);
         clients.insert("chat_generation".to_string(), openai_client);
     }
 
@@ -238,23 +243,34 @@ async fn create_clients(config: &OrchestratorConfig) -> ClientMap {
     // Create detector clients
     for (detector_id, detector) in &config.detectors {
         let client = create_http_client(DEFAULT_DETECTOR_PORT, &detector.service).await;
+        let health_client = if let Some(health_service) = &detector.health_service {
+            Some(create_http_client(DEFAULT_DETECTOR_PORT, health_service).await)
+        } else {
+            None
+        };
         match detector.r#type {
             DetectorType::TextContents => {
-                clients.insert(detector_id.into(), TextContentsDetectorClient::new(client));
+                clients.insert(
+                    detector_id.into(),
+                    TextContentsDetectorClient::new(client, health_client),
+                );
             }
             DetectorType::TextGeneration => {
                 clients.insert(
                     detector_id.into(),
-                    TextGenerationDetectorClient::new(client),
+                    TextGenerationDetectorClient::new(client, health_client),
                 );
             }
             DetectorType::TextChat => {
-                clients.insert(detector_id.into(), TextChatDetectorClient::new(client));
+                clients.insert(
+                    detector_id.into(),
+                    TextChatDetectorClient::new(client, health_client),
+                );
             }
             DetectorType::TextContextDoc => {
                 clients.insert(
                     detector_id.into(),
-                    TextContextDocDetectorClient::new(client),
+                    TextContextDocDetectorClient::new(client, health_client),
                 );
             }
         }

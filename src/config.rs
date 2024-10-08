@@ -112,6 +112,8 @@ pub struct GenerationConfig {
 pub struct ChatGenerationConfig {
     /// Generation service connection information
     pub service: ServiceConfig,
+    /// Generation health service connection information
+    pub health_service: Option<ServiceConfig>,
 }
 
 /// Chunker parser type
@@ -140,6 +142,8 @@ pub struct ChunkerConfig {
 pub struct DetectorConfig {
     /// Detector service connection information
     pub service: ServiceConfig,
+    /// Detector health service connection information
+    pub health_service: Option<ServiceConfig>,
     /// ID of chunker that this detector will use
     pub chunker_id: String,
     /// Default threshold with which to filter detector results by score

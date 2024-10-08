@@ -9,12 +9,16 @@ use crate::{
 #[derive(Clone)]
 pub struct TextChatDetectorClient {
     client: HttpClient,
+    health_client: Option<HttpClient>,
 }
 
 #[cfg_attr(test, faux::methods)]
 impl TextChatDetectorClient {
-    pub fn new(client: HttpClient) -> Self {
-        Self { client }
+    pub fn new(client: HttpClient, health_client: Option<HttpClient>) -> Self {
+        Self {
+            client,
+            health_client,
+        }
     }
 
     pub async fn text_chat(&self) {
@@ -31,6 +35,10 @@ impl Client for TextChatDetectorClient {
     }
 
     async fn health(&self) -> HealthCheckResult {
-        self.client.health().await
+        if let Some(health_client) = &self.health_client {
+            health_client.health().await
+        } else {
+            self.client.health().await
+        }
     }
 }
