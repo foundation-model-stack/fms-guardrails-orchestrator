@@ -19,11 +19,13 @@ use std::{
     collections::{HashMap, HashSet},
     path::{Path, PathBuf},
 };
-
 use serde::Deserialize;
 use tracing::{debug, error, info, warn};
 
-use crate::clients::chunker::DEFAULT_MODEL_ID;
+use crate::clients::{
+    chunker::DEFAULT_MODEL_ID, DEFAULT_CAIKIT_NLP_PORT, DEFAULT_CHUNKER_PORT,
+    DEFAULT_DETECTOR_PORT, DEFAULT_REQUEST_TIMEOUT_SEC, DEFAULT_TGIS_PORT,
+};
 
 // Placeholder to add default allowed headers
 const DEFAULT_ALLOWED_HEADERS: &[&str] = &[];
@@ -49,6 +51,15 @@ pub enum Error {
     },
 }
 
+#[derive(Clone, Debug, Default, Deserialize)]
+struct OptionServiceConfig {
+    hostname: String,
+    port: Option<u16>,
+    health_port: Option<u16>,
+    request_timeout: Option<u64>,
+    tls: Option<Tls>,
+}
+
 /// Configuration for service needed for
 /// orchestrator to communicate with it
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -56,11 +67,105 @@ pub struct ServiceConfig {
     /// Hostname for service
     pub hostname: String,
     /// Port for service
-    pub port: Option<u16>,
+    pub port: u16,
+    /// Port for health service
+    pub health_port: u16,
     /// Timeout in seconds for request to be handled
-    pub request_timeout: Option<u64>,
+    pub request_timeout: u64,
     /// TLS provider info
     pub tls: Option<Tls>,
+}
+
+impl ServiceConfig {
+    fn parse_generation(json: serde_json::Value, provider: GenerationProvider) -> Result<ServiceConfig, serde_json::Error> {
+        let mut service: OptionServiceConfig = serde_json::from_value(json)?;
+        match service.port {
+            Some(_) => (),
+            None => service.port = Some(match provider {
+                GenerationProvider::Tgis => DEFAULT_TGIS_PORT,
+                GenerationProvider::Nlp => DEFAULT_CAIKIT_NLP_PORT,
+            }),
+        }
+        match service.health_port {
+            Some(_) => (),
+            None => service.health_port = Some(match provider {
+                GenerationProvider::Tgis =>
+                    service.port.expect("tgis generation port not set"),
+                GenerationProvider::Nlp =>
+                    service.port.expect("nlp generation port not set"),
+            }),
+        }
+        match service.request_timeout {
+            Some(_) => (),
+            None => service.request_timeout = Some(DEFAULT_REQUEST_TIMEOUT_SEC),
+        }
+
+        Ok(ServiceConfig {
+            hostname: service.hostname,
+            port: service.port.expect("generation port not set"),
+            health_port: service.health_port.expect("generation health port not set"),
+            request_timeout: service.request_timeout.expect("generation request timeout not set"),
+            tls: service.tls,
+        })
+    }
+
+    pub fn deserialize_chunker<'de, D>(deserializer: D) -> Result<ServiceConfig, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let mut service = OptionServiceConfig::deserialize(deserializer)?;
+        match service.port {
+            Some(_) => (),
+            None => service.port = Some(DEFAULT_CHUNKER_PORT),
+        }
+        match service.health_port {
+            Some(_) => (),
+            None => service.health_port = Some(
+                service.port.expect("chunker port not set")
+            ),
+        }
+        match service.request_timeout {
+            Some(_) => (),
+            None => service.request_timeout = Some(DEFAULT_REQUEST_TIMEOUT_SEC),
+        }
+
+        Ok(ServiceConfig {
+            hostname: service.hostname,
+            port: service.port.expect("chunker port not set"),
+            health_port: service.health_port.expect("chunker health port not set"),
+            request_timeout: service.request_timeout.expect("chunker request timeout not set"),
+            tls: service.tls,
+        })
+    }
+
+    pub fn deserialize_detector<'de, D>(deserializer: D) -> Result<ServiceConfig, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let mut service = OptionServiceConfig::deserialize(deserializer)?;
+        match service.port {
+            Some(_) => (),
+            None => service.port = Some(DEFAULT_DETECTOR_PORT),
+        }
+        match service.health_port {
+            Some(_) => (),
+            None => service.health_port = Some(
+                service.port.expect("detector port not set")
+            ),
+        }
+        match service.request_timeout {
+            Some(_) => (),
+            None => service.request_timeout = Some(DEFAULT_REQUEST_TIMEOUT_SEC),
+        }
+
+        Ok(ServiceConfig {
+            hostname: service.hostname,
+            port: service.port.expect("detector port not set"),
+            health_port: service.health_port.expect("detector health port not set"),
+            request_timeout: service.request_timeout.expect("detector request timeout not set"),
+            tls: service.tls,
+        })
+    }
 }
 
 /// TLS provider
@@ -91,14 +196,48 @@ pub enum GenerationProvider {
     Nlp,
 }
 
+impl From<&serde_json::Value> for GenerationProvider {
+    fn from(value: &serde_json::Value) -> Self {
+        match value.as_str().unwrap() {
+            "tgis" => GenerationProvider::Tgis,
+            "nlp" => GenerationProvider::Nlp,
+            _ => panic!("Invalid generation provider"),
+        }
+    }
+}
+
 /// Generate service configuration
 #[cfg_attr(test, derive(Default))]
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug)]
 pub struct GenerationConfig {
     /// Generation service provider
     pub provider: GenerationProvider,
     /// Generation service connection information
     pub service: ServiceConfig,
+}
+
+impl<'de> Deserialize<'de> for GenerationConfig {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let gen_config_json = serde_json::Value::deserialize(deserializer)
+            .expect("failed to deserialize generation client in config");
+        let gen_config_obj = gen_config_json
+            .as_object()
+            .expect("generation client config not an object");
+        let provider = gen_config_obj
+            .get("provider")
+            .expect("`provider` key not found in generation client config")
+            .into();
+        let service = gen_config_obj
+            .get("service")
+            .expect("`service` key not found in generation client config")
+            .to_owned();
+        let service = ServiceConfig::parse_generation(service, provider)
+            .expect("failed to parse generation client service config");
+        Ok(GenerationConfig { provider, service })
+    }
 }
 
 /// Chunker parser type
@@ -119,6 +258,7 @@ pub struct ChunkerConfig {
     /// Chunker type
     pub r#type: ChunkerType,
     /// Chunker service connection information
+    #[serde(deserialize_with="ServiceConfig::deserialize_chunker")]
     pub service: ServiceConfig,
 }
 
@@ -126,6 +266,7 @@ pub struct ChunkerConfig {
 #[derive(Clone, Debug, Default, Deserialize)]
 pub struct DetectorConfig {
     /// Detector service connection information
+    #[serde(deserialize_with="ServiceConfig::deserialize_detector")]
     pub service: ServiceConfig,
     /// ID of chunker that this detector will use
     pub chunker_id: String,
@@ -146,7 +287,7 @@ pub struct OrchestratorConfig {
     /// Map of TLS connections, allowing reuse across services
     /// that may require the same TLS information
     pub tls: Option<HashMap<String, TlsConfig>>,
-    // List of header keys allowed to be passed to downstream servers
+    /// List of header keys allowed to be passed to downstream servers
     #[serde(default)]
     pub passthrough_headers: HashSet<String>,
 }
@@ -163,7 +304,7 @@ impl OrchestratorConfig {
         })?;
         let mut config: OrchestratorConfig =
             serde_yml::from_str(&config_yaml).map_err(Error::InvalidConfigFile)?;
-        debug!(?config, "loaded orchestrator config");
+        debug!("resolved orchestrator config: {:#?}", config);
 
         if config.generation.is_none() {
             warn!("no generation config provided");
@@ -261,7 +402,7 @@ fn apply_named_tls_config(
             .ok_or(Error::TlsConfigNotFound {
                 name: name.clone(),
                 host: service.hostname.clone(),
-                port: service.port.unwrap_or(0).to_string(),
+                port: service.port.to_string(),
             })?
             .clone();
         service.tls = Some(Tls::Config(tls_config));

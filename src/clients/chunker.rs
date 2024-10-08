@@ -73,9 +73,9 @@ impl HealthProbe for ChunkerClient {
 
 #[cfg_attr(test, faux::methods)]
 impl ChunkerClient {
-    pub async fn new(default_port: u16, config: &[(String, ServiceConfig)]) -> Self {
-        let clients = create_grpc_clients(default_port, config, ChunkersServiceClient::new).await;
-        let health_clients = create_grpc_clients(default_port, config, HealthClient::new).await;
+    pub async fn new(config: &[(String, ServiceConfig)]) -> Self {
+        let clients = create_grpc_clients(config, ChunkersServiceClient::new).await;
+        let health_clients = create_grpc_clients(config, HealthClient::new).await;
         Self {
             clients,
             health_clients,

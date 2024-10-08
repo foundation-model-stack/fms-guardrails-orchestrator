@@ -51,8 +51,8 @@ pub const DEFAULT_CAIKIT_NLP_PORT: u16 = 8085;
 pub const DEFAULT_CHUNKER_PORT: u16 = 8085;
 pub const DEFAULT_DETECTOR_PORT: u16 = 8080;
 pub const COMMON_ROUTER_KEY: &str = "common-router";
+pub const DEFAULT_REQUEST_TIMEOUT_SEC: u64 = 600;
 const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(60);
-const DEFAULT_REQUEST_TIMEOUT_SEC: u64 = 600;
 
 pub type BoxStream<T> = Pin<Box<dyn Stream<Item = T> + Send>>;
 
@@ -258,20 +258,15 @@ impl std::ops::Deref for HttpClient {
 }
 
 pub async fn create_http_clients(
-    default_port: u16,
     config: &[(String, ServiceConfig)],
 ) -> HashMap<String, HttpClient> {
     let clients = config
         .iter()
         .map(|(name, service_config)| async move {
-            let port = service_config.port.unwrap_or(default_port);
+            let port = service_config.port;
             let mut base_url = Url::parse(&service_config.hostname).unwrap();
             base_url.set_port(Some(port)).unwrap();
-            let request_timeout = Duration::from_secs(
-                service_config
-                    .request_timeout
-                    .unwrap_or(DEFAULT_REQUEST_TIMEOUT_SEC),
-            );
+            let request_timeout = Duration::from_secs(service_config.request_timeout);
             let mut builder = reqwest::ClientBuilder::new()
                 .connect_timeout(DEFAULT_CONNECT_TIMEOUT)
                 .timeout(request_timeout);
@@ -327,17 +322,16 @@ pub async fn create_http_clients(
 }
 
 async fn create_grpc_clients<C>(
-    default_port: u16,
     config: &[(String, ServiceConfig)],
     new: fn(LoadBalancedChannel) -> C,
 ) -> HashMap<String, C> {
     let clients = config
         .iter()
         .map(|(name, service_config)| async move {
-            let request_timeout = Duration::from_secs(service_config.request_timeout.unwrap_or(DEFAULT_REQUEST_TIMEOUT_SEC));
+            let request_timeout = Duration::from_secs(service_config.request_timeout);
             let mut builder = LoadBalancedChannel::builder((
                 service_config.hostname.clone(),
-                service_config.port.unwrap_or(default_port),
+                service_config.port,
             ))
             .connect_timeout(DEFAULT_CONNECT_TIMEOUT)
             .timeout(request_timeout);

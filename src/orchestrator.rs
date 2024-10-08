@@ -29,7 +29,7 @@ use uuid::Uuid;
 
 use crate::{
     clients::{
-        self, detector::ContextType, ChunkerClient, DetectorClient, GenerationClient, NlpClient,
+        detector::ContextType, ChunkerClient, DetectorClient, GenerationClient, NlpClient,
         TgisClient, COMMON_ROUTER_KEY,
     },
     config::{GenerationProvider, OrchestratorConfig},
@@ -169,18 +169,18 @@ async fn create_clients(
     let generation_client = match &config.generation {
         Some(generation) => match &generation.provider {
             GenerationProvider::Tgis => {
-                let client = TgisClient::new(
-                    clients::DEFAULT_TGIS_PORT,
-                    &[(COMMON_ROUTER_KEY.to_string(), generation.service.clone())],
-                )
+                let client = TgisClient::new(&[(
+                    COMMON_ROUTER_KEY.to_string(),
+                    generation.service.clone(),
+                )])
                 .await;
                 GenerationClient::tgis(client)
             }
             GenerationProvider::Nlp => {
-                let client = NlpClient::new(
-                    clients::DEFAULT_CAIKIT_NLP_PORT,
-                    &[(COMMON_ROUTER_KEY.to_string(), generation.service.clone())],
-                )
+                let client = NlpClient::new(&[(
+                    COMMON_ROUTER_KEY.to_string(),
+                    generation.service.clone(),
+                )])
                 .await;
                 GenerationClient::nlp(client)
             }
@@ -195,7 +195,7 @@ async fn create_clients(
             .collect::<Vec<_>>(),
         None => vec![],
     };
-    let chunker_client = ChunkerClient::new(clients::DEFAULT_CHUNKER_PORT, &chunker_config).await;
+    let chunker_client = ChunkerClient::new(&chunker_config).await;
 
     let detector_config = config
         .detectors
@@ -203,7 +203,7 @@ async fn create_clients(
         .map(|(detector_id, config)| (detector_id.clone(), config.service.clone()))
         .collect::<Vec<_>>();
     let detector_client =
-        DetectorClient::new(clients::DEFAULT_DETECTOR_PORT, &detector_config).await;
+        DetectorClient::new(&detector_config).await;
 
     (generation_client, chunker_client, detector_client)
 }

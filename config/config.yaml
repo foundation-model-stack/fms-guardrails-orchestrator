@@ -10,7 +10,8 @@ generation:
     provider: tgis # tgis or nlp
     service:
         hostname: localhost
-        port: 8033
+        port: 8033 # Optionally, the default value of the port (dependent on the client type) can be overridden
+        health_port: 8035 # Optionally, the using `port` for the health endpoint can be overridden
 # Any chunker servers that will be used by any detectors
 chunkers:
     # Chunker ID/name

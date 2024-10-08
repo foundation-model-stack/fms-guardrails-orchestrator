@@ -76,8 +76,8 @@ impl HealthProbe for TgisClient {
 
 #[cfg_attr(test, faux::methods)]
 impl TgisClient {
-    pub async fn new(default_port: u16, config: &[(String, ServiceConfig)]) -> Self {
-        let clients = create_grpc_clients(default_port, config, GenerationServiceClient::new).await;
+    pub async fn new(config: &[(String, ServiceConfig)]) -> Self {
+        let clients = create_grpc_clients(config, GenerationServiceClient::new).await;
         Self { clients }
     }
 

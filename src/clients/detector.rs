@@ -49,8 +49,8 @@ impl HealthProbe for DetectorClient {
 
 #[cfg_attr(test, faux::methods)]
 impl DetectorClient {
-    pub async fn new(default_port: u16, config: &[(String, ServiceConfig)]) -> Self {
-        let clients: HashMap<String, HttpClient> = create_http_clients(default_port, config).await;
+    pub async fn new(config: &[(String, ServiceConfig)]) -> Self {
+        let clients: HashMap<String, HttpClient> = create_http_clients(config).await;
         Self { clients }
     }
 
