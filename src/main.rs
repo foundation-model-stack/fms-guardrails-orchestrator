@@ -46,7 +46,7 @@ fn main() -> Result<(), anyhow::Error> {
         .build()
         .unwrap()
         .block_on(async {
-            let trace_shutdown = tracing_utils::init_tracer(args.clone().into())?;
+            let trace_shutdown = tracing_utils::init_tracing(args.clone().into())?;
             let config = OrchestratorConfig::load(args.config_path).await?;
             let orchestrator = Orchestrator::new(config, args.start_up_health_check).await?;
 

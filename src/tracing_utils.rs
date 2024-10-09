@@ -40,7 +40,7 @@ use tracing::{error, info, info_span, Span};
 use tracing_opentelemetry::{MetricsLayer, OpenTelemetrySpanExt};
 use tracing_subscriber::{layer::SubscriberExt, EnvFilter, Layer};
 
-use crate::args::{OtlpExportConfig, OtlpProtocol, StdoutLogConfig};
+use crate::args::{LogFormat, OtlpProtocol, TracingConfig};
 
 #[derive(Debug, thiserror::Error)]
 pub enum TracingError {
@@ -50,8 +50,10 @@ pub enum TracingError {
     MetricsError(#[from] MetricsError),
 }
 
+/// Initializes an OpenTelemetry tracer provider with an OTLP export pipeline based on the
+/// provided config.
 fn init_tracer_provider(
-    otlp_export_config: OtlpExportConfig,
+    otlp_export_config: TracingConfig,
 ) -> Result<Option<opentelemetry_sdk::trace::TracerProvider>, TracingError> {
     if let Some((protocol, endpoint)) = otlp_export_config.traces {
         Ok(Some(
@@ -85,8 +87,10 @@ fn init_tracer_provider(
     }
 }
 
+/// Initializes an OpenTelemetry meter provider with an OTLP export pipeline based on the
+/// provided config.
 fn init_meter_provider(
-    otlp_export_config: OtlpExportConfig,
+    otlp_export_config: TracingConfig,
 ) -> Result<Option<SdkMeterProvider>, TracingError> {
     if let Some((protocol, endpoint)) = otlp_export_config.metrics {
         Ok(Some(
@@ -122,8 +126,10 @@ fn init_meter_provider(
     }
 }
 
-pub fn init_tracer(
-    otlp_export_config: OtlpExportConfig,
+/// Initializes tracing for the orchestrator using the OpenTelemetry API/SDK and the `tracing`
+/// crate. What telemetry is exported and to where is determined based on the provided config
+pub fn init_tracing(
+    tracing_config: TracingConfig,
 ) -> Result<impl FnOnce() -> Result<(), TracingError>, TracingError> {
     let mut layers = Vec::new();
 
@@ -140,18 +146,18 @@ pub fn init_tracer(
         .add_directive("reqwest=error".parse().unwrap());
 
     // Set up tracing layer with OTLP exporter
-    let trace_provider = init_tracer_provider(otlp_export_config.clone())?;
+    let trace_provider = init_tracer_provider(tracing_config.clone())?;
     if let Some(tracer_provider) = trace_provider.clone() {
         global::set_tracer_provider(tracer_provider.clone());
         layers.push(
             tracing_opentelemetry::layer()
-                .with_tracer(tracer_provider.tracer(otlp_export_config.service_name.clone()))
+                .with_tracer(tracer_provider.tracer(tracing_config.service_name.clone()))
                 .boxed(),
         );
     }
 
     // Set up metrics layer with OTLP exporter
-    let meter_provider = init_meter_provider(otlp_export_config.clone())?;
+    let meter_provider = init_meter_provider(tracing_config.clone())?;
     if let Some(meter_provider) = meter_provider.clone() {
         global::set_meter_provider(meter_provider.clone());
         layers.push(MetricsLayer::new(meter_provider).boxed());
@@ -160,23 +166,24 @@ pub fn init_tracer(
     // Set up formatted layer for logging to stdout
     // Because we use the `tracing` crate for logging, all logs are traces and will be exported
     // to OTLP if `--otlp-export=traces` is set.
-    match otlp_export_config.stdout_log {
-        StdoutLogConfig::Full => layers.push(tracing_subscriber::fmt::layer().boxed()),
-        StdoutLogConfig::Compact => layers.push(tracing_subscriber::fmt::layer().compact().boxed()),
-        StdoutLogConfig::Pretty => layers.push(tracing_subscriber::fmt::layer().pretty().boxed()),
-        StdoutLogConfig::JSON => layers.push(
-            tracing_subscriber::fmt::layer()
-                .json()
-                .flatten_event(true)
-                .boxed(),
-        ),
-        StdoutLogConfig::None => (),
+    if !tracing_config.quiet {
+        match tracing_config.log_format {
+            LogFormat::Full => layers.push(tracing_subscriber::fmt::layer().boxed()),
+            LogFormat::Compact => layers.push(tracing_subscriber::fmt::layer().compact().boxed()),
+            LogFormat::Pretty => layers.push(tracing_subscriber::fmt::layer().pretty().boxed()),
+            LogFormat::JSON => layers.push(
+                tracing_subscriber::fmt::layer()
+                    .json()
+                    .flatten_event(true)
+                    .boxed(),
+            ),
+        }
     }
 
     let subscriber = tracing_subscriber::registry().with(filter).with(layers);
     tracing::subscriber::set_global_default(subscriber).unwrap();
 
-    if let Some(traces) = otlp_export_config.traces {
+    if let Some(traces) = tracing_config.traces {
         info!(
             "OTLP tracing enabled: Exporting {} to {}",
             traces.0, traces.1
@@ -185,7 +192,7 @@ pub fn init_tracer(
         info!("OTLP traces export disabled")
     }
 
-    if let Some(metrics) = otlp_export_config.metrics {
+    if let Some(metrics) = tracing_config.metrics {
         info!(
             "OTLP metrics enabled: Exporting {} to {}",
             metrics.0, metrics.1
@@ -194,13 +201,13 @@ pub fn init_tracer(
         info!("OTLP metrics export disabled")
     }
 
-    if otlp_export_config.stdout_log != StdoutLogConfig::None {
+    if !tracing_config.quiet {
         info!(
             "Stdout logging enabled with format {}",
-            otlp_export_config.stdout_log
+            tracing_config.log_format
         );
     } else {
-        info!("Stdout logging disabled");
+        info!("Stdout logging disabled"); // This will only be visible in traces
     }
 
     Ok(move || {

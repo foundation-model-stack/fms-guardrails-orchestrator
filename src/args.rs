@@ -43,8 +43,10 @@ pub struct Args {
     pub start_up_health_check: bool,
     #[clap(long, env, value_delimiter = ',')]
     pub otlp_export: Vec<OtlpExport>,
-    #[clap(default_value_t = StdoutLogConfig::default(), long, env)]
-    pub stdout_log: StdoutLogConfig,
+    #[clap(default_value_t = LogFormat::default(), long, env)]
+    pub log_format: LogFormat,
+    #[clap(default_value_t = false, long, short, env)]
+    pub quiet: bool,
     #[clap(
         default_value = "fms_guardrails_orchestr8",
         long,
@@ -141,58 +143,55 @@ impl OtlpProtocol {
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
-pub enum StdoutLogConfig {
+pub enum LogFormat {
     #[default]
     Full,
     Compact,
     Pretty,
     JSON,
-    None,
 }
 
-impl Display for StdoutLogConfig {
+impl Display for LogFormat {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            StdoutLogConfig::Full => write!(f, "full"),
-            StdoutLogConfig::Compact => write!(f, "compact"),
-            StdoutLogConfig::Pretty => write!(f, "pretty"),
-            StdoutLogConfig::JSON => write!(f, "json"),
-            StdoutLogConfig::None => write!(f, "none"),
+            LogFormat::Full => write!(f, "full"),
+            LogFormat::Compact => write!(f, "compact"),
+            LogFormat::Pretty => write!(f, "pretty"),
+            LogFormat::JSON => write!(f, "json"),
         }
     }
 }
 
-impl From<String> for StdoutLogConfig {
+impl From<String> for LogFormat {
     fn from(s: String) -> Self {
         match s.to_lowercase().as_str() {
-            "full" => StdoutLogConfig::Full,
-            "compact" => StdoutLogConfig::Compact,
-            "pretty" => StdoutLogConfig::Pretty,
-            "json" => StdoutLogConfig::JSON,
-            "none" => StdoutLogConfig::None,
+            "full" => LogFormat::Full,
+            "compact" => LogFormat::Compact,
+            "pretty" => LogFormat::Pretty,
+            "json" => LogFormat::JSON,
             _ => {
                 warn!(
                     "Invalid trace format {}, defaulting to {}",
                     s,
-                    StdoutLogConfig::default()
+                    LogFormat::default()
                 );
-                StdoutLogConfig::default()
+                LogFormat::default()
             }
         }
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct OtlpExportConfig {
+pub struct TracingConfig {
     pub service_name: String,
     pub traces: Option<(OtlpProtocol, String)>,
     pub metrics: Option<(OtlpProtocol, String)>,
-    pub stdout_log: StdoutLogConfig,
+    pub log_format: LogFormat,
+    pub quiet: bool,
 }
 
-impl From<Args> for OtlpExportConfig {
+impl From<Args> for TracingConfig {
     fn from(args: Args) -> Self {
-        let service_name = args.otlp_service_name;
         let otlp_protocol = args.otlp_protocol;
         let otlp_endpoint = args
             .otlp_endpoint
@@ -201,10 +200,9 @@ impl From<Args> for OtlpExportConfig {
         let otlp_metrics_endpoint = args.otlp_metrics_endpoint.unwrap_or(otlp_endpoint.clone());
         let otlp_traces_protocol = args.otlp_traces_protocol.unwrap_or(otlp_protocol);
         let otlp_metrics_protocol = args.otlp_metrics_protocol.unwrap_or(otlp_protocol);
-        let stdout_log = args.stdout_log;
 
-        OtlpExportConfig {
-            service_name,
+        TracingConfig {
+            service_name: args.otlp_service_name,
             traces: match args.otlp_export.contains(&OtlpExport::Traces) {
                 true => Some((otlp_traces_protocol, otlp_traces_endpoint)),
                 false => None,
@@ -213,7 +211,8 @@ impl From<Args> for OtlpExportConfig {
                 true => Some((otlp_metrics_protocol, otlp_metrics_endpoint)),
                 false => None,
             },
-            stdout_log,
+            log_format: args.log_format,
+            quiet: args.quiet,
         }
     }
 }
