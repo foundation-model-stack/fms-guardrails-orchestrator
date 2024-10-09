@@ -47,11 +47,7 @@ pub struct Args {
     pub log_format: LogFormat,
     #[clap(default_value_t = false, long, short, env)]
     pub quiet: bool,
-    #[clap(
-        default_value = "fms_guardrails_orchestr8",
-        long,
-        env = "OTLP_SERVICE_NAME"
-    )]
+    #[clap(default_value = "fms_guardrails_orchestr8", long, env)]
     pub otlp_service_name: String,
     #[clap(long, env = "OTEL_EXPORTER_OTLP_ENDPOINT")]
     pub otlp_endpoint: Option<String>,
