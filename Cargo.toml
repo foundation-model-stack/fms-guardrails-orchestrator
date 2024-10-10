@@ -50,6 +50,7 @@ tracing-opentelemetry = "0.25.0"
 tracing-subscriber = { version = "0.3.18", features = ["json", "env-filter"] }
 url = "2.5.2"
 uuid = { version = "1.10.0", features = ["v4", "fast-rng"] }
+reqwest-eventsource = "0.6.0"
 
 [build-dependencies]
 tonic-build = "0.12.1"

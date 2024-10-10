@@ -18,8 +18,11 @@
 use std::collections::HashMap;
 
 use async_trait::async_trait;
+use futures::StreamExt;
 use hyper::{HeaderMap, StatusCode};
+use reqwest_eventsource::{Event, RequestBuilderExt};
 use serde::{Deserialize, Serialize};
+use tokio::sync::mpsc;
 use tracing::{info, instrument};
 
 use super::{create_http_client, Client, Error, HttpClient};
@@ -57,21 +60,40 @@ impl OpenAiClient {
         request: ChatCompletionRequest,
     ) -> Result<ChatCompletionResponse, Error> {
         let url = self.client.base_url().join("/v1/chat/completions").unwrap();
-        let headers = with_traceparent_header(HeaderMap::new());
-        info!(?url, ?headers, ?request, "sending client request");
-        let response = self
-            .client
-            .post(url)
-            .headers(headers)
-            .json(&request)
-            .send()
-            .await?;
-        match response.status() {
-            StatusCode::OK => Ok(response.json().await?),
-            _ => Err(Error::Http {
-                code: response.status(),
-                message: "".into(), // TODO
-            }),
+        let stream = request.stream.unwrap_or_default();
+        if stream {
+            let (tx, rx) = mpsc::channel(32);
+            let mut event_stream = self.client.post(url).eventsource().unwrap();
+            // Spawn task to forward events to receiver
+            tokio::spawn(async move {
+                while let Some(Ok(event)) = event_stream.next().await {
+                    if let Event::Message(event) = event {
+                        let message = serde_json::from_str::<ChatCompletionChunk>(&event.data)
+                            .map_err(|e| {
+                                Error::http(
+                                    StatusCode::INTERNAL_SERVER_ERROR,
+                                    format!("error deserializing event: {e}"),
+                                )
+                            });
+                        let _ = tx.send(message).await;
+                    }
+                }
+            });
+            Ok(ChatCompletionResponse::Streaming(rx))
+        } else {
+            let headers = with_traceparent_header(HeaderMap::new());
+            info!(?url, ?headers, ?request, "sending client request");
+            let response = self
+                .client
+                .post(url)
+                .headers(headers)
+                .json(&request)
+                .send()
+                .await?;
+            match response.status() {
+                StatusCode::OK => Ok(response.json::<ChatCompletion>().await?.into()),
+                _ => Err(Error::http(response.status(), "".into())),
+            }
         }
     }
 }
@@ -89,6 +111,17 @@ impl Client for OpenAiClient {
         } else {
             self.client.health().await
         }
+    }
+}
+
+pub enum ChatCompletionResponse {
+    Unary(ChatCompletion),
+    Streaming(mpsc::Receiver<Result<ChatCompletionChunk, Error>>),
+}
+
+impl From<ChatCompletion> for ChatCompletionResponse {
+    fn from(value: ChatCompletion) -> Self {
+        Self::Unary(value)
     }
 }
 
@@ -367,7 +400,7 @@ pub struct Function {
 
 /// Represents a chat completion response returned by model, based on the provided input.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ChatCompletionResponse {
+pub struct ChatCompletion {
     /// A unique identifier for the chat completion.
     pub id: String,
     /// A list of chat completion choices. Can be more than one if n is greater than 1.
