@@ -15,39 +15,12 @@
 
 */
 
-use std::{
-    net::{IpAddr, Ipv4Addr, SocketAddr},
-    path::PathBuf,
-};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
 use clap::Parser;
-use fms_guardrails_orchestr8::{config::OrchestratorConfig, orchestrator::Orchestrator, server};
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
-
-#[derive(Parser, Debug)]
-#[clap(author, version, about, long_about = None)]
-struct Args {
-    #[clap(default_value = "8033", long, env)]
-    http_port: u16,
-    #[clap(default_value = "8034", long, env)]
-    health_http_port: u16,
-    #[clap(long, env)]
-    json_output: bool,
-    #[clap(
-        default_value = "config/config.yaml",
-        long,
-        env = "ORCHESTRATOR_CONFIG"
-    )]
-    config_path: PathBuf,
-    #[clap(long, env)]
-    tls_cert_path: Option<PathBuf>,
-    #[clap(long, env)]
-    tls_key_path: Option<PathBuf>,
-    #[clap(long, env)]
-    tls_client_ca_cert_path: Option<PathBuf>,
-    #[clap(default_value = "false", long, env)]
-    start_up_health_check: bool,
-}
+use fms_guardrails_orchestr8::{
+    args::Args, config::OrchestratorConfig, orchestrator::Orchestrator, server, tracing_utils,
+};
 
 fn main() -> Result<(), anyhow::Error> {
     rustls::crypto::aws_lc_rs::default_provider()
@@ -62,14 +35,6 @@ fn main() -> Result<(), anyhow::Error> {
         panic!("tls: cannot provide client ca cert without keypair")
     }
 
-    let filter = EnvFilter::try_from_default_env()
-        .unwrap_or(EnvFilter::new("INFO"))
-        .add_directive("ginepro=info".parse().unwrap());
-    tracing_subscriber::registry()
-        .with(filter)
-        .with(tracing_subscriber::fmt::layer())
-        .init();
-
     let http_addr: SocketAddr =
         SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), args.http_port);
     let health_http_addr: SocketAddr =
@@ -81,6 +46,7 @@ fn main() -> Result<(), anyhow::Error> {
         .build()
         .unwrap()
         .block_on(async {
+            let trace_shutdown = tracing_utils::init_tracing(args.clone().into())?;
             let config = OrchestratorConfig::load(args.config_path).await?;
             let orchestrator = Orchestrator::new(config, args.start_up_health_check).await?;
 
@@ -93,6 +59,6 @@ fn main() -> Result<(), anyhow::Error> {
                 orchestrator,
             )
             .await?;
-            Ok(())
+            Ok(trace_shutdown()?)
         })
 }
