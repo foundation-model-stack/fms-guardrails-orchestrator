@@ -30,9 +30,13 @@ use super::{
     Orchestrator, TextContentDetectionTask,
 };
 use crate::{
-    clients::detector::{
-        ContentAnalysisRequest, ContentAnalysisResponse, ContextDocsDetectionRequest, ContextType,
-        GenerationDetectionRequest,
+    clients::{
+        detector::{
+            ContentAnalysisRequest, ContentAnalysisResponse, ContextDocsDetectionRequest,
+            ContextType, GenerationDetectionRequest, TextContentsDetectorClient,
+            TextContextDocDetectorClient, TextGenerationDetectorClient,
+        },
+        ChunkerClient, GenerationClient,
     },
     models::{
         ClassifiedGeneratedTextResult, ContextDocsResult, DetectionOnGenerationResult,
@@ -567,7 +571,11 @@ pub async fn detect(
     } else {
         let request = ContentAnalysisRequest::new(contents);
         debug!(%detector_id, ?request, "sending detector request");
-        ctx.detector_client
+        let client = ctx
+            .clients
+            .get_as::<TextContentsDetectorClient>(&detector_id)
+            .unwrap();
+        client
             .text_contents(&detector_id, request, headers)
             .await
             .map_err(|error| {
@@ -622,7 +630,11 @@ pub async fn detect_content(
     } else {
         let request = ContentAnalysisRequest::new(contents);
         debug!(%detector_id, ?request, "sending detector request");
-        ctx.detector_client
+        let client = ctx
+            .clients
+            .get_as::<TextContentsDetectorClient>(&detector_id)
+            .unwrap();
+        client
             .text_contents(&detector_id, request, headers)
             .await
             .map_err(|error| {
@@ -677,8 +689,11 @@ pub async fn detect_for_generation(
     );
     let request = GenerationDetectionRequest::new(prompt.clone(), generated_text.clone());
     debug!(%detector_id, ?request, "sending generation detector request");
-    let response = ctx
-        .detector_client
+    let client = ctx
+        .clients
+        .get_as::<TextGenerationDetectorClient>(&detector_id)
+        .unwrap();
+    let response = client
         .text_generation(&detector_id, request, headers)
         .await
         .map(|results| {
@@ -717,8 +732,11 @@ pub async fn detect_for_context(
     );
     let request = ContextDocsDetectionRequest::new(content, context_type, context, detector_params);
     debug!(%detector_id, ?request, "sending context detector request");
-    let response = ctx
-        .detector_client
+    let client = ctx
+        .clients
+        .get_as::<TextContextDocDetectorClient>(&detector_id)
+        .unwrap();
+    let response = client
         .text_context_doc(&detector_id, request, headers)
         .await
         .map(|results| {
@@ -745,8 +763,8 @@ pub async fn chunk(
 ) -> Result<Vec<Chunk>, Error> {
     let request = chunkers::ChunkerTokenizationTaskRequest { text };
     debug!(%chunker_id, ?request, "sending chunker request");
-    let response = ctx
-        .chunker_client
+    let client = ctx.clients.get_as::<ChunkerClient>(&chunker_id).unwrap();
+    let response = client
         .tokenization_task_predict(&chunker_id, request)
         .await
         .map_err(|error| Error::ChunkerRequestFailed {
@@ -797,7 +815,11 @@ pub async fn tokenize(
     text: String,
     headers: HeaderMap,
 ) -> Result<(u32, Vec<String>), Error> {
-    ctx.generation_client
+    let client = ctx
+        .clients
+        .get_as::<GenerationClient>("generation")
+        .unwrap();
+    client
         .tokenize(model_id.clone(), text, headers)
         .await
         .map_err(|error| Error::TokenizeRequestFailed {
@@ -814,7 +836,11 @@ async fn generate(
     params: Option<GuardrailsTextGenerationParameters>,
     headers: HeaderMap,
 ) -> Result<ClassifiedGeneratedTextResult, Error> {
-    ctx.generation_client
+    let client = ctx
+        .clients
+        .get_as::<GenerationClient>("generation")
+        .unwrap();
+    client
         .generate(model_id.clone(), text, params, headers)
         .await
         .map_err(|error| Error::GenerateRequestFailed {
@@ -832,7 +858,7 @@ mod tests {
         clients::{
             self,
             detector::{ContentAnalysisResponse, GenerationDetectionRequest},
-            ChunkerClient, DetectorClient, GenerationClient, TgisClient,
+            ClientMap, GenerationClient, TgisClient,
         },
         config::{DetectorConfig, OrchestratorConfig},
         models::{DetectionResult, EvidenceObj, FinishReason},
@@ -842,27 +868,10 @@ mod tests {
         },
     };
 
-    async fn get_test_context(
-        gen_client: GenerationClient,
-        chunker_client: Option<ChunkerClient>,
-        detector_client: Option<DetectorClient>,
-    ) -> Context {
-        let chunker_client = chunker_client.unwrap_or_default();
-        let detector_client = detector_client.unwrap_or_default();
-
-        Context {
-            generation_client: gen_client,
-            chunker_client,
-            detector_client,
-            config: OrchestratorConfig::default(),
-        }
-    }
-
     // Test for TGIS generation with default parameter
     #[tokio::test]
     async fn test_tgis_generate_with_default_params() {
-        // Initialize a mock object from `TgisClient`
-        let mut mock_client = TgisClient::faux();
+        let mut tgis_client = TgisClient::faux();
 
         let sample_text = String::from("sample text");
         let text_gen_model_id = String::from("test-llm-id-1");
@@ -899,13 +908,15 @@ mod tests {
         };
 
         // Construct a behavior for the mock object
-        faux::when!(mock_client.generate(expected_generate_req_args, HeaderMap::new()))
+        faux::when!(tgis_client.generate(expected_generate_req_args, HeaderMap::new()))
             .once() // TODO: Add with_args
             .then_return(Ok(client_generation_response));
 
-        let mock_generation_client = GenerationClient::tgis(mock_client.clone());
+        let generation_client = GenerationClient::tgis(tgis_client.clone());
 
-        let ctx = Arc::new(get_test_context(mock_generation_client, None, None).await);
+        let mut clients = ClientMap::new();
+        clients.insert("generation".into(), generation_client);
+        let ctx = Arc::new(Context::new(OrchestratorConfig::default(), clients));
 
         // Test request formulation and response processing is as expected
         assert_eq!(
@@ -925,8 +936,8 @@ mod tests {
     /// 2. detections below the threshold are not returned to the client.
     #[tokio::test]
     async fn test_handle_detection_task() {
-        let mock_generation_client = GenerationClient::tgis(TgisClient::faux());
-        let mut mock_detector_client = DetectorClient::faux();
+        let generation_client = GenerationClient::tgis(TgisClient::faux());
+        let mut detector_client = TextContentsDetectorClient::faux();
 
         let detector_id = "mocked_hap_detector";
         let threshold = 0.5;
@@ -957,7 +968,7 @@ mod tests {
             token_count: None,
         }];
 
-        faux::when!(mock_detector_client.text_contents(
+        faux::when!(detector_client.text_contents(
             detector_id,
             ContentAnalysisRequest::new(vec![first_sentence.clone(), second_sentence.clone()]),
             HeaderMap::new(),
@@ -984,12 +995,14 @@ mod tests {
             }],
         ]));
 
-        let ctx: Context =
-            get_test_context(mock_generation_client, None, Some(mock_detector_client)).await;
+        let mut clients = ClientMap::new();
+        clients.insert("generation".into(), generation_client);
+        clients.insert(detector_id.into(), detector_client);
+        let ctx = Arc::new(Context::new(OrchestratorConfig::default(), clients));
 
         assert_eq!(
             detect(
-                ctx.into(),
+                ctx,
                 detector_id.to_string(),
                 threshold,
                 detector_params,
@@ -1005,8 +1018,8 @@ mod tests {
     /// This test checks if calls to detectors returning 503 are being propagated in the orchestrator response.
     #[tokio::test]
     async fn test_detect_when_detector_returns_503() {
-        let mock_generation_client = GenerationClient::tgis(TgisClient::faux());
-        let mut mock_detector_client = DetectorClient::faux();
+        let generation_client = GenerationClient::tgis(TgisClient::faux());
+        let mut detector_client = TextContentsDetectorClient::faux();
 
         let detector_id = "mocked_503_detector";
         let sentence = "This call will return a 503.".to_string();
@@ -1027,7 +1040,7 @@ mod tests {
             },
         };
 
-        faux::when!(mock_detector_client.text_contents(
+        faux::when!(detector_client.text_contents(
             detector_id,
             ContentAnalysisRequest::new(vec![sentence.clone()]),
             HeaderMap::new(),
@@ -1038,12 +1051,14 @@ mod tests {
             message: "Service Unavailable".to_string(),
         }));
 
-        let ctx: Context =
-            get_test_context(mock_generation_client, None, Some(mock_detector_client)).await;
+        let mut clients = ClientMap::new();
+        clients.insert("generation".into(), generation_client);
+        clients.insert(detector_id.into(), detector_client);
+        let ctx = Arc::new(Context::new(OrchestratorConfig::default(), clients));
 
         assert_eq!(
             detect(
-                ctx.into(),
+                ctx,
                 detector_id.to_string(),
                 threshold,
                 detector_params,
@@ -1055,10 +1070,11 @@ mod tests {
             expected_response
         );
     }
+
     #[tokio::test]
     async fn test_handle_detection_task_with_whitespace() {
-        let mock_generation_client = GenerationClient::tgis(TgisClient::faux());
-        let mut mock_detector_client = DetectorClient::faux();
+        let generation_client = GenerationClient::tgis(TgisClient::faux());
+        let mut detector_client = TextContentsDetectorClient::faux();
 
         let detector_id = "mocked_hap_detector";
         let threshold = 0.5;
@@ -1070,7 +1086,7 @@ mod tests {
             text: first_sentence.clone(),
         }];
 
-        faux::when!(mock_detector_client.text_contents(
+        faux::when!(detector_client.text_contents(
             detector_id,
             ContentAnalysisRequest::new(vec![first_sentence.clone()]),
             HeaderMap::new(),
@@ -1078,12 +1094,15 @@ mod tests {
         .once()
         .then_return(Ok(vec![vec![]]));
 
-        let ctx: Context =
-            get_test_context(mock_generation_client, None, Some(mock_detector_client)).await;
+        let mut clients = ClientMap::new();
+        clients.insert("generation".into(), generation_client);
+        clients.insert(detector_id.into(), detector_client);
+        let ctx = Arc::new(Context::new(OrchestratorConfig::default(), clients));
+
         let expected_response_whitespace = vec![];
         assert_eq!(
             detect(
-                ctx.into(),
+                ctx,
                 detector_id.to_string(),
                 threshold,
                 detector_params,
@@ -1095,11 +1114,11 @@ mod tests {
             expected_response_whitespace
         );
     }
-    /// This test checks if calls to detectors for the /generation-detection endpoint are being handled appropriately.
+
     #[tokio::test]
     async fn test_detect_for_generation() {
-        let mock_generation_client = GenerationClient::tgis(TgisClient::faux());
-        let mut mock_detector_client = DetectorClient::faux();
+        let generation_client = GenerationClient::tgis(TgisClient::faux());
+        let mut detector_client = TextGenerationDetectorClient::faux();
 
         let detector_id = "mocked_answer_relevance_detector";
         let threshold = 0.5;
@@ -1123,7 +1142,7 @@ mod tests {
             ),
         }];
 
-        faux::when!(mock_detector_client.text_generation(
+        faux::when!(detector_client.text_generation(
             detector_id,
             GenerationDetectionRequest::new(prompt.clone(), generated_text.clone()),
             HeaderMap::new(),
@@ -1144,9 +1163,10 @@ mod tests {
             ),
         }]));
 
-        let mut ctx: Context =
-            get_test_context(mock_generation_client, None, Some(mock_detector_client)).await;
-
+        let mut clients = ClientMap::new();
+        clients.insert("generation".into(), generation_client);
+        clients.insert(detector_id.into(), detector_client);
+        let mut ctx = Context::new(OrchestratorConfig::default(), clients);
         // add detector
         ctx.config.detectors.insert(
             detector_id.to_string(),
@@ -1154,10 +1174,11 @@ mod tests {
                 ..Default::default()
             },
         );
+        let ctx = Arc::new(ctx);
 
         assert_eq!(
             detect_for_generation(
-                ctx.into(),
+                ctx,
                 detector_id.to_string(),
                 detector_params,
                 prompt,
@@ -1170,11 +1191,10 @@ mod tests {
         );
     }
 
-    /// This test checks if calls to detectors for the /generation-detection endpoint only return detections above the threshold.
     #[tokio::test]
     async fn test_detect_for_generation_below_threshold() {
-        let mock_generation_client = GenerationClient::tgis(TgisClient::faux());
-        let mut mock_detector_client = DetectorClient::faux();
+        let generation_client = GenerationClient::tgis(TgisClient::faux());
+        let mut detector_client = TextGenerationDetectorClient::faux();
 
         let detector_id = "mocked_answer_relevance_detector";
         let threshold = 0.5;
@@ -1186,7 +1206,7 @@ mod tests {
 
         let expected_response: Vec<DetectionResult> = vec![];
 
-        faux::when!(mock_detector_client.text_generation(
+        faux::when!(detector_client.text_generation(
             detector_id,
             GenerationDetectionRequest::new(prompt.clone(), generated_text.clone()),
             HeaderMap::new(),
@@ -1199,20 +1219,22 @@ mod tests {
             evidence: None,
         }]));
 
-        let mut ctx: Context =
-            get_test_context(mock_generation_client, None, Some(mock_detector_client)).await;
-
-        // add mocked detector
+        let mut clients = ClientMap::new();
+        clients.insert("generation".into(), generation_client);
+        clients.insert(detector_id.into(), detector_client);
+        let mut ctx = Context::new(OrchestratorConfig::default(), clients);
+        // add detector
         ctx.config.detectors.insert(
             detector_id.to_string(),
             DetectorConfig {
                 ..Default::default()
             },
         );
+        let ctx = Arc::new(ctx);
 
         assert_eq!(
             detect_for_generation(
-                ctx.into(),
+                ctx,
                 detector_id.to_string(),
                 detector_params,
                 prompt,

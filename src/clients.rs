@@ -16,29 +16,35 @@
 */
 
 #![allow(dead_code)]
-// Import error for adding `source` trait
-use std::{collections::HashMap, error::Error as _, fmt::Display, pin::Pin, time::Duration};
+use std::{
+    any::TypeId,
+    collections::{hash_map, HashMap},
+    pin::Pin,
+    time::Duration,
+};
 
-use futures::{future::join_all, Stream};
+use async_trait::async_trait;
+use futures::Stream;
 use ginepro::LoadBalancedChannel;
-use reqwest::{Response, StatusCode};
 use tokio::{fs::File, io::AsyncReadExt};
-use tracing::error;
 use url::Url;
 
 use crate::{
     config::{ServiceConfig, Tls},
-    health::{HealthCheck, HealthCheckResult, HealthStatus, OptionalHealthCheckResponseBody},
+    health::HealthCheckResult,
 };
+
+pub mod errors;
+pub use errors::Error;
+
+pub mod http;
+pub use http::HttpClient;
 
 pub mod chunker;
 pub use chunker::ChunkerClient;
 
 pub mod detector;
-pub use detector::DetectorClient;
-
-pub mod generation;
-pub use generation::GenerationClient;
+pub use detector::TextContentsDetectorClient;
 
 pub mod tgis;
 pub use tgis::TgisClient;
@@ -46,358 +52,297 @@ pub use tgis::TgisClient;
 pub mod nlp;
 pub use nlp::NlpClient;
 
-pub const DEFAULT_TGIS_PORT: u16 = 8033;
-pub const DEFAULT_CAIKIT_NLP_PORT: u16 = 8085;
-pub const DEFAULT_CHUNKER_PORT: u16 = 8085;
-pub const DEFAULT_DETECTOR_PORT: u16 = 8080;
-pub const COMMON_ROUTER_KEY: &str = "common-router";
+pub mod generation;
+pub use generation::GenerationClient;
+
+pub mod openai;
+
 const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(60);
 const DEFAULT_REQUEST_TIMEOUT_SEC: u64 = 600;
 
 pub type BoxStream<T> = Pin<Box<dyn Stream<Item = T> + Send>>;
 
-/// Client errors.
-#[derive(Debug, Clone, PartialEq, thiserror::Error)]
-pub enum Error {
-    #[error("{}", .message)]
-    Grpc { code: StatusCode, message: String },
-    #[error("{}", .message)]
-    Http { code: StatusCode, message: String },
-    #[error("model not found: {model_id}")]
-    ModelNotFound { model_id: String },
+mod private {
+    pub struct Seal;
 }
 
-impl Error {
-    /// Returns status code.
-    pub fn status_code(&self) -> StatusCode {
-        match self {
-            // Return equivalent http status code for grpc status code
-            Error::Grpc { code, .. } => *code,
-            // Return http status code for error responses
-            // and 500 for other errors
-            Error::Http { code, .. } => *code,
-            // Return 404 for model not found
-            Error::ModelNotFound { .. } => StatusCode::NOT_FOUND,
+#[async_trait]
+pub trait Client: Send + Sync + 'static {
+    /// Returns the name of the client type.
+    fn name(&self) -> &str;
+
+    /// Returns the `TypeId` of the client type. Sealed to prevent overrides.
+    fn type_id(&self, _: private::Seal) -> TypeId {
+        TypeId::of::<Self>()
+    }
+
+    /// Performs a client health check.
+    async fn health(&self) -> HealthCheckResult;
+}
+
+impl dyn Client {
+    pub fn is<T: 'static>(&self) -> bool {
+        TypeId::of::<T>() == self.type_id(private::Seal)
+    }
+
+    pub fn downcast<T: 'static>(self: Box<Self>) -> Result<Box<T>, Box<Self>> {
+        if (*self).is::<T>() {
+            let ptr = Box::into_raw(self) as *mut T;
+            // SAFETY: guaranteed by `is`
+            unsafe { Ok(Box::from_raw(ptr)) }
+        } else {
+            Err(self)
+        }
+    }
+
+    pub fn downcast_ref<T: 'static>(&self) -> Option<&T> {
+        if (*self).is::<T>() {
+            let ptr = self as *const dyn Client as *const T;
+            // SAFETY: guaranteed by `is`
+            unsafe { Some(&*ptr) }
+        } else {
+            None
+        }
+    }
+
+    pub fn downcast_mut<T: 'static>(&mut self) -> Option<&mut T> {
+        if (*self).is::<T>() {
+            let ptr = self as *mut dyn Client as *mut T;
+            // SAFETY: guaranteed by `is`
+            unsafe { Some(&mut *ptr) }
+        } else {
+            None
         }
     }
 }
 
-impl From<reqwest::Error> for Error {
-    fn from(value: reqwest::Error) -> Self {
-        // Log lower level source of error.
-        // Examples:
-        // 1. client error (Connect) // Cases like connection error, wrong port etc.
-        // 2. client error (SendRequest) // Cases like cert issues
-        error!(
-            "http request failed. Source: {}",
-            value.source().unwrap().to_string()
-        );
-        // Return http status code for error responses
-        // and 500 for other errors
-        let code = match value.status() {
-            Some(code) => code,
-            None => StatusCode::INTERNAL_SERVER_ERROR,
-        };
-        Self::Http {
-            code,
-            message: value.to_string(),
+/// A map containing different types of clients.
+#[derive(Default)]
+pub struct ClientMap(HashMap<String, Box<dyn Client>>);
+
+impl ClientMap {
+    /// Creates an empty `ClientMap`.
+    #[inline]
+    pub fn new() -> Self {
+        Self(HashMap::new())
+    }
+
+    /// Inserts a client into the map.
+    #[inline]
+    pub fn insert<V: Client>(&mut self, key: String, value: V) {
+        self.0.insert(key, Box::new(value));
+    }
+
+    /// Returns a reference to the client trait object.
+    #[inline]
+    pub fn get(&self, key: &str) -> Option<&dyn Client> {
+        self.0.get(key).map(|v| v.as_ref())
+    }
+
+    /// Returns a mutable reference to the client trait object.
+    #[inline]
+    pub fn get_mut(&mut self, key: &str) -> Option<&mut dyn Client> {
+        self.0.get_mut(key).map(|v| v.as_mut())
+    }
+
+    /// Downcasts and returns a reference to the concrete client type.
+    #[inline]
+    pub fn get_as<V: Client>(&self, key: &str) -> Option<&V> {
+        self.0.get(key)?.downcast_ref::<V>()
+    }
+
+    /// Downcasts and returns a mutable reference to the concrete client type.
+    #[inline]
+    pub fn get_mut_as<V: Client>(&mut self, key: &str) -> Option<&mut V> {
+        self.0.get_mut(key)?.downcast_mut::<V>()
+    }
+
+    /// Removes a client from the map.
+    #[inline]
+    pub fn remove(&mut self, key: &str) -> Option<Box<dyn Client>> {
+        self.0.remove(key)
+    }
+
+    /// An iterator visiting all key-value pairs in arbitrary order.
+    #[inline]
+    pub fn iter(&self) -> hash_map::Iter<'_, String, Box<dyn Client>> {
+        self.0.iter()
+    }
+
+    /// An iterator visiting all keys in arbitrary order.
+    #[inline]
+    pub fn keys(&self) -> hash_map::Keys<'_, String, Box<dyn Client>> {
+        self.0.keys()
+    }
+
+    /// An iterator visiting all values in arbitrary order.
+    #[inline]
+    pub fn values(&self) -> hash_map::Values<'_, String, Box<dyn Client>> {
+        self.0.values()
+    }
+
+    /// Returns the number of elements in the map.
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    /// Returns `true` if the map contains no elements.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+}
+
+pub async fn create_http_client(default_port: u16, service_config: &ServiceConfig) -> HttpClient {
+    let port = service_config.port.unwrap_or(default_port);
+    let protocol = match service_config.tls {
+        Some(_) => "https",
+        None => "http",
+    };
+    let mut base_url = Url::parse(&format!("{}://{}", protocol, &service_config.hostname)).unwrap();
+    base_url.set_port(Some(port)).unwrap();
+    let request_timeout = Duration::from_secs(
+        service_config
+            .request_timeout
+            .unwrap_or(DEFAULT_REQUEST_TIMEOUT_SEC),
+    );
+    let mut builder = reqwest::ClientBuilder::new()
+        .connect_timeout(DEFAULT_CONNECT_TIMEOUT)
+        .timeout(request_timeout);
+    if let Some(Tls::Config(tls_config)) = &service_config.tls {
+        let mut cert_buf = Vec::new();
+        let cert_path = tls_config.cert_path.as_ref().unwrap().as_path();
+        File::open(cert_path)
+            .await
+            .unwrap_or_else(|error| panic!("error reading cert from {cert_path:?}: {error}"))
+            .read_to_end(&mut cert_buf)
+            .await
+            .unwrap();
+
+        if let Some(key_path) = &tls_config.key_path {
+            File::open(key_path)
+                .await
+                .unwrap_or_else(|error| panic!("error reading key from {key_path:?}: {error}"))
+                .read_to_end(&mut cert_buf)
+                .await
+                .unwrap();
+        }
+        let identity = reqwest::Identity::from_pem(&cert_buf)
+            .unwrap_or_else(|error| panic!("error parsing bundled client certificate: {error}"));
+
+        builder = builder.use_rustls_tls().identity(identity);
+        builder = builder.danger_accept_invalid_certs(tls_config.insecure.unwrap_or(false));
+
+        if let Some(client_ca_cert_path) = &tls_config.client_ca_cert_path {
+            let ca_cert = tokio::fs::read(client_ca_cert_path)
+                .await
+                .unwrap_or_else(|error| {
+                    panic!("error reading cert from {client_ca_cert_path:?}: {error}")
+                });
+            let cacert = reqwest::Certificate::from_pem(&ca_cert)
+                .unwrap_or_else(|error| panic!("error parsing ca cert: {error}"));
+            builder = builder.add_root_certificate(cacert)
         }
     }
+    let client = builder
+        .build()
+        .unwrap_or_else(|error| panic!("error creating http client: {error}"));
+    HttpClient::new(base_url, client)
 }
 
-impl From<tonic::Status> for Error {
-    fn from(value: tonic::Status) -> Self {
-        use tonic::Code::*;
-        // Return equivalent http status code for grpc status code
-        let code = match value.code() {
-            InvalidArgument => StatusCode::BAD_REQUEST,
-            Internal => StatusCode::INTERNAL_SERVER_ERROR,
-            NotFound => StatusCode::NOT_FOUND,
-            DeadlineExceeded => StatusCode::REQUEST_TIMEOUT,
-            Unimplemented => StatusCode::NOT_IMPLEMENTED,
-            Unauthenticated => StatusCode::UNAUTHORIZED,
-            PermissionDenied => StatusCode::FORBIDDEN,
-            Unavailable => StatusCode::SERVICE_UNAVAILABLE,
-            Ok => StatusCode::OK,
-            _ => StatusCode::INTERNAL_SERVER_ERROR,
-        };
-        Self::Grpc {
-            code,
-            message: value.message().to_string(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum ClientCode {
-    Http(StatusCode),
-    Grpc(tonic::Code),
-}
-
-impl Display for ClientCode {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ClientCode::Http(code) => write!(f, "HTTP {}", code),
-            ClientCode::Grpc(code) => write!(f, "gRPC {:?} {}", code, code),
-        }
-    }
-}
-
-#[derive(Clone)]
-pub struct HttpClient {
-    base_url: Url,
-    health_url: Url,
-    client: reqwest::Client,
-}
-
-impl HttpClient {
-    pub fn new(base_url: Url, client: reqwest::Client) -> Self {
-        let health_url = extract_base_url(&base_url).join("health").unwrap();
-        Self {
-            base_url,
-            health_url,
-            client,
-        }
-    }
-
-    pub fn base_url(&self) -> &Url {
-        &self.base_url
-    }
-
-    /// This is sectioned off to allow for testing.
-    pub(super) async fn http_response_to_health_check_result(
-        res: Result<Response, reqwest::Error>,
-    ) -> HealthCheckResult {
-        match res {
-            Ok(response) => {
-                if response.status() == StatusCode::OK {
-                    if let Ok(body) = response.json::<OptionalHealthCheckResponseBody>().await {
-                        // If the service provided a body, we only anticipate a minimal health status and optional reason.
-                        HealthCheckResult {
-                            health_status: body.health_status.clone(),
-                            response_code: ClientCode::Http(StatusCode::OK),
-                            reason: match body.health_status {
-                                HealthStatus::Healthy => None,
-                                _ => body.reason,
-                            },
-                        }
-                    } else {
-                        // If the service did not provide a body, we assume it is healthy.
-                        HealthCheckResult {
-                            health_status: HealthStatus::Healthy,
-                            response_code: ClientCode::Http(StatusCode::OK),
-                            reason: None,
-                        }
-                    }
-                } else {
-                    HealthCheckResult {
-                        // The most we can presume is that 5xx errors are likely indicating service issues, implying the service is unhealthy.
-                        // and that 4xx errors are more likely indicating health check failures, i.e. due to configuration/implementation issues.
-                        // Regardless we can't be certain, so the reason is also provided.
-                        // TODO: We will likely circle back to re-evaluate this logic in the future
-                        // when we know more about how the client health results will be used.
-                        health_status: if response.status().as_u16() >= 500
-                            && response.status().as_u16() < 600
-                        {
-                            HealthStatus::Unhealthy
-                        } else if response.status().as_u16() >= 400
-                            && response.status().as_u16() < 500
-                        {
-                            HealthStatus::Unknown
-                        } else {
-                            error!(
-                                "unexpected http health check status code: {}",
-                                response.status()
-                            );
-                            HealthStatus::Unknown
-                        },
-                        response_code: ClientCode::Http(response.status()),
-                        reason: Some(format!(
-                            "{}{}",
-                            response.error_for_status_ref().unwrap_err(),
-                            response
-                                .text()
-                                .await
-                                .map(|s| if s.is_empty() {
-                                    "".to_string()
-                                } else {
-                                    format!(": {}", s)
-                                })
-                                .unwrap_or("".to_string())
-                        )),
-                    }
-                }
-            }
-            Err(e) => {
-                error!("error checking health: {}", e);
-                HealthCheckResult {
-                    health_status: HealthStatus::Unknown,
-                    response_code: ClientCode::Http(
-                        e.status().unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
-                    ),
-                    reason: Some(e.to_string()),
-                }
-            }
-        }
-    }
-}
-
-impl HealthCheck for HttpClient {
-    async fn check(&self) -> HealthCheckResult {
-        let res = self.get(self.health_url.clone()).send().await;
-        Self::http_response_to_health_check_result(res).await
-    }
-}
-
-impl std::ops::Deref for HttpClient {
-    type Target = reqwest::Client;
-
-    fn deref(&self) -> &Self::Target {
-        &self.client
-    }
-}
-
-pub async fn create_http_clients(
+pub async fn create_grpc_client<C>(
     default_port: u16,
-    config: &[(String, ServiceConfig)],
-) -> HashMap<String, HttpClient> {
-    let clients = config
-        .iter()
-        .map(|(name, service_config)| async move {
-            let port = service_config.port.unwrap_or(default_port);
-            let mut base_url = Url::parse(&service_config.hostname).unwrap();
-            base_url.set_port(Some(port)).unwrap();
-            let request_timeout = Duration::from_secs(
-                service_config
-                    .request_timeout
-                    .unwrap_or(DEFAULT_REQUEST_TIMEOUT_SEC),
-            );
-            let mut builder = reqwest::ClientBuilder::new()
-                .connect_timeout(DEFAULT_CONNECT_TIMEOUT)
-                .timeout(request_timeout);
-            if let Some(Tls::Config(tls_config)) = &service_config.tls {
-                let mut cert_buf = Vec::new();
-                let cert_path = tls_config.cert_path.as_ref().unwrap().as_path();
-                File::open(cert_path)
+    service_config: &ServiceConfig,
+    new: fn(LoadBalancedChannel) -> C,
+) -> C {
+    let request_timeout = Duration::from_secs(
+        service_config
+            .request_timeout
+            .unwrap_or(DEFAULT_REQUEST_TIMEOUT_SEC),
+    );
+    let mut builder = LoadBalancedChannel::builder((
+        service_config.hostname.clone(),
+        service_config.port.unwrap_or(default_port),
+    ))
+    .connect_timeout(DEFAULT_CONNECT_TIMEOUT)
+    .timeout(request_timeout);
+
+    let client_tls_config = if let Some(Tls::Config(tls_config)) = &service_config.tls {
+        let cert_path = tls_config.cert_path.as_ref().unwrap().as_path();
+        let key_path = tls_config.key_path.as_ref().unwrap().as_path();
+        let cert_pem = tokio::fs::read(cert_path)
+            .await
+            .unwrap_or_else(|error| panic!("error reading cert from {cert_path:?}: {error}"));
+        let key_pem = tokio::fs::read(key_path)
+            .await
+            .unwrap_or_else(|error| panic!("error reading key from {key_path:?}: {error}"));
+        let identity = tonic::transport::Identity::from_pem(cert_pem, key_pem);
+        let mut client_tls_config = tonic::transport::ClientTlsConfig::new()
+            .identity(identity)
+            .with_native_roots()
+            .with_webpki_roots();
+        if let Some(client_ca_cert_path) = &tls_config.client_ca_cert_path {
+            let client_ca_cert_pem =
+                tokio::fs::read(client_ca_cert_path)
                     .await
                     .unwrap_or_else(|error| {
-                        panic!("error reading cert from {cert_path:?}: {error}")
-                    })
-                    .read_to_end(&mut cert_buf)
-                    .await
-                    .unwrap();
-
-                if let Some(key_path) = &tls_config.key_path {
-                    File::open(key_path)
-                        .await
-                        .unwrap_or_else(|error| {
-                            panic!("error reading key from {key_path:?}: {error}")
-                        })
-                        .read_to_end(&mut cert_buf)
-                        .await
-                        .unwrap();
-                }
-                let identity = reqwest::Identity::from_pem(&cert_buf).unwrap_or_else(|error| {
-                    panic!("error parsing bundled client certificate: {error}")
-                });
-
-                builder = builder.use_rustls_tls().identity(identity);
-                builder = builder.danger_accept_invalid_certs(tls_config.insecure.unwrap_or(false));
-
-                if let Some(client_ca_cert_path) = &tls_config.client_ca_cert_path {
-                    let ca_cert =
-                        tokio::fs::read(client_ca_cert_path)
-                            .await
-                            .unwrap_or_else(|error| {
-                                panic!("error reading cert from {client_ca_cert_path:?}: {error}")
-                            });
-                    let cacert = reqwest::Certificate::from_pem(&ca_cert)
-                        .unwrap_or_else(|error| panic!("error parsing ca cert: {error}"));
-                    builder = builder.add_root_certificate(cacert)
-                }
-            }
-            let client = builder
-                .build()
-                .unwrap_or_else(|error| panic!("error creating http client for {name}: {error}"));
-            let client = HttpClient::new(base_url, client);
-            (name.clone(), client)
-        })
-        .collect::<Vec<_>>();
-    join_all(clients).await.into_iter().collect()
-}
-
-async fn create_grpc_clients<C>(
-    default_port: u16,
-    config: &[(String, ServiceConfig)],
-    new: fn(LoadBalancedChannel) -> C,
-) -> HashMap<String, C> {
-    let clients = config
-        .iter()
-        .map(|(name, service_config)| async move {
-            let request_timeout = Duration::from_secs(service_config.request_timeout.unwrap_or(DEFAULT_REQUEST_TIMEOUT_SEC));
-            let mut builder = LoadBalancedChannel::builder((
-                service_config.hostname.clone(),
-                service_config.port.unwrap_or(default_port),
-            ))
-            .connect_timeout(DEFAULT_CONNECT_TIMEOUT)
-            .timeout(request_timeout);
-
-            let client_tls_config = if let Some(Tls::Config(tls_config)) = &service_config.tls {
-                let cert_path = tls_config.cert_path.as_ref().unwrap().as_path();
-                let key_path = tls_config.key_path.as_ref().unwrap().as_path();
-                let cert_pem = tokio::fs::read(cert_path)
-                    .await
-                    .unwrap_or_else(|error| panic!("error reading cert from {cert_path:?}: {error}"));
-                let key_pem = tokio::fs::read(key_path)
-                    .await
-                    .unwrap_or_else(|error| panic!("error reading key from {key_path:?}: {error}"));
-                let identity = tonic::transport::Identity::from_pem(cert_pem, key_pem);
-                let mut client_tls_config =
-                    tonic::transport::ClientTlsConfig::new().identity(identity).with_native_roots().with_webpki_roots();
-                if let Some(client_ca_cert_path) = &tls_config.client_ca_cert_path {
-                    let client_ca_cert_pem = tokio::fs::read(client_ca_cert_path)
-                        .await
-                        .unwrap_or_else(|error| {
-                            panic!("error reading client ca cert from {client_ca_cert_path:?}: {error}")
-                        });
-                    client_tls_config = client_tls_config.ca_certificate(
-                        tonic::transport::Certificate::from_pem(client_ca_cert_pem),
-                    );
-                }
-                Some(client_tls_config)
-            } else {
-                None
-            };
-            if let Some(client_tls_config) = client_tls_config {
-                builder = builder.with_tls(client_tls_config);
-            }
-            let channel = builder.channel().await.unwrap_or_else(|error| panic!("error creating grpc client for {name}: {error}"));
-            (name.clone(), new(channel))
-        })
-        .collect::<Vec<_>>();
-    join_all(clients).await.into_iter().collect()
-}
-
-/// Extracts a base url from a url including path segments.
-fn extract_base_url(url: &Url) -> Url {
-    let mut url = url.clone();
-    match url.path_segments_mut() {
-        Ok(mut path) => {
-            path.clear();
+                        panic!("error reading client ca cert from {client_ca_cert_path:?}: {error}")
+                    });
+            client_tls_config = client_tls_config
+                .ca_certificate(tonic::transport::Certificate::from_pem(client_ca_cert_pem));
         }
-        Err(_) => {
-            panic!("url cannot be a base");
-        }
+        Some(client_tls_config)
+    } else {
+        None
+    };
+    if let Some(client_tls_config) = client_tls_config {
+        builder = builder.with_tls(client_tls_config);
     }
-    url
+    let channel = builder
+        .channel()
+        .await
+        .unwrap_or_else(|error| panic!("error creating grpc client: {error}"));
+    new(channel)
+}
+
+/// Returns `true` if hostname is valid according to [IETF RFC 1123](https://tools.ietf.org/html/rfc1123).
+///
+/// Conditions:
+/// - It does not start or end with `-` or `.`.
+/// - It does not contain any characters outside of the alphanumeric range, except for `-` and `.`.
+/// - It is not empty.
+/// - It is 253 or fewer characters.
+/// - Its labels (characters separated by `.`) are not empty.
+/// - Its labels are 63 or fewer characters.
+/// - Its labels do not start or end with '-' or '.'.
+pub fn is_valid_hostname(hostname: &str) -> bool {
+    fn is_valid_char(byte: u8) -> bool {
+        byte.is_ascii_lowercase()
+            || byte.is_ascii_uppercase()
+            || byte.is_ascii_digit()
+            || byte == b'-'
+            || byte == b'.'
+    }
+    !(hostname.bytes().any(|byte| !is_valid_char(byte))
+        || hostname.split('.').any(|label| {
+            label.is_empty() || label.len() > 63 || label.starts_with('-') || label.ends_with('-')
+        })
+        || hostname.is_empty()
+        || hostname.len() > 253)
 }
 
 #[cfg(test)]
 mod tests {
-    use hyper::http;
+    use errors::grpc_to_http_code;
+    use hyper::{http, StatusCode};
+    use reqwest::Response;
 
     use super::*;
-    use crate::pb::grpc::health::v1::{health_check_response::ServingStatus, HealthCheckResponse};
+    use crate::{
+        health::{HealthCheckResult, HealthStatus},
+        pb::grpc::health::v1::{health_check_response::ServingStatus, HealthCheckResponse},
+    };
 
     async fn mock_http_response(
         status: StatusCode,
@@ -429,83 +374,69 @@ mod tests {
         // READY responses from HTTP 200 OK with or without reason
         let response = [
             (StatusCode::OK, r#"{}"#),
-            (StatusCode::OK, r#"{ "health_status": "HEALTHY" }"#),
+            (StatusCode::OK, r#"{ "status": "HEALTHY" }"#),
+            (StatusCode::OK, r#"{ "status": "meaningless status" }"#),
             (
                 StatusCode::OK,
-                r#"{ "health_status": "meaningless status" }"#,
-            ),
-            (
-                StatusCode::OK,
-                r#"{ "health_status": "HEALTHY", "reason": "needless reason" }"#,
+                r#"{ "status": "HEALTHY", "reason": "needless reason" }"#,
             ),
         ];
         for (status, body) in response.iter() {
             let response = mock_http_response(*status, body).await;
             let result = HttpClient::http_response_to_health_check_result(response).await;
-            assert_eq!(result.health_status, HealthStatus::Healthy);
-            assert_eq!(result.response_code, ClientCode::Http(StatusCode::OK));
+            assert_eq!(result.status, HealthStatus::Healthy);
+            assert_eq!(result.code, StatusCode::OK);
             assert_eq!(result.reason, None);
             let serialized = serde_json::to_string(&result).unwrap();
-            assert_eq!(serialized, r#""HEALTHY""#);
+            assert_eq!(serialized, r#"{"status":"HEALTHY"}"#);
         }
 
         // NOT_READY response from HTTP 200 OK without reason
-        let response =
-            mock_http_response(StatusCode::OK, r#"{ "health_status": "UNHEALTHY" }"#).await;
+        let response = mock_http_response(StatusCode::OK, r#"{ "status": "UNHEALTHY" }"#).await;
         let result = HttpClient::http_response_to_health_check_result(response).await;
-        assert_eq!(result.health_status, HealthStatus::Unhealthy);
-        assert_eq!(result.response_code, ClientCode::Http(StatusCode::OK));
+        assert_eq!(result.status, HealthStatus::Unhealthy);
+        assert_eq!(result.code, StatusCode::OK);
         assert_eq!(result.reason, None);
         let serialized = serde_json::to_string(&result).unwrap();
-        assert_eq!(
-            serialized,
-            r#"{"health_status":"UNHEALTHY","response_code":"HTTP 200 OK"}"#
-        );
+        assert_eq!(serialized, r#"{"status":"UNHEALTHY"}"#);
 
         // UNKNOWN response from HTTP 200 OK without reason
-        let response =
-            mock_http_response(StatusCode::OK, r#"{ "health_status": "UNKNOWN" }"#).await;
+        let response = mock_http_response(StatusCode::OK, r#"{ "status": "UNKNOWN" }"#).await;
         let result = HttpClient::http_response_to_health_check_result(response).await;
-        assert_eq!(result.health_status, HealthStatus::Unknown);
-        assert_eq!(result.response_code, ClientCode::Http(StatusCode::OK));
+        assert_eq!(result.status, HealthStatus::Unknown);
+        assert_eq!(result.code, StatusCode::OK);
         assert_eq!(result.reason, None);
         let serialized = serde_json::to_string(&result).unwrap();
-        assert_eq!(
-            serialized,
-            r#"{"health_status":"UNKNOWN","response_code":"HTTP 200 OK"}"#
-        );
+        assert_eq!(serialized, r#"{"status":"UNKNOWN"}"#);
 
         // NOT_READY response from HTTP 200 OK with reason
         let response = mock_http_response(
             StatusCode::OK,
-            r#"{ "health_status": "UNHEALTHY", "reason": "some reason" }"#,
+            r#"{"status": "UNHEALTHY", "reason": "some reason" }"#,
         )
         .await;
         let result = HttpClient::http_response_to_health_check_result(response).await;
-        assert_eq!(result.health_status, HealthStatus::Unhealthy);
-        assert_eq!(result.response_code, ClientCode::Http(StatusCode::OK));
+        assert_eq!(result.status, HealthStatus::Unhealthy);
+        assert_eq!(result.code, StatusCode::OK);
         assert_eq!(result.reason, Some("some reason".to_string()));
         let serialized = serde_json::to_string(&result).unwrap();
         assert_eq!(
             serialized,
-            r#"{"health_status":"UNHEALTHY","response_code":"HTTP 200 OK","reason":"some reason"}"#
+            r#"{"status":"UNHEALTHY","reason":"some reason"}"#
         );
 
         // UNKNOWN response from HTTP 200 OK with reason
         let response = mock_http_response(
             StatusCode::OK,
-            r#"{ "health_status": "UNKNOWN", "reason": "some reason" }"#,
+            r#"{ "status": "UNKNOWN", "reason": "some reason" }"#,
         )
         .await;
         let result = HttpClient::http_response_to_health_check_result(response).await;
-        assert_eq!(result.health_status, HealthStatus::Unknown);
-        assert_eq!(result.response_code, ClientCode::Http(StatusCode::OK));
+        assert_eq!(result.status, HealthStatus::Unknown);
+        assert_eq!(result.code, StatusCode::OK);
         assert_eq!(result.reason, Some("some reason".to_string()));
         let serialized = serde_json::to_string(&result).unwrap();
-        assert_eq!(
-            serialized,
-            r#"{"health_status":"UNKNOWN","response_code":"HTTP 200 OK","reason":"some reason"}"#
-        );
+        assert_eq!(serialized, r#"{"status":"UNKNOWN","reason":"some reason"}"#);
 
         // NOT_READY response from HTTP 503 SERVICE UNAVAILABLE with reason
         let response = mock_http_response(
@@ -514,16 +445,13 @@ mod tests {
         )
         .await;
         let result = HttpClient::http_response_to_health_check_result(response).await;
-        assert_eq!(result.health_status, HealthStatus::Unhealthy);
-        assert_eq!(
-            result.response_code,
-            ClientCode::Http(StatusCode::SERVICE_UNAVAILABLE)
-        );
-        assert_eq!(result.reason, Some(r#"HTTP status server error (503 Service Unavailable) for url (http://no.url.provided.local/): { "message": "some error message" }"#.to_string()));
+        assert_eq!(result.status, HealthStatus::Unhealthy);
+        assert_eq!(result.code, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(result.reason, Some("Service Unavailable".to_string()));
         let serialized = serde_json::to_string(&result).unwrap();
         assert_eq!(
             serialized,
-            r#"{"health_status":"UNHEALTHY","response_code":"HTTP 503 Service Unavailable","reason":"HTTP status server error (503 Service Unavailable) for url (http://no.url.provided.local/): { \"message\": \"some error message\" }"}"#
+            r#"{"status":"UNHEALTHY","code":503,"reason":"Service Unavailable"}"#
         );
 
         // UNKNOWN response from HTTP 404 NOT FOUND with reason
@@ -533,46 +461,37 @@ mod tests {
         )
         .await;
         let result = HttpClient::http_response_to_health_check_result(response).await;
-        assert_eq!(result.health_status, HealthStatus::Unknown);
-        assert_eq!(
-            result.response_code,
-            ClientCode::Http(StatusCode::NOT_FOUND)
-        );
-        assert_eq!(result.reason, Some(r#"HTTP status client error (404 Not Found) for url (http://no.url.provided.local/): { "message": "service not found" }"#.to_string()));
+        assert_eq!(result.status, HealthStatus::Unknown);
+        assert_eq!(result.code, StatusCode::NOT_FOUND);
+        assert_eq!(result.reason, Some("Not Found".to_string()));
         let serialized = serde_json::to_string(&result).unwrap();
         assert_eq!(
             serialized,
-            r#"{"health_status":"UNKNOWN","response_code":"HTTP 404 Not Found","reason":"HTTP status client error (404 Not Found) for url (http://no.url.provided.local/): { \"message\": \"service not found\" }"}"#
+            r#"{"status":"UNKNOWN","code":404,"reason":"Not Found"}"#
         );
 
         // NOT_READY response from HTTP 500 INTERNAL SERVER ERROR without reason
         let response = mock_http_response(StatusCode::INTERNAL_SERVER_ERROR, r#""#).await;
         let result = HttpClient::http_response_to_health_check_result(response).await;
-        assert_eq!(result.health_status, HealthStatus::Unhealthy);
-        assert_eq!(
-            result.response_code,
-            ClientCode::Http(StatusCode::INTERNAL_SERVER_ERROR)
-        );
-        assert_eq!(result.reason, Some("HTTP status server error (500 Internal Server Error) for url (http://no.url.provided.local/)".to_string()));
+        assert_eq!(result.status, HealthStatus::Unhealthy);
+        assert_eq!(result.code, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(result.reason, Some("Internal Server Error".to_string()));
         let serialized = serde_json::to_string(&result).unwrap();
         assert_eq!(
             serialized,
-            r#"{"health_status":"UNHEALTHY","response_code":"HTTP 500 Internal Server Error","reason":"HTTP status server error (500 Internal Server Error) for url (http://no.url.provided.local/)"}"#
+            r#"{"status":"UNHEALTHY","code":500,"reason":"Internal Server Error"}"#
         );
 
         // UNKNOWN response from HTTP 400 BAD REQUEST without reason
         let response = mock_http_response(StatusCode::BAD_REQUEST, r#""#).await;
         let result = HttpClient::http_response_to_health_check_result(response).await;
-        assert_eq!(result.health_status, HealthStatus::Unknown);
-        assert_eq!(
-            result.response_code,
-            ClientCode::Http(StatusCode::BAD_REQUEST)
-        );
-        assert_eq!(result.reason, Some("HTTP status client error (400 Bad Request) for url (http://no.url.provided.local/)".to_string()));
+        assert_eq!(result.status, HealthStatus::Unknown);
+        assert_eq!(result.code, StatusCode::BAD_REQUEST);
+        assert_eq!(result.reason, Some("Bad Request".to_string()));
         let serialized = serde_json::to_string(&result).unwrap();
         assert_eq!(
             serialized,
-            r#"{"health_status":"UNKNOWN","response_code":"HTTP 400 Bad Request","reason":"HTTP status client error (400 Bad Request) for url (http://no.url.provided.local/)"}"#
+            r#"{"status":"UNKNOWN","code":400,"reason":"Bad Request"}"#
         );
     }
 
@@ -581,59 +500,47 @@ mod tests {
         // READY responses from gRPC 0 OK from serving status 1 SERVING
         let response = mock_grpc_response(Some(ServingStatus::Serving as i32), None).await;
         let result = HealthCheckResult::from(response);
-        assert_eq!(result.health_status, HealthStatus::Healthy);
-        assert_eq!(result.response_code, ClientCode::Grpc(tonic::Code::Ok));
+        assert_eq!(result.status, HealthStatus::Healthy);
+        assert_eq!(result.code, grpc_to_http_code(tonic::Code::Ok));
         assert_eq!(result.reason, None);
         let serialized = serde_json::to_string(&result).unwrap();
-        assert_eq!(serialized, r#""HEALTHY""#);
+        assert_eq!(serialized, r#"{"status":"HEALTHY"}"#);
 
         // NOT_READY response from gRPC 0 OK form serving status 2 NOT_SERVING
         let response = mock_grpc_response(Some(ServingStatus::NotServing as i32), None).await;
         let result = HealthCheckResult::from(response);
-        assert_eq!(result.health_status, HealthStatus::Unhealthy);
-        assert_eq!(result.response_code, ClientCode::Grpc(tonic::Code::Ok));
-        assert_eq!(
-            result.reason,
-            Some("from gRPC health check serving status: NOT_SERVING".to_string())
-        );
+        assert_eq!(result.status, HealthStatus::Unhealthy);
+        assert_eq!(result.code, grpc_to_http_code(tonic::Code::Ok));
+        assert_eq!(result.reason, Some("NOT_SERVING".to_string()));
         let serialized = serde_json::to_string(&result).unwrap();
         assert_eq!(
             serialized,
-            r#"{"health_status":"UNHEALTHY","response_code":"gRPC Ok The operation completed successfully","reason":"from gRPC health check serving status: NOT_SERVING"}"#
+            r#"{"status":"UNHEALTHY","reason":"NOT_SERVING"}"#
         );
 
         // UNKNOWN response from gRPC 0 OK from serving status 0 UNKNOWN
         let response = mock_grpc_response(Some(ServingStatus::Unknown as i32), None).await;
         let result = HealthCheckResult::from(response);
-        assert_eq!(result.health_status, HealthStatus::Unknown);
-        assert_eq!(result.response_code, ClientCode::Grpc(tonic::Code::Ok));
-        assert_eq!(
-            result.reason,
-            Some("from gRPC health check serving status: UNKNOWN".to_string())
-        );
+        assert_eq!(result.status, HealthStatus::Unknown);
+        assert_eq!(result.code, grpc_to_http_code(tonic::Code::Ok));
+        assert_eq!(result.reason, Some("UNKNOWN".to_string()));
         let serialized = serde_json::to_string(&result).unwrap();
-        assert_eq!(
-            serialized,
-            r#"{"health_status":"UNKNOWN","response_code":"gRPC Ok The operation completed successfully","reason":"from gRPC health check serving status: UNKNOWN"}"#
-        );
+        assert_eq!(serialized, r#"{"status":"UNKNOWN","reason":"UNKNOWN"}"#);
 
         // UNKNOWN response from gRPC 0 OK from serving status 3 SERVICE_UNKNOWN
         let response = mock_grpc_response(Some(ServingStatus::ServiceUnknown as i32), None).await;
         let result = HealthCheckResult::from(response);
-        assert_eq!(result.health_status, HealthStatus::Unknown);
-        assert_eq!(result.response_code, ClientCode::Grpc(tonic::Code::Ok));
-        assert_eq!(
-            result.reason,
-            Some("from gRPC health check serving status: SERVICE_UNKNOWN".to_string())
-        );
+        assert_eq!(result.status, HealthStatus::Unknown);
+        assert_eq!(result.code, grpc_to_http_code(tonic::Code::Ok));
+        assert_eq!(result.reason, Some("SERVICE_UNKNOWN".to_string()));
         let serialized = serde_json::to_string(&result).unwrap();
         assert_eq!(
             serialized,
-            r#"{"health_status":"UNKNOWN","response_code":"gRPC Ok The operation completed successfully","reason":"from gRPC health check serving status: SERVICE_UNKNOWN"}"#
+            r#"{"status":"UNKNOWN","reason":"SERVICE_UNKNOWN"}"#
         );
 
         // UNKNOWN response from other gRPC error codes (covering main ones)
-        let response_codes = [
+        let codes = [
             tonic::Code::InvalidArgument,
             tonic::Code::Internal,
             tonic::Code::NotFound,
@@ -642,40 +549,40 @@ mod tests {
             tonic::Code::PermissionDenied,
             tonic::Code::Unavailable,
         ];
-        for code in response_codes.iter() {
-            let status = tonic::Status::new(*code, "some error message");
+        for code in codes.into_iter() {
+            let status = tonic::Status::new(code, "some error message");
+            let code = grpc_to_http_code(code);
             let response = mock_grpc_response(None, Some(status.clone())).await;
             let result = HealthCheckResult::from(response);
-            assert_eq!(result.health_status, HealthStatus::Unknown);
-            assert_eq!(result.response_code, ClientCode::Grpc(*code));
-            assert_eq!(
-                result.reason,
-                Some(format!("gRPC health check failed: {}", status.clone()))
-            );
+            assert_eq!(result.status, HealthStatus::Unknown);
+            assert_eq!(result.code, code);
+            assert_eq!(result.reason, Some("some error message".to_string()));
             let serialized = serde_json::to_string(&result).unwrap();
             assert_eq!(
                 serialized,
                 format!(
-                    r#"{{"health_status":"UNKNOWN","response_code":"gRPC {:?} {}","reason":"gRPC health check failed: status: {:?}, message: \"some error message\", details: [], metadata: MetadataMap {{ headers: {{}} }}"}}"#,
-                    code, code, code
-                )
+                    r#"{{"status":"UNKNOWN","code":{},"reason":"some error message"}}"#,
+                    code.as_u16()
+                ),
             );
         }
     }
 
     #[test]
-    fn test_extract_base_url() {
-        let url =
-            Url::parse("https://example-detector.route.example.com/api/v1/text/contents").unwrap();
-        let base_url = extract_base_url(&url);
-        assert_eq!(
-            Url::parse("https://example-detector.route.example.com/").unwrap(),
-            base_url
-        );
-        let health_url = base_url.join("/health").unwrap();
-        assert_eq!(
-            Url::parse("https://example-detector.route.example.com/health").unwrap(),
-            health_url
-        );
+    fn test_is_valid_hostname() {
+        let valid_hostnames = ["localhost", "example.route.cloud.com", "127.0.0.1"];
+        for hostname in valid_hostnames {
+            assert!(is_valid_hostname(hostname));
+        }
+        let invalid_hostnames = [
+            "-LoCaLhOST_",
+            ".invalid",
+            "invalid.ending-.char",
+            "@asdf",
+            "too-long-of-a-hostnameeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        ];
+        for hostname in invalid_hostnames {
+            assert!(!is_valid_hostname(hostname));
+        }
     }
 }

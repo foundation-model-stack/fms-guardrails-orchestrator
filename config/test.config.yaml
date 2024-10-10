@@ -3,6 +3,10 @@ generation:
   service:
     hostname: localhost
     port: 443
+# chat_generation:
+#   service:
+#     hostname: localhost
+#     port: 8080
 chunkers:
   test_chunker:
     type: sentence
@@ -11,8 +15,9 @@ chunkers:
       port: 8085
 detectors:
   test_detector:
+    type: text_contents
     service:
-      hostname: https://localhost/api/v1/text/contents
+      hostname: localhost
       port: 8000
     chunker_id: test_chunker
     default_threshold: 0.5

@@ -14,18 +14,16 @@
  limitations under the License.
 
 */
-use std::collections::HashMap;
-
+use async_trait::async_trait;
 use axum::http::HeaderMap;
 use futures::{StreamExt, TryStreamExt};
 use ginepro::LoadBalancedChannel;
 use tonic::Code;
 
-use super::{create_grpc_clients, BoxStream, ClientCode, Error};
+use super::{create_grpc_client, errors::grpc_to_http_code, BoxStream, Client, Error};
 use crate::{
-    clients::COMMON_ROUTER_KEY,
     config::ServiceConfig,
-    health::{HealthCheckResult, HealthProbe, HealthStatus},
+    health::{HealthCheckResult, HealthStatus},
     pb::fmaas::{
         generation_service_client::GenerationServiceClient, BatchedGenerationRequest,
         BatchedGenerationResponse, BatchedTokenizeRequest, BatchedTokenizeResponse,
@@ -33,67 +31,19 @@ use crate::{
     },
 };
 
-#[cfg_attr(test, faux::create, derive(Default))]
+const DEFAULT_PORT: u16 = 8033;
+
+#[cfg_attr(test, faux::create)]
 #[derive(Clone)]
 pub struct TgisClient {
-    clients: HashMap<String, GenerationServiceClient<LoadBalancedChannel>>,
-}
-
-#[cfg_attr(test, faux::methods)]
-impl HealthProbe for TgisClient {
-    async fn health(&self) -> Result<HashMap<String, HealthCheckResult>, Error> {
-        let mut results = HashMap::with_capacity(self.clients.len());
-        for (model_id, mut client) in self.clients.clone() {
-            let response = client
-                .model_info(ModelInfoRequest {
-                    model_id: "".into(),
-                })
-                .await;
-            let code = match response {
-                Ok(_) => Code::Ok,
-                Err(status) if matches!(status.code(), Code::InvalidArgument | Code::NotFound) => {
-                    Code::Ok
-                }
-                Err(status) => status.code(),
-            };
-            let health_status = if matches!(code, Code::Ok) {
-                HealthStatus::Healthy
-            } else {
-                HealthStatus::Unhealthy
-            };
-            results.insert(
-                model_id,
-                HealthCheckResult {
-                    health_status,
-                    response_code: ClientCode::Grpc(code),
-                    reason: None,
-                },
-            );
-        }
-        Ok(results)
-    }
+    client: GenerationServiceClient<LoadBalancedChannel>,
 }
 
 #[cfg_attr(test, faux::methods)]
 impl TgisClient {
-    pub async fn new(default_port: u16, config: &[(String, ServiceConfig)]) -> Self {
-        let clients = create_grpc_clients(default_port, config, GenerationServiceClient::new).await;
-        Self { clients }
-    }
-
-    fn client(
-        &self,
-        _model_id: &str,
-    ) -> Result<GenerationServiceClient<LoadBalancedChannel>, Error> {
-        // NOTE: We currently forward requests to the common-router, so we use a single client.
-        let model_id = COMMON_ROUTER_KEY;
-        Ok(self
-            .clients
-            .get(model_id)
-            .ok_or_else(|| Error::ModelNotFound {
-                model_id: model_id.to_string(),
-            })?
-            .clone())
+    pub async fn new(config: &ServiceConfig) -> Self {
+        let client = create_grpc_client(DEFAULT_PORT, config, GenerationServiceClient::new).await;
+        Self { client }
     }
 
     pub async fn generate(
@@ -101,8 +51,8 @@ impl TgisClient {
         request: BatchedGenerationRequest,
         _headers: HeaderMap,
     ) -> Result<BatchedGenerationResponse, Error> {
-        let model_id = request.model_id.as_str();
-        Ok(self.client(model_id)?.generate(request).await?.into_inner())
+        let mut client = self.client.clone();
+        Ok(client.generate(request).await?.into_inner())
     }
 
     pub async fn generate_stream(
@@ -110,9 +60,8 @@ impl TgisClient {
         request: SingleGenerationRequest,
         _headers: HeaderMap,
     ) -> Result<BoxStream<Result<GenerationResponse, Error>>, Error> {
-        let model_id = request.model_id.as_str();
-        let response_stream = self
-            .client(model_id)?
+        let mut client = self.client.clone();
+        let response_stream = client
             .generate_stream(request)
             .await?
             .into_inner()
@@ -126,17 +75,47 @@ impl TgisClient {
         request: BatchedTokenizeRequest,
         _headers: HeaderMap,
     ) -> Result<BatchedTokenizeResponse, Error> {
-        let model_id = request.model_id.as_str();
-        Ok(self.client(model_id)?.tokenize(request).await?.into_inner())
+        let mut client = self.client.clone();
+        Ok(client.tokenize(request).await?.into_inner())
     }
 
     pub async fn model_info(&self, request: ModelInfoRequest) -> Result<ModelInfoResponse, Error> {
-        let model_id = request.model_id.as_str();
-        Ok(self
-            .client(model_id)?
-            .model_info(request)
-            .await?
-            .into_inner())
+        let mut client = self.client.clone();
+        Ok(client.model_info(request).await?.into_inner())
+    }
+}
+
+#[cfg_attr(test, faux::methods)]
+#[async_trait]
+impl Client for TgisClient {
+    fn name(&self) -> &str {
+        "tgis"
+    }
+
+    async fn health(&self) -> HealthCheckResult {
+        let mut client = self.client.clone();
+        let response = client
+            .model_info(ModelInfoRequest {
+                model_id: "".into(),
+            })
+            .await;
+        let code = match response {
+            Ok(_) => Code::Ok,
+            Err(status) if matches!(status.code(), Code::InvalidArgument | Code::NotFound) => {
+                Code::Ok
+            }
+            Err(status) => status.code(),
+        };
+        let status = if matches!(code, Code::Ok) {
+            HealthStatus::Healthy
+        } else {
+            HealthStatus::Unhealthy
+        };
+        HealthCheckResult {
+            status,
+            code: grpc_to_http_code(code),
+            reason: None,
+        }
     }
 }
 
