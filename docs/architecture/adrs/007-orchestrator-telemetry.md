@@ -10,11 +10,11 @@ aggregate detailed traces, metrics, and logs that can be monitored from a variet
 
 ### OpenTelemetry and `tracing`
 
-The orchestrator and client services will make use of the OpenTelemetry SDK and the OTLP standard for consolidating
-and collecting telemetry data across services. The orchestrator will be responsible for collecting telemetry data
-throughout the lifetime of a request using the `tracing` crate, which is the de facto choice for logging and tracing
-for OpenTelemetry in Rust, and exporting it through the OTLP exporter if configured. The OTLP exporter will send 
-telemetry data to a gRPC or HTTP endpoint that can be configured to point to a running OTEL collector.
+The orchestrator and client services will make use of the OpenTelemetry SDK and the [OpenTelemetry Protocol (OTLP)](https://opentelemetry.io/docs/specs/otel/protocol/)
+for consolidating and collecting telemetry data across services. The orchestrator will be responsible for collecting
+telemetry data throughout the lifetime of a request using the `tracing` crate, which is the de facto choice for logging
+and tracing for OpenTelemetry in Rust, and exporting it through the OTLP exporter if configured. The OTLP exporter will
+send telemetry data to a gRPC or HTTP endpoint that can be configured to point to a running OpenTelemetry (OTEL) collector.
 Similarly, detectors should also be able to collect and export telemetry through OTLP to the same OTEL collector.
 From the OTEL collector, the telemetry data can then be exported to multiple backends. The OTEL collector and
 any observability backends can all be configured alongside the orchestrator and detectors in a deployment.
