@@ -2,9 +2,10 @@ use async_trait::async_trait;
 use hyper::{HeaderMap, StatusCode};
 use serde::Serialize;
 
-use super::{DetectorError, DETECTOR_ID_HEADER_NAME};
+use super::{DetectorError, DEFAULT_PORT, DETECTOR_ID_HEADER_NAME};
 use crate::{
-    clients::{Client, Error, HttpClient},
+    clients::{create_http_client, Client, Error, HttpClient},
+    config::ServiceConfig,
     health::HealthCheckResult,
     models::DetectionResult,
 };
@@ -18,7 +19,13 @@ pub struct TextGenerationDetectorClient {
 
 #[cfg_attr(test, faux::methods)]
 impl TextGenerationDetectorClient {
-    pub fn new(client: HttpClient, health_client: Option<HttpClient>) -> Self {
+    pub async fn new(config: &ServiceConfig, health_config: Option<&ServiceConfig>) -> Self {
+        let client = create_http_client(DEFAULT_PORT, config).await;
+        let health_client = if let Some(health_config) = health_config {
+            Some(create_http_client(DEFAULT_PORT, health_config).await)
+        } else {
+            None
+        };
         Self {
             client,
             health_client,

@@ -28,6 +28,7 @@ pub use text_generation::*;
 
 use super::Error;
 
+const DEFAULT_PORT: u16 = 8080;
 const DETECTOR_ID_HEADER_NAME: &str = "detector-id";
 
 #[derive(Debug, Clone, Deserialize)]

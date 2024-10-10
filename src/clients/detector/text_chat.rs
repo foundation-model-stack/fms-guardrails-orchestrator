@@ -1,7 +1,9 @@
 use async_trait::async_trait;
 
+use super::DEFAULT_PORT;
 use crate::{
-    clients::{Client, HttpClient},
+    clients::{create_http_client, Client, HttpClient},
+    config::ServiceConfig,
     health::HealthCheckResult,
 };
 
@@ -14,7 +16,13 @@ pub struct TextChatDetectorClient {
 
 #[cfg_attr(test, faux::methods)]
 impl TextChatDetectorClient {
-    pub fn new(client: HttpClient, health_client: Option<HttpClient>) -> Self {
+    pub async fn new(config: &ServiceConfig, health_config: Option<&ServiceConfig>) -> Self {
+        let client = create_http_client(DEFAULT_PORT, config).await;
+        let health_client = if let Some(health_config) = health_config {
+            Some(create_http_client(DEFAULT_PORT, health_config).await)
+        } else {
+            None
+        };
         Self {
             client,
             health_client,

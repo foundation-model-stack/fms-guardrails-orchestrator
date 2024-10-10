@@ -4,8 +4,10 @@ use async_trait::async_trait;
 use hyper::StatusCode;
 use serde::{Deserialize, Serialize};
 
-use super::{Client, Error, HttpClient};
-use crate::health::HealthCheckResult;
+use super::{create_http_client, Client, Error, HttpClient};
+use crate::{config::ServiceConfig, health::HealthCheckResult};
+
+const DEFAULT_PORT: u16 = 8080;
 
 #[cfg_attr(test, faux::create)]
 #[derive(Clone)]
@@ -16,7 +18,13 @@ pub struct OpenAiClient {
 
 #[cfg_attr(test, faux::methods)]
 impl OpenAiClient {
-    pub fn new(client: HttpClient, health_client: Option<HttpClient>) -> Self {
+    pub async fn new(config: &ServiceConfig, health_config: Option<&ServiceConfig>) -> Self {
+        let client = create_http_client(DEFAULT_PORT, config).await;
+        let health_client = if let Some(health_config) = health_config {
+            Some(create_http_client(DEFAULT_PORT, health_config).await)
+        } else {
+            None
+        };
         Self {
             client,
             health_client,

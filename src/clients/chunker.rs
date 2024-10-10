@@ -25,8 +25,9 @@ use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Code, Request, Response, Status, Streaming};
 use tracing::info;
 
-use super::{errors::grpc_to_http_code, BoxStream, Client, Error};
+use super::{create_grpc_client, errors::grpc_to_http_code, BoxStream, Client, Error};
 use crate::{
+    config::ServiceConfig,
     health::{HealthCheckResult, HealthStatus},
     pb::{
         caikit::runtime::chunkers::{
@@ -38,6 +39,7 @@ use crate::{
     },
 };
 
+const DEFAULT_PORT: u16 = 8085;
 const MODEL_ID_HEADER_NAME: &str = "mm-model-id";
 /// Default chunker that returns span for entire text
 pub const DEFAULT_MODEL_ID: &str = "whole_doc_chunker";
@@ -54,10 +56,9 @@ pub struct ChunkerClient {
 
 #[cfg_attr(test, faux::methods)]
 impl ChunkerClient {
-    pub fn new(
-        client: ChunkersServiceClient<LoadBalancedChannel>,
-        health_client: HealthClient<LoadBalancedChannel>,
-    ) -> Self {
+    pub async fn new(config: &ServiceConfig) -> Self {
+        let client = create_grpc_client(DEFAULT_PORT, config, ChunkersServiceClient::new).await;
+        let health_client = create_grpc_client(DEFAULT_PORT, config, HealthClient::new).await;
         Self {
             client,
             health_client,

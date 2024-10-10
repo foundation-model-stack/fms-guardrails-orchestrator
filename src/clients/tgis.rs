@@ -20,8 +20,9 @@ use futures::{StreamExt, TryStreamExt};
 use ginepro::LoadBalancedChannel;
 use tonic::Code;
 
-use super::{errors::grpc_to_http_code, BoxStream, Client, Error};
+use super::{create_grpc_client, errors::grpc_to_http_code, BoxStream, Client, Error};
 use crate::{
+    config::ServiceConfig,
     health::{HealthCheckResult, HealthStatus},
     pb::fmaas::{
         generation_service_client::GenerationServiceClient, BatchedGenerationRequest,
@@ -29,6 +30,8 @@ use crate::{
         GenerationResponse, ModelInfoRequest, ModelInfoResponse, SingleGenerationRequest,
     },
 };
+
+const DEFAULT_PORT: u16 = 8033;
 
 #[cfg_attr(test, faux::create)]
 #[derive(Clone)]
@@ -38,7 +41,8 @@ pub struct TgisClient {
 
 #[cfg_attr(test, faux::methods)]
 impl TgisClient {
-    pub fn new(client: GenerationServiceClient<LoadBalancedChannel>) -> Self {
+    pub async fn new(config: &ServiceConfig) -> Self {
+        let client = create_grpc_client(DEFAULT_PORT, config, GenerationServiceClient::new).await;
         Self { client }
     }
 

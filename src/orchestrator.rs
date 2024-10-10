@@ -29,7 +29,6 @@ use uuid::Uuid;
 
 use crate::{
     clients::{
-        create_grpc_client, create_http_client,
         detector::{
             text_context_doc::ContextType, TextChatDetectorClient, TextContextDocDetectorClient,
             TextGenerationDetectorClient,
@@ -45,21 +44,7 @@ use crate::{
         GenerationWithDetectionHttpRequest, GuardrailsConfig, GuardrailsHttpRequest,
         GuardrailsTextGenerationParameters, TextContentDetectionHttpRequest,
     },
-    pb::{
-        caikit::runtime::{
-            chunkers::chunkers_service_client::ChunkersServiceClient,
-            nlp::nlp_service_client::NlpServiceClient,
-        },
-        fmaas::generation_service_client::GenerationServiceClient,
-        grpc::health::v1::health_client::HealthClient,
-    },
 };
-
-const DEFAULT_TGIS_PORT: u16 = 8033;
-const DEFAULT_NLP_PORT: u16 = 8085;
-const DEFAULT_CHUNKER_PORT: u16 = 8085;
-const DEFAULT_OPENAI_PORT: u16 = 8080;
-const DEFAULT_DETECTOR_PORT: u16 = 8080;
 
 const UNSUITABLE_INPUT_MESSAGE: &str = "Unsuitable input detected. \
     Please check the detected entities on your input and try again \
@@ -185,27 +170,12 @@ async fn create_clients(config: &OrchestratorConfig) -> ClientMap {
     if let Some(generation) = &config.generation {
         match generation.provider {
             GenerationProvider::Tgis => {
-                let client = create_grpc_client(
-                    DEFAULT_TGIS_PORT,
-                    &generation.service,
-                    GenerationServiceClient::new,
-                )
-                .await;
-                let tgis_client = TgisClient::new(client);
+                let tgis_client = TgisClient::new(&generation.service).await;
                 let generation_client = GenerationClient::tgis(tgis_client);
                 clients.insert("generation".to_string(), generation_client);
             }
             GenerationProvider::Nlp => {
-                let client = create_grpc_client(
-                    DEFAULT_NLP_PORT,
-                    &generation.service,
-                    NlpServiceClient::new,
-                )
-                .await;
-                let health_client =
-                    create_grpc_client(DEFAULT_NLP_PORT, &generation.service, HealthClient::new)
-                        .await;
-                let nlp_client = NlpClient::new(client, health_client);
+                let nlp_client = NlpClient::new(&generation.service).await;
                 let generation_client = GenerationClient::nlp(nlp_client);
                 clients.insert("generation".to_string(), generation_client);
             }
@@ -214,63 +184,63 @@ async fn create_clients(config: &OrchestratorConfig) -> ClientMap {
 
     // Create chat generation client
     if let Some(chat_generation) = &config.chat_generation {
-        let client = create_http_client(DEFAULT_OPENAI_PORT, &chat_generation.service).await;
-        let health_client = if let Some(health_service) = &chat_generation.health_service {
-            Some(create_http_client(DEFAULT_OPENAI_PORT, health_service).await)
-        } else {
-            None
-        };
-        let openai_client = OpenAiClient::new(client, health_client);
+        let openai_client = OpenAiClient::new(
+            &chat_generation.service,
+            chat_generation.health_service.as_ref(),
+        )
+        .await;
         clients.insert("chat_generation".to_string(), openai_client);
     }
 
     // Create chunker clients
     if let Some(chunkers) = &config.chunkers {
         for (chunker_id, chunker) in chunkers {
-            let client = create_grpc_client(
-                DEFAULT_CHUNKER_PORT,
-                &chunker.service,
-                ChunkersServiceClient::new,
-            )
-            .await;
-            let health_client =
-                create_grpc_client(DEFAULT_CHUNKER_PORT, &chunker.service, HealthClient::new).await;
-            let chunker_client = ChunkerClient::new(client, health_client);
+            let chunker_client = ChunkerClient::new(&chunker.service).await;
             clients.insert(chunker_id.to_string(), chunker_client);
         }
     }
 
     // Create detector clients
     for (detector_id, detector) in &config.detectors {
-        let client = create_http_client(DEFAULT_DETECTOR_PORT, &detector.service).await;
-        let health_client = if let Some(health_service) = &detector.health_service {
-            Some(create_http_client(DEFAULT_DETECTOR_PORT, health_service).await)
-        } else {
-            None
-        };
         match detector.r#type {
             DetectorType::TextContents => {
                 clients.insert(
                     detector_id.into(),
-                    TextContentsDetectorClient::new(client, health_client),
+                    TextContentsDetectorClient::new(
+                        &detector.service,
+                        detector.health_service.as_ref(),
+                    )
+                    .await,
                 );
             }
             DetectorType::TextGeneration => {
                 clients.insert(
                     detector_id.into(),
-                    TextGenerationDetectorClient::new(client, health_client),
+                    TextGenerationDetectorClient::new(
+                        &detector.service,
+                        detector.health_service.as_ref(),
+                    )
+                    .await,
                 );
             }
             DetectorType::TextChat => {
                 clients.insert(
                     detector_id.into(),
-                    TextChatDetectorClient::new(client, health_client),
+                    TextChatDetectorClient::new(
+                        &detector.service,
+                        detector.health_service.as_ref(),
+                    )
+                    .await,
                 );
             }
             DetectorType::TextContextDoc => {
                 clients.insert(
                     detector_id.into(),
-                    TextContextDocDetectorClient::new(client, health_client),
+                    TextContextDocDetectorClient::new(
+                        &detector.service,
+                        detector.health_service.as_ref(),
+                    )
+                    .await,
                 );
             }
         }
