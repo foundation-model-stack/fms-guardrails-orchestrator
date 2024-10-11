@@ -28,7 +28,7 @@ use std::{
 
 use axum::{
     extract::{rejection::JsonRejection, Query, Request, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::{
         sse::{Event, KeepAlive, Sse},
         IntoResponse, Response,
