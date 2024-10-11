@@ -64,8 +64,10 @@ The orchestrator will expose CLI args/env variables for configuring the OTLP exp
 The orchestrator and client services will be able to consolidate telemetry and share observability through a common
 configuration and backends. This will be made possible through the use of the OTLP standard as well as through the
 propagation of the trace context through requests across services using the standardized `traceparent` header. The
-orchestrator will make use of an incoming request's `traceparent` for initializing a trace context for a request if
-it exists, or else will initialize a new trace. 
+orchestrator will be expected to initialize a new trace for an incoming request and pass `traceparent` headers
+corresponding to this trace to any requests outgoing to clients, and similarly, the orchestrator will expect the client
+to provide a `traceparent` header in the response. The orchestrator will not propagate the `traceparent` to outgoing
+responses back to the end user (or expect `traceparent` in incoming requests) for security reasons.
 
 ## Status
 
