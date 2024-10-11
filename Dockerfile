@@ -1,6 +1,7 @@
 ARG UBI_MINIMAL_BASE_IMAGE=registry.access.redhat.com/ubi9/ubi-minimal
 ARG UBI_BASE_IMAGE_TAG=latest
 ARG PROTOC_VERSION=26.0
+ARG CONFIG_FILE=config/config.yaml
 
 ## Rust builder ################################################################
 # Specific debian version so that compatible glibc version is used
@@ -23,10 +24,10 @@ RUN rustup component add rustfmt
 ## Orchestrator builder #########################################################
 FROM rust-builder as fms-guardrails-orchestr8-builder
 
-COPY build.rs *.toml LICENSE /app
-COPY config/ /app/config
-COPY protos/ /app/protos
-COPY src/ /app/src
+COPY build.rs *.toml LICENSE /app/
+COPY ${CONFIG_FILE} /app/config/config.yaml
+COPY protos/ /app/protos/
+COPY src/ /app/src/
 
 WORKDIR /app
 
@@ -50,7 +51,7 @@ RUN cargo fmt --check
 FROM ${UBI_MINIMAL_BASE_IMAGE}:${UBI_BASE_IMAGE_TAG} as fms-guardrails-orchestr8-release
 
 COPY --from=fms-guardrails-orchestr8-builder /app/bin/ /app/bin/
-COPY config /app/config
+COPY ${CONFIG_FILE} /app/config/config.yaml
 
 RUN microdnf install -y --disableplugin=subscription-manager shadow-utils compat-openssl11 && \
     microdnf clean all --disableplugin=subscription-manager

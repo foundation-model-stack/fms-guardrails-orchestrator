@@ -43,8 +43,9 @@ use hyper_util::rt::{TokioExecutor, TokioIo};
 use rustls::{server::WebPkiClientVerifier, RootCertStore, ServerConfig};
 use tokio::{net::TcpListener, signal};
 use tokio_rustls::TlsAcceptor;
+use tower_http::trace::TraceLayer;
 use tower_service::Service;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info, instrument, warn};
 use uuid::Uuid;
 use webpki::types::{CertificateDer, PrivateKeyDer};
 
@@ -55,6 +56,7 @@ use crate::{
         GenerationWithDetectionTask, Orchestrator, StreamingClassificationWithGenTask,
         TextContentDetectionTask,
     },
+    tracing_utils,
 };
 
 const API_PREFIX: &str = r#"/api/v1/task"#;
@@ -177,7 +179,14 @@ pub async fn run(
             &format!("{}/detection/generated", TEXT_API_PREFIX),
             post(detect_generated),
         )
-        .with_state(shared_state);
+        .with_state(shared_state)
+        .layer(
+            TraceLayer::new_for_http()
+                .make_span_with(tracing_utils::incoming_request_span)
+                .on_request(tracing_utils::on_incoming_request)
+                .on_response(tracing_utils::on_outgoing_response)
+                .on_eos(tracing_utils::on_outgoing_eos),
+        );
 
     // (2c) Generate main guardrails server handle based on whether TLS is needed
     let listener: TcpListener = TcpListener::bind(&http_addr)
@@ -299,6 +308,7 @@ async fn info(
     Ok(Json(InfoResponse { services }))
 }
 
+#[instrument(skip_all, fields(model_id = ?request.model_id))]
 async fn classification_with_gen(
     State(state): State<Arc<ServerState>>,
     headers: HeaderMap,
@@ -318,6 +328,7 @@ async fn classification_with_gen(
     }
 }
 
+#[instrument(skip_all, fields(model_id = ?request.model_id))]
 async fn generation_with_detection(
     State(state): State<Arc<ServerState>>,
     headers: HeaderMap,
@@ -340,6 +351,7 @@ async fn generation_with_detection(
     }
 }
 
+#[instrument(skip_all, fields(model_id = ?request.model_id))]
 async fn stream_classification_with_gen(
     State(state): State<Arc<ServerState>>,
     headers: HeaderMap,
@@ -382,6 +394,7 @@ async fn stream_classification_with_gen(
     Sse::new(event_stream).keep_alive(KeepAlive::default())
 }
 
+#[instrument(skip_all)]
 async fn detection_content(
     State(state): State<Arc<ServerState>>,
     headers: HeaderMap,
@@ -397,6 +410,7 @@ async fn detection_content(
     }
 }
 
+#[instrument(skip_all)]
 async fn detect_context_documents(
     State(state): State<Arc<ServerState>>,
     headers: HeaderMap,
@@ -416,6 +430,7 @@ async fn detect_context_documents(
     }
 }
 
+#[instrument(skip_all)]
 async fn detect_generated(
     State(state): State<Arc<ServerState>>,
     headers: HeaderMap,
