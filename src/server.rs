@@ -52,9 +52,9 @@ use webpki::types::{CertificateDer, PrivateKeyDer};
 use crate::{
     models::{self, InfoParams, InfoResponse},
     orchestrator::{
-        self, ClassificationWithGenTask, ContextDocsDetectionTask, DetectionOnGenerationTask,
-        GenerationWithDetectionTask, Orchestrator, StreamingClassificationWithGenTask,
-        TextContentDetectionTask,
+        self, ChatDetectionTask, ClassificationWithGenTask, ContextDocsDetectionTask,
+        DetectionOnGenerationTask, GenerationWithDetectionTask, Orchestrator,
+        StreamingClassificationWithGenTask, TextContentDetectionTask,
     },
     tracing_utils,
 };
@@ -170,6 +170,10 @@ pub async fn run(
         .route(
             &format!("{}/detection/content", TEXT_API_PREFIX),
             post(detection_content),
+        )
+        .route(
+            &format!("{}/detection/chat", TEXT_API_PREFIX),
+            post(detect_chat),
         )
         .route(
             &format!("{}/detection/context", TEXT_API_PREFIX),
@@ -425,6 +429,21 @@ async fn detect_context_documents(
         .handle_context_documents_detection(task)
         .await
     {
+        Ok(response) => Ok(Json(response).into_response()),
+        Err(error) => Err(error.into()),
+    }
+}
+
+#[instrument(skip_all)]
+async fn detect_chat(
+    State(state): State<Arc<ServerState>>,
+    headers: HeaderMap,
+    WithRejection(Json(request), _): WithRejection<Json<models::ChatDetectionHttpRequest>, Error>,
+) -> Result<impl IntoResponse, Error> {
+    let request_id = Uuid::new_v4();
+    request.validate()?;
+    let task = ChatDetectionTask::new(request_id, request, headers);
+    match state.orchestrator.handle_chat_detection(task).await {
         Ok(response) => Ok(Json(response).into_response()),
         Err(error) => Err(error.into()),
     }

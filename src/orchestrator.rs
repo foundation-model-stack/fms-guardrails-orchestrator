@@ -30,6 +30,7 @@ use uuid::Uuid;
 use crate::{
     clients::{
         chunker::ChunkerClient,
+        self,
         detector::{
             text_context_doc::ContextType, TextChatDetectorClient, TextContextDocDetectorClient,
             TextGenerationDetectorClient,
@@ -40,9 +41,9 @@ use crate::{
     config::{DetectorType, GenerationProvider, OrchestratorConfig},
     health::HealthCheckCache,
     models::{
-        ContextDocsHttpRequest, DetectionOnGeneratedHttpRequest, DetectorParams,
-        GenerationWithDetectionHttpRequest, GuardrailsConfig, GuardrailsHttpRequest,
-        GuardrailsTextGenerationParameters, TextContentDetectionHttpRequest,
+        ChatDetectionHttpRequest, ContextDocsHttpRequest, DetectionOnGeneratedHttpRequest,
+        DetectorParams, GenerationWithDetectionHttpRequest, GuardrailsConfig,
+        GuardrailsHttpRequest, GuardrailsTextGenerationParameters, TextContentDetectionHttpRequest,
     },
 };
 
@@ -377,6 +378,33 @@ impl ContextDocsDetectionTask {
             context_type: request.context_type,
             context: request.context,
             detectors: request.detectors,
+            headers,
+        }
+    }
+}
+
+/// Task for the /api/v2/text/detection/chat endpoint
+#[derive(Debug)]
+pub struct ChatDetectionTask {
+    /// Request unique identifier
+    pub request_id: Uuid,
+
+    /// Detectors configuration
+    pub detectors: HashMap<String, DetectorParams>,
+
+    // Messages to run detection on
+    pub messages: Vec<clients::openai::Message>,
+
+    // Headermap
+    pub headers: HeaderMap,
+}
+
+impl ChatDetectionTask {
+    pub fn new(request_id: Uuid, request: ChatDetectionHttpRequest, headers: HeaderMap) -> Self {
+        Self {
+            request_id,
+            detectors: request.detectors,
+            messages: request.messages,
             headers,
         }
     }

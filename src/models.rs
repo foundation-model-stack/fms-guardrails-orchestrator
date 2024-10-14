@@ -22,7 +22,10 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    clients::detector::{ContentAnalysisResponse, ContextType},
+    clients::{
+        self,
+        detector::{ContentAnalysisResponse, ContextType},
+    },
     health::HealthCheckCache,
     pb,
 };
@@ -936,6 +939,41 @@ impl ContextDocsHttpRequest {
 /// The response format of the /api/v1/text/task/generation-detection endpoint
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ContextDocsResult {
+    pub detections: Vec<DetectionResult>,
+}
+
+/// The request format expected in the /api/v2/text/detect/generated endpoint.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ChatDetectionHttpRequest {
+    /// The map of detectors to be used, along with their respective parameters, e.g. thresholds.
+    pub detectors: HashMap<String, DetectorParams>,
+
+    // The list of messages to run detections on.
+    pub messages: Vec<clients::openai::Message>,
+}
+
+impl ChatDetectionHttpRequest {
+    /// Upfront validation of user request
+    pub fn validate(&self) -> Result<(), ValidationError> {
+        // Validate required parameters
+        if self.detectors.is_empty() {
+            return Err(ValidationError::Required("detectors".into()));
+        }
+        if self.messages.is_empty() {
+            return Err(ValidationError::Required("messages".into()));
+        }
+
+        // Validate detector params
+        validate_detector_params(&self.detectors)?;
+
+        Ok(())
+    }
+}
+
+/// The response format of the /api/v2/text/detection/chat endpoint
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ChatDetectionResult {
+    /// Detection results
     pub detections: Vec<DetectionResult>,
 }
 
