@@ -29,7 +29,7 @@ use uuid::Uuid;
 
 use crate::{
     clients::{
-        chunker::{ChunkerClient, DEFAULT_MODEL_ID as CHUNKER_DEFAULT_MODEL_ID},
+        chunker::ChunkerClient,
         detector::{
             text_context_doc::ContextType, TextChatDetectorClient, TextContextDocDetectorClient,
             TextGenerationDetectorClient,
@@ -37,7 +37,7 @@ use crate::{
         openai::OpenAiClient,
         ClientMap, GenerationClient, NlpClient, TextContentsDetectorClient, TgisClient,
     },
-    config::{DetectorType, GenerationProvider, OrchestratorConfig, ServiceConfig},
+    config::{DetectorType, GenerationProvider, OrchestratorConfig},
     health::HealthCheckCache,
     models::{
         ContextDocsHttpRequest, DetectionOnGeneratedHttpRequest, DetectorParams,
@@ -199,11 +199,6 @@ async fn create_clients(config: &OrchestratorConfig) -> ClientMap {
             clients.insert(chunker_id.to_string(), chunker_client);
         }
     }
-    // Insert default chunker
-    clients.insert(
-        CHUNKER_DEFAULT_MODEL_ID.to_string(),
-        ChunkerClient::new(&ServiceConfig::default()).await,
-    );
 
     // Create detector clients
     for (detector_id, detector) in &config.detectors {
