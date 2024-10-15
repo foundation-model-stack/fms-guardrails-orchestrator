@@ -41,7 +41,6 @@ pub mod http;
 pub use http::HttpClient;
 
 pub mod chunker;
-pub use chunker::ChunkerClient;
 
 pub mod detector;
 pub use detector::TextContentsDetectorClient;
