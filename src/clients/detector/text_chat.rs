@@ -18,6 +18,7 @@
 use async_trait::async_trait;
 use hyper::{HeaderMap, StatusCode};
 use serde::Serialize;
+use tracing::{debug, info, instrument};
 
 use super::{DetectorError, DEFAULT_PORT, DETECTOR_ID_HEADER_NAME};
 use crate::{
@@ -51,6 +52,7 @@ impl TextChatDetectorClient {
         }
     }
 
+    #[instrument(skip_all, fields(model_id, ?headers))]
     pub async fn text_chat(
         &self,
         model_id: &str,
@@ -64,10 +66,10 @@ impl TextChatDetectorClient {
             .headers(headers)
             .header(DETECTOR_ID_HEADER_NAME, model_id)
             .json(&request);
-
-        tracing::debug!("Request being sent to chat detector: {:?}", request);
+        info!(?url, "sending chat detector client request");
+        debug!("chat detector client request: {:?}", request);
         let response = request.send().await?;
-        tracing::debug!("Response received from chat detector: {:?}", response);
+        debug!("chat detector client response: {:?}", response);
 
         if response.status() == StatusCode::OK {
             Ok(response.json().await?)

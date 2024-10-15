@@ -15,12 +15,6 @@
 
 */
 
-use async_trait::async_trait;
-use axum::http::{Extensions, HeaderMap};
-use futures::{StreamExt, TryStreamExt};
-use ginepro::LoadBalancedChannel;
-use tonic::{metadata::MetadataMap, Code, Request};
-
 use super::{create_grpc_client, errors::grpc_to_http_code, BoxStream, Client, Error};
 use crate::{
     config::ServiceConfig,
@@ -37,6 +31,12 @@ use crate::{
         grpc::health::v1::{health_client::HealthClient, HealthCheckRequest},
     },
 };
+use async_trait::async_trait;
+use axum::http::{Extensions, HeaderMap};
+use futures::{StreamExt, TryStreamExt};
+use ginepro::LoadBalancedChannel;
+use tonic::{metadata::MetadataMap, Code, Request};
+use tracing::{info, instrument};
 
 const DEFAULT_PORT: u16 = 8085;
 const MODEL_ID_HEADER_NAME: &str = "mm-model-id";
@@ -59,6 +59,7 @@ impl NlpClient {
         }
     }
 
+    #[instrument(skip_all, fields(model_id, ?headers))]
     pub async fn tokenization_task_predict(
         &self,
         model_id: &str,
@@ -67,12 +68,14 @@ impl NlpClient {
     ) -> Result<TokenizationResults, Error> {
         let mut client = self.client.clone();
         let request = request_with_model_id(request, model_id, headers);
+        info!(?request, "sending request to NLP gRPC service");
         Ok(client
             .tokenization_task_predict(request)
             .await?
             .into_inner())
     }
 
+    #[instrument(skip_all, fields(model_id, ?headers))]
     pub async fn token_classification_task_predict(
         &self,
         model_id: &str,
@@ -81,12 +84,14 @@ impl NlpClient {
     ) -> Result<TokenClassificationResults, Error> {
         let mut client = self.client.clone();
         let request = request_with_model_id(request, model_id, headers);
+        info!(?request, "sending request to NLP gRPC service");
         Ok(client
             .token_classification_task_predict(request)
             .await?
             .into_inner())
     }
 
+    #[instrument(skip_all, fields(model_id, ?headers))]
     pub async fn text_generation_task_predict(
         &self,
         model_id: &str,
@@ -95,12 +100,14 @@ impl NlpClient {
     ) -> Result<GeneratedTextResult, Error> {
         let mut client = self.client.clone();
         let request = request_with_model_id(request, model_id, headers);
+        info!(?request, "sending request to NLP gRPC service");
         Ok(client
             .text_generation_task_predict(request)
             .await?
             .into_inner())
     }
 
+    #[instrument(skip_all, fields(model_id, ?headers))]
     pub async fn server_streaming_text_generation_task_predict(
         &self,
         model_id: &str,
@@ -109,6 +116,7 @@ impl NlpClient {
     ) -> Result<BoxStream<Result<GeneratedTextStreamResult, Error>>, Error> {
         let mut client = self.client.clone();
         let request = request_with_model_id(request, model_id, headers);
+        info!(?request, "sending stream request to NLP gRPC service");
         let response_stream = client
             .server_streaming_text_generation_task_predict(request)
             .await?

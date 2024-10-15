@@ -18,7 +18,7 @@
 use async_trait::async_trait;
 use futures::{StreamExt, TryStreamExt};
 use hyper::HeaderMap;
-use tracing::debug;
+use tracing::{debug, instrument};
 
 use super::{BoxStream, Client, Error, NlpClient, TgisClient};
 use crate::{
@@ -63,6 +63,7 @@ impl GenerationClient {
         Self(None)
     }
 
+    #[instrument(skip_all, fields(model_id, ?headers))]
     pub async fn tokenize(
         &self,
         model_id: String,
@@ -78,19 +79,19 @@ impl GenerationClient {
                     return_offsets: false,
                     truncate_input_tokens: 0,
                 };
-                debug!(%model_id, provider = "tgis", ?request, "sending tokenize request");
+                debug!(provider = "tgis", ?request, "sending tokenize request");
                 let mut response = client.tokenize(request, headers).await?;
-                debug!(%model_id, provider = "tgis", ?response, "received tokenize response");
+                debug!(provider = "tgis", ?response, "received tokenize response");
                 let response = response.responses.swap_remove(0);
                 Ok((response.token_count, response.tokens))
             }
             Some(GenerationClientInner::Nlp(client)) => {
                 let request = TokenizationTaskRequest { text };
-                debug!(%model_id, provider = "nlp", ?request, "sending tokenize request");
+                debug!(provider = "nlp", ?request, "sending tokenize request");
                 let response = client
                     .tokenization_task_predict(&model_id, request, headers)
                     .await?;
-                debug!(%model_id, provider = "nlp", ?response, "received tokenize response");
+                debug!(provider = "nlp", ?response, "received tokenize response");
                 let tokens = response
                     .results
                     .into_iter()
@@ -118,9 +119,9 @@ impl GenerationClient {
                     requests: vec![GenerationRequest { text }],
                     params,
                 };
-                debug!(%model_id, provider = "tgis", ?request, "sending generate request");
+                debug!(provider = "tgis", ?request, "sending generate request");
                 let response = client.generate(request, headers).await?;
-                debug!(%model_id, provider = "tgis", ?response, "received generate response");
+                debug!(provider = "tgis", ?response, "received generate response");
                 Ok(response.into())
             }
             Some(GenerationClientInner::Nlp(client)) => {
@@ -155,11 +156,11 @@ impl GenerationClient {
                         ..Default::default()
                     }
                 };
-                debug!(%model_id, provider = "nlp", ?request, "sending generate request");
+                debug!(provider = "nlp", ?request, "sending generate request");
                 let response = client
                     .text_generation_task_predict(&model_id, request, headers)
                     .await?;
-                debug!(%model_id, provider = "nlp", ?response, "received generate response");
+                debug!(provider = "nlp", ?response, "received generate response");
                 Ok(response.into())
             }
             None => Err(Error::ModelNotFound { model_id }),
@@ -182,7 +183,11 @@ impl GenerationClient {
                     request: Some(GenerationRequest { text }),
                     params,
                 };
-                debug!(%model_id, provider = "tgis", ?request, "sending generate_stream request");
+                debug!(
+                    provider = "tgis",
+                    ?request,
+                    "sending generate_stream request"
+                );
                 let response_stream = client
                     .generate_stream(request, headers)
                     .await?
@@ -222,7 +227,11 @@ impl GenerationClient {
                         ..Default::default()
                     }
                 };
-                debug!(%model_id, provider = "nlp", ?request, "sending generate_stream request");
+                debug!(
+                    provider = "nlp",
+                    ?request,
+                    "sending generate_stream request"
+                );
                 let response_stream = client
                     .server_streaming_text_generation_task_predict(&model_id, request, headers)
                     .await?

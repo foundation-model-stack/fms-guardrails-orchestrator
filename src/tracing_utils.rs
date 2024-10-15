@@ -50,12 +50,21 @@ pub enum TracingError {
     MetricsError(#[from] MetricsError),
 }
 
+fn service_config(tracing_config: TracingConfig) -> Config {
+    Config::default()
+        .with_resource(Resource::new(vec![KeyValue::new(
+            "service.name",
+            tracing_config.service_name,
+        )]))
+        .with_sampler(Sampler::AlwaysOn)
+}
+
 /// Initializes an OpenTelemetry tracer provider with an OTLP export pipeline based on the
 /// provided config.
 fn init_tracer_provider(
-    otlp_export_config: TracingConfig,
+    tracing_config: TracingConfig,
 ) -> Result<Option<opentelemetry_sdk::trace::TracerProvider>, TracingError> {
-    if let Some((protocol, endpoint)) = otlp_export_config.traces {
+    if let Some((protocol, endpoint)) = tracing_config.clone().traces {
         Ok(Some(
             match protocol {
                 OtlpProtocol::Grpc => opentelemetry_otlp::new_pipeline().tracing().with_exporter(
@@ -72,15 +81,16 @@ fn init_tracer_provider(
                         .with_timeout(Duration::from_secs(3)),
                 ),
             }
-            .with_trace_config(
-                Config::default()
-                    .with_resource(Resource::new(vec![KeyValue::new(
-                        "service.name",
-                        otlp_export_config.service_name,
-                    )]))
-                    .with_sampler(Sampler::AlwaysOn),
-            )
+            .with_trace_config(service_config(tracing_config))
             .install_batch(runtime::Tokio)?,
+        ))
+    } else if !tracing_config.quiet {
+        // We still need a tracing provider as long as we are logging in order to enable any
+        // trace-sensitive logs, such as any mentions of a request's trace_id.
+        Ok(Some(
+            opentelemetry_sdk::trace::TracerProvider::builder()
+                .with_config(service_config(tracing_config))
+                .build(),
         ))
     } else {
         Ok(None)
@@ -90,9 +100,9 @@ fn init_tracer_provider(
 /// Initializes an OpenTelemetry meter provider with an OTLP export pipeline based on the
 /// provided config.
 fn init_meter_provider(
-    otlp_export_config: TracingConfig,
+    tracing_config: TracingConfig,
 ) -> Result<Option<SdkMeterProvider>, TracingError> {
-    if let Some((protocol, endpoint)) = otlp_export_config.metrics {
+    if let Some((protocol, endpoint)) = tracing_config.metrics {
         Ok(Some(
             match protocol {
                 OtlpProtocol::Grpc => opentelemetry_otlp::new_pipeline()
@@ -113,7 +123,7 @@ fn init_meter_provider(
             }
             .with_resource(Resource::new(vec![KeyValue::new(
                 "service.name",
-                otlp_export_config.service_name,
+                tracing_config.service_name,
             )]))
             .with_timeout(Duration::from_secs(10))
             .with_period(Duration::from_secs(3))
@@ -237,11 +247,18 @@ pub fn incoming_request_span(request: &Request) -> Span {
 
 pub fn on_incoming_request(request: &Request, span: &Span) {
     let _guard = span.enter();
+    let trace_id = Span::current()
+        .context()
+        .span()
+        .span_context()
+        .trace_id()
+        .to_string();
+    println!("trace: {}", trace_id);
     info!(
         "incoming request to {} {} with trace_id {}",
         request.method(),
         request.uri().path(),
-        span.context().span().span_context().trace_id().to_string()
+        trace_id,
     );
     info!(
         monotonic_counter.incoming_request_count = 1,
