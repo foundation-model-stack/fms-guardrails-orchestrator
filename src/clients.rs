@@ -27,6 +27,7 @@ use async_trait::async_trait;
 use futures::Stream;
 use ginepro::LoadBalancedChannel;
 use tokio::{fs::File, io::AsyncReadExt};
+use tracing::{debug, instrument};
 use url::Url;
 
 use crate::{
@@ -193,6 +194,7 @@ impl ClientMap {
     }
 }
 
+#[instrument(skip_all, fields(hostname = service_config.hostname))]
 pub async fn create_http_client(default_port: u16, service_config: &ServiceConfig) -> HttpClient {
     let port = service_config.port.unwrap_or(default_port);
     let protocol = match service_config.tls {
@@ -201,6 +203,7 @@ pub async fn create_http_client(default_port: u16, service_config: &ServiceConfi
     };
     let mut base_url = Url::parse(&format!("{}://{}", protocol, &service_config.hostname)).unwrap();
     base_url.set_port(Some(port)).unwrap();
+    debug!(%base_url, "creating HTTP client");
     let request_timeout = Duration::from_secs(
         service_config
             .request_timeout
@@ -250,11 +253,20 @@ pub async fn create_http_client(default_port: u16, service_config: &ServiceConfi
     HttpClient::new(base_url, client)
 }
 
+#[instrument(skip_all, fields(hostname = service_config.hostname))]
 pub async fn create_grpc_client<C>(
     default_port: u16,
     service_config: &ServiceConfig,
     new: fn(LoadBalancedChannel) -> C,
 ) -> C {
+    let port = service_config.port.unwrap_or(default_port);
+    let protocol = match service_config.tls {
+        Some(_) => "https",
+        None => "http",
+    };
+    let mut base_url = Url::parse(&format!("{}://{}", protocol, &service_config.hostname)).unwrap();
+    base_url.set_port(Some(port)).unwrap();
+    debug!(%base_url, "creating gRPC client");
     let request_timeout = Duration::from_secs(
         service_config
             .request_timeout

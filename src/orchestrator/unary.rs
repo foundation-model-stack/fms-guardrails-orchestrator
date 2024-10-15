@@ -53,15 +53,15 @@ const DEFAULT_STREAM_BUFFER_SIZE: usize = 5;
 
 impl Orchestrator {
     /// Handles unary tasks.
-    #[instrument(name = "unary_handler", skip_all)]
+    #[instrument(skip_all, fields(trace_id = ?task.trace_id, model_id = task.model_id, headers = ?task.headers))]
     pub async fn handle_classification_with_gen(
         &self,
         task: ClassificationWithGenTask,
     ) -> Result<ClassifiedGeneratedTextResult, Error> {
         let ctx = self.ctx.clone();
-        let request_id = task.request_id;
+        let trace_id = task.trace_id;
         let headers = task.headers;
-        info!(%request_id, config = ?task.guardrails_config, "starting task");
+        info!(config = ?task.guardrails_config, "handling classification with generation task");
         let task_handle = tokio::spawn(async move {
             let input_text = task.inputs.clone();
             let masks = task.guardrails_config.input_masks();
@@ -141,32 +141,31 @@ impl Orchestrator {
         match task_handle.await {
             // Task completed successfully
             Ok(Ok(result)) => {
-                debug!(%request_id, ?result, "sending result to client");
-                info!(%request_id, "task completed");
+                debug!(%trace_id, ?result, "sending result to client");
+                info!(%trace_id, "task completed");
                 Ok(result)
             }
             // Task failed, return error propagated from child task that failed
             Ok(Err(error)) => {
-                error!(%request_id, %error, "task failed");
+                error!(%trace_id, %error, "task failed");
                 Err(error)
             }
             // Task cancelled or panicked
             Err(error) => {
                 let error = error.into();
-                error!(%request_id, %error, "task failed");
+                error!(%trace_id, %error, "task failed");
                 Err(error)
             }
         }
     }
 
     /// Handles the given generation task, followed by detections.
+    #[instrument(skip_all, fields(trace_id = ?task.trace_id, model_id = task.model_id, headers = ?task.headers))]
     pub async fn handle_generation_with_detection(
         &self,
         task: GenerationWithDetectionTask,
     ) -> Result<GenerationWithDetectionResult, Error> {
         info!(
-            request_id = ?task.request_id,
-            model_id = %task.model_id,
             detectors = ?task.detectors,
             "handling generation with detection task"
         );
@@ -226,27 +225,25 @@ impl Orchestrator {
             Ok(Ok(result)) => Ok(result),
             // Task failed, return error propagated from child task that failed
             Ok(Err(error)) => {
-                error!(request_id = ?task.request_id, %error, "generation with detection unary task failed");
+                error!(trace_id = ?task.trace_id, %error, "generation with detection unary task failed");
                 Err(error)
             }
             // Task cancelled or panicked
             Err(error) => {
                 let error = error.into();
-                error!(request_id = ?task.request_id, %error, "generation with detection unary task failed");
+                error!(trace_id = ?task.trace_id, %error, "generation with detection unary task failed");
                 Err(error)
             }
         }
     }
 
     /// Handles detection on textual content
+    #[instrument(skip_all, fields(trace_id = ?task.trace_id, headers = ?task.headers))]
     pub async fn handle_text_content_detection(
         &self,
         task: TextContentDetectionTask,
     ) -> Result<TextContentDetectionResult, Error> {
-        info!(
-            request_id = ?task.request_id,
-            "handling text content detection task"
-        );
+        info!("handling text content detection task");
 
         let ctx = self.ctx.clone();
         let headers = task.headers;
@@ -308,25 +305,25 @@ impl Orchestrator {
             Ok(Ok(result)) => Ok(result),
             // Task failed, return error propagated from child task that failed
             Ok(Err(error)) => {
-                error!(request_id = ?task.request_id, %error, "text content detection task failed");
+                error!(trace_id = ?task.trace_id, %error, "text content detection task failed");
                 Err(error)
             }
             // Task cancelled or panicked
             Err(error) => {
                 let error = error.into();
-                error!(request_id = ?task.request_id, %error, "text content detection task failed");
+                error!(trace_id = ?task.trace_id, %error, "text content detection task failed");
                 Err(error)
             }
         }
     }
 
     /// Handles context-related detections on textual content
+    #[instrument(skip_all, fields(trace_id = ?task.trace_id, headers = ?task.headers))]
     pub async fn handle_context_documents_detection(
         &self,
         task: ContextDocsDetectionTask,
     ) -> Result<ContextDocsResult, Error> {
         info!(
-            request_id = ?task.request_id,
             detectors = ?task.detectors,
             "handling context documents detection task"
         );
@@ -373,25 +370,25 @@ impl Orchestrator {
             Ok(Ok(result)) => Ok(result),
             // Task failed, return error propagated from child task that failed
             Ok(Err(error)) => {
-                error!(request_id = ?task.request_id, %error, "context documents detection task failed");
+                error!(trace_id = ?task.trace_id, %error, "context documents detection task failed");
                 Err(error)
             }
             // Task cancelled or panicked
             Err(error) => {
                 let error = error.into();
-                error!(request_id = ?task.request_id, %error, "context documents detection task failed");
+                error!(trace_id = ?task.trace_id, %error, "context documents detection task failed");
                 Err(error)
             }
         }
     }
 
     /// Handles detections on generated text (without performing generation)
+    #[instrument(skip_all, fields(trace_id = ?task.trace_id, headers = ?task.headers))]
     pub async fn handle_generated_text_detection(
         &self,
         task: DetectionOnGenerationTask,
     ) -> Result<DetectionOnGenerationResult, Error> {
         info!(
-            request_id = ?task.request_id,
             detectors = ?task.detectors,
             "handling detection on generated content task"
         );
@@ -436,13 +433,13 @@ impl Orchestrator {
             Ok(Ok(result)) => Ok(result),
             // Task failed, return error propagated from child task that failed
             Ok(Err(error)) => {
-                error!(request_id = ?task.request_id, %error, "detection on generated content task failed");
+                error!(trace_id = ?task.trace_id, %error, "detection on generated content task failed");
                 Err(error)
             }
             // Task cancelled or panicked
             Err(error) => {
                 let error = error.into();
-                error!(request_id = ?task.request_id, %error, "detection on generated content task failed");
+                error!(trace_id = ?task.trace_id, %error, "detection on generated content task failed");
                 Err(error)
             }
         }
@@ -458,6 +455,7 @@ pub async fn input_detection_task(
     masks: Option<&[(usize, usize)]>,
     headers: HeaderMap,
 ) -> Result<Option<Vec<TokenClassificationResult>>, Error> {
+    debug!(?detectors, "starting input detection");
     let text_with_offsets = apply_masks(input_text, masks);
     let chunker_ids = get_chunker_ids(ctx, detectors)?;
     let chunks = chunk_task(ctx, chunker_ids, text_with_offsets).await?;
@@ -473,6 +471,7 @@ async fn output_detection_task(
     generated_text: String,
     headers: HeaderMap,
 ) -> Result<Option<Vec<TokenClassificationResult>>, Error> {
+    debug!(detectors = ?detectors.keys(), "starting output detection");
     let text_with_offsets = apply_masks(generated_text, None);
     let chunker_ids = get_chunker_ids(ctx, detectors)?;
     let chunks = chunk_task(ctx, chunker_ids, text_with_offsets).await?;
@@ -488,6 +487,7 @@ async fn detection_task(
     chunks: HashMap<String, Vec<Chunk>>,
     headers: HeaderMap,
 ) -> Result<Vec<TokenClassificationResult>, Error> {
+    debug!(detectors = ?detectors.keys(), "handling detection task");
     // Spawn tasks for each detector
     let tasks = detectors
         .iter()
@@ -537,6 +537,7 @@ async fn chunk_task(
     chunker_ids: Vec<String>,
     text_with_offsets: Vec<(usize, String)>,
 ) -> Result<HashMap<String, Vec<Chunk>>, Error> {
+    debug!(?chunker_ids, "handling chunk task");
     // Spawn tasks for each chunker
     let tasks = chunker_ids
         .into_iter()
@@ -554,7 +555,7 @@ async fn chunk_task(
 }
 
 /// Sends a request to a detector service and applies threshold.
-#[instrument(skip_all)]
+#[instrument(skip_all, fields(detector_id))]
 pub async fn detect(
     ctx: Arc<Context>,
     detector_id: String,
@@ -571,7 +572,12 @@ pub async fn detect(
         Vec::default()
     } else {
         let request = ContentAnalysisRequest::new(contents);
-        debug!(%detector_id, ?request, "sending detector request");
+        debug!(
+            ?request,
+            default_threshold,
+            ?detector_params,
+            "sending detector request"
+        );
         let client = ctx
             .clients
             .get_as::<TextContentsDetectorClient>(&detector_id)
@@ -580,7 +586,7 @@ pub async fn detect(
             .text_contents(&detector_id, request, headers)
             .await
             .map_err(|error| {
-                debug!(%detector_id, ?error, "error received from detector");
+                debug!(?error, "error received from detector");
                 Error::DetectorRequestFailed {
                     id: detector_id.clone(),
                     error,
@@ -613,7 +619,7 @@ pub async fn detect(
 
 /// Sends a request to a detector service and applies threshold.
 /// TODO: Cleanup by removing duplicate code and merging it with above `detect` function
-#[instrument(skip_all)]
+#[instrument(skip_all, fields(detector_id))]
 pub async fn detect_content(
     ctx: Arc<Context>,
     detector_id: String,
@@ -630,7 +636,12 @@ pub async fn detect_content(
         Vec::default()
     } else {
         let request = ContentAnalysisRequest::new(contents);
-        debug!(%detector_id, ?request, "sending detector request");
+        debug!(
+            ?request,
+            default_threshold,
+            ?detector_params,
+            "sending detector request"
+        );
         let client = ctx
             .clients
             .get_as::<TextContentsDetectorClient>(&detector_id)
@@ -639,7 +650,7 @@ pub async fn detect_content(
             .text_contents(&detector_id, request, headers)
             .await
             .map_err(|error| {
-                debug!(%detector_id, ?error, "error received from detector");
+                debug!(?error, "error received from detector");
                 Error::DetectorRequestFailed {
                     id: detector_id.clone(),
                     error,
@@ -670,6 +681,7 @@ pub async fn detect_content(
 }
 
 /// Calls a detector that implements the /api/v1/text/generation endpoint
+#[instrument(skip_all, fields(detector_id))]
 pub async fn detect_for_generation(
     ctx: Arc<Context>,
     detector_id: String,
@@ -689,7 +701,12 @@ pub async fn detect_for_generation(
         ),
     );
     let request = GenerationDetectionRequest::new(prompt.clone(), generated_text.clone());
-    debug!(%detector_id, ?request, "sending generation detector request");
+    debug!(
+        ?request,
+        threshold,
+        ?detector_params,
+        "sending generation detector request"
+    );
     let client = ctx
         .clients
         .get_as::<TextGenerationDetectorClient>(&detector_id)
@@ -707,11 +724,12 @@ pub async fn detect_for_generation(
             id: detector_id.clone(),
             error,
         })?;
-    debug!(%detector_id, ?response, "received generation detector response");
+    debug!(?response, "received generation detector response");
     Ok::<Vec<DetectionResult>, Error>(response)
 }
 
 /// Calls a detector that implements the /api/v1/text/doc endpoint
+#[instrument(skip_all, fields(detector_id))]
 pub async fn detect_for_context(
     ctx: Arc<Context>,
     detector_id: String,
@@ -731,8 +749,14 @@ pub async fn detect_for_context(
                 .default_threshold,
         ),
     );
-    let request = ContextDocsDetectionRequest::new(content, context_type, context, detector_params);
-    debug!(%detector_id, ?request, "sending context detector request");
+    let request =
+        ContextDocsDetectionRequest::new(content, context_type, context, detector_params.clone());
+    debug!(
+        ?request,
+        threshold,
+        ?detector_params,
+        "sending context detector request"
+    );
     let client = ctx
         .clients
         .get_as::<TextContextDocDetectorClient>(&detector_id)
@@ -755,7 +779,7 @@ pub async fn detect_for_context(
 }
 
 /// Sends request to chunker service.
-#[instrument(skip_all)]
+#[instrument(skip_all, fields(chunker_id))]
 pub async fn chunk(
     ctx: &Arc<Context>,
     chunker_id: String,
@@ -763,7 +787,7 @@ pub async fn chunk(
     text: String,
 ) -> Result<Vec<Chunk>, Error> {
     let request = chunkers::ChunkerTokenizationTaskRequest { text };
-    debug!(%chunker_id, ?request, "sending chunker request");
+    debug!(?request, offset, "sending chunk request");
     let response = if chunker_id == DEFAULT_CHUNKER_ID {
         tokenize_whole_doc(request)
     } else {
@@ -777,7 +801,7 @@ pub async fn chunk(
             })?
     };
 
-    debug!(%chunker_id, ?response, "received chunker response");
+    debug!(?response, "received chunker response");
     Ok(response
         .results
         .into_iter()
@@ -789,11 +813,13 @@ pub async fn chunk(
 }
 
 /// Sends parallel requests to a chunker service.
+#[instrument(skip_all, fields(chunker_id))]
 pub async fn chunk_parallel(
     ctx: &Arc<Context>,
     chunker_id: String,
     text_with_offsets: Vec<(usize, String)>,
 ) -> Result<(String, Vec<Chunk>), Error> {
+    debug!("sending parallel chunk request");
     let chunks = stream::iter(text_with_offsets)
         .map(|(offset, text)| {
             let ctx = ctx.clone();
@@ -815,12 +841,14 @@ pub async fn chunk_parallel(
 }
 
 /// Sends tokenize request to a generation service.
+#[instrument(skip_all, fields(model_id))]
 pub async fn tokenize(
     ctx: &Arc<Context>,
     model_id: String,
     text: String,
     headers: HeaderMap,
 ) -> Result<(u32, Vec<String>), Error> {
+    debug!("sending tokenize request");
     let client = ctx
         .clients
         .get_as::<GenerationClient>("generation")
@@ -835,6 +863,7 @@ pub async fn tokenize(
 }
 
 /// Sends generate request to a generation service.
+#[instrument(skip_all, fields(model_id))]
 async fn generate(
     ctx: &Arc<Context>,
     model_id: String,
@@ -842,6 +871,7 @@ async fn generate(
     params: Option<GuardrailsTextGenerationParameters>,
     headers: HeaderMap,
 ) -> Result<ClassifiedGeneratedTextResult, Error> {
+    debug!("sending generate request");
     let client = ctx
         .clients
         .get_as::<GenerationClient>("generation")

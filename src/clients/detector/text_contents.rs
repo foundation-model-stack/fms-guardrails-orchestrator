@@ -18,6 +18,7 @@
 use async_trait::async_trait;
 use hyper::{HeaderMap, StatusCode};
 use serde::{Deserialize, Serialize};
+use tracing::{info, instrument};
 
 use super::{DetectorError, DEFAULT_PORT, DETECTOR_ID_HEADER_NAME};
 use crate::{
@@ -48,6 +49,7 @@ impl TextContentsDetectorClient {
         }
     }
 
+    #[instrument(skip_all, fields(model_id, ?headers))]
     pub async fn text_contents(
         &self,
         model_id: &str,
@@ -59,6 +61,7 @@ impl TextContentsDetectorClient {
             .base_url()
             .join("/api/v1/text/contents")
             .unwrap();
+        info!(?url, ?request, "sending client request");
         let response = self
             .client
             .post(url)

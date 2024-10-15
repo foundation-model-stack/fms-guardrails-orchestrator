@@ -20,6 +20,7 @@ use axum::http::HeaderMap;
 use futures::{StreamExt, TryStreamExt};
 use ginepro::LoadBalancedChannel;
 use tonic::Code;
+use tracing::{info, instrument};
 
 use super::{create_grpc_client, errors::grpc_to_http_code, BoxStream, Client, Error};
 use crate::{
@@ -47,20 +48,24 @@ impl TgisClient {
         Self { client }
     }
 
+    #[instrument(skip_all, fields(model_id = request.model_id, headers = ?_headers))]
     pub async fn generate(
         &self,
         request: BatchedGenerationRequest,
         _headers: HeaderMap,
     ) -> Result<BatchedGenerationResponse, Error> {
+        info!(?request, "sending request to TGIS gRPC service");
         let mut client = self.client.clone();
         Ok(client.generate(request).await?.into_inner())
     }
 
+    #[instrument(skip_all, fields(model_id = request.model_id, headers = ?_headers))]
     pub async fn generate_stream(
         &self,
         request: SingleGenerationRequest,
         _headers: HeaderMap,
     ) -> Result<BoxStream<Result<GenerationResponse, Error>>, Error> {
+        info!(?request, "sending request to TGIS gRPC service");
         let mut client = self.client.clone();
         let response_stream = client
             .generate_stream(request)
@@ -71,16 +76,19 @@ impl TgisClient {
         Ok(response_stream)
     }
 
+    #[instrument(skip_all, fields(model_id = request.model_id, headers = ?_headers))]
     pub async fn tokenize(
         &self,
         request: BatchedTokenizeRequest,
         _headers: HeaderMap,
     ) -> Result<BatchedTokenizeResponse, Error> {
+        info!(?request, "sending request to TGIS gRPC service");
         let mut client = self.client.clone();
         Ok(client.tokenize(request).await?.into_inner())
     }
 
     pub async fn model_info(&self, request: ModelInfoRequest) -> Result<ModelInfoResponse, Error> {
+        info!(?request, "sending request to TGIS gRPC service");
         let mut client = self.client.clone();
         Ok(client.model_info(request).await?.into_inner())
     }

@@ -23,9 +23,9 @@ pub mod unary;
 use std::{collections::HashMap, sync::Arc};
 
 use axum::http::header::HeaderMap;
+use opentelemetry::trace::TraceId;
 use tokio::{sync::RwLock, time::Instant};
 use tracing::{debug, info};
-use uuid::Uuid;
 
 use crate::{
     clients::{
@@ -256,7 +256,7 @@ pub struct Chunk {
 
 #[derive(Debug)]
 pub struct ClassificationWithGenTask {
-    pub request_id: Uuid,
+    pub trace_id: TraceId,
     pub model_id: String,
     pub inputs: String,
     pub guardrails_config: GuardrailsConfig,
@@ -265,9 +265,9 @@ pub struct ClassificationWithGenTask {
 }
 
 impl ClassificationWithGenTask {
-    pub fn new(request_id: Uuid, request: GuardrailsHttpRequest, headers: HeaderMap) -> Self {
+    pub fn new(trace_id: TraceId, request: GuardrailsHttpRequest, headers: HeaderMap) -> Self {
         Self {
-            request_id,
+            trace_id,
             model_id: request.model_id,
             inputs: request.inputs,
             guardrails_config: request.guardrail_config.unwrap_or_default(),
@@ -280,8 +280,8 @@ impl ClassificationWithGenTask {
 /// Task for the /api/v2/text/detection/content endpoint
 #[derive(Debug)]
 pub struct GenerationWithDetectionTask {
-    /// Request unique identifier
-    pub request_id: Uuid,
+    /// Unique identifier of request trace
+    pub trace_id: TraceId,
 
     /// Model ID of the LLM
     pub model_id: String,
@@ -301,12 +301,12 @@ pub struct GenerationWithDetectionTask {
 
 impl GenerationWithDetectionTask {
     pub fn new(
-        request_id: Uuid,
+        trace_id: TraceId,
         request: GenerationWithDetectionHttpRequest,
         headers: HeaderMap,
     ) -> Self {
         Self {
-            request_id,
+            trace_id,
             model_id: request.model_id,
             prompt: request.prompt,
             detectors: request.detectors,
@@ -319,8 +319,8 @@ impl GenerationWithDetectionTask {
 /// Task for the /api/v2/text/detection/content endpoint
 #[derive(Debug)]
 pub struct TextContentDetectionTask {
-    /// Request unique identifier
-    pub request_id: Uuid,
+    /// Unique identifier of request trace
+    pub trace_id: TraceId,
 
     /// Content to run detection on
     pub content: String,
@@ -334,12 +334,12 @@ pub struct TextContentDetectionTask {
 
 impl TextContentDetectionTask {
     pub fn new(
-        request_id: Uuid,
+        trace_id: TraceId,
         request: TextContentDetectionHttpRequest,
         headers: HeaderMap,
     ) -> Self {
         Self {
-            request_id,
+            trace_id,
             content: request.content,
             detectors: request.detectors,
             headers,
@@ -350,8 +350,8 @@ impl TextContentDetectionTask {
 /// Task for the /api/v1/text/task/detection/context endpoint
 #[derive(Debug)]
 pub struct ContextDocsDetectionTask {
-    /// Request unique identifier
-    pub request_id: Uuid,
+    /// Unique identifier of request trace
+    pub trace_id: TraceId,
 
     /// Content to run detection on
     pub content: String,
@@ -370,9 +370,9 @@ pub struct ContextDocsDetectionTask {
 }
 
 impl ContextDocsDetectionTask {
-    pub fn new(request_id: Uuid, request: ContextDocsHttpRequest, headers: HeaderMap) -> Self {
+    pub fn new(trace_id: TraceId, request: ContextDocsHttpRequest, headers: HeaderMap) -> Self {
         Self {
-            request_id,
+            trace_id,
             content: request.content,
             context_type: request.context_type,
             context: request.context,
@@ -385,8 +385,8 @@ impl ContextDocsDetectionTask {
 /// Task for the /api/v2/text/detection/generated endpoint
 #[derive(Debug)]
 pub struct DetectionOnGenerationTask {
-    /// Request unique identifier
-    pub request_id: Uuid,
+    /// Unique identifier of request trace
+    pub trace_id: TraceId,
 
     /// User prompt to be sent to the LLM
     pub prompt: String,
@@ -403,12 +403,12 @@ pub struct DetectionOnGenerationTask {
 
 impl DetectionOnGenerationTask {
     pub fn new(
-        request_id: Uuid,
+        trace_id: TraceId,
         request: DetectionOnGeneratedHttpRequest,
         headers: HeaderMap,
     ) -> Self {
         Self {
-            request_id,
+            trace_id,
             prompt: request.prompt,
             generated_text: request.generated_text,
             detectors: request.detectors,
@@ -420,7 +420,7 @@ impl DetectionOnGenerationTask {
 #[allow(dead_code)]
 #[derive(Debug)]
 pub struct StreamingClassificationWithGenTask {
-    pub request_id: Uuid,
+    pub trace_id: TraceId,
     pub model_id: String,
     pub inputs: String,
     pub guardrails_config: GuardrailsConfig,
@@ -429,9 +429,9 @@ pub struct StreamingClassificationWithGenTask {
 }
 
 impl StreamingClassificationWithGenTask {
-    pub fn new(request_id: Uuid, request: GuardrailsHttpRequest, headers: HeaderMap) -> Self {
+    pub fn new(trace_id: TraceId, request: GuardrailsHttpRequest, headers: HeaderMap) -> Self {
         Self {
-            request_id,
+            trace_id,
             model_id: request.model_id,
             inputs: request.inputs,
             guardrails_config: request.guardrail_config.unwrap_or_default(),
