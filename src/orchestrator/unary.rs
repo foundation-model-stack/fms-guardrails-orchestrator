@@ -38,6 +38,7 @@ use crate::{
             TextChatDetectorClient, TextContentsDetectorClient, TextContextDocDetectorClient,
             TextGenerationDetectorClient,
         },
+        openai::Message,
         GenerationClient,
     },
     models::{
@@ -773,7 +774,7 @@ pub async fn detect_for_chat(
     ctx: Arc<Context>,
     detector_id: String,
     detector_params: DetectorParams,
-    messages: Vec<String>,
+    messages: Vec<Message>,
     headers: HeaderMap,
 ) -> Result<Vec<DetectionResult>, Error> {
     let detector_id = detector_id.clone();

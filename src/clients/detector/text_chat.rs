@@ -4,7 +4,7 @@ use serde::Serialize;
 
 use super::{DetectorError, DEFAULT_PORT, DETECTOR_ID_HEADER_NAME};
 use crate::{
-    clients::{create_http_client, Client, Error, HttpClient},
+    clients::{create_http_client, openai::Message, Client, Error, HttpClient},
     config::ServiceConfig,
     health::HealthCheckResult,
     models::{DetectionResult, DetectorParams},
@@ -85,13 +85,13 @@ impl Client for TextChatDetectorClient {
 #[derive(Debug, Serialize)]
 pub struct ChatDetectionRequest {
     /// Chat messages to run detection on
-    pub messages: Vec<String>,
+    pub messages: Vec<Message>,
 
     pub detector_params: DetectorParams,
 }
 
 impl ChatDetectionRequest {
-    pub fn new(messages: Vec<String>, detector_params: DetectorParams) -> Self {
+    pub fn new(messages: Vec<Message>, detector_params: DetectorParams) -> Self {
         Self {
             messages,
             detector_params,
