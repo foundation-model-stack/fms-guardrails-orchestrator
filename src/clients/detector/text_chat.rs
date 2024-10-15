@@ -7,7 +7,7 @@ use crate::{
     clients::{create_http_client, Client, Error, HttpClient},
     config::ServiceConfig,
     health::HealthCheckResult,
-    models::DetectionResult,
+    models::{DetectionResult, DetectorParams},
 };
 
 #[cfg_attr(test, faux::create)]
@@ -86,10 +86,15 @@ impl Client for TextChatDetectorClient {
 pub struct ChatDetectionRequest {
     /// Chat messages to run detection on
     pub messages: Vec<String>,
+
+    pub detector_params: DetectorParams,
 }
 
 impl ChatDetectionRequest {
-    pub fn new(messages: Vec<String>) -> Self {
-        Self { messages }
+    pub fn new(messages: Vec<String>, detector_params: DetectorParams) -> Self {
+        Self {
+            messages,
+            detector_params,
+        }
     }
 }
