@@ -31,12 +31,13 @@ use super::{
 };
 use crate::{
     clients::{
+        chunker::{tokenize_whole_doc, ChunkerClient, DEFAULT_CHUNKER_ID},
         detector::{
             ContentAnalysisRequest, ContentAnalysisResponse, ContextDocsDetectionRequest,
             ContextType, GenerationDetectionRequest, TextContentsDetectorClient,
             TextContextDocDetectorClient, TextGenerationDetectorClient,
         },
-        ChunkerClient, GenerationClient,
+        GenerationClient,
     },
     models::{
         ClassifiedGeneratedTextResult, ContextDocsResult, DetectionOnGenerationResult,
@@ -763,14 +764,19 @@ pub async fn chunk(
 ) -> Result<Vec<Chunk>, Error> {
     let request = chunkers::ChunkerTokenizationTaskRequest { text };
     debug!(%chunker_id, ?request, "sending chunker request");
-    let client = ctx.clients.get_as::<ChunkerClient>(&chunker_id).unwrap();
-    let response = client
-        .tokenization_task_predict(&chunker_id, request)
-        .await
-        .map_err(|error| Error::ChunkerRequestFailed {
-            id: chunker_id.clone(),
-            error,
-        })?;
+    let response = if chunker_id == DEFAULT_CHUNKER_ID {
+        tokenize_whole_doc(request)
+    } else {
+        let client = ctx.clients.get_as::<ChunkerClient>(&chunker_id).unwrap();
+        client
+            .tokenization_task_predict(&chunker_id, request)
+            .await
+            .map_err(|error| Error::ChunkerRequestFailed {
+                id: chunker_id.clone(),
+                error,
+            })?
+    };
+
     debug!(%chunker_id, ?response, "received chunker response");
     Ok(response
         .results

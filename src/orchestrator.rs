@@ -29,13 +29,13 @@ use uuid::Uuid;
 
 use crate::{
     clients::{
+        chunker::ChunkerClient,
         detector::{
             text_context_doc::ContextType, TextChatDetectorClient, TextContextDocDetectorClient,
             TextGenerationDetectorClient,
         },
         openai::OpenAiClient,
-        ChunkerClient, ClientMap, GenerationClient, NlpClient, TextContentsDetectorClient,
-        TgisClient,
+        ClientMap, GenerationClient, NlpClient, TextContentsDetectorClient, TgisClient,
     },
     config::{DetectorType, GenerationProvider, OrchestratorConfig},
     health::HealthCheckCache,

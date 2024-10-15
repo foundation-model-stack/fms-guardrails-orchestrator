@@ -29,8 +29,9 @@ use tracing::{debug, error, info, instrument};
 use super::{get_chunker_ids, Context, Error, Orchestrator, StreamingClassificationWithGenTask};
 use crate::{
     clients::{
-        detector::ContentAnalysisRequest, ChunkerClient, GenerationClient,
-        TextContentsDetectorClient,
+        chunker::{tokenize_whole_doc_stream, ChunkerClient, DEFAULT_CHUNKER_ID},
+        detector::ContentAnalysisRequest,
+        GenerationClient, TextContentsDetectorClient,
     },
     models::{
         ClassifiedGeneratedTextStreamResult, DetectorParams, GuardrailsTextGenerationParameters,
@@ -455,10 +456,25 @@ async fn chunk_broadcast_task(
         .boxed();
     debug!(%chunker_id, "creating chunker output stream");
     let id = chunker_id.clone(); // workaround for StreamExt::map_err
-    let client = ctx.clients.get_as::<ChunkerClient>(&chunker_id).unwrap();
-    let mut output_stream = client
-        .bidi_streaming_tokenization_task_predict(&chunker_id, input_stream)
-        .await
+
+    let response_stream = if chunker_id == DEFAULT_CHUNKER_ID {
+        info!("Using default whole doc chunker");
+        let (response_tx, response_rx) = mpsc::channel(1);
+        // Spawn task to collect input stream
+        tokio::spawn(async move {
+            // NOTE: this will not resolve until the input stream is closed
+            let response = tokenize_whole_doc_stream(input_stream).await;
+            let _ = response_tx.send(response).await;
+        });
+        Ok(ReceiverStream::new(response_rx).boxed())
+    } else {
+        let client = ctx.clients.get_as::<ChunkerClient>(&chunker_id).unwrap();
+        client
+            .bidi_streaming_tokenization_task_predict(&chunker_id, input_stream)
+            .await
+    };
+
+    let mut output_stream = response_stream
         .map_err(|error| Error::ChunkerRequestFailed {
             id: chunker_id.clone(),
             error,

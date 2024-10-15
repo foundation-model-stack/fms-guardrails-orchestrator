@@ -20,10 +20,7 @@ use std::pin::Pin;
 use async_trait::async_trait;
 use futures::{Future, Stream, StreamExt, TryStreamExt};
 use ginepro::LoadBalancedChannel;
-use tokio::sync::mpsc;
-use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Code, Request, Response, Status, Streaming};
-use tracing::info;
 
 use super::{create_grpc_client, errors::grpc_to_http_code, BoxStream, Client, Error};
 use crate::{
@@ -42,7 +39,7 @@ use crate::{
 const DEFAULT_PORT: u16 = 8085;
 const MODEL_ID_HEADER_NAME: &str = "mm-model-id";
 /// Default chunker that returns span for entire text
-pub const DEFAULT_MODEL_ID: &str = "whole_doc_chunker";
+pub const DEFAULT_CHUNKER_ID: &str = "whole_doc_chunker";
 
 type StreamingTokenizationResult =
     Result<Response<Streaming<ChunkerTokenizationStreamResult>>, Status>;
@@ -70,11 +67,6 @@ impl ChunkerClient {
         model_id: &str,
         request: ChunkerTokenizationTaskRequest,
     ) -> Result<TokenizationResults, Error> {
-        // Handle "default" separately first
-        if model_id == DEFAULT_MODEL_ID {
-            info!("Using default whole doc chunker");
-            return Ok(tokenize_whole_doc(request));
-        }
         let mut client = self.client.clone();
         let request = request_with_model_id(request, model_id);
         Ok(client
@@ -88,30 +80,18 @@ impl ChunkerClient {
         model_id: &str,
         request_stream: BoxStream<BidiStreamingChunkerTokenizationTaskRequest>,
     ) -> Result<BoxStream<Result<ChunkerTokenizationStreamResult, Error>>, Error> {
-        let response_stream = if model_id == DEFAULT_MODEL_ID {
-            info!("Using default whole doc chunker");
-            let (response_tx, response_rx) = mpsc::channel(1);
-            // Spawn task to collect input stream
-            tokio::spawn(async move {
-                // NOTE: this will not resolve until the input stream is closed
-                let response = tokenize_whole_doc_stream(request_stream).await;
-                let _ = response_tx.send(response).await;
-            });
-            ReceiverStream::new(response_rx).boxed()
-        } else {
-            let mut client = self.client.clone();
-            let request = request_with_model_id(request_stream, model_id);
-            // NOTE: this is an ugly workaround to avoid bogus higher-ranked lifetime errors.
-            // https://github.com/rust-lang/rust/issues/110338
-            let response_stream_fut: Pin<
-                Box<dyn Future<Output = StreamingTokenizationResult> + Send>,
-            > = Box::pin(client.bidi_streaming_chunker_tokenization_task_predict(request));
-            response_stream_fut
-                .await?
-                .into_inner()
-                .map_err(Into::into)
-                .boxed()
-        };
+        let mut client = self.client.clone();
+        let request = request_with_model_id(request_stream, model_id);
+        // NOTE: this is an ugly workaround to avoid bogus higher-ranked lifetime errors.
+        // https://github.com/rust-lang/rust/issues/110338
+        let response_stream_fut: Pin<Box<dyn Future<Output = StreamingTokenizationResult> + Send>> =
+            Box::pin(client.bidi_streaming_chunker_tokenization_task_predict(request));
+        let response_stream = response_stream_fut
+            .await?
+            .into_inner()
+            .map_err(Into::into)
+            .boxed();
+
         Ok(response_stream)
     }
 }
@@ -157,7 +137,7 @@ fn request_with_model_id<T>(request: T, model_id: &str) -> Request<T> {
 }
 
 /// Unary tokenization result of the entire doc
-fn tokenize_whole_doc(request: ChunkerTokenizationTaskRequest) -> TokenizationResults {
+pub fn tokenize_whole_doc(request: ChunkerTokenizationTaskRequest) -> TokenizationResults {
     let codepoint_count = request.text.chars().count() as i64;
     TokenizationResults {
         results: vec![Token {
@@ -170,7 +150,7 @@ fn tokenize_whole_doc(request: ChunkerTokenizationTaskRequest) -> TokenizationRe
 }
 
 /// Streaming tokenization result for the entire doc stream
-async fn tokenize_whole_doc_stream(
+pub async fn tokenize_whole_doc_stream(
     request: impl Stream<Item = BidiStreamingChunkerTokenizationTaskRequest>,
 ) -> Result<ChunkerTokenizationStreamResult, Error> {
     let (text, index_vec): (String, Vec<i64>) = request
