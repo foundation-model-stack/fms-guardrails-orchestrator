@@ -63,17 +63,15 @@ impl OpenAiClient {
         let stream = request.stream.unwrap_or_default();
         if stream {
             let (tx, rx) = mpsc::channel(32);
-            let mut event_stream = self.client.post(url).eventsource().unwrap();
+            let mut event_stream = self.client.post(url).json(&request).eventsource().unwrap();
             // Spawn task to forward events to receiver
             tokio::spawn(async move {
                 while let Some(Ok(event)) = event_stream.next().await {
                     if let Event::Message(event) = event {
                         let message = serde_json::from_str::<ChatCompletionChunk>(&event.data)
-                            .map_err(|e| {
-                                Error::http(
-                                    StatusCode::INTERNAL_SERVER_ERROR,
-                                    format!("error deserializing event: {e}"),
-                                )
+                            .map_err(|e| Error::Http {
+                                code: StatusCode::INTERNAL_SERVER_ERROR,
+                                message: format!("error deserializing event: {e}"),
                             });
                         let _ = tx.send(message).await;
                     }
@@ -92,7 +90,10 @@ impl OpenAiClient {
                 .await?;
             match response.status() {
                 StatusCode::OK => Ok(response.json::<ChatCompletion>().await?.into()),
-                _ => Err(Error::http(response.status(), "".into())),
+                _ => Err(Error::Http {
+                    code: response.status(),
+                    message: "".into(),
+                }),
             }
         }
     }
@@ -114,6 +115,7 @@ impl Client for OpenAiClient {
     }
 }
 
+#[derive(Debug)]
 pub enum ChatCompletionResponse {
     Unary(ChatCompletion),
     Streaming(mpsc::Receiver<Result<ChatCompletionChunk, Error>>),
@@ -125,7 +127,7 @@ impl From<ChatCompletion> for ChatCompletionResponse {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct ChatCompletionRequest {
     /// A list of messages comprising the conversation so far.
     pub messages: Vec<Message>,
@@ -323,7 +325,7 @@ pub struct JsonSchemaObject {
     pub required: Option<Vec<String>>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Message {
     /// The role of the messages author.
     pub role: String,
@@ -348,16 +350,60 @@ pub struct Message {
 #[serde(untagged)]
 pub enum Content {
     /// The text contents of the message.
-    String(String),
+    Text(String),
     /// Array of content parts.
     Array(Vec<ContentPart>),
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+impl From<String> for Content {
+    fn from(value: String) -> Self {
+        Content::Text(value)
+    }
+}
+
+impl From<&str> for Content {
+    fn from(value: &str) -> Self {
+        Content::Text(value.to_string())
+    }
+}
+
+impl From<Vec<ContentPart>> for Content {
+    fn from(value: Vec<ContentPart>) -> Self {
+        Content::Array(value)
+    }
+}
+
+impl From<String> for ContentPart {
+    fn from(value: String) -> Self {
+        ContentPart {
+            r#type: ContentType::Text,
+            text: Some(value),
+            image_url: None,
+            refusal: None,
+        }
+    }
+}
+
+impl From<Vec<String>> for Content {
+    fn from(value: Vec<String>) -> Self {
+        Content::Array(value.into_iter().map(|v| v.into()).collect())
+    }
+}
+
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+pub enum ContentType {
+    #[serde(rename = "text")]
+    #[default]
+    Text,
+    #[serde(rename = "image_url")]
+    ImageUrl,
+}
+
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct ContentPart {
     /// The type of the content part.
     #[serde(rename = "type")]
-    pub r#type: String,
+    pub r#type: ContentType,
     /// Text content
     #[serde(skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
@@ -411,10 +457,11 @@ pub struct ChatCompletion {
     pub model: String,
     /// The service tier used for processing the request.
     /// This field is only included if the `service_tier` parameter is specified in the request.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub service_tier: Option<String>,
     /// This fingerprint represents the backend configuration that the model runs with.
-    #[serde(default)]
-    pub system_fingerprint: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub system_fingerprint: Option<String>,
     /// The object type, which is always `chat.completion`.
     pub object: String,
     /// Usage statistics for the completion request.
@@ -440,8 +487,8 @@ pub struct ChatCompletionMessage {
     /// The contents of the message.
     pub content: Option<String>,
     /// The refusal message generated by the model.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub refusal: Option<String>,
-    #[serde(default)]
     pub tool_calls: Vec<ToolCall>,
     /// The role of the author of this message.
     pub role: String,
@@ -462,8 +509,10 @@ pub struct ChatCompletionLogprob {
     pub token: String,
     /// The log probability of this token.
     pub logprob: f32,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub bytes: Option<Vec<u8>>,
     /// List of the most likely tokens and their log probability, at this token position.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub top_logprobs: Option<Vec<ChatCompletionTopLogprob>>,
 }
 
@@ -488,9 +537,11 @@ pub struct ChatCompletionChunk {
     pub model: String,
     /// The service tier used for processing the request.
     /// This field is only included if the service_tier parameter is specified in the request.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub service_tier: Option<String>,
     /// This fingerprint represents the backend configuration that the model runs with.
-    pub system_fingerprint: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub system_fingerprint: Option<String>,
     /// The object type, which is always `chat.completion.chunk`.
     pub object: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -500,13 +551,29 @@ pub struct ChatCompletionChunk {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatCompletionChunkChoice {
     /// A chat completion delta generated by streamed model responses.
-    pub delta: ChatCompletionMessage,
+    pub delta: ChatCompletionDelta,
     /// Log probability information for the choice.
     pub logprobs: Option<ChatCompletionLogprobs>,
     /// The reason the model stopped generating tokens.
     pub finish_reason: Option<String>,
     /// The index of the choice in the list of choices.
     pub index: u32,
+}
+
+/// A chat completion delta generated by streamed model responses.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatCompletionDelta {
+    /// The contents of the message.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content: Option<String>,
+    /// The refusal message generated by the model.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub refusal: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub tool_calls: Vec<ToolCall>,
+    /// The role of the author of this message.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub role: Option<String>,
 }
 
 /// Usage statistics for a completion.
@@ -519,9 +586,11 @@ pub struct Usage {
     /// Total number of tokens used in the request (prompt + completion).
     pub total_tokens: u32,
     /// Breakdown of tokens used in a completion.
-    pub completion_token_details: CompletionTokenDetails,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub completion_token_details: Option<CompletionTokenDetails>,
     /// Breakdown of tokens used in the prompt.
-    pub prompt_token_details: PromptTokenDetails,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt_token_details: Option<PromptTokenDetails>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -542,3 +611,144 @@ pub enum StopTokens {
     Array(Vec<String>),
     String(String),
 }
+
+// #[cfg(test)]
+// mod tests {
+//     use super::*;
+
+//     #[tokio::test]
+//     async fn test_unary_chat_completion() {
+//         let client = OpenAiClient::new(
+//             &ServiceConfig {
+//                 hostname: "localhost".into(),
+//                 port: Some(3000),
+//                 request_timeout: None,
+//                 tls: None,
+//             },
+//             None,
+//         )
+//         .await;
+//         let request1 = ChatCompletionRequest {
+//             model: "/llama_3_storage/hf/8b_instruction_tuned".into(),
+//             messages: vec![
+//                 Message {
+//                     role: "system".into(),
+//                     content: Some("You are a helpful assistant.".into()),
+//                     ..Default::default()
+//                 },
+//                 Message {
+//                     role: "user".into(),
+//                     content: Some("Hello!".into()),
+//                     ..Default::default()
+//                 },
+//             ],
+//             ..Default::default()
+//         };
+//         let request1_json = serde_json::to_string_pretty(&request1).unwrap();
+//         println!("request:\n{request1_json}");
+//         let response1 = client.chat_completions(request1).await.unwrap();
+//         if let ChatCompletionResponse::Unary(response) = response1 {
+//             let response_json = serde_json::to_string_pretty(&response).unwrap();
+//             println!("response:\n{response_json}");
+//         }
+
+//         let request2 = ChatCompletionRequest {
+//             model: "/llama_3_storage/hf/8b_instruction_tuned".into(),
+//             messages: vec![Message {
+//                 role: "user".into(),
+//                 content: Some(
+//                     vec![
+//                         ContentPart {
+//                             r#type: ContentType::Text,
+//                             text: Some("Hello!".into()),
+//                             image_url: None,
+//                             refusal: None,
+//                         },
+//                         ContentPart {
+//                             r#type: ContentType::Text,
+//                             text: Some("Hello again!".into()),
+//                             image_url: None,
+//                             refusal: None,
+//                         },
+//                     ]
+//                     .into(),
+//                 ),
+//                 ..Default::default()
+//             }],
+//             ..Default::default()
+//         };
+//         let request2_json = serde_json::to_string_pretty(&request2).unwrap();
+//         println!("request:\n{request2_json}");
+//         let response2 = client.chat_completions(request2).await.unwrap();
+//         if let ChatCompletionResponse::Unary(response) = response2 {
+//             let response_json = serde_json::to_string_pretty(&response).unwrap();
+//             println!("response:\n{response_json}");
+//         }
+//     }
+
+//     #[tokio::test]
+//     async fn test_unary_chat_completion_with_logprobs() {
+//         let client = OpenAiClient::new(
+//             &ServiceConfig {
+//                 hostname: "localhost".into(),
+//                 port: Some(3000),
+//                 request_timeout: None,
+//                 tls: None,
+//             },
+//             None,
+//         )
+//         .await;
+//         let request = ChatCompletionRequest {
+//             model: "/llama_3_storage/hf/8b_instruction_tuned".into(),
+//             messages: vec![
+//                 Message {
+//                     role: "system".into(),
+//                     content: Some("You are a helpful assistant.".into()),
+//                     ..Default::default()
+//                 },
+//                 Message {
+//                     role: "user".into(),
+//                     content: Some("Hello!".into()),
+//                     ..Default::default()
+//                 },
+//             ],
+//             logprobs: Some(true),
+//             ..Default::default()
+//         };
+//         let request_json = serde_json::to_string(&request).unwrap();
+//         println!("request:\n{request_json}");
+//         let response = client.chat_completions(request).await;
+//         println!("response:\n{response:?}");
+//     }
+
+//     #[tokio::test]
+//     async fn test_streaming_chat_completion() {
+//         let client = OpenAiClient::new(
+//             &ServiceConfig {
+//                 hostname: "localhost".into(),
+//                 port: Some(3000),
+//                 request_timeout: None,
+//                 tls: None,
+//             },
+//             None,
+//         )
+//         .await;
+//         let request = ChatCompletionRequest {
+//             model: "/llama_3_storage/hf/8b_instruction_tuned".into(),
+//             messages: vec![Message {
+//                 role: "user".into(),
+//                 content: Some("Hello!".into()),
+//                 ..Default::default()
+//             }],
+//             stream: Some(true),
+//             ..Default::default()
+//         };
+//         let response = client.chat_completions(request).await.unwrap();
+//         if let ChatCompletionResponse::Streaming(mut response_rx) = response {
+//             while let Some(chunk) = response_rx.recv().await {
+//                 println!("chunk: {chunk:?}")
+//             }
+//             println!("stream closed");
+//         }
+//     }
+// }

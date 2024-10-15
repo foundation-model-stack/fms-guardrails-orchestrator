@@ -32,17 +32,6 @@ pub enum Error {
 }
 
 impl Error {
-    pub fn http(code: StatusCode, message: String) -> Self {
-        Self::Http { code, message }
-    }
-
-    pub fn grpc(code: tonic::Code, message: String) -> Self {
-        Self::Grpc {
-            code: grpc_to_http_code(code),
-            message,
-        }
-    }
-
     /// Returns status code.
     pub fn status_code(&self) -> StatusCode {
         match self {
