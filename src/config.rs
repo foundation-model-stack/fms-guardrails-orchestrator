@@ -23,7 +23,7 @@ use std::{
 use serde::Deserialize;
 use tracing::{debug, error, info, warn};
 
-use crate::clients::{chunker::DEFAULT_MODEL_ID, is_valid_hostname};
+use crate::clients::{chunker::DEFAULT_CHUNKER_ID, is_valid_hostname};
 
 // Placeholder to add default allowed headers
 const DEFAULT_ALLOWED_HEADERS: &[&str] = &[];
@@ -308,7 +308,7 @@ impl OrchestratorConfig {
                 )));
             }
             // Chunker is valid
-            let valid_chunker = detector.chunker_id == DEFAULT_MODEL_ID
+            let valid_chunker = detector.chunker_id == DEFAULT_CHUNKER_ID
                 || self
                     .chunkers
                     .as_ref()
@@ -671,7 +671,7 @@ detectors:
             port: 9000
             tls: detector
         chunker_id: sentence-fr
-        default_threshold: 0.5   
+        default_threshold: 0.5
         "#;
         let config: OrchestratorConfig = serde_yml::from_str(s).unwrap();
         assert!(config.passthrough_headers.is_empty());
@@ -699,7 +699,7 @@ detectors:
             port: 9000
             tls: detector
         chunker_id: sentence-fr
-        default_threshold: 0.5   
+        default_threshold: 0.5
 
 passthrough_headers:
         - test-header

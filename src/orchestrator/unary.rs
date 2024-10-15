@@ -31,9 +31,7 @@ use super::{
 };
 use crate::{
     clients::{
-        chunker::{
-            tokenize_whole_doc, ChunkerClient, DEFAULT_MODEL_ID as CHUNKER_DEFAULT_MODEL_ID,
-        },
+        chunker::{tokenize_whole_doc, ChunkerClient, DEFAULT_CHUNKER_ID},
         detector::{
             ContentAnalysisRequest, ContentAnalysisResponse, ContextDocsDetectionRequest,
             ContextType, GenerationDetectionRequest, TextContentsDetectorClient,
@@ -766,7 +764,7 @@ pub async fn chunk(
 ) -> Result<Vec<Chunk>, Error> {
     let request = chunkers::ChunkerTokenizationTaskRequest { text };
     debug!(%chunker_id, ?request, "sending chunker request");
-    let response = if chunker_id == CHUNKER_DEFAULT_MODEL_ID {
+    let response = if chunker_id == DEFAULT_CHUNKER_ID {
         tokenize_whole_doc(request)
     } else {
         let client = ctx.clients.get_as::<ChunkerClient>(&chunker_id).unwrap();

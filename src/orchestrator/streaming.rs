@@ -29,9 +29,7 @@ use tracing::{debug, error, info, instrument};
 use super::{get_chunker_ids, Context, Error, Orchestrator, StreamingClassificationWithGenTask};
 use crate::{
     clients::{
-        chunker::{
-            tokenize_whole_doc_stream, ChunkerClient, DEFAULT_MODEL_ID as CHUNKER_DEFAULT_MODEL_ID,
-        },
+        chunker::{tokenize_whole_doc_stream, ChunkerClient, DEFAULT_CHUNKER_ID},
         detector::ContentAnalysisRequest,
         GenerationClient, TextContentsDetectorClient,
     },
@@ -459,7 +457,7 @@ async fn chunk_broadcast_task(
     debug!(%chunker_id, "creating chunker output stream");
     let id = chunker_id.clone(); // workaround for StreamExt::map_err
 
-    let response_stream = if chunker_id == CHUNKER_DEFAULT_MODEL_ID {
+    let response_stream = if chunker_id == DEFAULT_CHUNKER_ID {
         info!("Using default whole doc chunker");
         let (response_tx, response_rx) = mpsc::channel(1);
         // Spawn task to collect input stream
