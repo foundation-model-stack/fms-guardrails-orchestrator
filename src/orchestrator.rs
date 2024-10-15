@@ -30,7 +30,6 @@ use uuid::Uuid;
 use crate::{
     clients::{
         chunker::ChunkerClient,
-        self,
         detector::{
             text_context_doc::ContextType, TextChatDetectorClient, TextContextDocDetectorClient,
             TextGenerationDetectorClient,
@@ -393,7 +392,7 @@ pub struct ChatDetectionTask {
     pub detectors: HashMap<String, DetectorParams>,
 
     // Messages to run detection on
-    pub messages: Vec<clients::openai::Message>,
+    pub messages: Vec<String>,
 
     // Headermap
     pub headers: HeaderMap,

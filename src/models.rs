@@ -22,10 +22,7 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    clients::{
-        self,
-        detector::{ContentAnalysisResponse, ContextType},
-    },
+    clients::detector::{ContentAnalysisResponse, ContextType},
     health::HealthCheckCache,
     pb,
 };
@@ -949,7 +946,7 @@ pub struct ChatDetectionHttpRequest {
     pub detectors: HashMap<String, DetectorParams>,
 
     // The list of messages to run detections on.
-    pub messages: Vec<clients::openai::Message>,
+    pub messages: Vec<String>,
 }
 
 impl ChatDetectionHttpRequest {
