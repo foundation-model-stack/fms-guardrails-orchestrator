@@ -25,6 +25,7 @@ use crate::{
     clients::{create_http_client, Client, Error, HttpClient},
     config::ServiceConfig,
     health::HealthCheckResult,
+    tracing_utils::with_traceparent_header,
 };
 
 #[cfg_attr(test, faux::create)]
@@ -62,6 +63,7 @@ impl TextContentsDetectorClient {
             .join("/api/v1/text/contents")
             .unwrap();
         info!(?url, ?request, "sending client request");
+        let headers = with_traceparent_header(headers);
         let response = self
             .client
             .post(url)

@@ -26,6 +26,7 @@ use crate::{
     config::ServiceConfig,
     health::HealthCheckResult,
     models::{DetectionResult, DetectorParams},
+    tracing_utils::with_traceparent_header,
 };
 
 #[cfg_attr(test, faux::create)]
@@ -63,6 +64,7 @@ impl TextContextDocDetectorClient {
             .join("/api/v1/text/context/doc")
             .unwrap();
         info!(?url, ?request, "sending client request");
+        let headers = with_traceparent_header(headers);
         let response = self
             .client
             .post(url)

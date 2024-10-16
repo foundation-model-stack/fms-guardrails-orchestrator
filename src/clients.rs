@@ -24,9 +24,12 @@ use std::{
 };
 
 use async_trait::async_trait;
+use axum::http::{Extensions, HeaderMap};
 use futures::Stream;
 use ginepro::LoadBalancedChannel;
 use tokio::{fs::File, io::AsyncReadExt};
+use tonic::metadata::MetadataMap;
+use tonic::Request;
 use tracing::{debug, instrument};
 use url::Url;
 
@@ -341,6 +344,11 @@ pub fn is_valid_hostname(hostname: &str) -> bool {
         })
         || hostname.is_empty()
         || hostname.len() > 253)
+}
+
+fn grpc_request_with_headers<T>(request: T, headers: HeaderMap) -> Request<T> {
+    let metadata = MetadataMap::from_headers(headers);
+    Request::from_parts(metadata, Extensions::new(), request)
 }
 
 #[cfg(test)]
