@@ -17,12 +17,12 @@
 
 use std::collections::HashMap;
 
+use super::{create_http_client, Client, Error, HttpClient};
+use crate::{config::ServiceConfig, health::HealthCheckResult};
 use async_trait::async_trait;
 use hyper::StatusCode;
 use serde::{Deserialize, Serialize};
-
-use super::{create_http_client, Client, Error, HttpClient};
-use crate::{config::ServiceConfig, health::HealthCheckResult};
+use tracing::instrument;
 
 const DEFAULT_PORT: u16 = 8080;
 
@@ -48,6 +48,7 @@ impl OpenAiClient {
         }
     }
 
+    #[instrument(skip_all, fields(request.model))]
     pub async fn chat_completions(
         &self,
         request: ChatCompletionRequest,

@@ -22,7 +22,10 @@ use ginepro::LoadBalancedChannel;
 use tonic::Code;
 use tracing::{info, instrument};
 
-use super::{create_grpc_client, errors::grpc_to_http_code, BoxStream, Client, Error};
+use super::{
+    create_grpc_client, errors::grpc_to_http_code, grpc_request_with_headers, BoxStream, Client,
+    Error,
+};
 use crate::{
     config::ServiceConfig,
     health::{HealthCheckResult, HealthStatus},
@@ -48,23 +51,25 @@ impl TgisClient {
         Self { client }
     }
 
-    #[instrument(skip_all, fields(model_id = request.model_id, headers = ?_headers))]
+    #[instrument(skip_all, fields(model_id = request.model_id))]
     pub async fn generate(
         &self,
         request: BatchedGenerationRequest,
-        _headers: HeaderMap,
+        headers: HeaderMap,
     ) -> Result<BatchedGenerationResponse, Error> {
+        let request = grpc_request_with_headers(request, headers);
         info!(?request, "sending request to TGIS gRPC service");
         let mut client = self.client.clone();
         Ok(client.generate(request).await?.into_inner())
     }
 
-    #[instrument(skip_all, fields(model_id = request.model_id, headers = ?_headers))]
+    #[instrument(skip_all, fields(model_id = request.model_id))]
     pub async fn generate_stream(
         &self,
         request: SingleGenerationRequest,
-        _headers: HeaderMap,
+        headers: HeaderMap,
     ) -> Result<BoxStream<Result<GenerationResponse, Error>>, Error> {
+        let request = grpc_request_with_headers(request, headers);
         info!(?request, "sending request to TGIS gRPC service");
         let mut client = self.client.clone();
         let response_stream = client
@@ -76,7 +81,7 @@ impl TgisClient {
         Ok(response_stream)
     }
 
-    #[instrument(skip_all, fields(model_id = request.model_id, headers = ?_headers))]
+    #[instrument(skip_all, fields(model_id = request.model_id))]
     pub async fn tokenize(
         &self,
         request: BatchedTokenizeRequest,

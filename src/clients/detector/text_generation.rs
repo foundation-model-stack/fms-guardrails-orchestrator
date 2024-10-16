@@ -21,6 +21,7 @@ use serde::Serialize;
 use tracing::{info, instrument};
 
 use super::{DetectorError, DEFAULT_PORT, DETECTOR_ID_HEADER_NAME};
+use crate::tracing_utils::with_traceparent_header;
 use crate::{
     clients::{create_http_client, Client, Error, HttpClient},
     config::ServiceConfig,
@@ -63,6 +64,7 @@ impl TextGenerationDetectorClient {
             .join("/api/v1/text/generation")
             .unwrap();
         info!(?url, ?request, "sending client request");
+        let headers = with_traceparent_header(headers);
         let response = self
             .client
             .post(url)

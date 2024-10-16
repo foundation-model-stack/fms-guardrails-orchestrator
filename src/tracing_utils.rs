@@ -36,11 +36,15 @@ use opentelemetry_sdk::{
     trace::{Config, Sampler},
     Resource,
 };
-use tracing::{error, info, info_span, Span};
+use tracing::{error, info, info_span, warn, Span};
 use tracing_opentelemetry::{MetricsLayer, OpenTelemetrySpanExt};
 use tracing_subscriber::{layer::SubscriberExt, EnvFilter, Layer};
 
 use crate::args::{LogFormat, OtlpProtocol, TracingConfig};
+
+const TRACEPARENT_HEADER_NAME: &str = "traceparent";
+const TRACEPARENT_VERSION: &str = "00";
+const TRACEPARENT_TRACE_FLAGS: &str = "01";
 
 #[derive(Debug, thiserror::Error)]
 pub enum TracingError {
@@ -336,4 +340,31 @@ pub fn on_outgoing_eos(trailers: Option<&HeaderMap>, stream_duration: Duration, 
         stream_duration = stream_duration.as_millis()
     );
     info!(monotonic_histogram.service_stream_response_duration = stream_duration.as_millis());
+}
+
+pub fn with_traceparent_header(headers: HeaderMap) -> HeaderMap {
+    let mut headers = headers.clone();
+    if let Some(traceparent) = headers.get(TRACEPARENT_HEADER_NAME) {
+        warn!(
+            "traceparent header already set to {}",
+            traceparent.to_str().unwrap_or_default() // avoiding panics for tracing logic
+        )
+    }
+    headers.insert(
+        TRACEPARENT_HEADER_NAME,
+        get_current_traceparent().parse().unwrap(),
+    );
+    headers
+}
+
+fn get_current_traceparent() -> String {
+    let ctx = Span::current().context();
+    let span_ref = ctx.span();
+    let ctx = span_ref.span_context().clone();
+    let version = TRACEPARENT_VERSION.to_string();
+    let trace_id = ctx.trace_id().to_string();
+    let span_id = ctx.span_id().to_string();
+    let trace_flags = TRACEPARENT_TRACE_FLAGS;
+
+    version + "-" + &trace_id + "-" + &span_id + "-" + trace_flags
 }
