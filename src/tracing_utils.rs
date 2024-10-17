@@ -248,18 +248,11 @@ pub fn incoming_request_span(request: &Request) -> Span {
 
 pub fn on_incoming_request(request: &Request, span: &Span) {
     let _guard = span.enter();
-    let trace_id = Span::current()
-        .context()
-        .span()
-        .span_context()
-        .trace_id()
-        .to_string();
-    println!("trace: {}", trace_id);
     info!(
         "incoming request to {} {} with trace_id {}",
         request.method(),
         request.uri().path(),
-        trace_id,
+        span.context().span().span_context().trace_id().to_string()
     );
     info!(
         monotonic_counter.incoming_request_count = 1,
