@@ -34,6 +34,7 @@ use crate::{
         BatchedGenerationResponse, BatchedTokenizeRequest, BatchedTokenizeResponse,
         GenerationResponse, ModelInfoRequest, ModelInfoResponse, SingleGenerationRequest,
     },
+    tracing_utils::trace_context_from_grpc_response,
 };
 
 const DEFAULT_PORT: u16 = 8033;
@@ -72,30 +73,32 @@ impl TgisClient {
         let request = grpc_request_with_headers(request, headers);
         info!(?request, "sending request to TGIS gRPC service");
         let mut client = self.client.clone();
-        let response_stream = client
-            .generate_stream(request)
-            .await?
-            .into_inner()
-            .map_err(Into::into)
-            .boxed();
-        Ok(response_stream)
+        let response = client.generate_stream(request).await?;
+        trace_context_from_grpc_response(&response);
+        Ok(response.into_inner().map_err(Into::into).boxed())
     }
 
     #[instrument(skip_all, fields(model_id = request.model_id))]
     pub async fn tokenize(
         &self,
         request: BatchedTokenizeRequest,
-        _headers: HeaderMap,
+        headers: HeaderMap,
     ) -> Result<BatchedTokenizeResponse, Error> {
         info!(?request, "sending request to TGIS gRPC service");
         let mut client = self.client.clone();
-        Ok(client.tokenize(request).await?.into_inner())
+        let request = grpc_request_with_headers(request, headers);
+        let response = client.tokenize(request).await?;
+        trace_context_from_grpc_response(&response);
+        Ok(response.into_inner())
     }
 
     pub async fn model_info(&self, request: ModelInfoRequest) -> Result<ModelInfoResponse, Error> {
         info!(?request, "sending request to TGIS gRPC service");
+        let request = grpc_request_with_headers(request, HeaderMap::new());
         let mut client = self.client.clone();
-        Ok(client.model_info(request).await?.into_inner())
+        let response = client.model_info(request).await?;
+        trace_context_from_grpc_response(&response);
+        Ok(response.into_inner())
     }
 }
 

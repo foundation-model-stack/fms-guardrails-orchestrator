@@ -15,6 +15,15 @@
 
 */
 
+use std::fmt::Debug;
+
+use axum::http::HeaderMap;
+use hyper::StatusCode;
+use reqwest::Response;
+use serde::{Deserialize, Serialize};
+use tracing::info;
+use url::Url;
+
 pub mod text_contents;
 pub use text_contents::*;
 pub mod text_chat;
@@ -22,11 +31,10 @@ pub use text_chat::*;
 pub mod text_context_doc;
 pub use text_context_doc::*;
 pub mod text_generation;
-use hyper::StatusCode;
-use serde::Deserialize;
 pub use text_generation::*;
 
-use super::Error;
+use super::{Error, HttpClient};
+use crate::tracing_utils::{trace_context_from_http_response, with_traceparent_header};
 
 const DEFAULT_PORT: u16 = 8080;
 const DETECTOR_ID_HEADER_NAME: &str = "detector-id";
@@ -44,4 +52,24 @@ impl From<DetectorError> for Error {
             message: error.message,
         }
     }
+}
+
+pub async fn post_with_headers<T: Debug + Serialize>(
+    client: HttpClient,
+    url: Url,
+    request: T,
+    headers: HeaderMap,
+    model_id: &str,
+) -> Result<Response, Error> {
+    let headers = with_traceparent_header(headers);
+    info!(?url, ?headers, ?request, "sending client request");
+    let response = client
+        .post(url)
+        .headers(headers)
+        .header(DETECTOR_ID_HEADER_NAME, model_id)
+        .json(&request)
+        .send()
+        .await?;
+    trace_context_from_http_response(&response);
+    Ok(response)
 }
