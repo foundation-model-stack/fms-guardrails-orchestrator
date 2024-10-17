@@ -18,15 +18,14 @@
 use async_trait::async_trait;
 use hyper::{HeaderMap, StatusCode};
 use serde::{Deserialize, Serialize};
-use tracing::{info, instrument};
+use tracing::instrument;
 
-use super::{DetectorError, DEFAULT_PORT, DETECTOR_ID_HEADER_NAME};
+use super::{post_with_headers, DetectorError, DEFAULT_PORT};
 use crate::{
     clients::{create_http_client, Client, Error, HttpClient},
     config::ServiceConfig,
     health::HealthCheckResult,
     models::{DetectionResult, DetectorParams},
-    tracing_utils::with_traceparent_header,
 };
 
 #[cfg_attr(test, faux::create)]
@@ -51,7 +50,7 @@ impl TextContextDocDetectorClient {
         }
     }
 
-    #[instrument(skip_all, fields(model_id, ?headers))]
+    #[instrument(skip_all, fields(model_id))]
     pub async fn text_context_doc(
         &self,
         model_id: &str,
@@ -63,16 +62,8 @@ impl TextContextDocDetectorClient {
             .base_url()
             .join("/api/v1/text/context/doc")
             .unwrap();
-        info!(?url, ?request, "sending client request");
-        let headers = with_traceparent_header(headers);
-        let response = self
-            .client
-            .post(url)
-            .headers(headers)
-            .header(DETECTOR_ID_HEADER_NAME, model_id)
-            .json(&request)
-            .send()
-            .await?;
+        let response =
+            post_with_headers(self.client.clone(), url, request, headers, model_id).await?;
         if response.status() == StatusCode::OK {
             Ok(response.json().await?)
         } else {

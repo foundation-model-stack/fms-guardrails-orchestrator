@@ -36,6 +36,7 @@ use url::Url;
 use crate::{
     config::{ServiceConfig, Tls},
     health::HealthCheckResult,
+    tracing_utils::with_traceparent_header,
 };
 
 pub mod errors;
@@ -347,6 +348,7 @@ pub fn is_valid_hostname(hostname: &str) -> bool {
 }
 
 fn grpc_request_with_headers<T>(request: T, headers: HeaderMap) -> Request<T> {
+    let headers = with_traceparent_header(headers);
     let metadata = MetadataMap::from_headers(headers);
     Request::from_parts(metadata, Extensions::new(), request)
 }

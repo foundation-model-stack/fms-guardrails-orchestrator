@@ -18,12 +18,16 @@
 use std::pin::Pin;
 
 use async_trait::async_trait;
+use axum::http::HeaderMap;
 use futures::{Future, Stream, StreamExt, TryStreamExt};
 use ginepro::LoadBalancedChannel;
 use tonic::{Code, Request, Response, Status, Streaming};
 use tracing::{info, instrument};
 
-use super::{create_grpc_client, errors::grpc_to_http_code, BoxStream, Client, Error};
+use super::{
+    create_grpc_client, errors::grpc_to_http_code, grpc_request_with_headers, BoxStream, Client,
+    Error,
+};
 use crate::{
     config::ServiceConfig,
     health::{HealthCheckResult, HealthStatus},
@@ -35,6 +39,7 @@ use crate::{
         caikit_data_model::nlp::{ChunkerTokenizationStreamResult, Token, TokenizationResults},
         grpc::health::v1::{health_client::HealthClient, HealthCheckRequest},
     },
+    tracing_utils::trace_context_from_grpc_response,
 };
 
 const DEFAULT_PORT: u16 = 8085;
@@ -70,12 +75,11 @@ impl ChunkerClient {
         request: ChunkerTokenizationTaskRequest,
     ) -> Result<TokenizationResults, Error> {
         let mut client = self.client.clone();
-        let request = request_with_model_id(request, model_id);
+        let request = request_with_headers(request, model_id);
         info!(?request, "sending client request");
-        Ok(client
-            .chunker_tokenization_task_predict(request)
-            .await?
-            .into_inner())
+        let response = client.chunker_tokenization_task_predict(request).await?;
+        trace_context_from_grpc_response(&response);
+        Ok(response.into_inner())
     }
 
     #[instrument(skip_all, fields(model_id))]
@@ -86,17 +90,17 @@ impl ChunkerClient {
     ) -> Result<BoxStream<Result<ChunkerTokenizationStreamResult, Error>>, Error> {
         info!("sending client stream request");
         let mut client = self.client.clone();
-        let request = request_with_model_id(request_stream, model_id);
+        let request = request_with_headers(request_stream, model_id);
         // NOTE: this is an ugly workaround to avoid bogus higher-ranked lifetime errors.
         // https://github.com/rust-lang/rust/issues/110338
         let response_stream_fut: Pin<Box<dyn Future<Output = StreamingTokenizationResult> + Send>> =
             Box::pin(client.bidi_streaming_chunker_tokenization_task_predict(request));
-        let response_stream = response_stream_fut
-            .await?
+        let response_stream = response_stream_fut.await?;
+        trace_context_from_grpc_response(&response_stream);
+        Ok(response_stream
             .into_inner()
             .map_err(Into::into)
-            .boxed();
-        Ok(response_stream)
+            .boxed())
     }
 }
 
@@ -132,8 +136,8 @@ impl Client for ChunkerClient {
     }
 }
 
-fn request_with_model_id<T>(request: T, model_id: &str) -> Request<T> {
-    let mut request = Request::new(request);
+fn request_with_headers<T>(request: T, model_id: &str) -> Request<T> {
+    let mut request = grpc_request_with_headers(request, HeaderMap::new());
     request
         .metadata_mut()
         .insert(MODEL_ID_HEADER_NAME, model_id.parse().unwrap());
@@ -141,6 +145,7 @@ fn request_with_model_id<T>(request: T, model_id: &str) -> Request<T> {
 }
 
 /// Unary tokenization result of the entire doc
+#[instrument(skip_all)]
 pub fn tokenize_whole_doc(request: ChunkerTokenizationTaskRequest) -> TokenizationResults {
     let codepoint_count = request.text.chars().count() as i64;
     TokenizationResults {
@@ -154,6 +159,7 @@ pub fn tokenize_whole_doc(request: ChunkerTokenizationTaskRequest) -> Tokenizati
 }
 
 /// Streaming tokenization result for the entire doc stream
+#[instrument(skip_all)]
 pub async fn tokenize_whole_doc_stream(
     request: impl Stream<Item = BidiStreamingChunkerTokenizationTaskRequest>,
 ) -> Result<ChunkerTokenizationStreamResult, Error> {

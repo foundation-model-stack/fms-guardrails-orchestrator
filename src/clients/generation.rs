@@ -63,7 +63,7 @@ impl GenerationClient {
         Self(None)
     }
 
-    #[instrument(skip_all, fields(model_id, ?headers))]
+    #[instrument(skip_all, fields(model_id))]
     pub async fn tokenize(
         &self,
         model_id: String,
@@ -103,6 +103,7 @@ impl GenerationClient {
         }
     }
 
+    #[instrument(skip_all, fields(model_id))]
     pub async fn generate(
         &self,
         model_id: String,
@@ -167,6 +168,7 @@ impl GenerationClient {
         }
     }
 
+    #[instrument(skip_all, fields(model_id))]
     pub async fn generate_stream(
         &self,
         model_id: String,

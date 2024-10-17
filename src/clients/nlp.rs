@@ -33,7 +33,7 @@ use crate::{
         },
         grpc::health::v1::{health_client::HealthClient, HealthCheckRequest},
     },
-    tracing_utils::with_traceparent_header,
+    tracing_utils::trace_context_from_grpc_response,
 };
 use async_trait::async_trait;
 use axum::http::HeaderMap;
@@ -71,13 +71,11 @@ impl NlpClient {
         headers: HeaderMap,
     ) -> Result<TokenizationResults, Error> {
         let mut client = self.client.clone();
-        let headers = with_traceparent_header(headers);
-        let request = request_with_model_id(request, model_id, headers);
+        let request = request_with_headers(request, model_id, headers);
         info!(?request, "sending request to NLP gRPC service");
-        Ok(client
-            .tokenization_task_predict(request)
-            .await?
-            .into_inner())
+        let response = client.tokenization_task_predict(request).await?;
+        trace_context_from_grpc_response(&response);
+        Ok(response.into_inner())
     }
 
     #[instrument(skip_all, fields(model_id))]
@@ -88,13 +86,11 @@ impl NlpClient {
         headers: HeaderMap,
     ) -> Result<TokenClassificationResults, Error> {
         let mut client = self.client.clone();
-        let headers = with_traceparent_header(headers);
-        let request = request_with_model_id(request, model_id, headers);
+        let request = request_with_headers(request, model_id, headers);
         info!(?request, "sending request to NLP gRPC service");
-        Ok(client
-            .token_classification_task_predict(request)
-            .await?
-            .into_inner())
+        let response = client.token_classification_task_predict(request).await?;
+        trace_context_from_grpc_response(&response);
+        Ok(response.into_inner())
     }
 
     #[instrument(skip_all, fields(model_id))]
@@ -105,13 +101,11 @@ impl NlpClient {
         headers: HeaderMap,
     ) -> Result<GeneratedTextResult, Error> {
         let mut client = self.client.clone();
-        let headers = with_traceparent_header(headers);
-        let request = request_with_model_id(request, model_id, headers);
+        let request = request_with_headers(request, model_id, headers);
         info!(?request, "sending request to NLP gRPC service");
-        Ok(client
-            .text_generation_task_predict(request)
-            .await?
-            .into_inner())
+        let response = client.text_generation_task_predict(request).await?;
+        trace_context_from_grpc_response(&response);
+        Ok(response.into_inner())
     }
 
     #[instrument(skip_all, fields(model_id))]
@@ -122,15 +116,13 @@ impl NlpClient {
         headers: HeaderMap,
     ) -> Result<BoxStream<Result<GeneratedTextStreamResult, Error>>, Error> {
         let mut client = self.client.clone();
-        let headers = with_traceparent_header(headers);
-        let request = request_with_model_id(request, model_id, headers);
+        let request = request_with_headers(request, model_id, headers);
         info!(?request, "sending stream request to NLP gRPC service");
-        let response_stream = client
+        let response = client
             .server_streaming_text_generation_task_predict(request)
-            .await?
-            .into_inner()
-            .map_err(Into::into)
-            .boxed();
+            .await?;
+        trace_context_from_grpc_response(&response);
+        let response_stream = response.into_inner().map_err(Into::into).boxed();
         Ok(response_stream)
     }
 }
@@ -167,7 +159,7 @@ impl Client for NlpClient {
     }
 }
 
-fn request_with_model_id<T>(request: T, model_id: &str, headers: HeaderMap) -> Request<T> {
+fn request_with_headers<T>(request: T, model_id: &str, headers: HeaderMap) -> Request<T> {
     let mut request = grpc_request_with_headers(request, headers);
     request
         .metadata_mut()
