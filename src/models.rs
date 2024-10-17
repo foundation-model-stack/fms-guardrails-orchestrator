@@ -25,6 +25,7 @@ use crate::{
     clients::{
         self,
         detector::{ContentAnalysisResponse, ContextType},
+        openai::Content,
     },
     health::HealthCheckCache,
     pb,
@@ -963,10 +964,45 @@ impl ChatDetectionHttpRequest {
             return Err(ValidationError::Required("messages".into()));
         }
 
+        // validate messages
+        self.validate_messages()?;
+
         // Validate detector params
         validate_detector_params(&self.detectors)?;
 
         Ok(())
+    }
+
+    /// Validates if message contents are either a string or a content type of type "text"
+    fn validate_messages(&self) -> Result<(), ValidationError> {
+        for message in &self.messages {
+            match &message.content {
+                Some(content) => self.validate_content_type(content)?,
+                None => {
+                    return Err(ValidationError::Invalid(
+                        "Message content cannot be empty".into(),
+                    ))
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Validates if content type array contains only text messages
+    fn validate_content_type(&self, content: &Content) -> Result<(), ValidationError> {
+        match content {
+            Content::Array(content) => {
+                for content_part in content {
+                    if content_part.r#type != "text" {
+                        return Err(ValidationError::Invalid(
+                            "Only content of type text is allowed".into(),
+                        ));
+                    }
+                }
+                Ok(())
+            }
+            Content::String(_) => Ok(()), // if message.content is a string, it is a valid message
+        }
     }
 }
 
