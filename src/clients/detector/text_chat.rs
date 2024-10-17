@@ -39,14 +39,17 @@ impl TextChatDetectorClient {
         headers: HeaderMap,
     ) -> Result<Vec<DetectionResult>, Error> {
         let url = self.client.base_url().join("/api/v1/text/chat").unwrap();
-        let response = self
+        let request = self
             .client
             .post(url)
             .headers(headers)
             .header(DETECTOR_ID_HEADER_NAME, model_id)
-            .json(&request)
-            .send()
-            .await?;
+            .json(&request);
+
+        tracing::debug!("Request being sent to chat detector: {:?}", request);
+        let response = request.send().await?;
+        tracing::debug!("Response received from chat detector: {:?}", response);
+
         if response.status() == StatusCode::OK {
             Ok(response.json().await?)
         } else {
