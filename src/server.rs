@@ -442,6 +442,7 @@ async fn detect_chat(
 ) -> Result<impl IntoResponse, Error> {
     let request_id = Uuid::new_v4();
     request.validate()?;
+    let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
     let task = ChatDetectionTask::new(request_id, request, headers);
     match state.orchestrator.handle_chat_detection(task).await {
         Ok(response) => Ok(Json(response).into_response()),
