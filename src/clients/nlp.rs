@@ -15,6 +15,13 @@
 
 */
 
+use async_trait::async_trait;
+use axum::http::HeaderMap;
+use futures::{StreamExt, TryStreamExt};
+use ginepro::LoadBalancedChannel;
+use tonic::{Code, Request};
+use tracing::{info, instrument};
+
 use super::{
     create_grpc_client, errors::grpc_to_http_code, grpc_request_with_headers, BoxStream, Client,
     Error,
@@ -35,12 +42,6 @@ use crate::{
     },
     tracing_utils::trace_context_from_grpc_response,
 };
-use async_trait::async_trait;
-use axum::http::HeaderMap;
-use futures::{StreamExt, TryStreamExt};
-use ginepro::LoadBalancedChannel;
-use tonic::{Code, Request};
-use tracing::{info, instrument};
 
 const DEFAULT_PORT: u16 = 8085;
 const MODEL_ID_HEADER_NAME: &str = "mm-model-id";

@@ -43,14 +43,6 @@ impl HttpClient {
         &self.base_url
     }
 
-    pub fn into_inner(self) -> reqwest::Client {
-        self.client
-    }
-
-    pub fn inner_as_ref(&self) -> &reqwest::Client {
-        &self.client
-    }
-
     /// This is sectioned off to allow for testing.
     pub(super) async fn http_response_to_health_check_result(
         res: Result<Response, reqwest::Error>,

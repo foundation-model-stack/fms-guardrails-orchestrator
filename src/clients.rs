@@ -28,8 +28,7 @@ use axum::http::{Extensions, HeaderMap};
 use futures::Stream;
 use ginepro::LoadBalancedChannel;
 use tokio::{fs::File, io::AsyncReadExt};
-use tonic::metadata::MetadataMap;
-use tonic::Request;
+use tonic::{metadata::MetadataMap, Request};
 use tracing::{debug, instrument};
 use url::Url;
 
@@ -276,12 +275,9 @@ pub async fn create_grpc_client<C>(
             .request_timeout
             .unwrap_or(DEFAULT_REQUEST_TIMEOUT_SEC),
     );
-    let mut builder = LoadBalancedChannel::builder((
-        service_config.hostname.clone(),
-        service_config.port.unwrap_or(default_port),
-    ))
-    .connect_timeout(DEFAULT_CONNECT_TIMEOUT)
-    .timeout(request_timeout);
+    let mut builder = LoadBalancedChannel::builder((service_config.hostname.clone(), port))
+        .connect_timeout(DEFAULT_CONNECT_TIMEOUT)
+        .timeout(request_timeout);
 
     let client_tls_config = if let Some(Tls::Config(tls_config)) = &service_config.tls {
         let cert_path = tls_config.cert_path.as_ref().unwrap().as_path();
