@@ -17,9 +17,7 @@
 
 use std::time::Duration;
 
-use axum::extract::Request;
-use axum::http::HeaderMap;
-use axum::response::Response;
+use axum::{extract::Request, http::HeaderMap, response::Response};
 use opentelemetry::{
     global,
     metrics::MetricsError,
@@ -28,12 +26,12 @@ use opentelemetry::{
 };
 use opentelemetry_http::{HeaderExtractor, HeaderInjector};
 use opentelemetry_otlp::WithExportConfig;
-use opentelemetry_sdk::propagation::TraceContextPropagator;
 use opentelemetry_sdk::{
     metrics::{
         reader::{DefaultAggregationSelector, DefaultTemporalitySelector},
         SdkMeterProvider,
     },
+    propagation::TraceContextPropagator,
     runtime,
     trace::{Config, Sampler},
     Resource,
