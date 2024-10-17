@@ -18,11 +18,14 @@
 use std::collections::HashMap;
 
 use async_trait::async_trait;
-use hyper::StatusCode;
+use hyper::{HeaderMap, StatusCode};
 use serde::{Deserialize, Serialize};
+use tracing::{info, instrument};
 
 use super::{create_http_client, Client, Error, HttpClient};
-use crate::{config::ServiceConfig, health::HealthCheckResult};
+use crate::{
+    config::ServiceConfig, health::HealthCheckResult, tracing_utils::with_traceparent_header,
+};
 
 const DEFAULT_PORT: u16 = 8080;
 
@@ -48,12 +51,21 @@ impl OpenAiClient {
         }
     }
 
+    #[instrument(skip_all, fields(request.model))]
     pub async fn chat_completions(
         &self,
         request: ChatCompletionRequest,
     ) -> Result<ChatCompletionResponse, Error> {
         let url = self.client.base_url().join("/v1/chat/completions").unwrap();
-        let response = self.client.post(url).json(&request).send().await?;
+        let headers = with_traceparent_header(HeaderMap::new());
+        info!(?url, ?headers, ?request, "sending client request");
+        let response = self
+            .client
+            .post(url)
+            .headers(headers)
+            .json(&request)
+            .send()
+            .await?;
         match response.status() {
             StatusCode::OK => Ok(response.json().await?),
             _ => Err(Error::Http {

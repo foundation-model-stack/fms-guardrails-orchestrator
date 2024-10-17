@@ -16,6 +16,7 @@
 */
 
 use async_trait::async_trait;
+use tracing::instrument;
 
 use super::DEFAULT_PORT;
 use crate::{
@@ -46,6 +47,7 @@ impl TextChatDetectorClient {
         }
     }
 
+    #[instrument(skip_all)]
     pub async fn text_chat(&self) {
         let _url = self.client.base_url().join("/api/v1/text/chat").unwrap();
         todo!()
