@@ -500,7 +500,7 @@ impl Orchestrator {
             // Task cancelled or panicked
             Err(error) => {
                 let error = error.into();
-                error!(request_id = ?task.request_id, %error, "detection on chat content task failed");
+                error!(request_id = ?task.request_id, %error, "detection task on chat failed");
                 Err(error)
             }
         }
