@@ -10,6 +10,8 @@ use crate::{
     models::{DetectionResult, DetectorParams},
 };
 
+const CHAT_DETECTOR_ENDPOINT: &str = "/api/v1/text/chat";
+
 #[cfg_attr(test, faux::create)]
 #[derive(Clone)]
 pub struct TextChatDetectorClient {
@@ -38,7 +40,7 @@ impl TextChatDetectorClient {
         request: ChatDetectionRequest,
         headers: HeaderMap,
     ) -> Result<Vec<DetectionResult>, Error> {
-        let url = self.client.base_url().join("/api/v1/text/chat").unwrap();
+        let url = self.client.base_url().join(CHAT_DETECTOR_ENDPOINT).unwrap();
         let request = self
             .client
             .post(url)
