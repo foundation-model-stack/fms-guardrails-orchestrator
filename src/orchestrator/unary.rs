@@ -494,7 +494,7 @@ impl Orchestrator {
             Ok(Ok(result)) => Ok(result),
             // Task failed, return error propagated from child task that failed
             Ok(Err(error)) => {
-                error!(request_id = ?task.request_id, %error, "detection on chat content task failed");
+                error!(request_id = ?task.request_id, %error, "detection task on chat failed");
                 Err(error)
             }
             // Task cancelled or panicked
