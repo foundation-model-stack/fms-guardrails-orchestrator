@@ -16,13 +16,18 @@
 */
 
 use async_trait::async_trait;
+use hyper::{HeaderMap, StatusCode};
+use serde::Serialize;
 
-use super::DEFAULT_PORT;
+use super::{DetectorError, DEFAULT_PORT, DETECTOR_ID_HEADER_NAME};
 use crate::{
-    clients::{create_http_client, Client, HttpClient},
+    clients::{create_http_client, openai::Message, Client, Error, HttpClient},
     config::ServiceConfig,
     health::HealthCheckResult,
+    models::{DetectionResult, DetectorParams},
 };
+
+const CHAT_DETECTOR_ENDPOINT: &str = "/api/v1/text/chat";
 
 #[cfg_attr(test, faux::create)]
 #[derive(Clone)]
@@ -46,9 +51,37 @@ impl TextChatDetectorClient {
         }
     }
 
-    pub async fn text_chat(&self) {
-        let _url = self.client.base_url().join("/api/v1/text/chat").unwrap();
-        todo!()
+    pub async fn text_chat(
+        &self,
+        model_id: &str,
+        request: ChatDetectionRequest,
+        headers: HeaderMap,
+    ) -> Result<Vec<DetectionResult>, Error> {
+        let url = self.client.base_url().join(CHAT_DETECTOR_ENDPOINT).unwrap();
+        let request = self
+            .client
+            .post(url)
+            .headers(headers)
+            .header(DETECTOR_ID_HEADER_NAME, model_id)
+            .json(&request);
+
+        tracing::debug!("Request being sent to chat detector: {:?}", request);
+        let response = request.send().await?;
+        tracing::debug!("Response received from chat detector: {:?}", response);
+
+        if response.status() == StatusCode::OK {
+            Ok(response.json().await?)
+        } else {
+            let code = response.status().as_u16();
+            let error = response
+                .json::<DetectorError>()
+                .await
+                .unwrap_or(DetectorError {
+                    code,
+                    message: "".into(),
+                });
+            Err(error.into())
+        }
     }
 }
 
@@ -64,6 +97,26 @@ impl Client for TextChatDetectorClient {
             health_client.health().await
         } else {
             self.client.health().await
+        }
+    }
+}
+
+/// A struct representing a request to a detector compatible with the
+/// /api/v1/text/chat endpoint.
+// #[cfg_attr(test, derive(PartialEq))]
+#[derive(Debug, Serialize)]
+pub struct ChatDetectionRequest {
+    /// Chat messages to run detection on
+    pub messages: Vec<Message>,
+
+    pub detector_params: DetectorParams,
+}
+
+impl ChatDetectionRequest {
+    pub fn new(messages: Vec<Message>, detector_params: DetectorParams) -> Self {
+        Self {
+            messages,
+            detector_params,
         }
     }
 }

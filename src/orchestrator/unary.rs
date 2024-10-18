@@ -25,7 +25,7 @@ use futures::{
 use tracing::{debug, error, info, instrument};
 
 use super::{
-    apply_masks, get_chunker_ids, Chunk, ClassificationWithGenTask, Context,
+    apply_masks, get_chunker_ids, ChatDetectionTask, Chunk, ClassificationWithGenTask, Context,
     ContextDocsDetectionTask, DetectionOnGenerationTask, Error, GenerationWithDetectionTask,
     Orchestrator, TextContentDetectionTask,
 };
@@ -33,17 +33,20 @@ use crate::{
     clients::{
         chunker::{tokenize_whole_doc, ChunkerClient, DEFAULT_CHUNKER_ID},
         detector::{
-            ContentAnalysisRequest, ContentAnalysisResponse, ContextDocsDetectionRequest,
-            ContextType, GenerationDetectionRequest, TextContentsDetectorClient,
-            TextContextDocDetectorClient, TextGenerationDetectorClient,
+            ChatDetectionRequest, ContentAnalysisRequest, ContentAnalysisResponse,
+            ContextDocsDetectionRequest, ContextType, GenerationDetectionRequest,
+            TextChatDetectorClient, TextContentsDetectorClient, TextContextDocDetectorClient,
+            TextGenerationDetectorClient,
         },
+        openai::Message,
         GenerationClient,
     },
     models::{
-        ClassifiedGeneratedTextResult, ContextDocsResult, DetectionOnGenerationResult,
-        DetectionResult, DetectorParams, GenerationWithDetectionResult,
-        GuardrailsTextGenerationParameters, InputWarning, InputWarningReason,
-        TextContentDetectionResult, TextGenTokenClassificationResults, TokenClassificationResult,
+        ChatDetectionResult, ClassifiedGeneratedTextResult, ContextDocsResult,
+        DetectionOnGenerationResult, DetectionResult, DetectorParams,
+        GenerationWithDetectionResult, GuardrailsTextGenerationParameters, InputWarning,
+        InputWarningReason, TextContentDetectionResult, TextGenTokenClassificationResults,
+        TokenClassificationResult,
     },
     orchestrator::UNSUITABLE_INPUT_MESSAGE,
     pb::caikit::runtime::chunkers,
@@ -447,6 +450,61 @@ impl Orchestrator {
             }
         }
     }
+
+    /// Handles detections on chat messages (without performing generation)
+    pub async fn handle_chat_detection(
+        &self,
+        task: ChatDetectionTask,
+    ) -> Result<ChatDetectionResult, Error> {
+        info!(
+            request_id = ?task.request_id,
+            detectors = ?task.detectors,
+            "handling detection on chat content task"
+        );
+        let ctx = self.ctx.clone();
+        let headers = task.headers;
+
+        let task_handle = tokio::spawn(async move {
+            // call detection
+            let detections = try_join_all(
+                task.detectors
+                    .iter()
+                    .map(|(detector_id, detector_params)| {
+                        let ctx = ctx.clone();
+                        let detector_id = detector_id.clone();
+                        let detector_params = detector_params.clone();
+                        let messages = task.messages.clone();
+                        let headers = headers.clone();
+                        async {
+                            detect_for_chat(ctx, detector_id, detector_params, messages, headers)
+                                .await
+                        }
+                    })
+                    .collect::<Vec<_>>(),
+            )
+            .await?
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>();
+
+            Ok(ChatDetectionResult { detections })
+        });
+        match task_handle.await {
+            // Task completed successfully
+            Ok(Ok(result)) => Ok(result),
+            // Task failed, return error propagated from child task that failed
+            Ok(Err(error)) => {
+                error!(request_id = ?task.request_id, %error, "detection task on chat failed");
+                Err(error)
+            }
+            // Task cancelled or panicked
+            Err(error) => {
+                let error = error.into();
+                error!(request_id = ?task.request_id, %error, "detection task on chat failed");
+                Err(error)
+            }
+        }
+    }
 }
 
 /// Handles input detection task.
@@ -708,6 +766,47 @@ pub async fn detect_for_generation(
             error,
         })?;
     debug!(%detector_id, ?response, "received generation detector response");
+    Ok::<Vec<DetectionResult>, Error>(response)
+}
+
+/// Calls a detector that implements the /api/v1/text/chat endpoint
+pub async fn detect_for_chat(
+    ctx: Arc<Context>,
+    detector_id: String,
+    detector_params: DetectorParams,
+    messages: Vec<Message>,
+    headers: HeaderMap,
+) -> Result<Vec<DetectionResult>, Error> {
+    let detector_id = detector_id.clone();
+    let threshold = detector_params.threshold().unwrap_or(
+        detector_params.threshold().unwrap_or(
+            ctx.config
+                .detectors
+                .get(&detector_id)
+                .ok_or_else(|| Error::DetectorNotFound(detector_id.clone()))?
+                .default_threshold,
+        ),
+    );
+    let request = ChatDetectionRequest::new(messages.clone(), detector_params.clone());
+    debug!(%detector_id, ?request, "sending chat detector request");
+    let client = ctx
+        .clients
+        .get_as::<TextChatDetectorClient>(&detector_id)
+        .unwrap();
+    let response = client
+        .text_chat(&detector_id, request, headers)
+        .await
+        .map(|results| {
+            results
+                .into_iter()
+                .filter(|detection| detection.score > threshold)
+                .collect()
+        })
+        .map_err(|error| Error::DetectorRequestFailed {
+            id: detector_id.clone(),
+            error,
+        })?;
+    debug!(%detector_id, ?response, "received chat detector response");
     Ok::<Vec<DetectionResult>, Error>(response)
 }
 
