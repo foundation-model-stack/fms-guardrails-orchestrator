@@ -441,7 +441,7 @@ async fn detect_chat(
     WithRejection(Json(request), _): WithRejection<Json<models::ChatDetectionHttpRequest>, Error>,
 ) -> Result<impl IntoResponse, Error> {
     let request_id = Uuid::new_v4();
-    request.validate()?;
+    request.validate_for_text()?;
     let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
     let task = ChatDetectionTask::new(request_id, request, headers);
     match state.orchestrator.handle_chat_detection(task).await {

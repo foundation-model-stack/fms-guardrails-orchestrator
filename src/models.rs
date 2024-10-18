@@ -964,10 +964,13 @@ impl ChatDetectionHttpRequest {
             return Err(ValidationError::Required("messages".into()));
         }
 
-        // validate messages
-        self.validate_messages()?;
+        Ok(())
+    }
 
-        // Validate detector params
+    /// Validates for the "/api/v1/text/chat" endpoint.
+    pub fn validate_for_text(&self) -> Result<(), ValidationError> {
+        self.validate()?;
+        self.validate_messages()?;
         validate_detector_params(&self.detectors)?;
 
         Ok(())
