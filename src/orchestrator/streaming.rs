@@ -266,7 +266,8 @@ async fn streaming_output_detection_task(
     // send requests to detector service, and send results to detection stream
     debug!("spawning detection tasks");
     let mut detection_streams = Vec::with_capacity(detectors.len());
-    for (detector_id, detector_params) in detectors.iter() {
+    let detectors_mut = &mut detectors.clone();
+    for (detector_id, detector_params) in detectors_mut.iter_mut() {
         let detector_id = detector_id.to_string();
         let chunker_id = ctx.config.get_chunker_id(&detector_id).unwrap();
 
@@ -277,7 +278,6 @@ async fn streaming_output_detection_task(
         // Get the default threshold to use if threshold is not provided by the user
         let default_threshold = detector_config.default_threshold;
         let threshold = detector_params.threshold().unwrap_or(default_threshold);
-        // TODO: remove threshold?
 
         // Create detection stream
         let (detector_tx, detector_rx) = mpsc::channel(1024);

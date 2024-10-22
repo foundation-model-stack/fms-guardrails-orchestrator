@@ -617,7 +617,7 @@ pub async fn detect(
     ctx: Arc<Context>,
     detector_id: String,
     default_threshold: f64,
-    detector_params: DetectorParams,
+    mut detector_params: DetectorParams,
     chunks: Vec<Chunk>,
     headers: HeaderMap,
 ) -> Result<Vec<TokenClassificationResult>, Error> {
@@ -628,7 +628,6 @@ pub async fn detect(
         // skip detector call as contents is empty
         Vec::default()
     } else {
-        // TODO: take out threshold?
         let request = ContentAnalysisRequest::new(contents, detector_params.clone());
         debug!(%detector_id, ?request, "sending detector request");
         let client = ctx
@@ -677,7 +676,7 @@ pub async fn detect_content(
     ctx: Arc<Context>,
     detector_id: String,
     default_threshold: f64,
-    detector_params: DetectorParams,
+    mut detector_params: DetectorParams,
     chunks: Vec<Chunk>,
     headers: HeaderMap,
 ) -> Result<Vec<ContentAnalysisResponse>, Error> {
@@ -688,7 +687,6 @@ pub async fn detect_content(
         // skip detector call as contents is empty
         Vec::default()
     } else {
-        // TODO: take out threshold?
         let request = ContentAnalysisRequest::new(contents, detector_params.clone());
         debug!(%detector_id, ?request, "sending detector request");
         let client = ctx
@@ -733,7 +731,7 @@ pub async fn detect_content(
 pub async fn detect_for_generation(
     ctx: Arc<Context>,
     detector_id: String,
-    detector_params: DetectorParams,
+    mut detector_params: DetectorParams,
     prompt: String,
     generated_text: String,
     headers: HeaderMap,
@@ -748,7 +746,6 @@ pub async fn detect_for_generation(
                 .default_threshold,
         ),
     );
-    // TODO: remove threshold?
     let request = GenerationDetectionRequest::new(
         prompt.clone(),
         generated_text.clone(),
@@ -780,7 +777,7 @@ pub async fn detect_for_generation(
 pub async fn detect_for_chat(
     ctx: Arc<Context>,
     detector_id: String,
-    detector_params: DetectorParams,
+    mut detector_params: DetectorParams,
     messages: Vec<Message>,
     headers: HeaderMap,
 ) -> Result<Vec<DetectionResult>, Error> {
@@ -794,7 +791,6 @@ pub async fn detect_for_chat(
                 .default_threshold,
         ),
     );
-    // TODO: take out threshold?
     let request = ChatDetectionRequest::new(messages.clone(), detector_params.clone());
     debug!(%detector_id, ?request, "sending chat detector request");
     let client = ctx
@@ -822,7 +818,7 @@ pub async fn detect_for_chat(
 pub async fn detect_for_context(
     ctx: Arc<Context>,
     detector_id: String,
-    detector_params: DetectorParams,
+    mut detector_params: DetectorParams,
     content: String,
     context_type: ContextType,
     context: Vec<String>,
@@ -838,7 +834,6 @@ pub async fn detect_for_context(
                 .default_threshold,
         ),
     );
-    // TODO: take out threshold?
     let request = ContextDocsDetectionRequest::new(content, context_type, context, detector_params);
     debug!(%detector_id, ?request, "sending context detector request");
     let client = ctx
@@ -1086,7 +1081,7 @@ mod tests {
             detector_id,
             ContentAnalysisRequest::new(
                 vec![first_sentence.clone(), second_sentence.clone()],
-                detector_params.clone()
+                DetectorParams::new()
             ),
             HeaderMap::new(),
         ))
@@ -1159,7 +1154,7 @@ mod tests {
 
         faux::when!(detector_client.text_contents(
             detector_id,
-            ContentAnalysisRequest::new(vec![sentence.clone()], detector_params.clone()),
+            ContentAnalysisRequest::new(vec![sentence.clone()], DetectorParams::new()),
             HeaderMap::new(),
         ))
         .once()
@@ -1205,7 +1200,7 @@ mod tests {
 
         faux::when!(detector_client.text_contents(
             detector_id,
-            ContentAnalysisRequest::new(vec![first_sentence.clone()], detector_params.clone()),
+            ContentAnalysisRequest::new(vec![first_sentence.clone()], DetectorParams::new()),
             HeaderMap::new(),
         ))
         .once()
@@ -1264,7 +1259,7 @@ mod tests {
             GenerationDetectionRequest::new(
                 prompt.clone(),
                 generated_text.clone(),
-                detector_params.clone()
+                DetectorParams::new()
             ),
             HeaderMap::new(),
         ))
@@ -1332,7 +1327,7 @@ mod tests {
             GenerationDetectionRequest::new(
                 prompt.clone(),
                 generated_text.clone(),
-                detector_params.clone()
+                DetectorParams::new()
             ),
             HeaderMap::new(),
         ))
