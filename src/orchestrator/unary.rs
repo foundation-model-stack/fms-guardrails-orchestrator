@@ -628,7 +628,8 @@ pub async fn detect(
         // skip detector call as contents is empty
         Vec::default()
     } else {
-        let request = ContentAnalysisRequest::new(contents);
+        // TODO: take out threshold?
+        let request = ContentAnalysisRequest::new(contents, detector_params.clone());
         debug!(%detector_id, ?request, "sending detector request");
         let client = ctx
             .clients
@@ -687,7 +688,8 @@ pub async fn detect_content(
         // skip detector call as contents is empty
         Vec::default()
     } else {
-        let request = ContentAnalysisRequest::new(contents);
+        // TODO: take out threshold?
+        let request = ContentAnalysisRequest::new(contents, detector_params.clone());
         debug!(%detector_id, ?request, "sending detector request");
         let client = ctx
             .clients
@@ -746,7 +748,12 @@ pub async fn detect_for_generation(
                 .default_threshold,
         ),
     );
-    let request = GenerationDetectionRequest::new(prompt.clone(), generated_text.clone());
+    // TODO: remove threshold?
+    let request = GenerationDetectionRequest::new(
+        prompt.clone(),
+        generated_text.clone(),
+        detector_params.clone(),
+    );
     debug!(%detector_id, ?request, "sending generation detector request");
     let client = ctx
         .clients
@@ -787,6 +794,7 @@ pub async fn detect_for_chat(
                 .default_threshold,
         ),
     );
+    // TODO: take out threshold?
     let request = ChatDetectionRequest::new(messages.clone(), detector_params.clone());
     debug!(%detector_id, ?request, "sending chat detector request");
     let client = ctx
@@ -830,6 +838,7 @@ pub async fn detect_for_context(
                 .default_threshold,
         ),
     );
+    // TODO: take out threshold?
     let request = ContextDocsDetectionRequest::new(content, context_type, context, detector_params);
     debug!(%detector_id, ?request, "sending context detector request");
     let client = ctx
@@ -1075,7 +1084,10 @@ mod tests {
 
         faux::when!(detector_client.text_contents(
             detector_id,
-            ContentAnalysisRequest::new(vec![first_sentence.clone(), second_sentence.clone()]),
+            ContentAnalysisRequest::new(
+                vec![first_sentence.clone(), second_sentence.clone()],
+                detector_params.clone()
+            ),
             HeaderMap::new(),
         ))
         .once()
@@ -1147,7 +1159,7 @@ mod tests {
 
         faux::when!(detector_client.text_contents(
             detector_id,
-            ContentAnalysisRequest::new(vec![sentence.clone()]),
+            ContentAnalysisRequest::new(vec![sentence.clone()], detector_params.clone()),
             HeaderMap::new(),
         ))
         .once()
@@ -1193,7 +1205,7 @@ mod tests {
 
         faux::when!(detector_client.text_contents(
             detector_id,
-            ContentAnalysisRequest::new(vec![first_sentence.clone()]),
+            ContentAnalysisRequest::new(vec![first_sentence.clone()], detector_params.clone()),
             HeaderMap::new(),
         ))
         .once()
@@ -1249,7 +1261,11 @@ mod tests {
 
         faux::when!(detector_client.text_generation(
             detector_id,
-            GenerationDetectionRequest::new(prompt.clone(), generated_text.clone()),
+            GenerationDetectionRequest::new(
+                prompt.clone(),
+                generated_text.clone(),
+                detector_params.clone()
+            ),
             HeaderMap::new(),
         ))
         .once()
@@ -1313,7 +1329,11 @@ mod tests {
 
         faux::when!(detector_client.text_generation(
             detector_id,
-            GenerationDetectionRequest::new(prompt.clone(), generated_text.clone()),
+            GenerationDetectionRequest::new(
+                prompt.clone(),
+                generated_text.clone(),
+                detector_params.clone()
+            ),
             HeaderMap::new(),
         ))
         .once()
