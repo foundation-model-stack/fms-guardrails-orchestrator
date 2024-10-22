@@ -108,7 +108,7 @@ pub struct ContentAnalysisRequest {
     /// Field allowing users to provide list of documents for analysis
     pub contents: Vec<String>,
 
-    /// Detector parameters
+    /// Detector parameters (available parameters depend on the detector)
     pub detector_params: DetectorParams,
 }
 

@@ -111,7 +111,7 @@ pub struct GenerationDetectionRequest {
     /// Text generated from an LLM
     pub generated_text: String,
 
-    /// Detector parameters
+    /// Detector parameters (available parameters depend on the detector)
     pub detector_params: DetectorParams,
 }
 

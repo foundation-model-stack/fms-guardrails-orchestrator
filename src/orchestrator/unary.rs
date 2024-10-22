@@ -629,7 +629,7 @@ pub async fn detect(
         Vec::default()
     } else {
         detector_params.remove(THRESHOLD_PARAM);
-        let request = ContentAnalysisRequest::new(contents, detector_params.clone());
+        let request = ContentAnalysisRequest::new(contents, detector_params);
         debug!(%detector_id, ?request, "sending detector request");
         let client = ctx
             .clients
@@ -689,7 +689,7 @@ pub async fn detect_content(
         Vec::default()
     } else {
         detector_params.remove(THRESHOLD_PARAM);
-        let request = ContentAnalysisRequest::new(contents, detector_params.clone());
+        let request = ContentAnalysisRequest::new(contents, detector_params);
         debug!(%detector_id, ?request, "sending detector request");
         let client = ctx
             .clients
@@ -792,7 +792,7 @@ pub async fn detect_for_chat(
         ),
     );
     detector_params.remove(THRESHOLD_PARAM);
-    let request = ChatDetectionRequest::new(messages.clone(), detector_params.clone());
+    let request = ChatDetectionRequest::new(messages.clone(), detector_params);
     debug!(%detector_id, ?request, "sending chat detector request");
     let client = ctx
         .clients
