@@ -1276,6 +1276,7 @@ mod tests {
         }"#;
         let value: DetectorParams = serde_json::from_str(value_json)?;
         assert_eq!(value.threshold(), Some(0.2));
+        assert_eq!(value.threshold(), Some(0.2)); // Calling again is not problematic
         let value = DetectorParams::new();
         assert_eq!(value.threshold(), None);
         Ok(())
