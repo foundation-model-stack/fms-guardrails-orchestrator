@@ -109,7 +109,7 @@ pub struct ChatDetectionRequest {
     /// Chat messages to run detection on
     pub messages: Vec<Message>,
 
-    /// Detector parameters
+    /// Detector parameters (available parameters depend on the detector)
     pub detector_params: DetectorParams,
 }
 
