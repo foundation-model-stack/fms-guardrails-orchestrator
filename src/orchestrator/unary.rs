@@ -617,7 +617,7 @@ pub async fn detect(
     ctx: Arc<Context>,
     detector_id: String,
     default_threshold: f64,
-    detector_params: DetectorParams,
+    mut detector_params: DetectorParams,
     chunks: Vec<Chunk>,
     headers: HeaderMap,
 ) -> Result<Vec<TokenClassificationResult>, Error> {
@@ -676,7 +676,7 @@ pub async fn detect_content(
     ctx: Arc<Context>,
     detector_id: String,
     default_threshold: f64,
-    detector_params: DetectorParams,
+    mut detector_params: DetectorParams,
     chunks: Vec<Chunk>,
     headers: HeaderMap,
 ) -> Result<Vec<ContentAnalysisResponse>, Error> {
@@ -731,7 +731,7 @@ pub async fn detect_content(
 pub async fn detect_for_generation(
     ctx: Arc<Context>,
     detector_id: String,
-    detector_params: DetectorParams,
+    mut detector_params: DetectorParams,
     prompt: String,
     generated_text: String,
     headers: HeaderMap,
@@ -773,7 +773,7 @@ pub async fn detect_for_generation(
 pub async fn detect_for_chat(
     ctx: Arc<Context>,
     detector_id: String,
-    detector_params: DetectorParams,
+    mut detector_params: DetectorParams,
     messages: Vec<Message>,
     headers: HeaderMap,
 ) -> Result<Vec<DetectionResult>, Error> {
@@ -814,7 +814,7 @@ pub async fn detect_for_chat(
 pub async fn detect_for_context(
     ctx: Arc<Context>,
     detector_id: String,
-    detector_params: DetectorParams,
+    mut detector_params: DetectorParams,
     content: String,
     context_type: ContextType,
     context: Vec<String>,

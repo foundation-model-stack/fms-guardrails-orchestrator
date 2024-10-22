@@ -267,6 +267,8 @@ async fn streaming_output_detection_task(
     debug!("spawning detection tasks");
     let mut detection_streams = Vec::with_capacity(detectors.len());
     for (detector_id, detector_params) in detectors.iter() {
+        // Create a mutable copy of the parameters, so that we can modify it based on processing
+        let mut detector_params = detector_params.clone();
         let detector_id = detector_id.to_string();
         let chunker_id = ctx.config.get_chunker_id(&detector_id).unwrap();
 
