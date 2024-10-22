@@ -31,6 +31,8 @@ use crate::{
     pb,
 };
 
+pub const THRESHOLD_PARAM: &str = "threshold";
+
 #[derive(Clone, Debug, Serialize)]
 pub struct InfoResponse {
     pub services: HealthCheckCache,
@@ -54,8 +56,8 @@ impl DetectorParams {
     }
 
     /// Threshold to filter detector results by score.
-    pub fn threshold(&mut self) -> Option<f64> {
-        self.0.remove("threshold").and_then(|v| v.as_f64())
+    pub fn threshold(&self) -> Option<f64> {
+        self.0.get(THRESHOLD_PARAM).and_then(|v| v.as_f64())
     }
 }
 
@@ -1272,9 +1274,9 @@ mod tests {
         {
             "threshold": 0.2
         }"#;
-        let mut value: DetectorParams = serde_json::from_str(value_json)?;
+        let value: DetectorParams = serde_json::from_str(value_json)?;
         assert_eq!(value.threshold(), Some(0.2));
-        let mut value = DetectorParams::new();
+        let value = DetectorParams::new();
         assert_eq!(value.threshold(), None);
         Ok(())
     }
