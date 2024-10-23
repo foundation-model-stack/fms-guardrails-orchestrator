@@ -54,7 +54,7 @@ impl DetectorParams {
     }
 
     /// Threshold to filter detector results by score.
-    pub fn threshold(&mut self) -> Option<f64> {
+    pub fn pop_threshold(&mut self) -> Option<f64> {
         self.0.remove("threshold").and_then(|v| v.as_f64())
     }
 }
@@ -1273,11 +1273,11 @@ mod tests {
             "threshold": 0.2
         }"#;
         let mut value: DetectorParams = serde_json::from_str(value_json)?;
-        assert_eq!(value.threshold(), Some(0.2));
+        assert_eq!(value.pop_threshold(), Some(0.2));
         assert!(!value.contains_key("threshold"));
         let mut value = DetectorParams::new();
         assert!(!value.contains_key("threshold"));
-        assert_eq!(value.threshold(), None);
+        assert_eq!(value.pop_threshold(), None);
         Ok(())
     }
 }

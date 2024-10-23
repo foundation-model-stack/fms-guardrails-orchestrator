@@ -622,7 +622,7 @@ pub async fn detect(
     headers: HeaderMap,
 ) -> Result<Vec<TokenClassificationResult>, Error> {
     let detector_id = detector_id.clone();
-    let threshold = detector_params.threshold().unwrap_or(default_threshold);
+    let threshold = detector_params.pop_threshold().unwrap_or(default_threshold);
     let contents: Vec<_> = chunks.iter().map(|chunk| chunk.text.clone()).collect();
     let response = if contents.is_empty() {
         // skip detector call as contents is empty
@@ -681,7 +681,7 @@ pub async fn detect_content(
     headers: HeaderMap,
 ) -> Result<Vec<ContentAnalysisResponse>, Error> {
     let detector_id = detector_id.clone();
-    let threshold = detector_params.threshold().unwrap_or(default_threshold);
+    let threshold = detector_params.pop_threshold().unwrap_or(default_threshold);
     let contents: Vec<_> = chunks.iter().map(|chunk| chunk.text.clone()).collect();
     let response = if contents.is_empty() {
         // skip detector call as contents is empty
@@ -737,8 +737,8 @@ pub async fn detect_for_generation(
     headers: HeaderMap,
 ) -> Result<Vec<DetectionResult>, Error> {
     let detector_id = detector_id.clone();
-    let threshold = detector_params.threshold().unwrap_or(
-        detector_params.threshold().unwrap_or(
+    let threshold = detector_params.pop_threshold().unwrap_or(
+        detector_params.pop_threshold().unwrap_or(
             ctx.config
                 .detectors
                 .get(&detector_id)
@@ -778,8 +778,8 @@ pub async fn detect_for_chat(
     headers: HeaderMap,
 ) -> Result<Vec<DetectionResult>, Error> {
     let detector_id = detector_id.clone();
-    let threshold = detector_params.threshold().unwrap_or(
-        detector_params.threshold().unwrap_or(
+    let threshold = detector_params.pop_threshold().unwrap_or(
+        detector_params.pop_threshold().unwrap_or(
             ctx.config
                 .detectors
                 .get(&detector_id)
@@ -821,8 +821,8 @@ pub async fn detect_for_context(
     headers: HeaderMap,
 ) -> Result<Vec<DetectionResult>, Error> {
     let detector_id = detector_id.clone();
-    let threshold = detector_params.threshold().unwrap_or(
-        detector_params.threshold().unwrap_or(
+    let threshold = detector_params.pop_threshold().unwrap_or(
+        detector_params.pop_threshold().unwrap_or(
             ctx.config
                 .detectors
                 .get(&detector_id)
