@@ -31,6 +31,8 @@ use crate::{
     pb,
 };
 
+pub const THRESHOLD_PARAM: &str = "threshold";
+
 #[derive(Clone, Debug, Serialize)]
 pub struct InfoResponse {
     pub services: HealthCheckCache,
@@ -55,7 +57,7 @@ impl DetectorParams {
 
     /// Threshold to filter detector results by score.
     pub fn pop_threshold(&mut self) -> Option<f64> {
-        self.0.remove("threshold").and_then(|v| v.as_f64())
+        self.0.remove(THRESHOLD_PARAM).and_then(|v| v.as_f64())
     }
 }
 

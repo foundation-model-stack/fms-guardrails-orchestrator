@@ -24,7 +24,7 @@ use crate::{
     clients::{create_http_client, Client, Error, HttpClient},
     config::ServiceConfig,
     health::HealthCheckResult,
-    models::DetectionResult,
+    models::{DetectionResult, DetectorParams},
 };
 
 #[cfg_attr(test, faux::create)]
@@ -110,13 +110,17 @@ pub struct GenerationDetectionRequest {
 
     /// Text generated from an LLM
     pub generated_text: String,
+
+    /// Detector parameters (available parameters depend on the detector)
+    pub detector_params: DetectorParams,
 }
 
 impl GenerationDetectionRequest {
-    pub fn new(prompt: String, generated_text: String) -> Self {
+    pub fn new(prompt: String, generated_text: String, detector_params: DetectorParams) -> Self {
         Self {
             prompt,
             generated_text,
+            detector_params,
         }
     }
 }

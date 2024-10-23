@@ -114,7 +114,7 @@ pub struct ContextDocsDetectionRequest {
     /// Context to run detection on
     pub context: Vec<String>,
 
-    // Detector Params
+    /// Detector parameters (available parameters depend on the detector)
     pub detector_params: DetectorParams,
 }
 

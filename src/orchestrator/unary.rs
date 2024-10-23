@@ -628,7 +628,7 @@ pub async fn detect(
         // skip detector call as contents is empty
         Vec::default()
     } else {
-        let request = ContentAnalysisRequest::new(contents);
+        let request = ContentAnalysisRequest::new(contents, detector_params);
         debug!(%detector_id, ?request, "sending detector request");
         let client = ctx
             .clients
@@ -687,7 +687,7 @@ pub async fn detect_content(
         // skip detector call as contents is empty
         Vec::default()
     } else {
-        let request = ContentAnalysisRequest::new(contents);
+        let request = ContentAnalysisRequest::new(contents, detector_params);
         debug!(%detector_id, ?request, "sending detector request");
         let client = ctx
             .clients
@@ -746,7 +746,8 @@ pub async fn detect_for_generation(
                 .default_threshold,
         ),
     );
-    let request = GenerationDetectionRequest::new(prompt.clone(), generated_text.clone());
+    let request =
+        GenerationDetectionRequest::new(prompt.clone(), generated_text.clone(), detector_params);
     debug!(%detector_id, ?request, "sending generation detector request");
     let client = ctx
         .clients
@@ -787,7 +788,7 @@ pub async fn detect_for_chat(
                 .default_threshold,
         ),
     );
-    let request = ChatDetectionRequest::new(messages.clone(), detector_params.clone());
+    let request = ChatDetectionRequest::new(messages.clone(), detector_params);
     debug!(%detector_id, ?request, "sending chat detector request");
     let client = ctx
         .clients
@@ -966,7 +967,7 @@ mod tests {
             ClientMap, GenerationClient, TgisClient,
         },
         config::{DetectorConfig, OrchestratorConfig},
-        models::{DetectionResult, EvidenceObj, FinishReason},
+        models::{DetectionResult, EvidenceObj, FinishReason, THRESHOLD_PARAM},
         pb::fmaas::{
             BatchedGenerationRequest, BatchedGenerationResponse, GenerationRequest,
             GenerationResponse, StopReason,
@@ -1050,7 +1051,7 @@ mod tests {
         let first_sentence = "I don't like potatoes.".to_string();
         let second_sentence = "I hate aliens.".to_string();
         let mut detector_params = DetectorParams::new();
-        detector_params.insert("threshold".into(), threshold.into());
+        detector_params.insert(THRESHOLD_PARAM.into(), threshold.into());
         let chunks = vec![
             Chunk {
                 offset: 0,
@@ -1075,7 +1076,10 @@ mod tests {
 
         faux::when!(detector_client.text_contents(
             detector_id,
-            ContentAnalysisRequest::new(vec![first_sentence.clone(), second_sentence.clone()]),
+            ContentAnalysisRequest::new(
+                vec![first_sentence.clone(), second_sentence.clone()],
+                DetectorParams::new()
+            ),
             HeaderMap::new(),
         ))
         .once()
@@ -1130,7 +1134,7 @@ mod tests {
         let sentence = "This call will return a 503.".to_string();
         let threshold = 0.5;
         let mut detector_params = DetectorParams::new();
-        detector_params.insert("threshold".into(), threshold.into());
+        detector_params.insert(THRESHOLD_PARAM.into(), threshold.into());
         let chunks = vec![Chunk {
             offset: 0,
             text: sentence.clone(),
@@ -1147,7 +1151,7 @@ mod tests {
 
         faux::when!(detector_client.text_contents(
             detector_id,
-            ContentAnalysisRequest::new(vec![sentence.clone()]),
+            ContentAnalysisRequest::new(vec![sentence.clone()], DetectorParams::new()),
             HeaderMap::new(),
         ))
         .once()
@@ -1185,7 +1189,7 @@ mod tests {
         let threshold = 0.5;
         let first_sentence = "".to_string();
         let mut detector_params = DetectorParams::new();
-        detector_params.insert("threshold".into(), threshold.into());
+        detector_params.insert(THRESHOLD_PARAM.into(), threshold.into());
         let chunks = vec![Chunk {
             offset: 0,
             text: first_sentence.clone(),
@@ -1193,7 +1197,7 @@ mod tests {
 
         faux::when!(detector_client.text_contents(
             detector_id,
-            ContentAnalysisRequest::new(vec![first_sentence.clone()]),
+            ContentAnalysisRequest::new(vec![first_sentence.clone()], DetectorParams::new()),
             HeaderMap::new(),
         ))
         .once()
@@ -1230,7 +1234,7 @@ mod tests {
         let prompt = "What is the capital of Brazil?".to_string();
         let generated_text = "The capital of Brazil is Brasilia.".to_string();
         let mut detector_params = DetectorParams::new();
-        detector_params.insert("threshold".into(), threshold.into());
+        detector_params.insert(THRESHOLD_PARAM.into(), threshold.into());
 
         let expected_response: Vec<DetectionResult> = vec![DetectionResult {
             detection_type: "relevance".to_string(),
@@ -1249,7 +1253,11 @@ mod tests {
 
         faux::when!(detector_client.text_generation(
             detector_id,
-            GenerationDetectionRequest::new(prompt.clone(), generated_text.clone()),
+            GenerationDetectionRequest::new(
+                prompt.clone(),
+                generated_text.clone(),
+                DetectorParams::new()
+            ),
             HeaderMap::new(),
         ))
         .once()
@@ -1307,13 +1315,17 @@ mod tests {
         let generated_text =
             "The most beautiful places can be found in Rio de Janeiro.".to_string();
         let mut detector_params = DetectorParams::new();
-        detector_params.insert("threshold".into(), threshold.into());
+        detector_params.insert(THRESHOLD_PARAM.into(), threshold.into());
 
         let expected_response: Vec<DetectionResult> = vec![];
 
         faux::when!(detector_client.text_generation(
             detector_id,
-            GenerationDetectionRequest::new(prompt.clone(), generated_text.clone()),
+            GenerationDetectionRequest::new(
+                prompt.clone(),
+                generated_text.clone(),
+                DetectorParams::new()
+            ),
             HeaderMap::new(),
         ))
         .once()
