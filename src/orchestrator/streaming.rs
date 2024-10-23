@@ -291,6 +291,7 @@ async fn streaming_output_detection_task(
         tokio::spawn(detection_task(
             ctx.clone(),
             detector_id.clone(),
+            detector_params,
             threshold,
             detector_tx,
             chunk_rx,
@@ -354,9 +355,11 @@ async fn generation_broadcast_task(
 /// Consumes chunk broadcast stream, sends unary requests to a detector service,
 /// and sends chunk + responses to detection stream.
 #[instrument(skip_all)]
+#[allow(clippy::too_many_arguments)]
 async fn detection_task(
     ctx: Arc<Context>,
     detector_id: String,
+    detector_params: DetectorParams,
     threshold: f64,
     detector_tx: mpsc::Sender<(Chunk, Detections)>,
     mut chunk_rx: broadcast::Receiver<Chunk>,
@@ -382,7 +385,7 @@ async fn detection_task(
                             debug!("empty chunk, skipping detector request.");
                             break;
                         } else {
-                            let request = ContentAnalysisRequest::new(contents.clone());
+                            let request = ContentAnalysisRequest::new(contents.clone(), detector_params.clone());
                             let headers = headers.clone();
                             debug!(%detector_id, ?request, "sending detector request");
                             let client = ctx

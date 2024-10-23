@@ -24,6 +24,7 @@ use crate::{
     clients::{create_http_client, Client, Error, HttpClient},
     config::ServiceConfig,
     health::HealthCheckResult,
+    models::DetectorParams,
 };
 
 #[cfg_attr(test, faux::create)]
@@ -106,11 +107,17 @@ impl Client for TextContentsDetectorClient {
 pub struct ContentAnalysisRequest {
     /// Field allowing users to provide list of documents for analysis
     pub contents: Vec<String>,
+
+    /// Detector parameters (available parameters depend on the detector)
+    pub detector_params: DetectorParams,
 }
 
 impl ContentAnalysisRequest {
-    pub fn new(contents: Vec<String>) -> ContentAnalysisRequest {
-        ContentAnalysisRequest { contents }
+    pub fn new(contents: Vec<String>, detector_params: DetectorParams) -> ContentAnalysisRequest {
+        ContentAnalysisRequest {
+            contents,
+            detector_params,
+        }
     }
 }
 
