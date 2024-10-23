@@ -617,12 +617,12 @@ pub async fn detect(
     ctx: Arc<Context>,
     detector_id: String,
     default_threshold: f64,
-    detector_params: DetectorParams,
+    mut detector_params: DetectorParams,
     chunks: Vec<Chunk>,
     headers: HeaderMap,
 ) -> Result<Vec<TokenClassificationResult>, Error> {
     let detector_id = detector_id.clone();
-    let threshold = detector_params.threshold().unwrap_or(default_threshold);
+    let threshold = detector_params.pop_threshold().unwrap_or(default_threshold);
     let contents: Vec<_> = chunks.iter().map(|chunk| chunk.text.clone()).collect();
     let response = if contents.is_empty() {
         // skip detector call as contents is empty
@@ -676,12 +676,12 @@ pub async fn detect_content(
     ctx: Arc<Context>,
     detector_id: String,
     default_threshold: f64,
-    detector_params: DetectorParams,
+    mut detector_params: DetectorParams,
     chunks: Vec<Chunk>,
     headers: HeaderMap,
 ) -> Result<Vec<ContentAnalysisResponse>, Error> {
     let detector_id = detector_id.clone();
-    let threshold = detector_params.threshold().unwrap_or(default_threshold);
+    let threshold = detector_params.pop_threshold().unwrap_or(default_threshold);
     let contents: Vec<_> = chunks.iter().map(|chunk| chunk.text.clone()).collect();
     let response = if contents.is_empty() {
         // skip detector call as contents is empty
@@ -731,14 +731,14 @@ pub async fn detect_content(
 pub async fn detect_for_generation(
     ctx: Arc<Context>,
     detector_id: String,
-    detector_params: DetectorParams,
+    mut detector_params: DetectorParams,
     prompt: String,
     generated_text: String,
     headers: HeaderMap,
 ) -> Result<Vec<DetectionResult>, Error> {
     let detector_id = detector_id.clone();
-    let threshold = detector_params.threshold().unwrap_or(
-        detector_params.threshold().unwrap_or(
+    let threshold = detector_params.pop_threshold().unwrap_or(
+        detector_params.pop_threshold().unwrap_or(
             ctx.config
                 .detectors
                 .get(&detector_id)
@@ -773,13 +773,13 @@ pub async fn detect_for_generation(
 pub async fn detect_for_chat(
     ctx: Arc<Context>,
     detector_id: String,
-    detector_params: DetectorParams,
+    mut detector_params: DetectorParams,
     messages: Vec<Message>,
     headers: HeaderMap,
 ) -> Result<Vec<DetectionResult>, Error> {
     let detector_id = detector_id.clone();
-    let threshold = detector_params.threshold().unwrap_or(
-        detector_params.threshold().unwrap_or(
+    let threshold = detector_params.pop_threshold().unwrap_or(
+        detector_params.pop_threshold().unwrap_or(
             ctx.config
                 .detectors
                 .get(&detector_id)
@@ -814,15 +814,15 @@ pub async fn detect_for_chat(
 pub async fn detect_for_context(
     ctx: Arc<Context>,
     detector_id: String,
-    detector_params: DetectorParams,
+    mut detector_params: DetectorParams,
     content: String,
     context_type: ContextType,
     context: Vec<String>,
     headers: HeaderMap,
 ) -> Result<Vec<DetectionResult>, Error> {
     let detector_id = detector_id.clone();
-    let threshold = detector_params.threshold().unwrap_or(
-        detector_params.threshold().unwrap_or(
+    let threshold = detector_params.pop_threshold().unwrap_or(
+        detector_params.pop_threshold().unwrap_or(
             ctx.config
                 .detectors
                 .get(&detector_id)
