@@ -46,7 +46,7 @@ use crate::{
         DetectionOnGenerationResult, DetectionResult, DetectorParams,
         GenerationWithDetectionResult, GuardrailsTextGenerationParameters, InputWarning,
         InputWarningReason, TextContentDetectionResult, TextGenTokenClassificationResults,
-        TokenClassificationResult, THRESHOLD_PARAM,
+        TokenClassificationResult,
     },
     orchestrator::UNSUITABLE_INPUT_MESSAGE,
     pb::caikit::runtime::chunkers,
@@ -622,13 +622,12 @@ pub async fn detect(
     headers: HeaderMap,
 ) -> Result<Vec<TokenClassificationResult>, Error> {
     let detector_id = detector_id.clone();
-    let threshold = detector_params.threshold().unwrap_or(default_threshold);
+    let threshold = detector_params.pop_threshold().unwrap_or(default_threshold);
     let contents: Vec<_> = chunks.iter().map(|chunk| chunk.text.clone()).collect();
     let response = if contents.is_empty() {
         // skip detector call as contents is empty
         Vec::default()
     } else {
-        detector_params.remove(THRESHOLD_PARAM);
         let request = ContentAnalysisRequest::new(contents, detector_params);
         debug!(%detector_id, ?request, "sending detector request");
         let client = ctx
@@ -682,13 +681,12 @@ pub async fn detect_content(
     headers: HeaderMap,
 ) -> Result<Vec<ContentAnalysisResponse>, Error> {
     let detector_id = detector_id.clone();
-    let threshold = detector_params.threshold().unwrap_or(default_threshold);
+    let threshold = detector_params.pop_threshold().unwrap_or(default_threshold);
     let contents: Vec<_> = chunks.iter().map(|chunk| chunk.text.clone()).collect();
     let response = if contents.is_empty() {
         // skip detector call as contents is empty
         Vec::default()
     } else {
-        detector_params.remove(THRESHOLD_PARAM);
         let request = ContentAnalysisRequest::new(contents, detector_params);
         debug!(%detector_id, ?request, "sending detector request");
         let client = ctx
@@ -739,8 +737,8 @@ pub async fn detect_for_generation(
     headers: HeaderMap,
 ) -> Result<Vec<DetectionResult>, Error> {
     let detector_id = detector_id.clone();
-    let threshold = detector_params.threshold().unwrap_or(
-        detector_params.threshold().unwrap_or(
+    let threshold = detector_params.pop_threshold().unwrap_or(
+        detector_params.pop_threshold().unwrap_or(
             ctx.config
                 .detectors
                 .get(&detector_id)
@@ -748,7 +746,6 @@ pub async fn detect_for_generation(
                 .default_threshold,
         ),
     );
-    detector_params.remove(THRESHOLD_PARAM);
     let request =
         GenerationDetectionRequest::new(prompt.clone(), generated_text.clone(), detector_params);
     debug!(%detector_id, ?request, "sending generation detector request");
@@ -782,8 +779,8 @@ pub async fn detect_for_chat(
     headers: HeaderMap,
 ) -> Result<Vec<DetectionResult>, Error> {
     let detector_id = detector_id.clone();
-    let threshold = detector_params.threshold().unwrap_or(
-        detector_params.threshold().unwrap_or(
+    let threshold = detector_params.pop_threshold().unwrap_or(
+        detector_params.pop_threshold().unwrap_or(
             ctx.config
                 .detectors
                 .get(&detector_id)
@@ -791,7 +788,6 @@ pub async fn detect_for_chat(
                 .default_threshold,
         ),
     );
-    detector_params.remove(THRESHOLD_PARAM);
     let request = ChatDetectionRequest::new(messages.clone(), detector_params);
     debug!(%detector_id, ?request, "sending chat detector request");
     let client = ctx
@@ -826,8 +822,8 @@ pub async fn detect_for_context(
     headers: HeaderMap,
 ) -> Result<Vec<DetectionResult>, Error> {
     let detector_id = detector_id.clone();
-    let threshold = detector_params.threshold().unwrap_or(
-        detector_params.threshold().unwrap_or(
+    let threshold = detector_params.pop_threshold().unwrap_or(
+        detector_params.pop_threshold().unwrap_or(
             ctx.config
                 .detectors
                 .get(&detector_id)
@@ -835,7 +831,6 @@ pub async fn detect_for_context(
                 .default_threshold,
         ),
     );
-    detector_params.remove(THRESHOLD_PARAM);
     let request = ContextDocsDetectionRequest::new(content, context_type, context, detector_params);
     debug!(%detector_id, ?request, "sending context detector request");
     let client = ctx
@@ -972,7 +967,7 @@ mod tests {
             ClientMap, GenerationClient, TgisClient,
         },
         config::{DetectorConfig, OrchestratorConfig},
-        models::{DetectionResult, EvidenceObj, FinishReason},
+        models::{DetectionResult, EvidenceObj, FinishReason, THRESHOLD_PARAM},
         pb::fmaas::{
             BatchedGenerationRequest, BatchedGenerationResponse, GenerationRequest,
             GenerationResponse, StopReason,
