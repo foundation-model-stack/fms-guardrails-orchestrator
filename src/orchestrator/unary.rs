@@ -449,12 +449,12 @@ impl Orchestrator {
     }
 
     /// Handles detections on chat messages (without performing generation)
+    #[instrument(skip_all, fields(trace_id = ?task.trace_id, headers = ?task.headers))]
     pub async fn handle_chat_detection(
         &self,
         task: ChatDetectionTask,
     ) -> Result<ChatDetectionResult, Error> {
         info!(
-            request_id = ?task.request_id,
             detectors = ?task.detectors,
             "handling detection on chat content task"
         );
@@ -491,13 +491,13 @@ impl Orchestrator {
             Ok(Ok(result)) => Ok(result),
             // Task failed, return error propagated from child task that failed
             Ok(Err(error)) => {
-                error!(request_id = ?task.request_id, %error, "detection task on chat failed");
+                error!(%error, "detection task on chat failed");
                 Err(error)
             }
             // Task cancelled or panicked
             Err(error) => {
                 let error = error.into();
-                error!(request_id = ?task.request_id, %error, "detection task on chat failed");
+                error!(%error, "detection task on chat failed");
                 Err(error)
             }
         }
@@ -545,7 +545,7 @@ async fn detection_task(
     chunks: HashMap<String, Vec<Chunk>>,
     headers: HeaderMap,
 ) -> Result<Vec<TokenClassificationResult>, Error> {
-    debug!(detectors = ?detectors.keys(), "handling detection task");
+    debug!(detectors = ?detectors.keys(), "handling detection tasks");
     // Spawn tasks for each detector
     let tasks = detectors
         .iter()
@@ -689,11 +689,7 @@ pub async fn detect_content(
         Vec::default()
     } else {
         let request = ContentAnalysisRequest::new(contents, detector_params);
-        debug!(
-            ?request,
-            threshold,
-            "sending detector request"
-        );
+        debug!(?request, threshold, "sending detector request");
         let client = ctx
             .clients
             .get_as::<TextContentsDetectorClient>(&detector_id)
@@ -754,11 +750,7 @@ pub async fn detect_for_generation(
     );
     let request =
         GenerationDetectionRequest::new(prompt.clone(), generated_text.clone(), detector_params);
-    debug!(
-        threshold,
-        ?request,
-        "sending generation detector request"
-    );
+    debug!(threshold, ?request, "sending generation detector request");
     let client = ctx
         .clients
         .get_as::<TextGenerationDetectorClient>(&detector_id)
@@ -912,7 +904,7 @@ pub async fn chunk_parallel(
     chunker_id: String,
     text_with_offsets: Vec<(usize, String)>,
 ) -> Result<(String, Vec<Chunk>), Error> {
-    debug!("sending parallel chunk request");
+    debug!("sending parallel chunk requests");
     let chunks = stream::iter(text_with_offsets)
         .map(|(offset, text)| {
             let ctx = ctx.clone();

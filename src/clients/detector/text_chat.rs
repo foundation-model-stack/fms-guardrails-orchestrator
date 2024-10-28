@@ -60,13 +60,13 @@ impl TextChatDetectorClient {
         headers: HeaderMap,
     ) -> Result<Vec<DetectionResult>, Error> {
         let url = self.client.base_url().join(CHAT_DETECTOR_ENDPOINT).unwrap();
+        info!(?url, "sending chat detector client request");
         let request = self
             .client
             .post(url)
             .headers(headers)
             .header(DETECTOR_ID_HEADER_NAME, model_id)
             .json(&request);
-        info!(?url, "sending chat detector client request");
         debug!("chat detector client request: {:?}", request);
         let response = request.send().await?;
         debug!("chat detector client response: {:?}", response);

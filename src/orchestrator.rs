@@ -387,7 +387,7 @@ impl ContextDocsDetectionTask {
 #[derive(Debug)]
 pub struct ChatDetectionTask {
     /// Request unique identifier
-    pub request_id: Uuid,
+    pub trace_id: TraceId,
 
     /// Detectors configuration
     pub detectors: HashMap<String, DetectorParams>,
@@ -400,9 +400,9 @@ pub struct ChatDetectionTask {
 }
 
 impl ChatDetectionTask {
-    pub fn new(request_id: Uuid, request: ChatDetectionHttpRequest, headers: HeaderMap) -> Self {
+    pub fn new(trace_id: TraceId, request: ChatDetectionHttpRequest, headers: HeaderMap) -> Self {
         Self {
-            request_id,
+            trace_id,
             detectors: request.detectors,
             messages: request.messages,
             headers,
