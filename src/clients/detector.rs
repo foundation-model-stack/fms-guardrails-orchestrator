@@ -54,6 +54,8 @@ impl From<DetectorError> for Error {
     }
 }
 
+/// Make a POST request for an HTTP detector client and return the response.
+/// Also injects the `traceparent` header from the current span and traces the response.
 pub async fn post_with_headers<T: Debug + Serialize>(
     client: HttpClient,
     url: Url,

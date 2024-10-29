@@ -133,6 +133,8 @@ impl Client for ChunkerClient {
     }
 }
 
+/// Turns a chunker client gRPC request body of type `T` into a `tonic::Request<T>` with headers.
+/// Adds the provided `model_id` as a header as well as injects `traceparent` from the current span.
 fn request_with_headers<T>(request: T, model_id: &str) -> Request<T> {
     let mut request = grpc_request_with_headers(request, HeaderMap::new());
     request

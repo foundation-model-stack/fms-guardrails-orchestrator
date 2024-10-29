@@ -160,6 +160,8 @@ impl Client for NlpClient {
     }
 }
 
+/// Turns an NLP client gRPC request body of type `T` and headers into a `tonic::Request<T>`.
+/// Also injects provided `model_id` and `traceparent` from current context into headers.
 fn request_with_headers<T>(request: T, model_id: &str, headers: HeaderMap) -> Request<T> {
     let mut request = grpc_request_with_headers(request, headers);
     request

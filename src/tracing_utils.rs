@@ -332,6 +332,11 @@ pub fn on_outgoing_eos(trailers: Option<&HeaderMap>, stream_duration: Duration, 
     info!(monotonic_histogram.service_stream_response_duration = stream_duration.as_millis());
 }
 
+/// Injects the `traceparent` header into the header map from the current tracing span context.
+/// Also injects empty `tracestate` header by default. This can be used to propagate
+/// vendor-specific trace context.
+/// Used by both gRPC and HTTP requests since `tonic::Metadata` uses `http::HeaderMap`.
+/// See https://www.w3.org/TR/trace-context/#trace-context-http-headers-format.
 pub fn with_traceparent_header(headers: HeaderMap) -> HeaderMap {
     let mut headers = headers.clone();
     let ctx = Span::current().context();
@@ -342,6 +347,10 @@ pub fn with_traceparent_header(headers: HeaderMap) -> HeaderMap {
     headers
 }
 
+/// Extracts the `traceparent` header from an HTTP response's headers and uses it to set the current
+/// tracing span context (i.e. use `traceparent` as parent to the current span).
+/// Defaults to using the current context when no `traceparent` is found.
+/// See https://www.w3.org/TR/trace-context/#trace-context-http-headers-format.
 pub fn trace_context_from_http_response(response: &reqwest::Response) {
     let ctx = global::get_text_map_propagator(|propagator| {
         // Returns the current context if no `traceparent` is found
@@ -350,6 +359,10 @@ pub fn trace_context_from_http_response(response: &reqwest::Response) {
     Span::current().set_parent(ctx);
 }
 
+/// Extracts the `traceparent` header from a gRPC response's metadata and uses it to set the current
+/// tracing span context (i.e. use `traceparent` as parent to the current span).
+/// Defaults to using the current context when no `traceparent` is found.
+/// See https://www.w3.org/TR/trace-context/#trace-context-http-headers-format.
 pub fn trace_context_from_grpc_response<T>(response: &tonic::Response<T>) {
     let ctx = global::get_text_map_propagator(|propagator| {
         let metadata = response.metadata().clone();

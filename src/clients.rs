@@ -343,6 +343,8 @@ pub fn is_valid_hostname(hostname: &str) -> bool {
         || hostname.len() > 253)
 }
 
+/// Turns a gRPC client request body of type `T` and header map into a `tonic::Request<T>`.
+/// Will also inject the current `traceparent` header into the request based on the current span.
 fn grpc_request_with_headers<T>(request: T, headers: HeaderMap) -> Request<T> {
     let headers = with_traceparent_header(headers);
     let metadata = MetadataMap::from_headers(headers);
