@@ -90,10 +90,15 @@ impl OpenAiClient {
                 .await?;
             match response.status() {
                 StatusCode::OK => Ok(response.json::<ChatCompletion>().await?.into()),
-                _ => Err(Error::Http {
-                    code: response.status(),
-                    message: "".into(),
-                }),
+                _ => {
+                    let code = response.status();
+                    let message = if let Ok(response) = response.json::<OpenAiError>().await {
+                        response.message
+                    } else {
+                        "unknown error occurred".into()
+                    };
+                    Err(Error::Http { code, message })
+                }
             }
         }
     }
@@ -612,6 +617,16 @@ pub enum StopTokens {
     String(String),
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OpenAiError {
+    pub object: Option<String>,
+    pub message: String,
+    #[serde(rename = "type")]
+    pub r#type: Option<String>,
+    pub param: Option<String>,
+    pub code: u16,
+}
+
 // #[cfg(test)]
 // mod tests {
 //     use super::*;
@@ -687,7 +702,7 @@ pub enum StopTokens {
 //     }
 
 //     #[tokio::test]
-//     async fn test_unary_chat_completion_with_logprobs() {
+//     async fn test_unary_chat_completion_error() {
 //         let client = OpenAiClient::new(
 //             &ServiceConfig {
 //                 hostname: "localhost".into(),
@@ -698,8 +713,8 @@ pub enum StopTokens {
 //             None,
 //         )
 //         .await;
-//         let request = ChatCompletionRequest {
-//             model: "/llama_3_storage/hf/8b_instruction_tuned".into(),
+//         let request1 = ChatCompletionRequest {
+//             model: "does_not_exist".into(),
 //             messages: vec![
 //                 Message {
 //                     role: "system".into(),
@@ -712,43 +727,85 @@ pub enum StopTokens {
 //                     ..Default::default()
 //                 },
 //             ],
-//             logprobs: Some(true),
 //             ..Default::default()
 //         };
-//         let request_json = serde_json::to_string(&request).unwrap();
-//         println!("request:\n{request_json}");
-//         let response = client.chat_completions(request).await;
-//         println!("response:\n{response:?}");
+//         let response1 = client.chat_completions(request1).await;
+//         println!("response1: {response1:?}");
+//         assert!(response1.is_err_and(|error| error.status_code() == StatusCode::NOT_FOUND));
+
+//         let request2 = ChatCompletionRequest {
+//             model: "/llama_3_storage/hf/8b_instruction_tuned".into(),
+//             messages: vec![],
+//             ..Default::default()
+//         };
+//         let response2 = client.chat_completions(request2).await;
+//         println!("response2: {response2:?}");
+//         assert!(response2.is_err_and(|error| error.status_code() == StatusCode::BAD_REQUEST));
 //     }
 
-//     #[tokio::test]
-//     async fn test_streaming_chat_completion() {
-//         let client = OpenAiClient::new(
-//             &ServiceConfig {
-//                 hostname: "localhost".into(),
-//                 port: Some(3000),
-//                 request_timeout: None,
-//                 tls: None,
+// #[tokio::test]
+// async fn test_unary_chat_completion_with_logprobs() {
+//     let client = OpenAiClient::new(
+//         &ServiceConfig {
+//             hostname: "localhost".into(),
+//             port: Some(3000),
+//             request_timeout: None,
+//             tls: None,
+//         },
+//         None,
+//     )
+//     .await;
+//     let request = ChatCompletionRequest {
+//         model: "/llama_3_storage/hf/8b_instruction_tuned".into(),
+//         messages: vec![
+//             Message {
+//                 role: "system".into(),
+//                 content: Some("You are a helpful assistant.".into()),
+//                 ..Default::default()
 //             },
-//             None,
-//         )
-//         .await;
-//         let request = ChatCompletionRequest {
-//             model: "/llama_3_storage/hf/8b_instruction_tuned".into(),
-//             messages: vec![Message {
+//             Message {
 //                 role: "user".into(),
 //                 content: Some("Hello!".into()),
 //                 ..Default::default()
-//             }],
-//             stream: Some(true),
+//             },
+//         ],
+//         logprobs: Some(true),
+//         ..Default::default()
+//     };
+//     let request_json = serde_json::to_string(&request).unwrap();
+//     println!("request:\n{request_json}");
+//     let response = client.chat_completions(request).await;
+//     println!("response:\n{response:?}");
+// }
+
+// #[tokio::test]
+// async fn test_streaming_chat_completion() {
+//     let client = OpenAiClient::new(
+//         &ServiceConfig {
+//             hostname: "localhost".into(),
+//             port: Some(3000),
+//             request_timeout: None,
+//             tls: None,
+//         },
+//         None,
+//     )
+//     .await;
+//     let request = ChatCompletionRequest {
+//         model: "/llama_3_storage/hf/8b_instruction_tuned".into(),
+//         messages: vec![Message {
+//             role: "user".into(),
+//             content: Some("Hello!".into()),
 //             ..Default::default()
-//         };
-//         let response = client.chat_completions(request).await.unwrap();
-//         if let ChatCompletionResponse::Streaming(mut response_rx) = response {
-//             while let Some(chunk) = response_rx.recv().await {
-//                 println!("chunk: {chunk:?}")
-//             }
-//             println!("stream closed");
+//         }],
+//         stream: Some(true),
+//         ..Default::default()
+//     };
+//     let response = client.chat_completions(request).await.unwrap();
+//     if let ChatCompletionResponse::Streaming(mut response_rx) = response {
+//         while let Some(chunk) = response_rx.recv().await {
+//             println!("chunk: {chunk:?}")
 //         }
+//         println!("stream closed");
 //     }
+// }
 // }
