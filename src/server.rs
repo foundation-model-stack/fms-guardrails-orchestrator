@@ -44,6 +44,7 @@ use opentelemetry::trace::TraceContextExt;
 use rustls::{server::WebPkiClientVerifier, RootCertStore, ServerConfig};
 use tokio::{net::TcpListener, signal};
 use tokio_rustls::TlsAcceptor;
+use tokio_stream::wrappers::ReceiverStream;
 use tower_http::trace::TraceLayer;
 use tower_service::Service;
 use tracing::{debug, error, info, instrument, warn, Span};
@@ -51,11 +52,12 @@ use tracing_opentelemetry::OpenTelemetrySpanExt;
 use webpki::types::{CertificateDer, PrivateKeyDer};
 
 use crate::{
+    clients::openai::{ChatCompletionRequest, ChatCompletionResponse},
     models::{self, InfoParams, InfoResponse},
     orchestrator::{
-        self, ChatDetectionTask, ClassificationWithGenTask, ContextDocsDetectionTask,
-        DetectionOnGenerationTask, GenerationWithDetectionTask, Orchestrator,
-        StreamingClassificationWithGenTask, TextContentDetectionTask,
+        self, ChatCompletionTask, ChatDetectionTask, ClassificationWithGenTask,
+        ContextDocsDetectionTask, DetectionOnGenerationTask, GenerationWithDetectionTask,
+        Orchestrator, StreamingClassificationWithGenTask, TextContentDetectionTask,
     },
     tracing_utils,
 };
@@ -184,6 +186,7 @@ pub async fn run(
             &format!("{}/detection/generated", TEXT_API_PREFIX),
             post(detect_generated),
         )
+        .route("/v1/chat/completions", post(chat_completions))
         .with_state(shared_state)
         .layer(
             TraceLayer::new_for_http()
@@ -476,6 +479,29 @@ async fn detect_generated(
         .await
     {
         Ok(response) => Ok(Json(response).into_response()),
+        Err(error) => Err(error.into()),
+    }
+}
+
+#[instrument(skip_all)]
+async fn chat_completions(
+    State(state): State<Arc<ServerState>>,
+    headers: HeaderMap,
+    WithRejection(Json(request), _): WithRejection<Json<ChatCompletionRequest>, Error>,
+) -> Result<impl IntoResponse, Error> {
+    let trace_id = Span::current().context().span().span_context().trace_id();
+    info!(?trace_id, "handling request");
+    let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
+    let task = ChatCompletionTask::new(trace_id, request, headers);
+    match state.orchestrator.handle_chat_completions(task).await {
+        Ok(response) => match response {
+            ChatCompletionResponse::Unary(response) => Ok(Json(response).into_response()),
+            ChatCompletionResponse::Streaming(response_rx) => {
+                let response_stream = ReceiverStream::new(response_rx);
+                let sse = Sse::new(response_stream).keep_alive(KeepAlive::default());
+                Ok(sse.into_response())
+            }
+        },
         Err(error) => Err(error.into()),
     }
 }
