@@ -59,9 +59,10 @@ impl OpenAiClient {
     pub async fn chat_completions(
         &self,
         request: ChatCompletionRequest,
+        headers: HeaderMap,
     ) -> Result<ChatCompletionResponse, Error> {
         let url = self.client.base_url().join("/v1/chat/completions").unwrap();
-        let headers = with_traceparent_header(HeaderMap::new());
+        let headers = with_traceparent_header(headers);
         let stream = request.stream.unwrap_or_default();
         info!(?url, ?headers, ?request, "sending client request");
         if stream {
