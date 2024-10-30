@@ -15,9 +15,10 @@
 
 */
 
-use std::collections::HashMap;
+use std::{collections::HashMap, convert::Infallible};
 
 use async_trait::async_trait;
+use axum::response::sse;
 use futures::StreamExt;
 use hyper::{HeaderMap, StatusCode};
 use reqwest_eventsource::{Event, RequestBuilderExt};
@@ -74,14 +75,21 @@ impl OpenAiClient {
                 .unwrap();
             // Spawn task to forward events to receiver
             tokio::spawn(async move {
-                while let Some(Ok(event)) = event_stream.next().await {
-                    if let Event::Message(event) = event {
-                        let message = serde_json::from_str::<ChatCompletionChunk>(&event.data)
-                            .map_err(|e| Error::Http {
-                                code: StatusCode::INTERNAL_SERVER_ERROR,
-                                message: format!("error deserializing event: {e}"),
-                            });
-                        let _ = tx.send(message).await;
+                while let Some(result) = event_stream.next().await {
+                    match result {
+                        Ok(event) => {
+                            if let Event::Message(message) = event {
+                                let event = sse::Event::default().data(message.data);
+                                let _ = tx.send(Ok(event)).await;
+                            }
+                        }
+                        Err(reqwest_eventsource::Error::StreamEnded) => break,
+                        Err(error) => {
+                            // We received an error from the event stream, send an error event
+                            let event =
+                                sse::Event::default().event("error").data(error.to_string());
+                            let _ = tx.send(Ok(event)).await;
+                        }
                     }
                 }
             });
@@ -129,7 +137,7 @@ impl Client for OpenAiClient {
 #[derive(Debug)]
 pub enum ChatCompletionResponse {
     Unary(ChatCompletion),
-    Streaming(mpsc::Receiver<Result<ChatCompletionChunk, Error>>),
+    Streaming(mpsc::Receiver<Result<sse::Event, Infallible>>),
 }
 
 impl From<ChatCompletion> for ChatCompletionResponse {
