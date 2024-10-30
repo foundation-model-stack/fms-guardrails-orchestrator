@@ -25,7 +25,7 @@ use crate::{
     clients::{
         self,
         detector::{ContentAnalysisResponse, ContextType},
-        openai::Content,
+        openai::{Content, ContentType},
     },
     health::HealthCheckCache,
     pb,
@@ -998,7 +998,7 @@ impl ChatDetectionHttpRequest {
         match content {
             Content::Array(content) => {
                 for content_part in content {
-                    if content_part.r#type != "text" {
+                    if !matches!(content_part.r#type, ContentType::Text) {
                         return Err(ValidationError::Invalid(
                             "Only content of type text is allowed".into(),
                         ));
@@ -1006,7 +1006,7 @@ impl ChatDetectionHttpRequest {
                 }
                 Ok(())
             }
-            Content::String(_) => Ok(()), // if message.content is a string, it is a valid message
+            Content::Text(_) => Ok(()), // if message.content is a string, it is a valid message
         }
     }
 }
