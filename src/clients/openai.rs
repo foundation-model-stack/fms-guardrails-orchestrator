@@ -60,10 +60,18 @@ impl OpenAiClient {
         request: ChatCompletionRequest,
     ) -> Result<ChatCompletionResponse, Error> {
         let url = self.client.base_url().join("/v1/chat/completions").unwrap();
+        let headers = with_traceparent_header(HeaderMap::new());
         let stream = request.stream.unwrap_or_default();
+        info!(?url, ?headers, ?request, "sending client request");
         if stream {
             let (tx, rx) = mpsc::channel(32);
-            let mut event_stream = self.client.post(url).json(&request).eventsource().unwrap();
+            let mut event_stream = self
+                .client
+                .post(url)
+                .headers(headers)
+                .json(&request)
+                .eventsource()
+                .unwrap();
             // Spawn task to forward events to receiver
             tokio::spawn(async move {
                 while let Some(Ok(event)) = event_stream.next().await {
@@ -79,8 +87,6 @@ impl OpenAiClient {
             });
             Ok(ChatCompletionResponse::Streaming(rx))
         } else {
-            let headers = with_traceparent_header(HeaderMap::new());
-            info!(?url, ?headers, ?request, "sending client request");
             let response = self
                 .client
                 .post(url)
