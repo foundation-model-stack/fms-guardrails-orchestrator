@@ -273,13 +273,20 @@ impl Orchestrator {
                         let ctx = ctx.clone();
                         let detector_id = detector_id.clone();
                         let detector_params = detector_params.clone();
-                        let detector_config = ctx.config.detectors.get(&detector_id).unwrap();
+                        let detector_config = ctx
+                            .config
+                            .detectors
+                            .get(&detector_id)
+                            .expect(&format!("detector config not found for {}", detector_id));
 
                         let chunker_id = detector_config.chunker_id.as_str();
 
                         let default_threshold = detector_config.default_threshold;
 
-                        let chunk = chunks.get(chunker_id).unwrap().clone();
+                        let chunk = chunks
+                            .get(chunker_id)
+                            .expect(&format!("chunk not found for {}", chunker_id))
+                            .clone();
 
                         let headers = headers.clone();
 
@@ -752,7 +759,10 @@ pub async fn detect_for_generation(
     let client = ctx
         .clients
         .get_as::<TextGenerationDetectorClient>(&detector_id)
-        .unwrap();
+        .expect(&format!(
+            "error getting text generation detector client {}",
+            detector_id
+        ));
     let response = client
         .text_generation(&detector_id, request, headers)
         .await
@@ -836,7 +846,7 @@ pub async fn detect_for_context(
     let client = ctx
         .clients
         .get_as::<TextContextDocDetectorClient>(&detector_id)
-        .unwrap();
+        .expect("text context doc detector client not found");
     let response = client
         .text_context_doc(&detector_id, request, headers)
         .await

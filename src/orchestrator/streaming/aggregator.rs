@@ -142,7 +142,9 @@ impl ResultActor {
         result.token_classification_results.output = Some(detections);
         if input_start_index == 0 {
             // Get input_token_count and seed from first generation message
-            let first = generations.first().unwrap();
+            let first = generations
+                .first()
+                .expect("first element in classified generated text stream result not found");
             result.input_token_count = first.input_token_count;
             result.seed = first.seed;
             // Get input_tokens from second generation message (if specified)
