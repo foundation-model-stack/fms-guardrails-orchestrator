@@ -40,13 +40,14 @@ use axum_extra::extract::WithRejection;
 use futures::{stream, Stream, StreamExt};
 use hyper::body::Incoming;
 use hyper_util::rt::{TokioExecutor, TokioIo};
+use opentelemetry::trace::TraceContextExt;
 use rustls::{server::WebPkiClientVerifier, RootCertStore, ServerConfig};
 use tokio::{net::TcpListener, signal};
 use tokio_rustls::TlsAcceptor;
 use tower_http::trace::TraceLayer;
 use tower_service::Service;
-use tracing::{debug, error, info, instrument, warn};
-use uuid::Uuid;
+use tracing::{debug, error, info, instrument, warn, Span};
+use tracing_opentelemetry::OpenTelemetrySpanExt;
 use webpki::types::{CertificateDer, PrivateKeyDer};
 
 use crate::{
@@ -318,10 +319,11 @@ async fn classification_with_gen(
     headers: HeaderMap,
     WithRejection(Json(request), _): WithRejection<Json<models::GuardrailsHttpRequest>, Error>,
 ) -> Result<impl IntoResponse, Error> {
-    let request_id = Uuid::new_v4();
+    let trace_id = Span::current().context().span().span_context().trace_id();
+    info!(?trace_id, "handling request");
     request.validate()?;
     let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
-    let task = ClassificationWithGenTask::new(request_id, request, headers);
+    let task = ClassificationWithGenTask::new(trace_id, request, headers);
     match state
         .orchestrator
         .handle_classification_with_gen(task)
@@ -341,10 +343,11 @@ async fn generation_with_detection(
         Error,
     >,
 ) -> Result<impl IntoResponse, Error> {
-    let request_id = Uuid::new_v4();
+    let trace_id = Span::current().context().span().span_context().trace_id();
+    info!(?trace_id, "handling request");
     request.validate()?;
     let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
-    let task = GenerationWithDetectionTask::new(request_id, request, headers);
+    let task = GenerationWithDetectionTask::new(trace_id, request, headers);
     match state
         .orchestrator
         .handle_generation_with_detection(task)
@@ -361,7 +364,8 @@ async fn stream_classification_with_gen(
     headers: HeaderMap,
     WithRejection(Json(request), _): WithRejection<Json<models::GuardrailsHttpRequest>, Error>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
-    let request_id = Uuid::new_v4();
+    let trace_id = Span::current().context().span().span_context().trace_id();
+    info!(?trace_id, "handling request");
     if let Err(error) = request.validate() {
         // Request validation failed, return stream with single error SSE event
         let error: Error = error.into();
@@ -374,7 +378,7 @@ async fn stream_classification_with_gen(
         );
     }
     let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
-    let task = StreamingClassificationWithGenTask::new(request_id, request, headers);
+    let task = StreamingClassificationWithGenTask::new(trace_id, request, headers);
     let response_stream = state
         .orchestrator
         .handle_streaming_classification_with_gen(task)
@@ -404,10 +408,11 @@ async fn detection_content(
     headers: HeaderMap,
     Json(request): Json<models::TextContentDetectionHttpRequest>,
 ) -> Result<impl IntoResponse, Error> {
-    let request_id = Uuid::new_v4();
+    let trace_id = Span::current().context().span().span_context().trace_id();
+    info!(?trace_id, "handling request");
     request.validate()?;
     let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
-    let task = TextContentDetectionTask::new(request_id, request, headers);
+    let task = TextContentDetectionTask::new(trace_id, request, headers);
     match state.orchestrator.handle_text_content_detection(task).await {
         Ok(response) => Ok(Json(response).into_response()),
         Err(error) => Err(error.into()),
@@ -420,10 +425,11 @@ async fn detect_context_documents(
     headers: HeaderMap,
     WithRejection(Json(request), _): WithRejection<Json<models::ContextDocsHttpRequest>, Error>,
 ) -> Result<impl IntoResponse, Error> {
-    let request_id = Uuid::new_v4();
+    let trace_id = Span::current().context().span().span_context().trace_id();
+    info!(?trace_id, "handling request");
     request.validate()?;
     let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
-    let task = ContextDocsDetectionTask::new(request_id, request, headers);
+    let task = ContextDocsDetectionTask::new(trace_id, request, headers);
     match state
         .orchestrator
         .handle_context_documents_detection(task)
@@ -440,10 +446,10 @@ async fn detect_chat(
     headers: HeaderMap,
     WithRejection(Json(request), _): WithRejection<Json<models::ChatDetectionHttpRequest>, Error>,
 ) -> Result<impl IntoResponse, Error> {
-    let request_id = Uuid::new_v4();
+    let trace_id = Span::current().context().span().span_context().trace_id();
     request.validate_for_text()?;
     let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
-    let task = ChatDetectionTask::new(request_id, request, headers);
+    let task = ChatDetectionTask::new(trace_id, request, headers);
     match state.orchestrator.handle_chat_detection(task).await {
         Ok(response) => Ok(Json(response).into_response()),
         Err(error) => Err(error.into()),
@@ -459,10 +465,11 @@ async fn detect_generated(
         Error,
     >,
 ) -> Result<impl IntoResponse, Error> {
-    let request_id = Uuid::new_v4();
+    let trace_id = Span::current().context().span().span_context().trace_id();
+    info!(?trace_id, "handling request");
     request.validate()?;
     let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
-    let task = DetectionOnGenerationTask::new(request_id, request, headers);
+    let task = DetectionOnGenerationTask::new(trace_id, request, headers);
     match state
         .orchestrator
         .handle_generated_text_detection(task)

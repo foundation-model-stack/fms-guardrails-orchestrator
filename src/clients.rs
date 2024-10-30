@@ -24,14 +24,18 @@ use std::{
 };
 
 use async_trait::async_trait;
+use axum::http::{Extensions, HeaderMap};
 use futures::Stream;
 use ginepro::LoadBalancedChannel;
 use tokio::{fs::File, io::AsyncReadExt};
+use tonic::{metadata::MetadataMap, Request};
+use tracing::{debug, instrument};
 use url::Url;
 
 use crate::{
     config::{ServiceConfig, Tls},
     health::HealthCheckResult,
+    tracing_utils::with_traceparent_header,
 };
 
 pub mod errors;
@@ -193,6 +197,7 @@ impl ClientMap {
     }
 }
 
+#[instrument(skip_all, fields(hostname = service_config.hostname))]
 pub async fn create_http_client(default_port: u16, service_config: &ServiceConfig) -> HttpClient {
     let port = service_config.port.unwrap_or(default_port);
     let protocol = match service_config.tls {
@@ -201,6 +206,7 @@ pub async fn create_http_client(default_port: u16, service_config: &ServiceConfi
     };
     let mut base_url = Url::parse(&format!("{}://{}", protocol, &service_config.hostname)).unwrap();
     base_url.set_port(Some(port)).unwrap();
+    debug!(%base_url, "creating HTTP client");
     let request_timeout = Duration::from_secs(
         service_config
             .request_timeout
@@ -250,22 +256,28 @@ pub async fn create_http_client(default_port: u16, service_config: &ServiceConfi
     HttpClient::new(base_url, client)
 }
 
+#[instrument(skip_all, fields(hostname = service_config.hostname))]
 pub async fn create_grpc_client<C>(
     default_port: u16,
     service_config: &ServiceConfig,
     new: fn(LoadBalancedChannel) -> C,
 ) -> C {
+    let port = service_config.port.unwrap_or(default_port);
+    let protocol = match service_config.tls {
+        Some(_) => "https",
+        None => "http",
+    };
+    let mut base_url = Url::parse(&format!("{}://{}", protocol, &service_config.hostname)).unwrap();
+    base_url.set_port(Some(port)).unwrap();
+    debug!(%base_url, "creating gRPC client");
     let request_timeout = Duration::from_secs(
         service_config
             .request_timeout
             .unwrap_or(DEFAULT_REQUEST_TIMEOUT_SEC),
     );
-    let mut builder = LoadBalancedChannel::builder((
-        service_config.hostname.clone(),
-        service_config.port.unwrap_or(default_port),
-    ))
-    .connect_timeout(DEFAULT_CONNECT_TIMEOUT)
-    .timeout(request_timeout);
+    let mut builder = LoadBalancedChannel::builder((service_config.hostname.clone(), port))
+        .connect_timeout(DEFAULT_CONNECT_TIMEOUT)
+        .timeout(request_timeout);
 
     let client_tls_config = if let Some(Tls::Config(tls_config)) = &service_config.tls {
         let cert_path = tls_config.cert_path.as_ref().unwrap().as_path();
@@ -329,6 +341,14 @@ pub fn is_valid_hostname(hostname: &str) -> bool {
         })
         || hostname.is_empty()
         || hostname.len() > 253)
+}
+
+/// Turns a gRPC client request body of type `T` and header map into a `tonic::Request<T>`.
+/// Will also inject the current `traceparent` header into the request based on the current span.
+fn grpc_request_with_headers<T>(request: T, headers: HeaderMap) -> Request<T> {
+    let headers = with_traceparent_header(headers);
+    let metadata = MetadataMap::from_headers(headers);
+    Request::from_parts(metadata, Extensions::new(), request)
 }
 
 #[cfg(test)]

@@ -50,19 +50,19 @@ pub type Detections = Vec<TokenClassificationResult>;
 
 impl Orchestrator {
     /// Handles streaming tasks.
-    #[instrument(name = "stream_handler", skip_all)]
+    #[instrument(skip_all, fields(trace_id = task.trace_id.to_string(), model_id = task.model_id, headers = ?task.headers))]
     pub async fn handle_streaming_classification_with_gen(
         &self,
         task: StreamingClassificationWithGenTask,
     ) -> ReceiverStream<Result<ClassifiedGeneratedTextStreamResult, Error>> {
+        info!(config = ?task.guardrails_config, "starting task");
+
         let ctx = self.ctx.clone();
-        let request_id = task.request_id;
+        let trace_id = task.trace_id;
         let model_id = task.model_id;
         let params = task.text_gen_parameters;
         let input_text = task.inputs;
         let headers = task.headers;
-
-        info!(%request_id, config = ?task.guardrails_config, "starting task");
 
         // Create response channel
         #[allow(clippy::type_complexity)]
@@ -88,7 +88,7 @@ impl Orchestrator {
                     {
                         Ok(result) => result,
                         Err(error) => {
-                            error!(%request_id, %error, "task failed");
+                            error!(%trace_id, %error, "task failed");
                             let _ = response_tx.send(Err(error)).await;
                             return;
                         }
@@ -96,7 +96,7 @@ impl Orchestrator {
                 }
                 _ => None,
             };
-            debug!(?input_detections);
+            debug!(?input_detections); // TODO: metrics
             if let Some(mut input_detections) = input_detections {
                 // Detected HAP/PII
                 // Do tokenization to get input_token_count
@@ -106,7 +106,7 @@ impl Orchestrator {
                     {
                         Ok(result) => result,
                         Err(error) => {
-                            error!(%request_id, %error, "task failed");
+                            error!(%trace_id, %error, "task failed");
                             let _ = response_tx.send(Err(error)).await;
                             return;
                         }
@@ -141,7 +141,7 @@ impl Orchestrator {
                 {
                     Ok(generation_stream) => generation_stream,
                     Err(error) => {
-                        error!(%request_id, %error, "task failed");
+                        error!(%trace_id, %error, "task failed");
                         let _ = response_tx.send(Err(error)).await;
                         return;
                     }
@@ -171,7 +171,7 @@ impl Orchestrator {
                         {
                             Ok(result_rx) => result_rx,
                             Err(error) => {
-                                error!(%request_id, %error, "task failed");
+                                error!(%trace_id, %error, "task failed");
                                 let _ = error_tx.send(error.clone());
                                 let _ = response_tx.send(Err(error)).await;
                                 return;
@@ -183,19 +183,19 @@ impl Orchestrator {
                             loop {
                                 tokio::select! {
                                     Ok(error) = error_rx.recv() => {
-                                        error!(%request_id, %error, "task failed");
-                                        debug!(%request_id, "sending error to client and terminating");
+                                        error!(%trace_id, %error, "task failed");
+                                        debug!(%trace_id, "sending error to client and terminating");
                                         let _ = response_tx.send(Err(error)).await;
                                         return;
                                     },
                                     result = result_rx.recv() => {
                                         match result {
                                             Some(result) => {
-                                                debug!(%request_id, ?result, "sending result to client");
+                                                debug!(%trace_id, ?result, "sending result to client");
                                                 let _ = response_tx.send(result).await;
                                             },
                                             None => {
-                                                info!(%request_id, "task completed: stream closed");
+                                                info!(%trace_id, "task completed: stream closed");
                                                 break;
                                             },
                                         }
@@ -208,10 +208,10 @@ impl Orchestrator {
                         // No output detectors, forward generation results to response channel
                         tokio::spawn(async move {
                             while let Some(result) = generation_stream.next().await {
-                                debug!(%request_id, ?result, "sending result to client");
+                                debug!(%trace_id, ?result, "sending result to client");
                                 let _ = response_tx.send(result).await;
                             }
-                            debug!(%request_id, "task completed: stream closed");
+                            debug!(%trace_id, "task completed: stream closed");
                         });
                     }
                 }
@@ -232,10 +232,11 @@ async fn streaming_output_detection_task(
     error_tx: broadcast::Sender<Error>,
     headers: HeaderMap,
 ) -> Result<mpsc::Receiver<Result<ClassifiedGeneratedTextStreamResult, Error>>, Error> {
+    debug!(?detectors, "creating chunk broadcast streams");
+
     // Create generation broadcast stream
     let (generation_tx, generation_rx) = broadcast::channel(1024);
 
-    debug!("creating chunk broadcast streams");
     let chunker_ids = get_chunker_ids(ctx, detectors)?;
     // Create a map of chunker_id->chunk_broadcast_stream
     // This is to enable fan-out of chunk streams to potentially multiple detectors that use the same chunker.
@@ -325,6 +326,7 @@ async fn generation_broadcast_task(
     generation_tx: broadcast::Sender<ClassifiedGeneratedTextStreamResult>,
     error_tx: broadcast::Sender<Error>,
 ) {
+    debug!("forwarding response stream");
     let mut error_rx = error_tx.subscribe();
     loop {
         tokio::select! {
@@ -354,8 +356,8 @@ async fn generation_broadcast_task(
 /// Wraps a unary detector service to make it streaming.
 /// Consumes chunk broadcast stream, sends unary requests to a detector service,
 /// and sends chunk + responses to detection stream.
-#[instrument(skip_all)]
 #[allow(clippy::too_many_arguments)]
+#[instrument(skip_all, fields(detector_id))]
 async fn detection_task(
     ctx: Arc<Context>,
     detector_id: String,
@@ -366,6 +368,7 @@ async fn detection_task(
     error_tx: broadcast::Sender<Error>,
     headers: HeaderMap,
 ) {
+    debug!(threshold, "starting task");
     let mut error_rx = error_tx.subscribe();
 
     loop {
@@ -433,7 +436,7 @@ async fn detection_task(
 
 /// Opens bi-directional stream to a chunker service
 /// with generation stream input and returns chunk broadcast stream.
-#[instrument(skip_all)]
+#[instrument(skip_all, fields(chunker_id))]
 async fn chunk_broadcast_task(
     ctx: Arc<Context>,
     chunker_id: String,
@@ -441,7 +444,7 @@ async fn chunk_broadcast_task(
     error_tx: broadcast::Sender<Error>,
 ) -> Result<broadcast::Sender<Chunk>, Error> {
     // Consume generation stream and convert to chunker input stream
-    debug!(%chunker_id, "creating chunker input stream");
+    debug!("creating chunker input stream");
     // NOTE: Text gen providers can return more than 1 token in single stream object. This can create
     // edge cases where the enumeration generated below may not line up with token / response boundaries.
     // So the more accurate way here might be to use `Tokens` object from response, but since that is an
@@ -459,7 +462,7 @@ async fn chunk_broadcast_task(
             }
         })
         .boxed();
-    debug!(%chunker_id, "creating chunker output stream");
+    debug!("creating chunker output stream");
     let id = chunker_id.clone(); // workaround for StreamExt::map_err
 
     let response_stream = if chunker_id == DEFAULT_CHUNKER_ID {
@@ -490,7 +493,7 @@ async fn chunk_broadcast_task(
         }); // maps stream errors
 
     // Spawn task to consume output stream forward to broadcast channel
-    debug!(%chunker_id, "spawning chunker broadcast task");
+    debug!("spawning chunker broadcast task");
     let (chunk_tx, _) = broadcast::channel(1024);
     tokio::spawn({
         let mut error_rx = error_tx.subscribe();
@@ -502,17 +505,17 @@ async fn chunk_broadcast_task(
                     result = output_stream.next() => {
                         match result {
                             Some(Ok(chunk)) => {
-                                debug!(%chunker_id, ?chunk, "received chunk");
+                                debug!(?chunk, "received chunk");
                                 let _ = chunk_tx.send(chunk);
                             },
                             Some(Err(error)) => {
-                                error!(%chunker_id, %error, "chunker error, cancelling task");
+                                error!(%error, "chunker error, cancelling task");
                                 let _ = error_tx.send(error);
                                 tokio::time::sleep(Duration::from_millis(5)).await;
                                 break;
                             },
                             None => {
-                                debug!(%chunker_id, "stream closed");
+                                debug!("stream closed");
                                 break
                             },
                         }
@@ -525,6 +528,8 @@ async fn chunk_broadcast_task(
 }
 
 /// Sends generate stream request to a generation service.
+#[allow(clippy::type_complexity)]
+#[instrument(skip_all, fields(model_id))]
 async fn generate_stream(
     ctx: &Arc<Context>,
     model_id: String,
@@ -535,6 +540,7 @@ async fn generate_stream(
     Pin<Box<dyn Stream<Item = Result<ClassifiedGeneratedTextStreamResult, Error>> + Send>>,
     Error,
 > {
+    debug!(?params, "sending generate stream request");
     let client = ctx
         .clients
         .get_as::<GenerationClient>("generation")

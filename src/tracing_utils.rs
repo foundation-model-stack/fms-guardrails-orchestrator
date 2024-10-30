@@ -17,21 +17,21 @@
 
 use std::time::Duration;
 
-use axum::extract::Request;
-use axum::http::HeaderMap;
-use axum::response::Response;
+use axum::{extract::Request, http::HeaderMap, response::Response};
 use opentelemetry::{
     global,
     metrics::MetricsError,
     trace::{TraceContextExt, TraceError, TracerProvider},
     KeyValue,
 };
+use opentelemetry_http::{HeaderExtractor, HeaderInjector};
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::{
     metrics::{
         reader::{DefaultAggregationSelector, DefaultTemporalitySelector},
         SdkMeterProvider,
     },
+    propagation::TraceContextPropagator,
     runtime,
     trace::{Config, Sampler},
     Resource,
@@ -50,12 +50,21 @@ pub enum TracingError {
     MetricsError(#[from] MetricsError),
 }
 
+fn service_config(tracing_config: TracingConfig) -> Config {
+    Config::default()
+        .with_resource(Resource::new(vec![KeyValue::new(
+            "service.name",
+            tracing_config.service_name,
+        )]))
+        .with_sampler(Sampler::AlwaysOn)
+}
+
 /// Initializes an OpenTelemetry tracer provider with an OTLP export pipeline based on the
 /// provided config.
 fn init_tracer_provider(
-    otlp_export_config: TracingConfig,
+    tracing_config: TracingConfig,
 ) -> Result<Option<opentelemetry_sdk::trace::TracerProvider>, TracingError> {
-    if let Some((protocol, endpoint)) = otlp_export_config.traces {
+    if let Some((protocol, endpoint)) = tracing_config.clone().traces {
         Ok(Some(
             match protocol {
                 OtlpProtocol::Grpc => opentelemetry_otlp::new_pipeline().tracing().with_exporter(
@@ -72,15 +81,16 @@ fn init_tracer_provider(
                         .with_timeout(Duration::from_secs(3)),
                 ),
             }
-            .with_trace_config(
-                Config::default()
-                    .with_resource(Resource::new(vec![KeyValue::new(
-                        "service.name",
-                        otlp_export_config.service_name,
-                    )]))
-                    .with_sampler(Sampler::AlwaysOn),
-            )
+            .with_trace_config(service_config(tracing_config))
             .install_batch(runtime::Tokio)?,
+        ))
+    } else if !tracing_config.quiet {
+        // We still need a tracing provider as long as we are logging in order to enable any
+        // trace-sensitive logs, such as any mentions of a request's trace_id.
+        Ok(Some(
+            opentelemetry_sdk::trace::TracerProvider::builder()
+                .with_config(service_config(tracing_config))
+                .build(),
         ))
     } else {
         Ok(None)
@@ -90,9 +100,9 @@ fn init_tracer_provider(
 /// Initializes an OpenTelemetry meter provider with an OTLP export pipeline based on the
 /// provided config.
 fn init_meter_provider(
-    otlp_export_config: TracingConfig,
+    tracing_config: TracingConfig,
 ) -> Result<Option<SdkMeterProvider>, TracingError> {
-    if let Some((protocol, endpoint)) = otlp_export_config.metrics {
+    if let Some((protocol, endpoint)) = tracing_config.metrics {
         Ok(Some(
             match protocol {
                 OtlpProtocol::Grpc => opentelemetry_otlp::new_pipeline()
@@ -113,7 +123,7 @@ fn init_meter_provider(
             }
             .with_resource(Resource::new(vec![KeyValue::new(
                 "service.name",
-                otlp_export_config.service_name,
+                tracing_config.service_name,
             )]))
             .with_timeout(Duration::from_secs(10))
             .with_period(Duration::from_secs(3))
@@ -132,6 +142,7 @@ pub fn init_tracing(
     tracing_config: TracingConfig,
 ) -> Result<impl FnOnce() -> Result<(), TracingError>, TracingError> {
     let mut layers = Vec::new();
+    global::set_text_map_propagator(TraceContextPropagator::new());
 
     // TODO: Find a better way to only propagate errors from other crates
     let filter = EnvFilter::try_from_default_env()
@@ -319,4 +330,44 @@ pub fn on_outgoing_eos(trailers: Option<&HeaderMap>, stream_duration: Duration, 
         stream_duration = stream_duration.as_millis()
     );
     info!(monotonic_histogram.service_stream_response_duration = stream_duration.as_millis());
+}
+
+/// Injects the `traceparent` header into the header map from the current tracing span context.
+/// Also injects empty `tracestate` header by default. This can be used to propagate
+/// vendor-specific trace context.
+/// Used by both gRPC and HTTP requests since `tonic::Metadata` uses `http::HeaderMap`.
+/// See https://www.w3.org/TR/trace-context/#trace-context-http-headers-format.
+pub fn with_traceparent_header(headers: HeaderMap) -> HeaderMap {
+    let mut headers = headers.clone();
+    let ctx = Span::current().context();
+    global::get_text_map_propagator(|propagator| {
+        // Injects current `traceparent` (and by default empty `tracestate`)
+        propagator.inject_context(&ctx, &mut HeaderInjector(&mut headers))
+    });
+    headers
+}
+
+/// Extracts the `traceparent` header from an HTTP response's headers and uses it to set the current
+/// tracing span context (i.e. use `traceparent` as parent to the current span).
+/// Defaults to using the current context when no `traceparent` is found.
+/// See https://www.w3.org/TR/trace-context/#trace-context-http-headers-format.
+pub fn trace_context_from_http_response(response: &reqwest::Response) {
+    let ctx = global::get_text_map_propagator(|propagator| {
+        // Returns the current context if no `traceparent` is found
+        propagator.extract(&HeaderExtractor(response.headers()))
+    });
+    Span::current().set_parent(ctx);
+}
+
+/// Extracts the `traceparent` header from a gRPC response's metadata and uses it to set the current
+/// tracing span context (i.e. use `traceparent` as parent to the current span).
+/// Defaults to using the current context when no `traceparent` is found.
+/// See https://www.w3.org/TR/trace-context/#trace-context-http-headers-format.
+pub fn trace_context_from_grpc_response<T>(response: &tonic::Response<T>) {
+    let ctx = global::get_text_map_propagator(|propagator| {
+        let metadata = response.metadata().clone();
+        // Returns the current context if no `traceparent` is found
+        propagator.extract(&HeaderExtractor(&metadata.into_headers()))
+    });
+    Span::current().set_parent(ctx);
 }
