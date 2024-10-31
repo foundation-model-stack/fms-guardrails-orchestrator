@@ -25,8 +25,10 @@ use std::{collections::HashMap, sync::Arc};
 use axum::http::header::HeaderMap;
 use opentelemetry::trace::TraceId;
 use tokio::{sync::RwLock, time::Instant};
+use tonic::codegen::http::StatusCode;
 use tracing::{debug, info};
 
+use crate::health::{HealthCheckResult, HealthStatus};
 use crate::{
     clients::{
         self,
@@ -115,7 +117,14 @@ impl Orchestrator {
             // TODO: perform health checks concurrently?
             for (key, client) in self.ctx.clients.iter() {
                 let result = client.health().await;
-                health.insert(key.into(), result);
+                health.insert(
+                    key.into(),
+                    result.unwrap_or(HealthCheckResult {
+                        status: HealthStatus::Unknown,
+                        code: StatusCode::INTERNAL_SERVER_ERROR,
+                        reason: Some("Unknown health check error".to_string()),
+                    }),
+                );
             }
             let mut client_health = self.client_health.write().await;
             *client_health = health;

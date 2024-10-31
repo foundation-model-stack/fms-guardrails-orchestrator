@@ -22,15 +22,17 @@ use url::Url;
 
 use crate::health::{HealthCheckResult, HealthStatus, OptionalHealthCheckResponseBody};
 
+pub type ClientImpl = reqwest_middleware::ClientWithMiddleware;
+
 #[derive(Clone)]
 pub struct HttpClient {
     base_url: Url,
     health_url: Url,
-    client: reqwest::Client,
+    client: ClientImpl,
 }
 
 impl HttpClient {
-    pub fn new(base_url: Url, client: reqwest::Client) -> Self {
+    pub fn new(base_url: Url, client: ClientImpl) -> Self {
         let health_url = base_url.join("health").unwrap();
         Self {
             base_url,
@@ -45,7 +47,7 @@ impl HttpClient {
 
     /// This is sectioned off to allow for testing.
     pub(super) async fn http_response_to_health_check_result(
-        res: Result<Response, reqwest::Error>,
+        res: reqwest_middleware::Result<Response>,
     ) -> HealthCheckResult {
         match res {
             Ok(response) => {
@@ -113,7 +115,7 @@ impl HttpClient {
 }
 
 impl std::ops::Deref for HttpClient {
-    type Target = reqwest::Client;
+    type Target = ClientImpl;
 
     fn deref(&self) -> &Self::Target {
         &self.client

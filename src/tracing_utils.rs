@@ -18,6 +18,8 @@
 use std::time::Duration;
 
 use axum::{extract::Request, http::HeaderMap, response::Response};
+use hyper::http::Extensions;
+use opentelemetry::trace::TraceId;
 use opentelemetry::{
     global,
     metrics::MetricsError,
@@ -36,7 +38,8 @@ use opentelemetry_sdk::{
     trace::{Config, Sampler},
     Resource,
 };
-use tracing::{error, info, info_span, Span};
+use tokio::time::Instant;
+use tracing::{debug, error, info, info_span, Span};
 use tracing_opentelemetry::{MetricsLayer, OpenTelemetrySpanExt};
 use tracing_subscriber::{layer::SubscriberExt, EnvFilter, Layer};
 
@@ -352,11 +355,7 @@ pub fn with_traceparent_header(headers: HeaderMap) -> HeaderMap {
 /// Defaults to using the current context when no `traceparent` is found.
 /// See https://www.w3.org/TR/trace-context/#trace-context-http-headers-format.
 pub fn trace_context_from_http_response(response: &reqwest::Response) {
-    let ctx = global::get_text_map_propagator(|propagator| {
-        // Returns the current context if no `traceparent` is found
-        propagator.extract(&HeaderExtractor(response.headers()))
-    });
-    Span::current().set_parent(ctx);
+    trace_context(response.headers());
 }
 
 /// Extracts the `traceparent` header from a gRPC response's metadata and uses it to set the current
@@ -364,10 +363,154 @@ pub fn trace_context_from_http_response(response: &reqwest::Response) {
 /// Defaults to using the current context when no `traceparent` is found.
 /// See https://www.w3.org/TR/trace-context/#trace-context-http-headers-format.
 pub fn trace_context_from_grpc_response<T>(response: &tonic::Response<T>) {
+    let metadata = response.metadata().clone();
+    trace_context(&metadata.into_headers());
+}
+
+/// Extracts the `traceparent` header from the header map and sets the current tracing span context.
+/// Uses current span context if no `traceparent` is found.
+pub fn trace_context(headers: &HeaderMap) {
     let ctx = global::get_text_map_propagator(|propagator| {
-        let metadata = response.metadata().clone();
         // Returns the current context if no `traceparent` is found
-        propagator.extract(&HeaderExtractor(&metadata.into_headers()))
+        propagator.extract(&HeaderExtractor(headers))
     });
     Span::current().set_parent(ctx);
+}
+
+/// A `reqwest_middleware::Middleware` for tracing metrics in HTTP clients
+pub struct HttpClientTraceLayer;
+
+#[async_trait::async_trait]
+impl reqwest_middleware::Middleware for HttpClientTraceLayer {
+    async fn handle(
+        &self,
+        request: reqwest::Request,
+        extensions: &mut Extensions,
+        next: reqwest_middleware::Next<'_>,
+    ) -> reqwest_middleware::Result<reqwest::Response> {
+        let request_copy = request.try_clone().unwrap();
+        let trace_id = current_trace_id();
+        let protocol = "HTTP";
+        let method = request_copy.method();
+        let url = request_copy.url().path();
+        let request_headers = request_copy.headers();
+
+        info!(
+            ?trace_id,
+            protocol,
+            ?method,
+            url,
+            ?request_headers,
+            "sending client request"
+        );
+        info!(
+            monotonic_counter.client_request_count = 1,
+            ?trace_id,
+            protocol,
+            ?method,
+            url,
+            ?request_headers,
+        );
+        debug!(outgoing_client_request = ?request);
+
+        let start_time = Instant::now();
+        let response = next.run(request, extensions).await?;
+        let request_duration_ms = Instant::now()
+            .checked_duration_since(start_time)
+            .unwrap()
+            .as_millis();
+
+        let response_status = response.status();
+        let response_headers = response.headers();
+
+        info!(
+            ?trace_id,
+            protocol,
+            ?method,
+            url,
+            request_duration_ms,
+            ?response_status,
+            ?response_headers,
+            "client response received",
+        );
+        debug!(incoming_client_response = ?response);
+
+        info!(
+            monotonic_counter.client_response_count = 1,
+            ?trace_id,
+            protocol,
+            ?method,
+            url,
+            request_duration_ms,
+            ?response_status,
+            ?response_headers,
+        );
+        info!(
+            histogram.client_request_duration = request_duration_ms,
+            ?trace_id,
+            protocol,
+            ?method,
+            url,
+            ?response_status,
+            ?response_headers,
+        );
+
+        if response_status.is_server_error() {
+            // On every server error (HTTP 5xx) response
+            info!(
+                monotonic_counter.client_error_response_count = 1,
+                ?trace_id,
+                protocol,
+                error_kind = "server",
+                ?method,
+                url,
+                request_duration_ms,
+                ?response_status,
+                ?response_headers,
+            );
+        } else if response.status().is_client_error() {
+            // On every client error (HTTP 4xx) response
+            info!(
+                monotonic_counter.client_error_response_count = 1,
+                ?trace_id,
+                protocol,
+                error_kind = "client",
+                ?method,
+                url,
+                request_duration_ms,
+                ?response_status,
+                ?response_headers,
+            );
+        } else if response.status().is_success() {
+            // On every successful (HTTP 2xx) response
+            info!(
+                monotonic_counter.client_success_response_count = 1,
+                ?trace_id,
+                protocol,
+                ?method,
+                url,
+                request_duration_ms,
+                ?response_status,
+                ?response_headers,
+            );
+        } else {
+            error!(
+                ?trace_id,
+                protocol,
+                ?method,
+                url,
+                request_duration_ms,
+                ?response_headers,
+                "unexpected response status code: {:?}",
+                response_status,
+            );
+        }
+
+        Ok(response)
+    }
+}
+
+/// Returns the `trace_id` of the current span according to the global tracing subscriber.
+pub fn current_trace_id() -> TraceId {
+    Span::current().context().span().span_context().trace_id()
 }

@@ -21,7 +21,6 @@ use axum::http::HeaderMap;
 use hyper::StatusCode;
 use reqwest::Response;
 use serde::{Deserialize, Serialize};
-use tracing::info;
 use url::Url;
 
 pub mod text_contents;
@@ -63,12 +62,11 @@ pub async fn post_with_headers<T: Debug + Serialize>(
     headers: HeaderMap,
     model_id: &str,
 ) -> Result<Response, Error> {
-    let headers = with_traceparent_header(headers);
-    info!(?url, ?headers, ?request, "sending client request");
+    let mut headers = with_traceparent_header(headers);
+    headers.insert(DETECTOR_ID_HEADER_NAME, model_id.parse().unwrap());
     let response = client
         .post(url)
         .headers(headers)
-        .header(DETECTOR_ID_HEADER_NAME, model_id)
         .json(&request)
         .send()
         .await?;

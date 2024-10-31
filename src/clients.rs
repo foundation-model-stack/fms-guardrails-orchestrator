@@ -35,30 +35,33 @@ use url::Url;
 use crate::{
     config::{ServiceConfig, Tls},
     health::HealthCheckResult,
-    tracing_utils::with_traceparent_header,
+    tracing_utils::{with_traceparent_header, HttpClientTraceLayer},
 };
-
-pub mod errors;
-pub use errors::Error;
-
-pub mod http;
-pub use http::HttpClient;
 
 pub mod chunker;
 
 pub mod detector;
 pub use detector::TextContentsDetectorClient;
 
-pub mod tgis;
-pub use tgis::TgisClient;
-
-pub mod nlp;
-pub use nlp::NlpClient;
+pub mod errors;
+pub use errors::Error;
 
 pub mod generation;
 pub use generation::GenerationClient;
 
+pub mod http;
+pub use http::HttpClient;
+
+pub mod grpc;
+pub use grpc::GrpcClient;
+
+pub mod nlp;
+pub use nlp::NlpClient;
+
 pub mod openai;
+
+pub mod tgis;
+pub use tgis::TgisClient;
 
 const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(60);
 const DEFAULT_REQUEST_TIMEOUT_SEC: u64 = 600;
@@ -80,7 +83,7 @@ pub trait Client: Send + Sync + 'static {
     }
 
     /// Performs a client health check.
-    async fn health(&self) -> HealthCheckResult;
+    async fn health(&self) -> Result<HealthCheckResult, Error>;
 }
 
 impl dyn Client {
@@ -253,15 +256,19 @@ pub async fn create_http_client(default_port: u16, service_config: &ServiceConfi
     let client = builder
         .build()
         .unwrap_or_else(|error| panic!("error creating http client: {error}"));
+    let client = reqwest_middleware::ClientBuilder::new(client)
+        .with(HttpClientTraceLayer)
+        .build();
     HttpClient::new(base_url, client)
 }
-
 #[instrument(skip_all, fields(hostname = service_config.hostname))]
-pub async fn create_grpc_client<C>(
+pub async fn create_grpc_client<C: Clone>(
+    service_name: &str,
     default_port: u16,
     service_config: &ServiceConfig,
     new: fn(LoadBalancedChannel) -> C,
-) -> C {
+    enable_tracing: bool,
+) -> GrpcClient<C> {
     let port = service_config.port.unwrap_or(default_port);
     let protocol = match service_config.tls {
         Some(_) => "https",
@@ -314,7 +321,7 @@ pub async fn create_grpc_client<C>(
         .channel()
         .await
         .unwrap_or_else(|error| panic!("error creating grpc client: {error}"));
-    new(channel)
+    GrpcClient::new(service_name.to_string(), new(channel), enable_tracing)
 }
 
 /// Returns `true` if hostname is valid according to [IETF RFC 1123](https://tools.ietf.org/html/rfc1123).
@@ -366,7 +373,7 @@ mod tests {
     async fn mock_http_response(
         status: StatusCode,
         body: &str,
-    ) -> Result<Response, reqwest::Error> {
+    ) -> reqwest_middleware::Result<Response> {
         Ok(reqwest::Response::from(
             http::Response::builder()
                 .status(status)

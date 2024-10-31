@@ -16,31 +16,31 @@
 */
 
 use async_trait::async_trait;
-use axum::http::HeaderMap;
+use axum::http::{HeaderMap, StatusCode};
 use futures::{StreamExt, TryStreamExt};
 use ginepro::LoadBalancedChannel;
-use tonic::{Code, Request};
-use tracing::{info, instrument};
+use tonic::Request;
+use tracing::instrument;
 
 use super::{
-    create_grpc_client, errors::grpc_to_http_code, grpc_request_with_headers, BoxStream, Client,
-    Error,
+    create_grpc_client, grpc::GrpcClient, grpc_request_with_headers, BoxStream, Client, Error,
 };
 use crate::{
     config::ServiceConfig,
+    grpc_call, grpc_stream_call,
     health::{HealthCheckResult, HealthStatus},
     pb::{
         caikit::runtime::nlp::{
-            nlp_service_client::NlpServiceClient, ServerStreamingTextGenerationTaskRequest,
-            TextGenerationTaskRequest, TokenClassificationTaskRequest, TokenizationTaskRequest,
+            nlp_service_client::NlpServiceClient, nlp_service_server,
+            ServerStreamingTextGenerationTaskRequest, TextGenerationTaskRequest,
+            TokenClassificationTaskRequest, TokenizationTaskRequest,
         },
         caikit_data_model::nlp::{
             GeneratedTextResult, GeneratedTextStreamResult, TokenClassificationResults,
             TokenizationResults,
         },
-        grpc::health::v1::{health_client::HealthClient, HealthCheckRequest},
+        grpc::health::v1::{health_client::HealthClient, health_server, HealthCheckRequest},
     },
-    tracing_utils::trace_context_from_grpc_response,
 };
 
 const DEFAULT_PORT: u16 = 8085;
@@ -49,15 +49,29 @@ const MODEL_ID_HEADER_NAME: &str = "mm-model-id";
 #[cfg_attr(test, faux::create)]
 #[derive(Clone)]
 pub struct NlpClient {
-    client: NlpServiceClient<LoadBalancedChannel>,
-    health_client: HealthClient<LoadBalancedChannel>,
+    client: GrpcClient<NlpServiceClient<LoadBalancedChannel>>,
+    health_client: GrpcClient<HealthClient<LoadBalancedChannel>>,
 }
 
 #[cfg_attr(test, faux::methods)]
 impl NlpClient {
     pub async fn new(config: &ServiceConfig) -> Self {
-        let client = create_grpc_client(DEFAULT_PORT, config, NlpServiceClient::new).await;
-        let health_client = create_grpc_client(DEFAULT_PORT, config, HealthClient::new).await;
+        let client = create_grpc_client(
+            nlp_service_server::SERVICE_NAME,
+            DEFAULT_PORT,
+            config,
+            NlpServiceClient::new,
+            true,
+        )
+        .await;
+        let health_client = create_grpc_client(
+            health_server::SERVICE_NAME,
+            DEFAULT_PORT,
+            config,
+            HealthClient::new,
+            false,
+        )
+        .await;
         Self {
             client,
             health_client,
@@ -71,12 +85,12 @@ impl NlpClient {
         request: TokenizationTaskRequest,
         headers: HeaderMap,
     ) -> Result<TokenizationResults, Error> {
-        let mut client = self.client.clone();
         let request = request_with_headers(request, model_id, headers);
-        info!(?request, "sending request to NLP gRPC service");
-        let response = client.tokenization_task_predict(request).await?;
-        trace_context_from_grpc_response(&response);
-        Ok(response.into_inner())
+        grpc_call!(
+            self.client,
+            request,
+            NlpServiceClient::tokenization_task_predict
+        )
     }
 
     #[instrument(skip_all, fields(model_id))]
@@ -86,12 +100,12 @@ impl NlpClient {
         request: TokenClassificationTaskRequest,
         headers: HeaderMap,
     ) -> Result<TokenClassificationResults, Error> {
-        let mut client = self.client.clone();
         let request = request_with_headers(request, model_id, headers);
-        info!(?request, "sending request to NLP gRPC service");
-        let response = client.token_classification_task_predict(request).await?;
-        trace_context_from_grpc_response(&response);
-        Ok(response.into_inner())
+        grpc_call!(
+            self.client,
+            request,
+            NlpServiceClient::token_classification_task_predict
+        )
     }
 
     #[instrument(skip_all, fields(model_id))]
@@ -101,12 +115,12 @@ impl NlpClient {
         request: TextGenerationTaskRequest,
         headers: HeaderMap,
     ) -> Result<GeneratedTextResult, Error> {
-        let mut client = self.client.clone();
         let request = request_with_headers(request, model_id, headers);
-        info!(?request, "sending request to NLP gRPC service");
-        let response = client.text_generation_task_predict(request).await?;
-        trace_context_from_grpc_response(&response);
-        Ok(response.into_inner())
+        grpc_call!(
+            self.client,
+            request,
+            NlpServiceClient::text_generation_task_predict
+        )
     }
 
     #[instrument(skip_all, fields(model_id))]
@@ -116,15 +130,12 @@ impl NlpClient {
         request: ServerStreamingTextGenerationTaskRequest,
         headers: HeaderMap,
     ) -> Result<BoxStream<Result<GeneratedTextStreamResult, Error>>, Error> {
-        let mut client = self.client.clone();
         let request = request_with_headers(request, model_id, headers);
-        info!(?request, "sending stream request to NLP gRPC service");
-        let response = client
-            .server_streaming_text_generation_task_predict(request)
-            .await?;
-        trace_context_from_grpc_response(&response);
-        let response_stream = response.into_inner().map_err(Into::into).boxed();
-        Ok(response_stream)
+        grpc_stream_call!(
+            self.client,
+            request,
+            NlpServiceClient::server_streaming_text_generation_task_predict
+        )
     }
 }
 
@@ -135,28 +146,31 @@ impl Client for NlpClient {
         "nlp"
     }
 
-    async fn health(&self) -> HealthCheckResult {
-        let mut client = self.health_client.clone();
-        let response = client
-            .check(HealthCheckRequest { service: "".into() })
-            .await;
+    async fn health(&self) -> Result<HealthCheckResult, Error> {
+        let request =
+            grpc_request_with_headers(HealthCheckRequest { service: "".into() }, HeaderMap::new());
+        let response = async { grpc_call!(self.health_client, request, HealthClient::check) }.await;
         let code = match response {
-            Ok(_) => Code::Ok,
-            Err(status) if matches!(status.code(), Code::InvalidArgument | Code::NotFound) => {
-                Code::Ok
-            }
-            Err(status) => status.code(),
+            Ok(_) => StatusCode::OK,
+            Err(error) => match error {
+                Error::Grpc {
+                    code: StatusCode::BAD_REQUEST | StatusCode::NOT_FOUND,
+                    ..
+                } => StatusCode::OK,
+                Error::Grpc { code, .. } => code,
+                _ => StatusCode::INTERNAL_SERVER_ERROR,
+            },
         };
-        let status = if matches!(code, Code::Ok) {
+        let status = if matches!(code, StatusCode::OK) {
             HealthStatus::Healthy
         } else {
             HealthStatus::Unhealthy
         };
-        HealthCheckResult {
+        Ok(HealthCheckResult {
             status,
-            code: grpc_to_http_code(code),
+            code,
             reason: None,
-        }
+        })
     }
 }
 

@@ -69,6 +69,23 @@ impl From<reqwest::Error> for Error {
     }
 }
 
+impl From<reqwest_middleware::Error> for Error {
+    fn from(value: reqwest_middleware::Error) -> Self {
+        error!(
+            "http request failed. Source: {}",
+            value.source().unwrap().to_string()
+        );
+        let code = match value.status() {
+            Some(code) => code,
+            None => StatusCode::INTERNAL_SERVER_ERROR,
+        };
+        Self::Http {
+            code,
+            message: value.to_string(),
+        }
+    }
+}
+
 impl From<tonic::Status> for Error {
     fn from(value: tonic::Status) -> Self {
         Self::Grpc {

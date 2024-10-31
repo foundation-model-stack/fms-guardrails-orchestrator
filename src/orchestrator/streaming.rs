@@ -161,7 +161,7 @@ impl Orchestrator {
                         let (error_tx, _) = broadcast::channel(1);
 
                         let mut result_rx = match streaming_output_detection_task(
-                            &ctx,
+                            ctx.clone(),
                             detectors,
                             generation_stream,
                             error_tx.clone(),
@@ -224,7 +224,7 @@ impl Orchestrator {
 /// Handles streaming output detection task.
 #[instrument(skip_all)]
 async fn streaming_output_detection_task(
-    ctx: &Arc<Context>,
+    ctx: Arc<Context>,
     detectors: &HashMap<String, DetectorParams>,
     generation_stream: Pin<
         Box<dyn Stream<Item = Result<ClassifiedGeneratedTextStreamResult, Error>> + Send>,
@@ -237,7 +237,7 @@ async fn streaming_output_detection_task(
     // Create generation broadcast stream
     let (generation_tx, generation_rx) = broadcast::channel(1024);
 
-    let chunker_ids = get_chunker_ids(ctx, detectors)?;
+    let chunker_ids = get_chunker_ids(&ctx, detectors)?;
     // Create a map of chunker_id->chunk_broadcast_stream
     // This is to enable fan-out of chunk streams to potentially multiple detectors that use the same chunker.
     // Each detector task will subscribe to an associated chunk stream.

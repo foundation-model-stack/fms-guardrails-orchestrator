@@ -87,11 +87,11 @@ impl Client for TextContextDocDetectorClient {
         "text_context_doc_detector"
     }
 
-    async fn health(&self) -> HealthCheckResult {
+    async fn health(&self) -> Result<HealthCheckResult, Error> {
         if let Some(health_client) = &self.health_client {
-            health_client.health().await
+            Ok(health_client.health().await)
         } else {
-            self.client.health().await
+            Ok(self.client.health().await)
         }
     }
 }

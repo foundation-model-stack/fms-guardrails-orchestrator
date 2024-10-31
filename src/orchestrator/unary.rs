@@ -128,7 +128,7 @@ impl Orchestrator {
                             .generated_text
                             .clone()
                             .unwrap_or_default();
-                        output_detection_task(&ctx, detectors, generated_text, headers).await?
+                        output_detection_task(ctx, detectors, generated_text, headers).await?
                     }
                     _ => None,
                 };
@@ -524,16 +524,16 @@ pub async fn input_detection_task(
 /// Handles output detection task.
 #[instrument(skip_all)]
 async fn output_detection_task(
-    ctx: &Arc<Context>,
+    ctx: Arc<Context>,
     detectors: &HashMap<String, DetectorParams>,
     generated_text: String,
     headers: HeaderMap,
 ) -> Result<Option<Vec<TokenClassificationResult>>, Error> {
     debug!(detectors = ?detectors.keys(), "starting output detection");
     let text_with_offsets = apply_masks(generated_text, None);
-    let chunker_ids = get_chunker_ids(ctx, detectors)?;
-    let chunks = chunk_task(ctx, chunker_ids, text_with_offsets).await?;
-    let detections = detection_task(ctx, detectors, chunks, headers).await?;
+    let chunker_ids = get_chunker_ids(&ctx, detectors)?;
+    let chunks = chunk_task(&ctx, chunker_ids, text_with_offsets).await?;
+    let detections = detection_task(&ctx, detectors, chunks, headers).await?;
     Ok((!detections.is_empty()).then_some(detections))
 }
 
