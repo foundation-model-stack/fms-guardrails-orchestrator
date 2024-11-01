@@ -14,7 +14,7 @@ impl Orchestrator {
             .ctx
             .clients
             .get_as::<OpenAiClient>("chat_generation")
-            .unwrap();
+            .expect("chat_generation client not found");
         Ok(client.chat_completions(task.request, task.headers).await?)
     }
 }

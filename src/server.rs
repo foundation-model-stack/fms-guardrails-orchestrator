@@ -154,7 +154,7 @@ pub async fn run(
     }
 
     // (2b) Add main guardrails server routes
-    let app = Router::new()
+    let mut router = Router::new()
         .route(
             &format!("{}/classification-with-text-generation", API_PREFIX),
             post(classification_with_gen),
@@ -185,16 +185,21 @@ pub async fn run(
         .route(
             &format!("{}/detection/generated", TEXT_API_PREFIX),
             post(detect_generated),
-        )
-        .route("/v1/chat/completions", post(chat_completions))
-        .with_state(shared_state)
-        .layer(
-            TraceLayer::new_for_http()
-                .make_span_with(tracing_utils::incoming_request_span)
-                .on_request(tracing_utils::on_incoming_request)
-                .on_response(tracing_utils::on_outgoing_response)
-                .on_eos(tracing_utils::on_outgoing_eos),
         );
+
+    // If chat generation is configured, enable the chat completions endpoint.
+    if shared_state.orchestrator.config().chat_generation.is_some() {
+        info!("Enabling chat completions endpoint");
+        router = router.route("/v1/chat/completions", post(chat_completions));
+    }
+
+    let app = router.with_state(shared_state).layer(
+        TraceLayer::new_for_http()
+            .make_span_with(tracing_utils::incoming_request_span)
+            .on_request(tracing_utils::on_incoming_request)
+            .on_response(tracing_utils::on_outgoing_response)
+            .on_eos(tracing_utils::on_outgoing_eos),
+    );
 
     // (2c) Generate main guardrails server handle based on whether TLS is needed
     let listener: TcpListener = TcpListener::bind(&http_addr)
