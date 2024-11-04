@@ -1,15 +1,15 @@
 use tracing::{info, instrument};
 
-use super::{ChatCompletionTask, Error, Orchestrator};
-use crate::clients::openai::{ChatCompletionResponse, OpenAiClient};
+use super::{ChatCompletionsDetectionTask, Error, Orchestrator};
+use crate::clients::openai::{ChatCompletionsResponse, OpenAiClient};
 
 impl Orchestrator {
     #[instrument(skip_all, fields(trace_id = ?task.trace_id, headers = ?task.headers))]
-    pub async fn handle_chat_completions(
+    pub async fn handle_chat_completions_detection(
         &self,
-        task: ChatCompletionTask,
-    ) -> Result<ChatCompletionResponse, Error> {
-        info!("handling chat completion task");
+        task: ChatCompletionsDetectionTask,
+    ) -> Result<ChatCompletionsResponse, Error> {
+        info!("handling chat completions detection task");
         let client = self
             .ctx
             .clients

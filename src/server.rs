@@ -52,10 +52,10 @@ use tracing_opentelemetry::OpenTelemetrySpanExt;
 use webpki::types::{CertificateDer, PrivateKeyDer};
 
 use crate::{
-    clients::openai::{ChatCompletionRequest, ChatCompletionResponse},
+    clients::openai::{ChatCompletionsRequest, ChatCompletionsResponse},
     models::{self, InfoParams, InfoResponse},
     orchestrator::{
-        self, ChatCompletionTask, ChatDetectionTask, ClassificationWithGenTask,
+        self, ChatCompletionsDetectionTask, ChatDetectionTask, ClassificationWithGenTask,
         ContextDocsDetectionTask, DetectionOnGenerationTask, GenerationWithDetectionTask,
         Orchestrator, StreamingClassificationWithGenTask, TextContentDetectionTask,
     },
@@ -187,10 +187,13 @@ pub async fn run(
             post(detect_generated),
         );
 
-    // If chat generation is configured, enable the chat completions endpoint.
+    // If chat generation is configured, enable the chat completions detection endpoint.
     if shared_state.orchestrator.config().chat_generation.is_some() {
-        info!("Enabling chat completions endpoint");
-        router = router.route("/v1/chat/completions", post(chat_completions));
+        info!("Enabling chat completions detection endpoint");
+        router = router.route(
+            "/api/v2/chat/completions-detection",
+            post(chat_completions_detection),
+        );
     }
 
     let app = router.with_state(shared_state).layer(
@@ -489,19 +492,23 @@ async fn detect_generated(
 }
 
 #[instrument(skip_all)]
-async fn chat_completions(
+async fn chat_completions_detection(
     State(state): State<Arc<ServerState>>,
     headers: HeaderMap,
-    WithRejection(Json(request), _): WithRejection<Json<ChatCompletionRequest>, Error>,
+    WithRejection(Json(request), _): WithRejection<Json<ChatCompletionsRequest>, Error>,
 ) -> Result<impl IntoResponse, Error> {
     let trace_id = Span::current().context().span().span_context().trace_id();
     info!(?trace_id, "handling request");
     let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
-    let task = ChatCompletionTask::new(trace_id, request, headers);
-    match state.orchestrator.handle_chat_completions(task).await {
+    let task = ChatCompletionsDetectionTask::new(trace_id, request, headers);
+    match state
+        .orchestrator
+        .handle_chat_completions_detection(task)
+        .await
+    {
         Ok(response) => match response {
-            ChatCompletionResponse::Unary(response) => Ok(Json(response).into_response()),
-            ChatCompletionResponse::Streaming(response_rx) => {
+            ChatCompletionsResponse::Unary(response) => Ok(Json(response).into_response()),
+            ChatCompletionsResponse::Streaming(response_rx) => {
                 let response_stream = ReceiverStream::new(response_rx);
                 let sse = Sse::new(response_stream).keep_alive(KeepAlive::default());
                 Ok(sse.into_response())
