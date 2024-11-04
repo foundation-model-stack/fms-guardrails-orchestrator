@@ -204,8 +204,11 @@ pub async fn create_http_client(default_port: u16, service_config: &ServiceConfi
         Some(_) => "https",
         None => "http",
     };
-    let mut base_url = Url::parse(&format!("{}://{}", protocol, &service_config.hostname)).unwrap();
-    base_url.set_port(Some(port)).unwrap();
+    let mut base_url = Url::parse(&format!("{}://{}", protocol, &service_config.hostname))
+        .unwrap_or_else(|e| panic!("error parsing base url: {}", e));
+    base_url
+        .set_port(Some(port))
+        .unwrap_or_else(|_| panic!("error setting port: {}", port));
     debug!(%base_url, "creating HTTP client");
     let request_timeout = Duration::from_secs(
         service_config
