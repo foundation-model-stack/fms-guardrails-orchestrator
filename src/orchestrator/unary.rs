@@ -855,7 +855,10 @@ pub async fn detect_for_context(
     let client = ctx
         .clients
         .get_as::<TextContextDocDetectorClient>(&detector_id)
-        .expect("text context doc detector client not found");
+        .expect(&format!(
+            "text context doc detector client not found for {}",
+            detector_id
+        ));
     let response = client
         .text_context_doc(&detector_id, request, headers)
         .await

@@ -401,7 +401,7 @@ async fn detection_task(
                             let client = ctx
                                 .clients
                                 .get_as::<TextContentsDetectorClient>(&detector_id)
-                                .expect("text contents detector client not found");
+                                .expect(&format!("text contents detector client not found for {}", detector_id));
                             match client.text_contents(&detector_id, request, headers)
                                 .await
                                 .map_err(|error| Error::DetectorRequestFailed { id: detector_id.clone(), error }) {
