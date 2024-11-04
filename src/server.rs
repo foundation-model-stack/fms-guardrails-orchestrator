@@ -129,15 +129,23 @@ pub async fn run(
         // Configure mTLS if client CA is provided
         let client_auth = if tls_client_ca_cert_path.is_some() {
             info!("Configuring TLS trust certificate (mTLS) for incoming connections");
-            let client_certs = load_certs(tls_client_ca_cert_path.as_ref().unwrap());
+            let client_certs = load_certs(
+                tls_client_ca_cert_path
+                    .as_ref()
+                    .expect("error loading certs for mTLS"),
+            );
             let mut client_auth_certs = RootCertStore::empty();
             for client_cert in client_certs {
                 // Should be only one
-                client_auth_certs.add(client_cert).unwrap();
+                client_auth_certs
+                    .add(client_cert.clone())
+                    .unwrap_or_else(|e| {
+                        panic!("error adding client cert {:?}: {}", client_cert, e)
+                    });
             }
             WebPkiClientVerifier::builder(client_auth_certs.into())
                 .build()
-                .unwrap()
+                .unwrap_or_else(|e| panic!("error building client verifier: {}", e))
         } else {
             WebPkiClientVerifier::no_client_auth()
         };

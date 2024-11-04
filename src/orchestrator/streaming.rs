@@ -271,11 +271,18 @@ async fn streaming_output_detection_task(
         // Create a mutable copy of the parameters, so that we can modify it based on processing
         let mut detector_params = detector_params.clone();
         let detector_id = detector_id.to_string();
-        let chunker_id = ctx.config.get_chunker_id(&detector_id).unwrap();
+        let chunker_id = ctx
+            .config
+            .get_chunker_id(&detector_id)
+            .expect("chunker id is not found");
 
         // Get the detector config
         // TODO: Add error handling
-        let detector_config = ctx.config.detectors.get(&detector_id).unwrap();
+        let detector_config = ctx
+            .config
+            .detectors
+            .get(&detector_id)
+            .expect("detector config not found");
 
         // Get the default threshold to use if threshold is not provided by the user
         let default_threshold = detector_config.default_threshold;
@@ -394,7 +401,7 @@ async fn detection_task(
                             let client = ctx
                                 .clients
                                 .get_as::<TextContentsDetectorClient>(&detector_id)
-                                .unwrap();
+                                .unwrap_or_else(|| panic!("text contents detector client not found for {}", detector_id));
                             match client.text_contents(&detector_id, request, headers)
                                 .await
                                 .map_err(|error| Error::DetectorRequestFailed { id: detector_id.clone(), error }) {
