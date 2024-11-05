@@ -40,14 +40,12 @@ use axum_extra::extract::WithRejection;
 use futures::{stream, Stream, StreamExt};
 use hyper::body::Incoming;
 use hyper_util::rt::{TokioExecutor, TokioIo};
-use opentelemetry::trace::TraceContextExt;
 use rustls::{server::WebPkiClientVerifier, RootCertStore, ServerConfig};
 use tokio::{net::TcpListener, signal};
 use tokio_rustls::TlsAcceptor;
 use tower_http::trace::TraceLayer;
 use tower_service::Service;
-use tracing::{debug, error, info, instrument, warn, Span};
-use tracing_opentelemetry::OpenTelemetrySpanExt;
+use tracing::{debug, error, info, instrument, warn};
 use webpki::types::{CertificateDer, PrivateKeyDer};
 
 use crate::{
@@ -57,7 +55,7 @@ use crate::{
         DetectionOnGenerationTask, GenerationWithDetectionTask, Orchestrator,
         StreamingClassificationWithGenTask, TextContentDetectionTask,
     },
-    tracing_utils::trace_layer,
+    tracing_utils::{current_trace_id, trace_layer},
 };
 
 const API_PREFIX: &str = r#"/api/v1/task"#;
@@ -328,7 +326,7 @@ async fn classification_with_gen(
     headers: HeaderMap,
     WithRejection(Json(request), _): WithRejection<Json<models::GuardrailsHttpRequest>, Error>,
 ) -> Result<impl IntoResponse, Error> {
-    let trace_id = Span::current().context().span().span_context().trace_id();
+    let trace_id = current_trace_id();
     info!(?trace_id, "handling request");
     request.validate()?;
     let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
@@ -352,7 +350,7 @@ async fn generation_with_detection(
         Error,
     >,
 ) -> Result<impl IntoResponse, Error> {
-    let trace_id = Span::current().context().span().span_context().trace_id();
+    let trace_id = current_trace_id();
     info!(?trace_id, "handling request");
     request.validate()?;
     let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
@@ -373,7 +371,7 @@ async fn stream_classification_with_gen(
     headers: HeaderMap,
     WithRejection(Json(request), _): WithRejection<Json<models::GuardrailsHttpRequest>, Error>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
-    let trace_id = Span::current().context().span().span_context().trace_id();
+    let trace_id = current_trace_id();
     info!(?trace_id, "handling request");
     if let Err(error) = request.validate() {
         // Request validation failed, return stream with single error SSE event
@@ -417,7 +415,7 @@ async fn detection_content(
     headers: HeaderMap,
     Json(request): Json<models::TextContentDetectionHttpRequest>,
 ) -> Result<impl IntoResponse, Error> {
-    let trace_id = Span::current().context().span().span_context().trace_id();
+    let trace_id = current_trace_id();
     info!(?trace_id, "handling request");
     request.validate()?;
     let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
@@ -434,7 +432,7 @@ async fn detect_context_documents(
     headers: HeaderMap,
     WithRejection(Json(request), _): WithRejection<Json<models::ContextDocsHttpRequest>, Error>,
 ) -> Result<impl IntoResponse, Error> {
-    let trace_id = Span::current().context().span().span_context().trace_id();
+    let trace_id = current_trace_id();
     info!(?trace_id, "handling request");
     request.validate()?;
     let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
@@ -455,7 +453,7 @@ async fn detect_chat(
     headers: HeaderMap,
     WithRejection(Json(request), _): WithRejection<Json<models::ChatDetectionHttpRequest>, Error>,
 ) -> Result<impl IntoResponse, Error> {
-    let trace_id = Span::current().context().span().span_context().trace_id();
+    let trace_id = current_trace_id();
     request.validate_for_text()?;
     let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
     let task = ChatDetectionTask::new(trace_id, request, headers);
@@ -474,7 +472,7 @@ async fn detect_generated(
         Error,
     >,
 ) -> Result<impl IntoResponse, Error> {
-    let trace_id = Span::current().context().span().span_context().trace_id();
+    let trace_id = current_trace_id();
     info!(?trace_id, "handling request");
     request.validate()?;
     let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
