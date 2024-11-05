@@ -15,8 +15,6 @@
 
 */
 
-pub mod trace_layer;
-
 use std::time::Duration;
 
 use hyper::HeaderMap;
@@ -44,6 +42,8 @@ use tracing_opentelemetry::{MetricsLayer, OpenTelemetrySpanExt};
 use tracing_subscriber::{layer::SubscriberExt, EnvFilter, Layer};
 
 use crate::args::{LogFormat, OtlpProtocol, TracingConfig};
+
+pub mod trace_layer;
 
 #[derive(Debug, thiserror::Error)]
 pub enum TracingError {

@@ -1,11 +1,11 @@
 pub mod server {
-    use crate::tracing_utils::current_trace_id;
-    use axum::extract::Request;
-    use axum::http::HeaderMap;
-    use axum::response::Response;
     use std::time::Duration;
+
+    use axum::{extract::Request, http::HeaderMap, response::Response};
     use tower_http::classify::ServerErrorsFailureClass;
     use tracing::{debug, error, info, info_span, Span};
+
+    use crate::tracing_utils::current_trace_id;
 
     pub fn request_span(request: &Request) -> Span {
         info_span!(
