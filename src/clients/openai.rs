@@ -58,9 +58,9 @@ impl OpenAiClient {
     #[instrument(skip_all, fields(request.model))]
     pub async fn chat_completions(
         &self,
-        request: ChatCompletionRequest,
+        request: ChatCompletionsRequest,
         headers: HeaderMap,
-    ) -> Result<ChatCompletionResponse, Error> {
+    ) -> Result<ChatCompletionsResponse, Error> {
         let url = self.client.base_url().join("/v1/chat/completions").unwrap();
         let headers = with_traceparent_header(headers);
         let stream = request.stream.unwrap_or_default();
@@ -94,7 +94,7 @@ impl OpenAiClient {
                     }
                 }
             });
-            Ok(ChatCompletionResponse::Streaming(rx))
+            Ok(ChatCompletionsResponse::Streaming(rx))
         } else {
             let response = self
                 .client
@@ -136,19 +136,19 @@ impl Client for OpenAiClient {
 }
 
 #[derive(Debug)]
-pub enum ChatCompletionResponse {
+pub enum ChatCompletionsResponse {
     Unary(ChatCompletion),
     Streaming(mpsc::Receiver<Result<sse::Event, Infallible>>),
 }
 
-impl From<ChatCompletion> for ChatCompletionResponse {
+impl From<ChatCompletion> for ChatCompletionsResponse {
     fn from(value: ChatCompletion) -> Self {
         Self::Unary(value)
     }
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
-pub struct ChatCompletionRequest {
+pub struct ChatCompletionsRequest {
     /// A list of messages comprising the conversation so far.
     pub messages: Vec<Message>,
     /// ID of the model to use.

@@ -44,6 +44,7 @@ use opentelemetry::trace::TraceContextExt;
 use rustls::{server::WebPkiClientVerifier, RootCertStore, ServerConfig};
 use tokio::{net::TcpListener, signal};
 use tokio_rustls::TlsAcceptor;
+use tokio_stream::wrappers::ReceiverStream;
 use tower_http::trace::TraceLayer;
 use tower_service::Service;
 use tracing::{debug, error, info, instrument, warn, Span};
@@ -51,11 +52,12 @@ use tracing_opentelemetry::OpenTelemetrySpanExt;
 use webpki::types::{CertificateDer, PrivateKeyDer};
 
 use crate::{
+    clients::openai::{ChatCompletionsRequest, ChatCompletionsResponse},
     models::{self, InfoParams, InfoResponse},
     orchestrator::{
-        self, ChatDetectionTask, ClassificationWithGenTask, ContextDocsDetectionTask,
-        DetectionOnGenerationTask, GenerationWithDetectionTask, Orchestrator,
-        StreamingClassificationWithGenTask, TextContentDetectionTask,
+        self, ChatCompletionsDetectionTask, ChatDetectionTask, ClassificationWithGenTask,
+        ContextDocsDetectionTask, DetectionOnGenerationTask, GenerationWithDetectionTask,
+        Orchestrator, StreamingClassificationWithGenTask, TextContentDetectionTask,
     },
     tracing_utils,
 };
@@ -160,7 +162,7 @@ pub async fn run(
     }
 
     // (2b) Add main guardrails server routes
-    let app = Router::new()
+    let mut router = Router::new()
         .route(
             &format!("{}/classification-with-text-generation", API_PREFIX),
             post(classification_with_gen),
@@ -191,15 +193,24 @@ pub async fn run(
         .route(
             &format!("{}/detection/generated", TEXT_API_PREFIX),
             post(detect_generated),
-        )
-        .with_state(shared_state)
-        .layer(
-            TraceLayer::new_for_http()
-                .make_span_with(tracing_utils::incoming_request_span)
-                .on_request(tracing_utils::on_incoming_request)
-                .on_response(tracing_utils::on_outgoing_response)
-                .on_eos(tracing_utils::on_outgoing_eos),
         );
+
+    // If chat generation is configured, enable the chat completions detection endpoint.
+    if shared_state.orchestrator.config().chat_generation.is_some() {
+        info!("Enabling chat completions detection endpoint");
+        router = router.route(
+            "/api/v2/chat/completions-detection",
+            post(chat_completions_detection),
+        );
+    }
+
+    let app = router.with_state(shared_state).layer(
+        TraceLayer::new_for_http()
+            .make_span_with(tracing_utils::incoming_request_span)
+            .on_request(tracing_utils::on_incoming_request)
+            .on_response(tracing_utils::on_outgoing_response)
+            .on_eos(tracing_utils::on_outgoing_eos),
+    );
 
     // (2c) Generate main guardrails server handle based on whether TLS is needed
     let listener: TcpListener = TcpListener::bind(&http_addr)
@@ -484,6 +495,33 @@ async fn detect_generated(
         .await
     {
         Ok(response) => Ok(Json(response).into_response()),
+        Err(error) => Err(error.into()),
+    }
+}
+
+#[instrument(skip_all)]
+async fn chat_completions_detection(
+    State(state): State<Arc<ServerState>>,
+    headers: HeaderMap,
+    WithRejection(Json(request), _): WithRejection<Json<ChatCompletionsRequest>, Error>,
+) -> Result<impl IntoResponse, Error> {
+    let trace_id = Span::current().context().span().span_context().trace_id();
+    info!(?trace_id, "handling request");
+    let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
+    let task = ChatCompletionsDetectionTask::new(trace_id, request, headers);
+    match state
+        .orchestrator
+        .handle_chat_completions_detection(task)
+        .await
+    {
+        Ok(response) => match response {
+            ChatCompletionsResponse::Unary(response) => Ok(Json(response).into_response()),
+            ChatCompletionsResponse::Streaming(response_rx) => {
+                let response_stream = ReceiverStream::new(response_rx);
+                let sse = Sse::new(response_stream).keep_alive(KeepAlive::default());
+                Ok(sse.into_response())
+            }
+        },
         Err(error) => Err(error.into()),
     }
 }

@@ -17,6 +17,7 @@
 
 pub mod errors;
 pub use errors::Error;
+pub mod chat_completions_detection;
 pub mod streaming;
 pub mod unary;
 
@@ -35,7 +36,7 @@ use crate::{
             text_context_doc::ContextType, TextChatDetectorClient, TextContextDocDetectorClient,
             TextGenerationDetectorClient,
         },
-        openai::OpenAiClient,
+        openai::{ChatCompletionsRequest, OpenAiClient},
         ClientMap, GenerationClient, NlpClient, TextContentsDetectorClient, TgisClient,
     },
     config::{DetectorType, GenerationProvider, OrchestratorConfig},
@@ -464,6 +465,26 @@ impl StreamingClassificationWithGenTask {
             inputs: request.inputs,
             guardrails_config: request.guardrail_config.unwrap_or_default(),
             text_gen_parameters: request.text_gen_parameters,
+            headers,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct ChatCompletionsDetectionTask {
+    /// Unique identifier of request trace
+    pub trace_id: TraceId,
+    /// Chat completion request
+    pub request: ChatCompletionsRequest,
+    // Headermap
+    pub headers: HeaderMap,
+}
+
+impl ChatCompletionsDetectionTask {
+    pub fn new(trace_id: TraceId, request: ChatCompletionsRequest, headers: HeaderMap) -> Self {
+        Self {
+            trace_id,
+            request,
             headers,
         }
     }
