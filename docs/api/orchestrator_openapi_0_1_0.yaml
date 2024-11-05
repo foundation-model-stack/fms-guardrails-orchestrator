@@ -183,6 +183,48 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /api/v2/text/detection/stream-content:
+    post:
+      tags:
+        - Task - Detection
+      summary: Detection task on input content stream
+      operationId: >-
+        api_v2_detection_text_content_bidi_stream_handler
+      requestBody:
+        content:
+          # TODO: this will be updated
+          # Roughly this will have to include what a typical input
+          # stream event looks like, the EOS event, and where
+          # detectors and their params should be supplied
+          application/json:
+            schema:
+              # OneOf here?
+              $ref: "#/components/schemas/DetectionContentRequest"
+        required: true
+      responses:
+        "200":
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                # TODO: this will be updated - roughly this will also
+                # have to include info like `processed_index`, `start_index`
+                # NOTE: This endpoint, like the
+                # `server-streaming-classification-with-text-generation`
+                # endpoint will produce streamed events
+                $ref: "#/components/schemas/DetectionContentResponse"
+        "404":
+          description: Resource Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/v2/text/detection/chat:
     post:
       tags:

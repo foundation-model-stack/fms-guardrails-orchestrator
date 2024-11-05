@@ -71,7 +71,7 @@ responses back to the end user (or expect `traceparent` in incoming requests) fo
 
 ## Status
 
-Proposed
+Accepted
 
 ## Consequences
 

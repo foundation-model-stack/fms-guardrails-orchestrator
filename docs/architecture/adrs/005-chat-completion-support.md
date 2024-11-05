@@ -73,4 +73,4 @@ This means that the orchestrator will have to be able to track chunking and dete
 
 ## Status
 
-Proposed
+Accepted
