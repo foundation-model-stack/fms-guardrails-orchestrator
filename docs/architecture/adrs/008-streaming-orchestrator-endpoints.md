@@ -17,7 +17,9 @@ In this ADR, we aim to detail the patterns and behavior to expect for streaming 
 ### Server streaming or endpoint output streaming
 "Server streaming" endpoints existed already prior to the writing of this particular ADR. Streaming response aggregation behavior is documented in [ADR 002](./002-streaming-response-aggregation.md). Data will continue to be streamed back with `data` events, with errors included as `event: error` per the [SSE event format](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events#event_stream_format).
 
+Parameters in each response event such as `start_index` and `processed_index` will indicate to the user how much of the input stream has been processed for detections, as there might not necessarily be results like positive `detections` for certain portions of the input stream.
+
 ### Client streaming or endpoint input streaming
-- We would like to keep input stream events as consistent as possible
+- We would like to keep input stream events as consistent as possible in the request
     - This means we need to resolve how nested parameters like `detectors` should be inputted, since a simple query or path parameter may not be sufficient. [TODO decision here]
-- We will document the "end of stream" message should look like for each endpoint, for the user to indicate the connection should be closed. For example for the OpenAI chat completions API, this looks like a `[DONE]` event.
+- We will document the "end of stream" request message should look like for each endpoint, for the user to indicate the connection should be closed. For example for the OpenAI chat completions API, this looks like a `[DONE]` event.

@@ -207,12 +207,10 @@ paths:
           content:
             application/json:
               schema:
-                # TODO: this will be updated - roughly this will also
-                # have to include info like `processed_index`, `start_index`
                 # NOTE: This endpoint, like the
                 # `server-streaming-classification-with-text-generation`
                 # endpoint will produce streamed events
-                $ref: "#/components/schemas/DetectionContentResponse"
+                $ref: "#/components/schemas/DetectionContentStreamResponse"
         "404":
           description: Resource Not Found
           content:
@@ -439,15 +437,28 @@ components:
           title: Score
       title: Content Detection Response Object
       example:
-        - {
-            "start": 0,
-            "end": 20,
-            "text": "string",
-            "detection_type": "HAP",
-            "detection": "has_HAP",
-            "detector_id": "hap-v1-model-en",
-            "score": 0.999,
-          }
+        start: 0
+        end: 20
+        text: "string"
+        detection_type: "HAP"
+        detection: "has_HAP"
+        detector_id: "hap-v1-model-en"
+        score: 0.999
+    DetectionContentStreamResponse:
+      properties:
+        detections:
+          type: array
+          items:
+            $ref: "#/components/schemas/DetectionContentResponseObject"
+        processed_index:
+          anyOf:
+            - type: integer
+          title: Processed Index
+        start_index:
+          type: integer
+          title: Start Index
+      type: object
+      title: Content Detection Stream Response
 
     DetectionChatRequest:
       properties:
