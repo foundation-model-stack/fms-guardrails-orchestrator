@@ -192,8 +192,6 @@ paths:
         api_v2_detection_text_content_bidi_stream_handler
       requestBody:
         content:
-          # TODO: figure out where detectors and their params
-          # should be supplied
           application/json:
             schema:
               oneOf:
@@ -222,7 +220,7 @@ paths:
                 # NOTE: This endpoint, like the
                 # `server-streaming-classification-with-text-generation`
                 # endpoint will produce streamed events
-                $ref: "#/components/schemas/DetectionContentStreamResponse"
+                $ref: "#/components/schemas/DetectionContentStreamEvent"
         "404":
           description: Resource Not Found
           content:
