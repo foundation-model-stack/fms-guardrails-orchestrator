@@ -192,14 +192,22 @@ paths:
         api_v2_detection_text_content_bidi_stream_handler
       requestBody:
         content:
-          # TODO: this will be updated
-          # Roughly this will have to include what a typical input
-          # stream event looks like, the EOS event, and where
-          # detectors and their params should be supplied
+          # TODO: figure out where detectors and their params
+          # should be supplied
           application/json:
             schema:
-              # OneOf here?
-              $ref: "#/components/schemas/DetectionContentRequest"
+              $ref: "#/components/schemas/DetectionContentStreamRequest"
+            # In OpenAPI 3.0, examples cannot be present in schemas,
+            # whereas object level examples are present in 3.1
+            examples:
+              text:
+                summary: Regular text event
+                value:
+                  content: "my text here"
+              end_of_stream:
+                summary: End of stream event
+                value:
+                  content: "[DONE]"
         required: true
       responses:
         "200":
@@ -444,6 +452,15 @@ components:
         detection: "has_HAP"
         detector_id: "hap-v1-model-en"
         score: 0.999
+    DetectionContentStreamRequest:
+      properties:
+        content:
+          type: string
+          title: Content
+      required: ["content"]
+      type: object
+      description: Individual stream event
+      title: Content Detection Stream Request
     DetectionContentStreamResponse:
       properties:
         detections:
