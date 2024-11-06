@@ -196,18 +196,22 @@ paths:
           # should be supplied
           application/json:
             schema:
-              $ref: "#/components/schemas/DetectionContentStreamRequest"
+              oneOf:
+                - $ref: "#/components/schemas/DetectionContentRequest"
+                - $ref: "#/components/schemas/DetectionContentStreamEvent"
             # In OpenAPI 3.0, examples cannot be present in schemas,
             # whereas object level examples are present in 3.1
             examples:
+              first_event:
+                summary: First text event with detectors
+                value:
+                  detectors:
+                    hap-v1-model-en: {}
+                  content: "my text here"
               text:
                 summary: Regular text event
                 value:
                   content: "my text here"
-              end_of_stream:
-                summary: End of stream event
-                value:
-                  content: "[DONE]"
         required: true
       responses:
         "200":
@@ -409,6 +413,7 @@ components:
         content:
           type: string
           title: Content
+          example: "my text here"
       required: ["detectors", "content"]
       additionalProperties: false
       type: object
@@ -452,15 +457,16 @@ components:
         detection: "has_HAP"
         detector_id: "hap-v1-model-en"
         score: 0.999
-    DetectionContentStreamRequest:
+    DetectionContentStreamEvent:
       properties:
         content:
           type: string
           title: Content
+          example: "my text here"
       required: ["content"]
       type: object
       description: Individual stream event
-      title: Content Detection Stream Request
+      title: Content Detection Stream Event
     DetectionContentStreamResponse:
       properties:
         detections:
