@@ -103,19 +103,19 @@ paths:
         "200":
           description: Successful Response
           content:
-            application/json:
+            text/event-stream:
               schema:
                 $ref: "#/components/schemas/ClassifiedGeneratedTextStreamResult"
         "404":
           description: Resource Not Found
           content:
-            application/json:
+            text/event-stream:
               schema:
                 $ref: "#/components/schemas/Error"
         "422":
           description: Validation Error
           content:
-            application/json:
+            text/event-stream:
               schema:
                 $ref: "#/components/schemas/Error"
   /api/v2/text/generation-detection:
@@ -181,6 +181,56 @@ paths:
           description: Validation Error
           content:
             application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v2/text/detection/stream-content:
+    post:
+      tags:
+        - Task - Detection
+      summary: Detection task on input content stream
+      operationId: >-
+        api_v2_detection_text_content_bidi_stream_handler
+      requestBody:
+        content:
+          application/x-ndjson:
+            schema:
+              oneOf:
+                - $ref: "#/components/schemas/DetectionContentRequest"
+                - $ref: "#/components/schemas/DetectionContentStreamEvent"
+            # In OpenAPI 3.0, examples cannot be present in schemas,
+            # whereas object level examples are present in 3.1
+            examples:
+              first_event:
+                summary: First text event with detectors
+                value:
+                  detectors:
+                    hap-v1-model-en: {}
+                  content: "my text here"
+              text:
+                summary: Regular text event
+                value:
+                  content: "my text here"
+        required: true
+      responses:
+        "200":
+          description: Successful Response
+          content:
+            text/event-stream:
+              schema:
+                # NOTE: This endpoint, like the
+                # `server-streaming-classification-with-text-generation`
+                # endpoint will produce streamed events
+                $ref: "#/components/schemas/DetectionContentStreamEvent"
+        "404":
+          description: Resource Not Found
+          content:
+            text/event-stream:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Validation Error
+          content:
+            text/event-stream:
               schema:
                 $ref: "#/components/schemas/Error"
   /api/v2/text/detection/chat:
@@ -361,6 +411,7 @@ components:
         content:
           type: string
           title: Content
+          example: "my text here"
       required: ["detectors", "content"]
       additionalProperties: false
       type: object
@@ -397,15 +448,38 @@ components:
           title: Score
       title: Content Detection Response Object
       example:
-        - {
-            "start": 0,
-            "end": 20,
-            "text": "string",
-            "detection_type": "HAP",
-            "detection": "has_HAP",
-            "detector_id": "hap-v1-model-en",
-            "score": 0.999,
-          }
+        start: 0
+        end: 20
+        text: "string"
+        detection_type: "HAP"
+        detection: "has_HAP"
+        detector_id: "hap-v1-model-en"
+        score: 0.999
+    DetectionContentStreamEvent:
+      properties:
+        content:
+          type: string
+          title: Content
+          example: "my text here"
+      required: ["content"]
+      type: object
+      description: Individual stream event
+      title: Content Detection Stream Event
+    DetectionContentStreamResponse:
+      properties:
+        detections:
+          type: array
+          items:
+            $ref: "#/components/schemas/DetectionContentResponseObject"
+        processed_index:
+          anyOf:
+            - type: integer
+          title: Processed Index
+        start_index:
+          type: integer
+          title: Start Index
+      type: object
+      title: Content Detection Stream Response
 
     DetectionChatRequest:
       properties:

@@ -5,9 +5,14 @@ info:
     name: Apache 2.0
     url: https://www.apache.org/licenses/LICENSE-2.0.html
   version: 0.0.1
+tags:
+  - name: Text
+    description: Detections on text
 paths:
   /api/v1/text/contents:
     post:
+      tags:
+        - Text
       summary: Text Content Analysis Unary Handler
       description: >-
         Detectors that work on content text, be it user prompt or generated
@@ -67,6 +72,8 @@ paths:
                 $ref: '#/components/schemas/Error'
   /api/v1/text/generation:
     post:
+      tags:
+        - Text
       summary: Generation Analysis Unary Handler
       description: >-
         Detectors that run on prompt and text generation output.  <br>
@@ -115,6 +122,8 @@ paths:
                 $ref: '#/components/schemas/Error'
   /api/v1/text/chat:
     post:
+      tags:
+        - Text
       summary: Chat Analysis Unary Handler
       description: >-
         Detectors that analyze chat messages and provide detections <br>
@@ -162,6 +171,8 @@ paths:
                 $ref: '#/components/schemas/Error'
   /api/v1/text/context/doc:
     post:
+      tags:
+        - Text
       summary: Context Analysis Unary Handler
       description: >-
         Detectors that work on a context created by document(s).<br>
