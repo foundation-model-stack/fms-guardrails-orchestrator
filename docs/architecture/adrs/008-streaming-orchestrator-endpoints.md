@@ -16,7 +16,7 @@ The orchestrator will then need to support "bidirectional streaming" endpoints, 
 ### Server streaming or endpoint output streaming
 "Server streaming" endpoints existed already prior to the writing of this particular ADR. Streaming response aggregation behavior is documented in [ADR 002](./002-streaming-response-aggregation.md). Data will continue to be streamed back with `data` events, with errors included as `event: error` per the [SSE event format](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events#event_stream_format).
 
-Parameters in each response event such as `start_index` and `processed_index` will indicate to the user how much of the input stream has been processed for detections, as there might not necessarily be results like positive `detections` for certain portions of the input stream.
+Parameters in each response event such as `start_index` and `processed_index` will indicate to the user how much of the input stream has been processed for detections, as there might not necessarily be results like positive `detections` for certain portions of the input stream. The `start_index` and `processed_index` will be relative to the entire stream.
 
 ### Client streaming or endpoint input streaming
 - Any information needed for an entire request, like `detectors` that any detection endpoints will work on, will be expected to be present in the first event of a stream. The structure of stream events expected will be documented for each endpoint.

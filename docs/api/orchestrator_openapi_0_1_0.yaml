@@ -103,19 +103,19 @@ paths:
         "200":
           description: Successful Response
           content:
-            application/json:
+            text/event-stream:
               schema:
                 $ref: "#/components/schemas/ClassifiedGeneratedTextStreamResult"
         "404":
           description: Resource Not Found
           content:
-            application/json:
+            text/event-stream:
               schema:
                 $ref: "#/components/schemas/Error"
         "422":
           description: Validation Error
           content:
-            application/json:
+            text/event-stream:
               schema:
                 $ref: "#/components/schemas/Error"
   /api/v2/text/generation-detection:
@@ -192,7 +192,7 @@ paths:
         api_v2_detection_text_content_bidi_stream_handler
       requestBody:
         content:
-          application/json:
+          application/x-ndjson:
             schema:
               oneOf:
                 - $ref: "#/components/schemas/DetectionContentRequest"
@@ -215,7 +215,7 @@ paths:
         "200":
           description: Successful Response
           content:
-            application/json:
+            text/event-stream:
               schema:
                 # NOTE: This endpoint, like the
                 # `server-streaming-classification-with-text-generation`
@@ -224,13 +224,13 @@ paths:
         "404":
           description: Resource Not Found
           content:
-            application/json:
+            text/event-stream:
               schema:
                 $ref: "#/components/schemas/Error"
         "422":
           description: Validation Error
           content:
-            application/json:
+            text/event-stream:
               schema:
                 $ref: "#/components/schemas/Error"
   /api/v2/text/detection/chat:
