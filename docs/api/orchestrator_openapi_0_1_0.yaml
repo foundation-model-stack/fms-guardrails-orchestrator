@@ -220,7 +220,7 @@ paths:
                 # NOTE: This endpoint, like the
                 # `server-streaming-classification-with-text-generation`
                 # endpoint will produce streamed events
-                $ref: "#/components/schemas/DetectionContentStreamEvent"
+                $ref: "#/components/schemas/DetectionContentStreamResponse"
         "404":
           description: Resource Not Found
           content:
