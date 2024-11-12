@@ -50,6 +50,15 @@ This part gives a brief overview of how we would expect a user to access informa
 - Identifying which choice of potentially multiple choices that results exist for: `detections.output[0].choice_index` (will give index of choice in original `choices`)
 - Result info of a given choice: `detections.output[0].results[0].detection_type`
 
+#### Detector types
+
+[This part is an amendment with the addition of detector types, documented in [ADR 006](./006-detector-type.md)]
+
+Since the [OpenAI chat completions API](https://platform.openai.com/docs/api-reference/chat) messages could have multiple messages in one user request, potentially detectors with different detector types could be applied (e.g. whole chat history can be analyzed with a `/chat` detector, while a single message can be analyzed with a `/contents` detector).
+
+As various detector type support is added, which detector types will be supported by detections on chat completions will be documented. Unsupported detector types will produce errors on usage.
+
+
 ### New elements
 - We will add a `warnings` element to show cases where the response is not 4xx, but there are issues in processing.
 
