@@ -108,8 +108,10 @@ impl Client for TextContextDocDetectorClient {
     }
 }
 
+#[cfg_attr(test, faux::methods)]
 impl DetectorClient for TextContextDocDetectorClient {}
 
+#[cfg_attr(test, faux::methods)]
 impl HttpClientExt for TextContextDocDetectorClient {
     fn inner(&self) -> &HttpClient {
         self.client()

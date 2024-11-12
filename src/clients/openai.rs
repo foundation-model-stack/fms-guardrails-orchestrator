@@ -133,12 +133,14 @@ impl Client for OpenAiClient {
     }
 }
 
+#[cfg_attr(test, faux::methods)]
 impl HttpClientExt for OpenAiClient {
     fn inner(&self) -> &HttpClient {
         self.client()
     }
 }
 
+#[cfg_attr(test, faux::methods)]
 impl HttpClientStreamExt for OpenAiClient {}
 
 #[derive(Debug)]

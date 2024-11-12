@@ -109,6 +109,16 @@ impl Client for TextChatDetectorClient {
     }
 }
 
+#[cfg_attr(test, faux::methods)]
+impl DetectorClient for TextChatDetectorClient {}
+
+#[cfg_attr(test, faux::methods)]
+impl HttpClientExt for TextChatDetectorClient {
+    fn inner(&self) -> &HttpClient {
+        self.client()
+    }
+}
+
 /// A struct representing a request to a detector compatible with the
 /// /api/v1/text/chat endpoint.
 // #[cfg_attr(test, derive(PartialEq))]
@@ -127,13 +137,5 @@ impl ChatDetectionRequest {
             messages,
             detector_params,
         }
-    }
-}
-
-impl DetectorClient for TextChatDetectorClient {}
-
-impl HttpClientExt for TextChatDetectorClient {
-    fn inner(&self) -> &HttpClient {
-        self.client()
     }
 }

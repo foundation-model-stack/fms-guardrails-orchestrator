@@ -104,8 +104,10 @@ impl Client for TextContentsDetectorClient {
     }
 }
 
+#[cfg_attr(test, faux::methods)]
 impl DetectorClient for TextContentsDetectorClient {}
 
+#[cfg_attr(test, faux::methods)]
 impl HttpClientExt for TextContentsDetectorClient {
     fn inner(&self) -> &HttpClient {
         self.client()

@@ -347,23 +347,26 @@ fn grpc_request_with_headers<T>(request: T, headers: HeaderMap) -> Request<T> {
 #[cfg(test)]
 mod tests {
     use errors::grpc_to_http_code;
+    use http_body_util::BodyExt;
     use hyper::{http, StatusCode};
-    use reqwest::Response;
 
     use super::*;
     use crate::{
+        clients::http::{BoxBody, Response},
         health::{HealthCheckResult, HealthStatus},
         pb::grpc::health::v1::{health_check_response::ServingStatus, HealthCheckResponse},
     };
 
-    async fn mock_http_response(
-        status: StatusCode,
-        body: &str,
-    ) -> Result<Response, reqwest::Error> {
-        Ok(reqwest::Response::from(
+    async fn mock_http_response(status: StatusCode, body: &str) -> Result<Response, Error> {
+        Ok(Response(
             http::Response::builder()
                 .status(status)
-                .body(body.to_string())
+                .body(BoxBody::new(body.to_string().map_err(|e| {
+                    panic!(
+                        "infallible error parsing string body in test response: {}",
+                        e
+                    )
+                })))
                 .unwrap(),
         ))
     }
