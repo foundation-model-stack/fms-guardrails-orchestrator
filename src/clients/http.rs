@@ -110,7 +110,7 @@ impl HttpClient {
     }
 
     pub async fn get(
-        self,
+        &self,
         url: Url,
         headers: HeaderMap,
         body: impl RequestLike,
@@ -119,7 +119,7 @@ impl HttpClient {
     }
 
     pub async fn post(
-        self,
+        &self,
         url: Url,
         headers: HeaderMap,
         body: impl RequestLike,
@@ -128,7 +128,7 @@ impl HttpClient {
     }
 
     pub async fn send(
-        self,
+        &self,
         url: Url,
         method: Method,
         headers: HeaderMap,
