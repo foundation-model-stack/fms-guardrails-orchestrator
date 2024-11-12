@@ -40,11 +40,11 @@ pub type Request<T> = hyper::Request<T>;
 
 pub struct Response(pub hyper::http::Response<BoxBody>);
 
-pub trait RequestLike: Serialize + Debug + Clone {}
+pub trait RequestLike: Serialize + Debug + Clone + Send + Sync + 'static {}
 
 impl<T> RequestLike for T where T: Serialize + Debug + Clone + Send + Sync + 'static {}
 
-pub trait ResponseLike: DeserializeOwned + Debug + Clone {}
+pub trait ResponseLike: DeserializeOwned + Debug + Clone + Send + Sync + 'static {}
 
 impl<T> ResponseLike for T where T: DeserializeOwned + Debug + Clone + Send + Sync + 'static {}
 
@@ -109,30 +109,30 @@ impl HttpClient {
         self.base_url.join(path.into()).unwrap()
     }
 
-    pub async fn get<T: RequestLike + Send + Sync + 'static>(
+    pub async fn get(
         self,
         url: Url,
         headers: HeaderMap,
-        body: T,
+        body: impl RequestLike,
     ) -> Result<Response, Error> {
         self.send(url, Method::GET, headers, body).await
     }
 
-    pub async fn post<T: RequestLike + Send + Sync + 'static>(
+    pub async fn post(
         self,
         url: Url,
         headers: HeaderMap,
-        body: T,
+        body: impl RequestLike,
     ) -> Result<Response, Error> {
         self.send(url, Method::POST, headers, body).await
     }
 
-    pub async fn send<T: RequestLike + Send + Sync + 'static>(
+    pub async fn send(
         self,
         url: Url,
         method: Method,
         headers: HeaderMap,
-        body: T,
+        body: impl RequestLike,
     ) -> Result<Response, Error> {
         let headers = trace::with_traceparent_header(headers.to_owned());
         let body =

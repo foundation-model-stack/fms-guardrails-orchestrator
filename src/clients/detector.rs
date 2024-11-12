@@ -57,15 +57,12 @@ impl From<DetectorError> for Error {
 pub trait DetectorClient {}
 
 pub trait DetectorClientExt: HttpClientExt {
-    async fn post_to_detector<
-        T: RequestLike + Send + Sync + 'static,
-        U: ResponseLike + Send + Sync + 'static,
-    >(
+    async fn post_to_detector<U: ResponseLike>(
         &self,
         model_id: &str,
         url: Url,
         headers: HeaderMap,
-        request: T,
+        request: impl RequestLike,
     ) -> Result<U, Error>;
 
     fn endpoint(&self, path: impl Into<&'static str>) -> Url;
@@ -74,15 +71,12 @@ pub trait DetectorClientExt: HttpClientExt {
 impl<C: DetectorClient + HttpClientExt> DetectorClientExt for C {
     /// Make a POST request for an HTTP detector client and return the response.
     /// Also injects the `traceparent` header from the current span and traces the response.
-    async fn post_to_detector<
-        T: RequestLike + Send + Sync + 'static,
-        U: ResponseLike + Send + Sync + 'static,
-    >(
+    async fn post_to_detector<U: ResponseLike>(
         &self,
         model_id: &str,
         url: Url,
         headers: HeaderMap,
-        request: T,
+        request: impl RequestLike,
     ) -> Result<U, Error> {
         let mut headers = headers;
         headers.append(DETECTOR_ID_HEADER_NAME, model_id.parse().unwrap());
