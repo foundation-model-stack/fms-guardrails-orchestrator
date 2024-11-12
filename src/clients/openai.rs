@@ -19,18 +19,15 @@ use std::{collections::HashMap, convert::Infallible};
 
 use async_trait::async_trait;
 use axum::response::sse;
+use eventsource_stream::Eventsource;
 use futures::StreamExt;
+use http_body_util::BodyExt;
 use hyper::{HeaderMap, StatusCode};
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 use tracing::{info, instrument};
 
-use super::{
-    create_http_client,
-    eventsource::Event,
-    http::{HttpClientExt, HttpClientStreamExt},
-    Client, Error, HttpClient,
-};
+use super::{create_http_client, http::HttpClientExt, Client, Error, HttpClient};
 use crate::{config::ServiceConfig, health::HealthCheckResult};
 
 const DEFAULT_PORT: u16 = 8080;
@@ -77,18 +74,22 @@ impl OpenAiClient {
         info!("sending Open AI chat completion request to {}", url);
         if stream {
             let (tx, rx) = mpsc::channel(32);
-            let mut event_stream = self.eventsource(url, headers, request).await;
+            let mut event_stream = self
+                .inner()
+                .clone()
+                .post(url, headers, request)
+                .await?
+                .0
+                .into_data_stream()
+                .eventsource();
             // Spawn task to forward events to receiver
             tokio::spawn(async move {
                 while let Some(result) = event_stream.next().await {
                     match result {
-                        Ok(event) => match event {
-                            Event::Open => break,
-                            Event::Message(event) => {
-                                let event = sse::Event::default().data(event.data);
-                                let _ = tx.send(Ok(event)).await;
-                            }
-                        },
+                        Ok(event) => {
+                            let event = sse::Event::default().data(event.data);
+                            let _ = tx.send(Ok(event)).await;
+                        }
                         Err(error) => {
                             // We received an error from the event stream, send an error event
                             let event =
@@ -139,9 +140,6 @@ impl HttpClientExt for OpenAiClient {
         self.client()
     }
 }
-
-#[cfg_attr(test, faux::methods)]
-impl HttpClientStreamExt for OpenAiClient {}
 
 #[derive(Debug)]
 pub enum ChatCompletionsResponse {

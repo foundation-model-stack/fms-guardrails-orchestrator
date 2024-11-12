@@ -41,8 +41,6 @@ use crate::{
 pub mod errors;
 pub use errors::Error;
 
-pub mod eventsource;
-
 pub mod http;
 pub use http::HttpClient;
 

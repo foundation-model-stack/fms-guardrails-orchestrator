@@ -15,16 +15,11 @@
 
 */
 
-use std::{
-    fmt::Debug,
-    ops::Deref,
-    pin::Pin,
-    task::{Context, Poll},
-};
+use std::{fmt::Debug, ops::Deref};
 
 use http_body_util::{combinators::BoxBody as HttpBoxBody, BodyExt, Full};
 use hyper::{
-    body::{Body as HttpBody, Bytes, Incoming},
+    body::{Bytes, Incoming},
     HeaderMap, Method, StatusCode,
 };
 use hyper_rustls::HttpsConnector;
@@ -33,7 +28,7 @@ use serde::{de::DeserializeOwned, Serialize};
 use tracing::{debug, error};
 use url::Url;
 
-use super::{eventsource::EventSource, Client, Error};
+use super::{Client, Error};
 use crate::{
     health::{HealthCheckResult, HealthStatus, OptionalHealthCheckResponseBody},
     utils::{trace, AsUriExt},
@@ -53,32 +48,6 @@ pub trait ResponseLike: DeserializeOwned + Debug + Clone {}
 
 impl<T> ResponseLike for T where T: DeserializeOwned + Debug + Clone + Send + Sync + 'static {}
 
-pub struct DataStream<B>(pub B);
-
-impl<B> futures_core::Stream for DataStream<B>
-where
-    B: HttpBody<Data = Bytes, Error = Error> + Unpin,
-{
-    type Item = Result<Bytes, B::Error>;
-
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
-        loop {
-            return match futures_core::ready!(Pin::new(&mut self.0).poll_frame(cx)) {
-                Some(Ok(frame)) => {
-                    // skip non-data frames
-                    if let Ok(buf) = frame.into_data() {
-                        Poll::Ready(Some(Ok(buf)))
-                    } else {
-                        continue;
-                    }
-                }
-                Some(Err(err)) => Poll::Ready(Some(Err(err))),
-                None => Poll::Ready(None),
-            };
-        }
-    }
-}
-
 impl Response {
     pub async fn json<T: DeserializeOwned>(self) -> Result<T, Error> {
         let data = self
@@ -91,10 +60,6 @@ impl Response {
             .to_bytes();
         serde_json::from_slice::<T>(&data)
             .map_err(|e| Error::internal("client response deserialization failed", e))
-    }
-
-    pub fn bytes_stream(self) -> impl futures_core::Stream<Item = Result<Bytes, Error>> {
-        DataStream(self.0.into_body().map_err(Into::into))
     }
 }
 
@@ -112,27 +77,11 @@ impl From<hyper::http::response::Response<Incoming>> for Response {
     }
 }
 
-pub trait Body:
-    hyper::body::Body<Data = Bytes, Error = hyper::Error> + Serialize + Send + Sync
-{
-}
-
 pub type HttpClientInner =
     hyper_util::client::legacy::Client<HttpsConnector<HttpConnector>, BoxBody>;
 
 pub trait HttpClientExt: Client {
     fn inner(&self) -> &HttpClient;
-}
-
-pub trait HttpClientStreamExt: HttpClientExt + Clone {
-    async fn eventsource<T: RequestLike + Send + Sync + 'static>(
-        &self,
-        url: Url,
-        headers: HeaderMap,
-        request_body: T,
-    ) -> Pin<Box<EventSource<T>>> {
-        EventSource::from_client(self.inner().clone(), url, headers, request_body).await
-    }
 }
 
 #[derive(Clone)]
