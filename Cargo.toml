@@ -51,6 +51,15 @@ tracing-opentelemetry = "0.25.0"
 tracing-subscriber = { version = "0.3.18", features = ["json", "env-filter"] }
 url = "2.5.2"
 uuid = { version = "1.10.0", features = ["v4", "fast-rng"] }
+http-types = "2.12.0"
+hyper-rustls = "0.27.3"
+eventsource = "0.5.0"
+mime = "0.3.17"
+http-body-util = "0.1.2"
+pin-project-lite = "0.2.15"
+eventsource-stream = "0.2.3"
+futures-core = "0.3.30"
+futures-timer = "3.0.3"
 
 [build-dependencies]
 tonic-build = "0.12.1"

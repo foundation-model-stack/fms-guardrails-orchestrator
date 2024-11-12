@@ -76,7 +76,7 @@ impl Orchestrator {
         config: OrchestratorConfig,
         start_up_health_check: bool,
     ) -> Result<Self, Error> {
-        let clients = create_clients(&config).await;
+        let clients = create_clients(&config).await?;
         let ctx = Arc::new(Context { config, clients });
         let orchestrator = Self {
             ctx,
@@ -165,7 +165,7 @@ fn get_chunker_ids(
         .collect::<Result<Vec<_>, Error>>()
 }
 
-async fn create_clients(config: &OrchestratorConfig) -> ClientMap {
+async fn create_clients(config: &OrchestratorConfig) -> Result<ClientMap, Error> {
     let mut clients = ClientMap::new();
 
     // Create generation client
@@ -190,7 +190,7 @@ async fn create_clients(config: &OrchestratorConfig) -> ClientMap {
             &chat_generation.service,
             chat_generation.health_service.as_ref(),
         )
-        .await;
+        .await?;
         clients.insert("chat_generation".to_string(), openai_client);
     }
 
@@ -212,7 +212,7 @@ async fn create_clients(config: &OrchestratorConfig) -> ClientMap {
                         &detector.service,
                         detector.health_service.as_ref(),
                     )
-                    .await,
+                    .await?,
                 );
             }
             DetectorType::TextGeneration => {
@@ -222,7 +222,7 @@ async fn create_clients(config: &OrchestratorConfig) -> ClientMap {
                         &detector.service,
                         detector.health_service.as_ref(),
                     )
-                    .await,
+                    .await?,
                 );
             }
             DetectorType::TextChat => {
@@ -232,7 +232,7 @@ async fn create_clients(config: &OrchestratorConfig) -> ClientMap {
                         &detector.service,
                         detector.health_service.as_ref(),
                     )
-                    .await,
+                    .await?,
                 );
             }
             DetectorType::TextContextDoc => {
@@ -242,12 +242,12 @@ async fn create_clients(config: &OrchestratorConfig) -> ClientMap {
                         &detector.service,
                         detector.health_service.as_ref(),
                     )
-                    .await,
+                    .await?,
                 );
             }
         }
     }
-    clients
+    Ok(clients)
 }
 
 #[derive(Debug, Clone)]

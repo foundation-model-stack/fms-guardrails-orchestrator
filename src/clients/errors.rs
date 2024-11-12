@@ -15,7 +15,7 @@
 
 */
 
-use std::error::Error as _;
+use std::fmt::Display;
 
 use hyper::StatusCode;
 use tracing::error;
@@ -29,6 +29,8 @@ pub enum Error {
     Http { code: StatusCode, message: String },
     #[error("model not found: {model_id}")]
     ModelNotFound { model_id: String },
+    #[error("client request failed: {error}")]
+    Internal { error: String },
 }
 
 impl Error {
@@ -42,32 +44,76 @@ impl Error {
             Error::Http { code, .. } => *code,
             // Return 404 for model not found
             Error::ModelNotFound { .. } => StatusCode::NOT_FOUND,
+            Error::Internal { .. } => StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    }
+
+    pub fn internal<E: Display>(message: &str, error: E) -> Self {
+        Self::Internal {
+            error: format!("internal client error - {}: {}", message, error),
+        }
+    }
+
+    pub fn into_http(self) -> Self {
+        Self::Http {
+            code: self.status_code(),
+            message: self.to_string(),
+        }
+    }
+
+    pub fn into_grpc(self) -> Self {
+        Self::Grpc {
+            code: self.status_code(),
+            message: self.to_string(),
         }
     }
 }
 
-impl From<reqwest::Error> for Error {
-    fn from(value: reqwest::Error) -> Self {
-        // Log lower level source of error.
-        // Examples:
-        // 1. client error (Connect) // Cases like connection error, wrong port etc.
-        // 2. client error (SendRequest) // Cases like cert issues
-        error!(
-            "http request failed. Source: {}",
-            value.source().unwrap().to_string()
-        );
-        // Return http status code for error responses
-        // and 500 for other errors
-        let code = match value.status() {
-            Some(code) => code,
-            None => StatusCode::INTERNAL_SERVER_ERROR,
-        };
-        Self::Http {
-            code,
-            message: value.to_string(),
+impl From<hyper::Error> for Error {
+    fn from(error: hyper::Error) -> Self {
+        Self::Internal {
+            error: error.to_string(),
         }
     }
 }
+
+// impl From<hyper::http::Error> for Error {
+//     fn from(error: hyper::http::Error) -> Self {
+//         Self::RequestCreationFailed { error: error.to_string() }
+//     }
+// }
+
+// impl From<hyper_util::client::legacy::Error> for Error {
+//     fn from(error: hyper_util::client::legacy::Error) -> Self {
+//         Self::Http {
+//             code: StatusCode::INTERNAL_SERVER_ERROR,
+//             message: error.to_string(),
+//         }
+//     }
+// }
+
+// impl From<reqwest::Error> for Error {
+//     fn from(value: reqwest::Error) -> Self {
+//         // Log lower level source of error.
+//         // Examples:
+//         // 1. client error (Connect) // Cases like connection error, wrong port etc.
+//         // 2. client error (SendRequest) // Cases like cert issues
+//         error!(
+//             "http request failed. Source: {}",
+//             value.source().unwrap().to_string()
+//         );
+//         // Return http status code for error responses
+//         // and 500 for other errors
+//         let code = match value.status() {
+//             Some(code) => code,
+//             None => StatusCode::INTERNAL_SERVER_ERROR,
+//         };
+//         Self::Http {
+//             code,
+//             message: value.to_string(),
+//         }
+//     }
+// }
 
 impl From<tonic::Status> for Error {
     fn from(value: tonic::Status) -> Self {

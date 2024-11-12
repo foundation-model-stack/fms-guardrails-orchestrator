@@ -15,27 +15,132 @@
 
 */
 
-use hyper::StatusCode;
-use reqwest::Response;
+use std::{
+    ops::Deref,
+    pin::Pin,
+    task::{Context, Poll},
+};
+
+use http_body_util::{combinators::BoxBody as HttpBoxBody, BodyExt, Full};
+use hyper::{
+    body::{Body as HttpBody, Bytes, Incoming},
+    HeaderMap, Request, StatusCode,
+};
+use hyper_rustls::HttpsConnector;
+use hyper_util::client::legacy::connect::HttpConnector;
+use serde::{de::DeserializeOwned, Serialize};
 use tracing::error;
 use url::Url;
 
-use crate::health::{HealthCheckResult, HealthStatus, OptionalHealthCheckResponseBody};
+use super::{eventsource::EventSource, Client, Error};
+use crate::{
+    health::{HealthCheckResult, HealthStatus, OptionalHealthCheckResponseBody},
+    utils::{trace, AsUriExt},
+};
+
+pub type BoxBody = HttpBoxBody<Bytes, hyper::Error>;
+
+pub struct Response(pub hyper::http::Response<BoxBody>);
+
+pub trait RequestLike: Serialize + Clone {}
+impl<T> RequestLike for T where T: Serialize + Clone + Send + Sync + 'static {}
+
+pub struct DataStream<B>(pub B);
+
+impl<B> futures_core::Stream for DataStream<B>
+where
+    B: HttpBody<Data = Bytes, Error = Error> + Unpin,
+{
+    type Item = Result<Bytes, B::Error>;
+
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
+        loop {
+            return match futures_core::ready!(Pin::new(&mut self.0).poll_frame(cx)) {
+                Some(Ok(frame)) => {
+                    // skip non-data frames
+                    if let Ok(buf) = frame.into_data() {
+                        Poll::Ready(Some(Ok(buf)))
+                    } else {
+                        continue;
+                    }
+                }
+                Some(Err(err)) => Poll::Ready(Some(Err(err))),
+                None => Poll::Ready(None),
+            };
+        }
+    }
+}
+
+impl Response {
+    pub async fn json<T: DeserializeOwned>(self) -> Result<T, Error> {
+        let data = self
+            .0
+            .into_body()
+            .boxed()
+            .collect()
+            .await
+            .expect("unexpected infallible error")
+            .to_bytes();
+        serde_json::from_slice::<T>(&data)
+            .map_err(|e| Error::internal("client response deserialization failed", e))
+    }
+
+    pub fn bytes_stream(self) -> impl futures_core::Stream<Item = Result<Bytes, Error>> {
+        DataStream(self.0.into_body().map_err(Into::into))
+    }
+}
+
+impl Deref for Response {
+    type Target = hyper::http::response::Response<BoxBody>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl From<hyper::http::response::Response<Incoming>> for Response {
+    fn from(response: hyper::http::Response<Incoming>) -> Self {
+        Response(response.map(|body| body.boxed()))
+    }
+}
+
+pub trait Body:
+    hyper::body::Body<Data = Bytes, Error = hyper::Error> + Serialize + Send + Sync
+{
+}
+
+pub type HttpClientInner =
+    hyper_util::client::legacy::Client<HttpsConnector<HttpConnector>, BoxBody>;
+
+pub trait HttpClientExt: Client {
+    fn inner(&self) -> &HttpClient;
+}
+
+pub trait HttpClientStreamExt: HttpClientExt + Clone {
+    async fn eventsource<T: RequestLike + Send + Sync + 'static>(
+        &self,
+        url: Url,
+        headers: HeaderMap,
+        request_body: T,
+    ) -> Pin<Box<EventSource<T>>> {
+        EventSource::from_client(self.inner().clone(), url, headers, request_body).await
+    }
+}
 
 #[derive(Clone)]
 pub struct HttpClient {
     base_url: Url,
     health_url: Url,
-    client: reqwest::Client,
+    inner: HttpClientInner,
 }
 
 impl HttpClient {
-    pub fn new(base_url: Url, client: reqwest::Client) -> Self {
+    pub fn new(base_url: Url, inner: HttpClientInner) -> Self {
         let health_url = base_url.join("health").unwrap();
         Self {
             base_url,
             health_url,
-            client,
+            inner,
         }
     }
 
@@ -43,13 +148,83 @@ impl HttpClient {
         &self.base_url
     }
 
+    pub fn endpoint(&self, path: impl Into<&'static str>) -> Url {
+        self.base_url.join(path.into()).unwrap()
+    }
+
+    pub async fn get<T: RequestLike + Send + Sync + 'static>(
+        self,
+        url: Url,
+        headers: HeaderMap,
+        body: T,
+    ) -> Result<Response, Error> {
+        let headers = trace::with_traceparent_header(headers.to_owned());
+        let body =
+            Full::new(Bytes::from(serde_json::to_vec(&body).map_err(|e| {
+                Error::internal("client request serialization failed", e)
+            })?))
+            .map_err(|err| match err {});
+        let mut builder = hyper::Request::get(url.as_uri());
+        match builder.headers_mut() {
+            Some(headers_mut) => {
+                headers_mut.extend(headers);
+                let request: Request<BoxBody> = builder
+                    .body(body.boxed())
+                    .map_err(|e| Error::internal("client request creation failed", e))?;
+                Ok(self
+                    .inner
+                    .request(request)
+                    .await
+                    .map_err(|e| Error::internal("sending client request failed", e))?
+                    .into())
+            }
+            None => Err(builder.body(body).err().map_or_else(
+                || panic!("unexpected headers missing in request builder but no errors found"),
+                |e| Error::internal("client request creation failed", e),
+            )),
+        }
+    }
+
+    pub async fn post<T: RequestLike + Send + Sync + 'static>(
+        self,
+        url: Url,
+        headers: HeaderMap,
+        body: T,
+    ) -> Result<Response, Error> {
+        let headers = trace::with_traceparent_header(headers.to_owned());
+        let body =
+            Full::new(Bytes::from(serde_json::to_vec(&body).map_err(|e| {
+                Error::internal("client request serialization failed", e)
+            })?))
+            .map_err(|err| match err {});
+        let mut builder = hyper::Request::post(url.as_uri());
+        match builder.headers_mut() {
+            Some(headers_mut) => {
+                headers_mut.extend(headers);
+                let request: Request<BoxBody> = builder
+                    .body(body.boxed())
+                    .map_err(|e| Error::internal("client request creation failed", e))?;
+                Ok(self
+                    .inner
+                    .request(request)
+                    .await
+                    .map_err(|e| Error::internal("sending client request failed", e))?
+                    .into())
+            }
+            None => Err(builder.body(body).err().map_or_else(
+                || panic!("unexpected headers missing in request builder but no errors found"),
+                |e| Error::internal("client request creation failed", e),
+            )),
+        }
+    }
+
     /// This is sectioned off to allow for testing.
     pub(super) async fn http_response_to_health_check_result(
-        res: Result<Response, reqwest::Error>,
+        res: Result<Response, Error>,
     ) -> HealthCheckResult {
         match res {
             Ok(response) => {
-                if response.status() == StatusCode::OK {
+                if response.0.status() == StatusCode::OK {
                     if let Ok(body) = response.json::<OptionalHealthCheckResponseBody>().await {
                         // If the service provided a body, we only anticipate a minimal health status and optional reason.
                         HealthCheckResult {
@@ -99,7 +274,7 @@ impl HttpClient {
                 error!("error checking health: {}", e);
                 HealthCheckResult {
                     status: HealthStatus::Unknown,
-                    code: e.status().unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+                    code: e.status_code(),
                     reason: Some(e.to_string()),
                 }
             }
@@ -107,16 +282,12 @@ impl HttpClient {
     }
 
     pub async fn health(&self) -> HealthCheckResult {
-        let res = self.get(self.health_url.clone()).send().await;
-        Self::http_response_to_health_check_result(res).await
-    }
-}
-
-impl std::ops::Deref for HttpClient {
-    type Target = reqwest::Client;
-
-    fn deref(&self) -> &Self::Target {
-        &self.client
+        let res = self.inner.get(self.health_url.as_uri()).await;
+        Self::http_response_to_health_check_result(
+            res.map(Into::into)
+                .map_err(|e| Error::internal("sending client health request failed", e)),
+        )
+        .await
     }
 }
 

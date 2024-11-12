@@ -14,13 +14,13 @@
  limitations under the License.
 
 */
-
 use async_trait::async_trait;
 use hyper::{HeaderMap, StatusCode};
 use serde::{Deserialize, Serialize};
 use tracing::instrument;
 
-use super::{post_with_headers, DetectorError, DEFAULT_PORT};
+use super::{DetectorClient, DetectorClientExt, DetectorError, DEFAULT_PORT};
+use crate::clients::http::HttpClientExt;
 use crate::{
     clients::{create_http_client, Client, Error, HttpClient},
     config::ServiceConfig,
@@ -37,17 +37,24 @@ pub struct TextContentsDetectorClient {
 
 #[cfg_attr(test, faux::methods)]
 impl TextContentsDetectorClient {
-    pub async fn new(config: &ServiceConfig, health_config: Option<&ServiceConfig>) -> Self {
-        let client = create_http_client(DEFAULT_PORT, config).await;
+    pub async fn new(
+        config: &ServiceConfig,
+        health_config: Option<&ServiceConfig>,
+    ) -> Result<Self, Error> {
+        let client = create_http_client(DEFAULT_PORT, config).await?;
         let health_client = if let Some(health_config) = health_config {
-            Some(create_http_client(DEFAULT_PORT, health_config).await)
+            Some(create_http_client(DEFAULT_PORT, health_config).await?)
         } else {
             None
         };
-        Self {
+        Ok(Self {
             client,
             health_client,
-        }
+        })
+    }
+
+    fn client(&self) -> &HttpClient {
+        &self.client
     }
 
     #[instrument(skip_all, fields(model_id))]
@@ -62,8 +69,9 @@ impl TextContentsDetectorClient {
             .base_url()
             .join("/api/v1/text/contents")
             .unwrap();
-        let response =
-            post_with_headers(self.client.clone(), url, request, headers, model_id).await?;
+        let response = self
+            .post_with_model_id(model_id, url, headers, request)
+            .await?;
         if response.status() == StatusCode::OK {
             Ok(response.json().await?)
         } else {
@@ -93,6 +101,14 @@ impl Client for TextContentsDetectorClient {
         } else {
             self.client.health().await
         }
+    }
+}
+
+impl DetectorClient for TextContentsDetectorClient {}
+
+impl HttpClientExt for TextContentsDetectorClient {
+    fn inner(&self) -> &HttpClient {
+        self.client()
     }
 }
 

@@ -18,11 +18,11 @@
 use async_trait::async_trait;
 use hyper::{HeaderMap, StatusCode};
 use serde::Serialize;
-use tracing::instrument;
+use tracing::{debug, info, instrument};
 
-use super::{post_with_headers, DetectorError, DEFAULT_PORT};
+use super::{DetectorClient, DetectorClientExt, DetectorError, DEFAULT_PORT};
 use crate::{
-    clients::{create_http_client, Client, Error, HttpClient},
+    clients::{create_http_client, http::HttpClientExt, Client, Error, HttpClient},
     config::ServiceConfig,
     health::HealthCheckResult,
     models::{DetectionResult, DetectorParams},
@@ -37,17 +37,24 @@ pub struct TextGenerationDetectorClient {
 
 #[cfg_attr(test, faux::methods)]
 impl TextGenerationDetectorClient {
-    pub async fn new(config: &ServiceConfig, health_config: Option<&ServiceConfig>) -> Self {
-        let client = create_http_client(DEFAULT_PORT, config).await;
+    pub async fn new(
+        config: &ServiceConfig,
+        health_config: Option<&ServiceConfig>,
+    ) -> Result<Self, Error> {
+        let client = create_http_client(DEFAULT_PORT, config).await?;
         let health_client = if let Some(health_config) = health_config {
-            Some(create_http_client(DEFAULT_PORT, health_config).await)
+            Some(create_http_client(DEFAULT_PORT, health_config).await?)
         } else {
             None
         };
-        Self {
+        Ok(Self {
             client,
             health_client,
-        }
+        })
+    }
+
+    fn client(&self) -> &HttpClient {
+        &self.client
     }
 
     #[instrument(skip_all, fields(model_id))]
@@ -62,10 +69,14 @@ impl TextGenerationDetectorClient {
             .base_url()
             .join("/api/v1/text/generation")
             .unwrap();
-        let response =
-            post_with_headers(self.client.clone(), url, request, headers, model_id).await?;
+        info!(?url, "sending generation detector request");
+        let response = self
+            .post_with_model_id(model_id, url, headers, request)
+            .await?;
         if response.status() == StatusCode::OK {
-            Ok(response.json().await?)
+            let response = response.json().await?;
+            debug!(?response, "text generation detector response");
+            Ok(response)
         } else {
             let code = response.status().as_u16();
             let error = response
@@ -96,10 +107,18 @@ impl Client for TextGenerationDetectorClient {
     }
 }
 
+impl DetectorClient for TextGenerationDetectorClient {}
+
+impl HttpClientExt for TextGenerationDetectorClient {
+    fn inner(&self) -> &HttpClient {
+        self.client()
+    }
+}
+
 /// A struct representing a request to a detector compatible with the
 /// /api/v1/text/generation endpoint.
 #[cfg_attr(test, derive(PartialEq))]
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct GenerationDetectionRequest {
     /// User prompt sent to LLM
     pub prompt: String,

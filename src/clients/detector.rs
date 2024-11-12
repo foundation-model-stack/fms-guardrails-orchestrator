@@ -19,9 +19,8 @@ use std::fmt::Debug;
 
 use axum::http::HeaderMap;
 use hyper::StatusCode;
-use reqwest::Response;
-use serde::{Deserialize, Serialize};
-use tracing::info;
+use serde::Deserialize;
+use tracing::debug;
 use url::Url;
 
 pub mod text_contents;
@@ -31,10 +30,12 @@ pub use text_chat::*;
 pub mod text_context_doc;
 pub use text_context_doc::*;
 pub mod text_generation;
+use super::{
+    http::{HttpClientExt, Response},
+    Error,
+};
+use crate::clients::http::RequestLike;
 pub use text_generation::*;
-
-use super::{Error, HttpClient};
-use crate::tracing_utils::{trace_context_from_http_response, with_traceparent_header};
 
 const DEFAULT_PORT: u16 = 8080;
 const DETECTOR_ID_HEADER_NAME: &str = "detector-id";
@@ -54,24 +55,43 @@ impl From<DetectorError> for Error {
     }
 }
 
-/// Make a POST request for an HTTP detector client and return the response.
-/// Also injects the `traceparent` header from the current span and traces the response.
-pub async fn post_with_headers<T: Debug + Serialize>(
-    client: HttpClient,
-    url: Url,
-    request: T,
-    headers: HeaderMap,
-    model_id: &str,
-) -> Result<Response, Error> {
-    let headers = with_traceparent_header(headers);
-    info!(?url, ?headers, ?request, "sending client request");
-    let response = client
-        .post(url)
-        .headers(headers)
-        .header(DETECTOR_ID_HEADER_NAME, model_id)
-        .json(&request)
-        .send()
-        .await?;
-    trace_context_from_http_response(&response);
-    Ok(response)
+pub trait DetectorClient {}
+
+pub trait DetectorClientExt: HttpClientExt {
+    async fn post_with_model_id<T: RequestLike + Send + Sync + 'static>(
+        &self,
+        model_id: &str,
+        url: Url,
+        headers: HeaderMap,
+        request: T,
+    ) -> Result<Response, Error>;
+
+    fn endpoint(&self, path: impl Into<&'static str>) -> Url;
+}
+
+impl<C: DetectorClient + HttpClientExt> DetectorClientExt for C {
+    /// Make a POST request for an HTTP detector client and return the response.
+    /// Also injects the `traceparent` header from the current span and traces the response.
+    async fn post_with_model_id<T: RequestLike + Send + Sync + 'static>(
+        &self,
+        model_id: &str,
+        url: Url,
+        headers: HeaderMap,
+        request: T,
+    ) -> Result<Response, Error> {
+        let mut headers = headers;
+        headers.append(DETECTOR_ID_HEADER_NAME, model_id.parse().unwrap());
+        debug!(
+            ?url,
+            ?headers,
+            request = serde_json::to_string(&request).unwrap_or("".to_string()),
+            "sending client request"
+        );
+        let response = self.inner().clone().post(url, headers, request).await?;
+        Ok(response)
+    }
+
+    fn endpoint(&self, path: impl Into<&'static str>) -> Url {
+        self.inner().endpoint(path)
+    }
 }

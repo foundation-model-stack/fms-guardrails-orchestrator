@@ -41,6 +41,7 @@ use tracing_opentelemetry::{MetricsLayer, OpenTelemetrySpanExt};
 use tracing_subscriber::{layer::SubscriberExt, EnvFilter, Layer};
 
 use crate::args::{LogFormat, OtlpProtocol, TracingConfig};
+use crate::clients::http;
 
 #[derive(Debug, thiserror::Error)]
 pub enum TracingError {
@@ -351,7 +352,7 @@ pub fn with_traceparent_header(headers: HeaderMap) -> HeaderMap {
 /// tracing span context (i.e. use `traceparent` as parent to the current span).
 /// Defaults to using the current context when no `traceparent` is found.
 /// See https://www.w3.org/TR/trace-context/#trace-context-http-headers-format.
-pub fn trace_context_from_http_response(response: &reqwest::Response) {
+pub fn trace_context_from_http_response(response: &http::Response) {
     let ctx = global::get_text_map_propagator(|propagator| {
         // Returns the current context if no `traceparent` is found
         propagator.extract(&HeaderExtractor(response.headers()))

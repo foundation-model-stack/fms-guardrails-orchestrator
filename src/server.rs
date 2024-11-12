@@ -59,7 +59,7 @@ use crate::{
         ContextDocsDetectionTask, DetectionOnGenerationTask, GenerationWithDetectionTask,
         Orchestrator, StreamingClassificationWithGenTask, TextContentDetectionTask,
     },
-    tracing_utils,
+    utils,
 };
 
 const API_PREFIX: &str = r#"/api/v1/task"#;
@@ -206,10 +206,10 @@ pub async fn run(
 
     let app = router.with_state(shared_state).layer(
         TraceLayer::new_for_http()
-            .make_span_with(tracing_utils::incoming_request_span)
-            .on_request(tracing_utils::on_incoming_request)
-            .on_response(tracing_utils::on_outgoing_response)
-            .on_eos(tracing_utils::on_outgoing_eos),
+            .make_span_with(utils::trace::incoming_request_span)
+            .on_request(utils::trace::on_incoming_request)
+            .on_response(utils::trace::on_outgoing_response)
+            .on_eos(utils::trace::on_outgoing_eos),
     );
 
     // (2c) Generate main guardrails server handle based on whether TLS is needed

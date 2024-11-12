@@ -27,7 +27,7 @@ use async_trait::async_trait;
 use axum::http::{Extensions, HeaderMap};
 use futures::Stream;
 use ginepro::LoadBalancedChannel;
-use tokio::{fs::File, io::AsyncReadExt};
+use hyper_util::rt::TokioExecutor;
 use tonic::{metadata::MetadataMap, Request};
 use tracing::{debug, instrument};
 use url::Url;
@@ -35,11 +35,13 @@ use url::Url;
 use crate::{
     config::{ServiceConfig, Tls},
     health::HealthCheckResult,
-    tracing_utils::with_traceparent_header,
+    utils::trace::with_traceparent_header,
 };
 
 pub mod errors;
 pub use errors::Error;
+
+pub mod eventsource;
 
 pub mod http;
 pub use http::HttpClient;
@@ -56,11 +58,12 @@ pub mod nlp;
 pub use nlp::NlpClient;
 
 pub mod generation;
+use crate::utils::tls;
 pub use generation::GenerationClient;
 
 pub mod openai;
 
-const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(60);
+const DEFAULT_CONNECT_TIMEOUT_SEC: u64 = 60;
 const DEFAULT_REQUEST_TIMEOUT_SEC: u64 = 600;
 
 pub type BoxStream<T> = Pin<Box<dyn Stream<Item = T> + Send>>;
@@ -198,7 +201,10 @@ impl ClientMap {
 }
 
 #[instrument(skip_all, fields(hostname = service_config.hostname))]
-pub async fn create_http_client(default_port: u16, service_config: &ServiceConfig) -> HttpClient {
+pub async fn create_http_client(
+    default_port: u16,
+    service_config: &ServiceConfig,
+) -> Result<HttpClient, Error> {
     let port = service_config.port.unwrap_or(default_port);
     let protocol = match service_config.tls {
         Some(_) => "https",
@@ -210,53 +216,36 @@ pub async fn create_http_client(default_port: u16, service_config: &ServiceConfi
         .set_port(Some(port))
         .unwrap_or_else(|_| panic!("error setting port: {}", port));
     debug!(%base_url, "creating HTTP client");
+
+    let connect_timeout = Duration::from_secs(DEFAULT_REQUEST_TIMEOUT_SEC);
     let request_timeout = Duration::from_secs(
         service_config
             .request_timeout
             .unwrap_or(DEFAULT_REQUEST_TIMEOUT_SEC),
     );
-    let mut builder = reqwest::ClientBuilder::new()
-        .connect_timeout(DEFAULT_CONNECT_TIMEOUT)
-        .timeout(request_timeout);
-    if let Some(Tls::Config(tls_config)) = &service_config.tls {
-        let mut cert_buf = Vec::new();
-        let cert_path = tls_config.cert_path.as_ref().unwrap().as_path();
-        File::open(cert_path)
-            .await
-            .unwrap_or_else(|error| panic!("error reading cert from {cert_path:?}: {error}"))
-            .read_to_end(&mut cert_buf)
-            .await
-            .unwrap();
 
-        if let Some(key_path) = &tls_config.key_path {
-            File::open(key_path)
+    let https_conn_builder = match &service_config.tls {
+        Some(Tls::Config(tls)) => hyper_rustls::HttpsConnectorBuilder::new().with_tls_config(
+            tls::build_client_config(tls)
                 .await
-                .unwrap_or_else(|error| panic!("error reading key from {key_path:?}: {error}"))
-                .read_to_end(&mut cert_buf)
-                .await
-                .unwrap();
-        }
-        let identity = reqwest::Identity::from_pem(&cert_buf)
-            .unwrap_or_else(|error| panic!("error parsing bundled client certificate: {error}"));
+                .map_err(|e| e.into_client_error())?,
+        ),
+        Some(_) => panic!("unexpected unresolved TLS in client builder"),
+        None => hyper_rustls::HttpsConnectorBuilder::new()
+            .with_tls_config(tls::build_insecure_client_config()),
+    };
+    let https_conn = https_conn_builder
+        .https_or_http()
+        .enable_http1()
+        .enable_http2()
+        .build();
 
-        builder = builder.use_rustls_tls().identity(identity);
-        builder = builder.danger_accept_invalid_certs(tls_config.insecure.unwrap_or(false));
-
-        if let Some(client_ca_cert_path) = &tls_config.client_ca_cert_path {
-            let ca_cert = tokio::fs::read(client_ca_cert_path)
-                .await
-                .unwrap_or_else(|error| {
-                    panic!("error reading cert from {client_ca_cert_path:?}: {error}")
-                });
-            let cacert = reqwest::Certificate::from_pem(&ca_cert)
-                .unwrap_or_else(|error| panic!("error parsing ca cert: {error}"));
-            builder = builder.add_root_certificate(cacert)
-        }
-    }
-    let client = builder
-        .build()
-        .unwrap_or_else(|error| panic!("error creating http client: {error}"));
-    HttpClient::new(base_url, client)
+    let client = hyper_util::client::legacy::Client::builder(TokioExecutor::new())
+        .http2_keep_alive_timeout(connect_timeout)
+        .pool_idle_timeout(request_timeout)
+        // .pool_timer()
+        .build(https_conn);
+    Ok(HttpClient::new(base_url, client))
 }
 
 #[instrument(skip_all, fields(hostname = service_config.hostname))]
@@ -273,13 +262,14 @@ pub async fn create_grpc_client<C>(
     let mut base_url = Url::parse(&format!("{}://{}", protocol, &service_config.hostname)).unwrap();
     base_url.set_port(Some(port)).unwrap();
     debug!(%base_url, "creating gRPC client");
+    let connect_timeout = Duration::from_secs(DEFAULT_REQUEST_TIMEOUT_SEC);
     let request_timeout = Duration::from_secs(
         service_config
             .request_timeout
             .unwrap_or(DEFAULT_REQUEST_TIMEOUT_SEC),
     );
     let mut builder = LoadBalancedChannel::builder((service_config.hostname.clone(), port))
-        .connect_timeout(DEFAULT_CONNECT_TIMEOUT)
+        .connect_timeout(connect_timeout)
         .timeout(request_timeout);
 
     let client_tls_config = if let Some(Tls::Config(tls_config)) = &service_config.tls {
