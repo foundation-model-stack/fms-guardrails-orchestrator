@@ -20,11 +20,10 @@ use std::fmt::Debug;
 use axum::http::HeaderMap;
 use hyper::StatusCode;
 use serde::Deserialize;
-use tracing::debug;
 use url::Url;
 
 use super::{
-    http::{HttpClientExt, RequestLike, Response},
+    http::{HttpClientExt, RequestLike, ResponseLike},
     Error,
 };
 
@@ -58,13 +57,16 @@ impl From<DetectorError> for Error {
 pub trait DetectorClient {}
 
 pub trait DetectorClientExt: HttpClientExt {
-    async fn post_with_model_id<T: RequestLike + Send + Sync + 'static>(
+    async fn post_to_detector<
+        T: RequestLike + Send + Sync + 'static,
+        U: ResponseLike + Send + Sync + 'static,
+    >(
         &self,
         model_id: &str,
         url: Url,
         headers: HeaderMap,
         request: T,
-    ) -> Result<Response, Error>;
+    ) -> Result<U, Error>;
 
     fn endpoint(&self, path: impl Into<&'static str>) -> Url;
 }
@@ -72,23 +74,32 @@ pub trait DetectorClientExt: HttpClientExt {
 impl<C: DetectorClient + HttpClientExt> DetectorClientExt for C {
     /// Make a POST request for an HTTP detector client and return the response.
     /// Also injects the `traceparent` header from the current span and traces the response.
-    async fn post_with_model_id<T: RequestLike + Send + Sync + 'static>(
+    async fn post_to_detector<
+        T: RequestLike + Send + Sync + 'static,
+        U: ResponseLike + Send + Sync + 'static,
+    >(
         &self,
         model_id: &str,
         url: Url,
         headers: HeaderMap,
         request: T,
-    ) -> Result<Response, Error> {
+    ) -> Result<U, Error> {
         let mut headers = headers;
         headers.append(DETECTOR_ID_HEADER_NAME, model_id.parse().unwrap());
-        debug!(
-            ?url,
-            ?headers,
-            request = serde_json::to_string(&request).unwrap_or("".to_string()),
-            "sending client request"
-        );
         let response = self.inner().clone().post(url, headers, request).await?;
-        Ok(response)
+
+        let status = response.status();
+        match status {
+            StatusCode::OK => Ok(response.json().await?),
+            _ => Err(response
+                .json::<DetectorError>()
+                .await
+                .unwrap_or(DetectorError {
+                    code: status.as_u16(),
+                    message: "".into(),
+                })
+                .into()),
+        }
     }
 
     fn endpoint(&self, path: impl Into<&'static str>) -> Url {

@@ -16,6 +16,7 @@
 */
 
 use std::{
+    fmt::Debug,
     ops::Deref,
     pin::Pin,
     task::{Context, Poll},
@@ -24,12 +25,12 @@ use std::{
 use http_body_util::{combinators::BoxBody as HttpBoxBody, BodyExt, Full};
 use hyper::{
     body::{Body as HttpBody, Bytes, Incoming},
-    HeaderMap, Request, StatusCode,
+    HeaderMap, Method, StatusCode,
 };
 use hyper_rustls::HttpsConnector;
 use hyper_util::client::legacy::connect::HttpConnector;
 use serde::{de::DeserializeOwned, Serialize};
-use tracing::error;
+use tracing::{debug, error};
 use url::Url;
 
 use super::{eventsource::EventSource, Client, Error};
@@ -40,10 +41,17 @@ use crate::{
 
 pub type BoxBody = HttpBoxBody<Bytes, hyper::Error>;
 
+pub type Request<T> = hyper::Request<T>;
+
 pub struct Response(pub hyper::http::Response<BoxBody>);
 
-pub trait RequestLike: Serialize + Clone {}
-impl<T> RequestLike for T where T: Serialize + Clone + Send + Sync + 'static {}
+pub trait RequestLike: Serialize + Debug + Clone {}
+
+impl<T> RequestLike for T where T: Serialize + Debug + Clone + Send + Sync + 'static {}
+
+pub trait ResponseLike: DeserializeOwned + Debug + Clone {}
+
+impl<T> ResponseLike for T where T: DeserializeOwned + Debug + Clone + Send + Sync + 'static {}
 
 pub struct DataStream<B>(pub B);
 
@@ -158,36 +166,22 @@ impl HttpClient {
         headers: HeaderMap,
         body: T,
     ) -> Result<Response, Error> {
-        let headers = trace::with_traceparent_header(headers.to_owned());
-        let body =
-            Full::new(Bytes::from(serde_json::to_vec(&body).map_err(|e| {
-                Error::internal("client request serialization failed", e)
-            })?))
-            .map_err(|err| match err {});
-        let mut builder = hyper::Request::get(url.as_uri());
-        match builder.headers_mut() {
-            Some(headers_mut) => {
-                headers_mut.extend(headers);
-                let request: Request<BoxBody> = builder
-                    .body(body.boxed())
-                    .map_err(|e| Error::internal("client request creation failed", e))?;
-                Ok(self
-                    .inner
-                    .request(request)
-                    .await
-                    .map_err(|e| Error::internal("sending client request failed", e))?
-                    .into())
-            }
-            None => Err(builder.body(body).err().map_or_else(
-                || panic!("unexpected headers missing in request builder but no errors found"),
-                |e| Error::internal("client request creation failed", e),
-            )),
-        }
+        self.send(url, Method::GET, headers, body).await
     }
 
     pub async fn post<T: RequestLike + Send + Sync + 'static>(
         self,
         url: Url,
+        headers: HeaderMap,
+        body: T,
+    ) -> Result<Response, Error> {
+        self.send(url, Method::POST, headers, body).await
+    }
+
+    pub async fn send<T: RequestLike + Send + Sync + 'static>(
+        self,
+        url: Url,
+        method: Method,
         headers: HeaderMap,
         body: T,
     ) -> Result<Response, Error> {
@@ -197,10 +191,18 @@ impl HttpClient {
                 Error::internal("client request serialization failed", e)
             })?))
             .map_err(|err| match err {});
-        let mut builder = hyper::Request::post(url.as_uri());
+        let mut builder = hyper::http::request::Builder::new()
+            .method(method)
+            .uri(url.as_uri());
         match builder.headers_mut() {
             Some(headers_mut) => {
-                headers_mut.extend(headers);
+                headers_mut.extend(headers.clone());
+                debug!(
+                    ?url,
+                    ?headers,
+                    ?body,
+                    "sending client request"
+                );
                 let request: Request<BoxBody> = builder
                     .body(body.boxed())
                     .map_err(|e| Error::internal("client request creation failed", e))?;
@@ -212,7 +214,7 @@ impl HttpClient {
                     .into())
             }
             None => Err(builder.body(body).err().map_or_else(
-                || panic!("unexpected headers missing in request builder but no errors found"),
+                || panic!("unexpected request builder error - headers missing in builder but no errors found"),
                 |e| Error::internal("client request creation failed", e),
             )),
         }

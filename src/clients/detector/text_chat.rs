@@ -16,11 +16,11 @@
 */
 
 use async_trait::async_trait;
-use hyper::{HeaderMap, StatusCode};
+use hyper::HeaderMap;
 use serde::Serialize;
-use tracing::{debug, info, instrument};
+use tracing::{info, instrument};
 
-use super::{DetectorClient, DetectorClientExt, DetectorError, DEFAULT_PORT};
+use super::{DetectorClient, DetectorClientExt, DEFAULT_PORT};
 use crate::{
     clients::{
         create_http_client, http::HttpClientExt, openai::Message, Client, Error, HttpClient,
@@ -68,28 +68,9 @@ impl TextChatDetectorClient {
         request: ChatDetectionRequest,
         headers: HeaderMap,
     ) -> Result<Vec<DetectionResult>, Error> {
-        let url = self.client.base_url().join(CHAT_DETECTOR_ENDPOINT).unwrap();
-        info!(?url, "sending chat detector request");
-        debug!(?request, "text chat detector request");
-        let response = self
-            .post_with_model_id(model_id, url, headers, request)
-            .await?;
-
-        if response.status() == StatusCode::OK {
-            let response = response.json().await?;
-            debug!(?response, "text chat detector response");
-            Ok(response)
-        } else {
-            let code = response.status().as_u16();
-            let error = response
-                .json::<DetectorError>()
-                .await
-                .unwrap_or(DetectorError {
-                    code,
-                    message: "".into(),
-                });
-            Err(error.into())
-        }
+        let url = self.endpoint(CHAT_DETECTOR_ENDPOINT);
+        info!("sending text chat detector request to {}", url);
+        self.post_to_detector(model_id, url, headers, request).await
     }
 }
 

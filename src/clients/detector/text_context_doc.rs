@@ -16,17 +16,19 @@
 */
 
 use async_trait::async_trait;
-use hyper::{HeaderMap, StatusCode};
+use hyper::HeaderMap;
 use serde::{Deserialize, Serialize};
-use tracing::{debug, info, instrument};
+use tracing::{info, instrument};
 
-use super::{DetectorClient, DetectorClientExt, DetectorError, DEFAULT_PORT};
+use super::{DetectorClient, DetectorClientExt, DEFAULT_PORT};
 use crate::{
     clients::{create_http_client, http::HttpClientExt, Client, Error, HttpClient},
     config::ServiceConfig,
     health::HealthCheckResult,
     models::{DetectionResult, DetectorParams},
 };
+
+const CONTEXT_DOC_DETECTOR_ENDPOINT: &str = "/api/v1/text/context/doc";
 
 #[cfg_attr(test, faux::create)]
 #[derive(Clone)]
@@ -64,31 +66,9 @@ impl TextContextDocDetectorClient {
         request: ContextDocsDetectionRequest,
         headers: HeaderMap,
     ) -> Result<Vec<DetectionResult>, Error> {
-        let url = self
-            .client
-            .base_url()
-            .join("/api/v1/text/context/doc")
-            .unwrap();
-        info!(?url, "sending context doc detector request");
-        debug!(?request, "text context doc detector request");
-        let response = self
-            .post_with_model_id(model_id, url, headers, request)
-            .await?;
-        if response.status() == StatusCode::OK {
-            let response = response.json().await?;
-            debug!(?response, "text context doc detector response");
-            Ok(response)
-        } else {
-            let code = response.status().as_u16();
-            let error = response
-                .json::<DetectorError>()
-                .await
-                .unwrap_or(DetectorError {
-                    code,
-                    message: "".into(),
-                });
-            Err(error.into())
-        }
+        let url = self.endpoint(CONTEXT_DOC_DETECTOR_ENDPOINT);
+        info!("sending text context doc detector request to {}", url);
+        self.post_to_detector(model_id, url, headers, request).await
     }
 }
 

@@ -16,17 +16,19 @@
 */
 
 use async_trait::async_trait;
-use hyper::{HeaderMap, StatusCode};
+use hyper::HeaderMap;
 use serde::{Deserialize, Serialize};
-use tracing::instrument;
+use tracing::{info, instrument};
 
-use super::{DetectorClient, DetectorClientExt, DetectorError, DEFAULT_PORT};
+use super::{DetectorClient, DetectorClientExt, DEFAULT_PORT};
 use crate::{
     clients::{create_http_client, http::HttpClientExt, Client, Error, HttpClient},
     config::ServiceConfig,
     health::HealthCheckResult,
     models::DetectorParams,
 };
+
+const CONTENTS_DETECTOR_ENDPOINT: &str = "/api/v1/text/contents";
 
 #[cfg_attr(test, faux::create)]
 #[derive(Clone)]
@@ -64,27 +66,9 @@ impl TextContentsDetectorClient {
         request: ContentAnalysisRequest,
         headers: HeaderMap,
     ) -> Result<Vec<Vec<ContentAnalysisResponse>>, Error> {
-        let url = self
-            .client
-            .base_url()
-            .join("/api/v1/text/contents")
-            .unwrap();
-        let response = self
-            .post_with_model_id(model_id, url, headers, request)
-            .await?;
-        if response.status() == StatusCode::OK {
-            Ok(response.json().await?)
-        } else {
-            let code = response.status().as_u16();
-            let error = response
-                .json::<DetectorError>()
-                .await
-                .unwrap_or(DetectorError {
-                    code,
-                    message: "".into(),
-                });
-            Err(error.into())
-        }
+        let url = self.endpoint(CONTENTS_DETECTOR_ENDPOINT);
+        info!("sending text content detector request to {}", url);
+        self.post_to_detector(model_id, url, headers, request).await
     }
 }
 
