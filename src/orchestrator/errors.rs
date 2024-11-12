@@ -14,8 +14,8 @@
  limitations under the License.
 
 */
-
 use crate::clients;
+use tracing::{debug, error};
 
 /// Orchestrator errors.
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
@@ -36,6 +36,50 @@ pub enum Error {
     Other(String),
     #[error("cancelled")]
     Cancelled,
+}
+
+impl Error {
+    fn handle_internal_client_error(error: &clients::Error, from_client: String) {
+        debug!(?error, "error received from {}", from_client);
+        if matches!(error, clients::Error::Internal { .. }) {
+            error!("internal client error: {}", error);
+        }
+    }
+
+    pub fn handle_detector_error(id: String, error: clients::Error) -> Self {
+        Self::handle_internal_client_error(&error, format!("detector client with id: {}", id));
+        Error::DetectorRequestFailed {
+            id,
+            error: error.into_http(),
+        }
+    }
+
+    pub fn handle_tokenize_error(id: String, error: clients::Error) -> Self {
+        Self::handle_internal_client_error(
+            &error,
+            format!("tokenization in generation client with id: {}", id),
+        );
+        Error::TokenizeRequestFailed {
+            id,
+            error: error.into_http(),
+        }
+    }
+
+    pub fn handle_generate_error(id: String, error: clients::Error) -> Self {
+        Self::handle_internal_client_error(&error, format!("generation client with id: {}", id));
+        Error::GenerateRequestFailed {
+            id,
+            error: error.into_http(),
+        }
+    }
+
+    pub fn handle_chunker_error(id: String, error: clients::Error) -> Self {
+        Self::handle_internal_client_error(&error, format!("chunker client with id {}", id));
+        Error::ChunkerRequestFailed {
+            id,
+            error: error.into_http(),
+        }
+    }
 }
 
 impl From<tokio::task::JoinError> for Error {

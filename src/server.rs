@@ -593,7 +593,7 @@ pub enum Error {
     NotFound(String),
     #[error("{0}")]
     ServiceUnavailable(String),
-    #[error("unexpected error occured while processing request")]
+    #[error("unexpected error occurred while processing request")]
     Unexpected,
     #[error(transparent)]
     JsonExtractorRejection(#[from] JsonRejection),

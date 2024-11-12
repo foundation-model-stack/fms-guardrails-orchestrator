@@ -418,7 +418,7 @@ async fn detection_task(
                                 .unwrap_or_else(|| panic!("text contents detector client not found for {}", detector_id));
                             match client.text_contents(&detector_id, request, headers)
                                 .await
-                                .map_err(|error| Error::DetectorRequestFailed { id: detector_id.clone(), error }) {
+                                .map_err(|error| Error::handle_detector_error(detector_id.clone(), error)) {
                                     Ok(response) => {
                                         debug!(%detector_id, ?response, "received detector response");
                                         let detections = response
@@ -483,9 +483,8 @@ async fn chunk_broadcast_task(
             }
         })
         .boxed();
-    debug!("creating chunker output stream");
-    let id = chunker_id.clone(); // workaround for StreamExt::map_err
 
+    debug!("creating chunker output stream");
     let response_stream = if chunker_id == DEFAULT_CHUNKER_ID {
         info!("Using default whole doc chunker");
         let (response_tx, response_rx) = mpsc::channel(1);
@@ -504,14 +503,8 @@ async fn chunk_broadcast_task(
     };
 
     let mut output_stream = response_stream
-        .map_err(|error| Error::ChunkerRequestFailed {
-            id: chunker_id.clone(),
-            error,
-        })?
-        .map_err(move |error| Error::ChunkerRequestFailed {
-            id: id.clone(),
-            error,
-        }); // maps stream errors
+        .map_err(|error| Error::handle_chunker_error(chunker_id.clone(), error))?
+        .map_err(move |error| Error::handle_chunker_error(chunker_id.clone(), error)); // maps stream errors
 
     // Spawn task to consume output stream forward to broadcast channel
     debug!("spawning chunker broadcast task");
@@ -572,14 +565,8 @@ async fn generate_stream(
     Ok(client
         .generate_stream(model_id.clone(), text, params, headers)
         .await
-        .map_err(|error| Error::GenerateRequestFailed {
-            id: model_id.clone(),
-            error,
-        })?
-        .map_err(move |error| Error::GenerateRequestFailed {
-            id: model_id.clone(),
-            error,
-        }) // maps stream errors
+        .map_err(|error| Error::handle_generate_error(model_id.clone(), error))?
+        .map_err(move |error| Error::handle_generate_error(model_id.clone(), error)) // maps stream errors
         .boxed())
 }
 

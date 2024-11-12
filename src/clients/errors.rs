@@ -29,7 +29,7 @@ pub enum Error {
     Http { code: StatusCode, message: String },
     #[error("model not found: {model_id}")]
     ModelNotFound { model_id: String },
-    #[error("client request failed: {error}")]
+    #[error("{}", .error)]
     Internal { error: String },
 }
 
@@ -55,16 +55,17 @@ impl Error {
     }
 
     pub fn into_http(self) -> Self {
-        Self::Http {
-            code: self.status_code(),
-            message: self.to_string(),
-        }
-    }
-
-    pub fn into_grpc(self) -> Self {
-        Self::Grpc {
-            code: self.status_code(),
-            message: self.to_string(),
+        match self {
+            Error::Grpc { code, message } => Self::Http { code, message },
+            Error::Http { .. } => self,
+            Error::Internal { .. } => Self::Http {
+                code: StatusCode::INTERNAL_SERVER_ERROR,
+                message: "".to_string(),
+            },
+            _ => Self::Http {
+                code: self.status_code(),
+                message: self.to_string(),
+            },
         }
     }
 }

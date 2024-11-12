@@ -49,7 +49,7 @@ impl From<DetectorError> for Error {
     fn from(error: DetectorError) -> Self {
         Error::Http {
             code: StatusCode::from_u16(error.code).unwrap(),
-            message: error.message,
+            message: format!("error response from detector: {}", error.message),
         }
     }
 }
