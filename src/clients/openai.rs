@@ -31,11 +31,11 @@ use super::{
     http::{HttpClientExt, HttpClientStreamExt},
     Client, Error, HttpClient,
 };
-use crate::{
-    config::ServiceConfig, health::HealthCheckResult, utils::trace::with_traceparent_header,
-};
+use crate::{config::ServiceConfig, health::HealthCheckResult};
 
 const DEFAULT_PORT: u16 = 8080;
+
+const CHAT_COMPLETIONS_ENDPOINT: &str = "/v1/chat/completions";
 
 #[cfg_attr(test, faux::create)]
 #[derive(Clone)]
@@ -72,10 +72,9 @@ impl OpenAiClient {
         request: ChatCompletionsRequest,
         headers: HeaderMap,
     ) -> Result<ChatCompletionsResponse, Error> {
-        let url = self.client.base_url().join("/v1/chat/completions").unwrap();
-        let headers = with_traceparent_header(headers);
+        let url = self.inner().endpoint(CHAT_COMPLETIONS_ENDPOINT);
         let stream = request.stream.unwrap_or_default();
-        info!(?url, ?headers, ?request, "sending client request");
+        info!("sending Open AI chat completion request to {}", url);
         if stream {
             let (tx, rx) = mpsc::channel(32);
             let mut event_stream = self.eventsource(url, headers, request).await;
