@@ -23,6 +23,11 @@ use serde::Deserialize;
 use tracing::debug;
 use url::Url;
 
+use super::{
+    http::{HttpClientExt, RequestLike, Response},
+    Error,
+};
+
 pub mod text_contents;
 pub use text_contents::*;
 pub mod text_chat;
@@ -30,11 +35,6 @@ pub use text_chat::*;
 pub mod text_context_doc;
 pub use text_context_doc::*;
 pub mod text_generation;
-use super::{
-    http::{HttpClientExt, Response},
-    Error,
-};
-use crate::clients::http::RequestLike;
 pub use text_generation::*;
 
 const DEFAULT_PORT: u16 = 8080;

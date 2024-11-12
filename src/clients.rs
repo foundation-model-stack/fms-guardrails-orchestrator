@@ -35,7 +35,7 @@ use url::Url;
 use crate::{
     config::{ServiceConfig, Tls},
     health::HealthCheckResult,
-    utils::trace::with_traceparent_header,
+    utils::{tls, trace::with_traceparent_header},
 };
 
 pub mod errors;
@@ -58,7 +58,6 @@ pub mod nlp;
 pub use nlp::NlpClient;
 
 pub mod generation;
-use crate::utils::tls;
 pub use generation::GenerationClient;
 
 pub mod openai;
@@ -243,7 +242,6 @@ pub async fn create_http_client(
     let client = hyper_util::client::legacy::Client::builder(TokioExecutor::new())
         .http2_keep_alive_timeout(connect_timeout)
         .pool_idle_timeout(request_timeout)
-        // .pool_timer()
         .build(https_conn);
     Ok(HttpClient::new(base_url, client))
 }

@@ -25,10 +25,11 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 use tracing::{info, instrument};
 
-use super::{create_http_client, Client, Error, HttpClient};
 use super::{
+    create_http_client,
     eventsource::Event,
     http::{HttpClientExt, HttpClientStreamExt},
+    Client, Error, HttpClient,
 };
 use crate::{
     config::ServiceConfig, health::HealthCheckResult, utils::trace::with_traceparent_header,

@@ -14,15 +14,15 @@
  limitations under the License.
 
 */
+
 use async_trait::async_trait;
 use hyper::{HeaderMap, StatusCode};
 use serde::{Deserialize, Serialize};
 use tracing::instrument;
 
 use super::{DetectorClient, DetectorClientExt, DetectorError, DEFAULT_PORT};
-use crate::clients::http::HttpClientExt;
 use crate::{
-    clients::{create_http_client, Client, Error, HttpClient},
+    clients::{create_http_client, http::HttpClientExt, Client, Error, HttpClient},
     config::ServiceConfig,
     health::HealthCheckResult,
     models::DetectorParams,

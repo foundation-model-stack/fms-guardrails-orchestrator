@@ -77,44 +77,6 @@ impl From<hyper::Error> for Error {
     }
 }
 
-// impl From<hyper::http::Error> for Error {
-//     fn from(error: hyper::http::Error) -> Self {
-//         Self::RequestCreationFailed { error: error.to_string() }
-//     }
-// }
-
-// impl From<hyper_util::client::legacy::Error> for Error {
-//     fn from(error: hyper_util::client::legacy::Error) -> Self {
-//         Self::Http {
-//             code: StatusCode::INTERNAL_SERVER_ERROR,
-//             message: error.to_string(),
-//         }
-//     }
-// }
-
-// impl From<reqwest::Error> for Error {
-//     fn from(value: reqwest::Error) -> Self {
-//         // Log lower level source of error.
-//         // Examples:
-//         // 1. client error (Connect) // Cases like connection error, wrong port etc.
-//         // 2. client error (SendRequest) // Cases like cert issues
-//         error!(
-//             "http request failed. Source: {}",
-//             value.source().unwrap().to_string()
-//         );
-//         // Return http status code for error responses
-//         // and 500 for other errors
-//         let code = match value.status() {
-//             Some(code) => code,
-//             None => StatusCode::INTERNAL_SERVER_ERROR,
-//         };
-//         Self::Http {
-//             code,
-//             message: value.to_string(),
-//         }
-//     }
-// }
-
 impl From<tonic::Status> for Error {
     fn from(value: tonic::Status) -> Self {
         Self::Grpc {

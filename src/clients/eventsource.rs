@@ -26,9 +26,6 @@ type ResponseFuture = BoxFuture<'static, Result<Response, Error>>;
 type EventStream = BoxStream<'static, Result<eventsource_stream::Event, Error>>;
 
 pin_project! {
-    /// A client for a Server-Sent Events endpoint.
-    ///
-    /// Read events by iterating over the client.
     #[project = EventSourceProjection]
     pub struct EventSource<T: RequestLike> {
         client: HttpClient,
@@ -256,9 +253,6 @@ fn check_response(response: Response) -> Result<Response, Error> {
 }
 
 impl<T: RequestLike + Send + Sync + 'static> EventSource<T> {
-    /// Constructs a new EventSource client for the given URL and reqwest Client.
-    ///
-    /// This does not start an HTTP request.
     pub async fn from_client(
         client: HttpClient,
         url: Url,
