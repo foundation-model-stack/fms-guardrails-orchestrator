@@ -127,11 +127,6 @@ impl HttpClient {
         body: impl Serialize,
     ) -> Result<Response, Error> {
         let headers = trace::with_traceparent_header(headers.to_owned());
-        let body =
-            Full::new(Bytes::from(serde_json::to_vec(&body).map_err(|e| {
-                Error::internal("client request serialization failed", e)
-            })?))
-            .map_err(|err| match err {});
         let mut builder = hyper::http::request::Builder::new()
             .method(method)
             .uri(url.as_uri());
@@ -141,9 +136,16 @@ impl HttpClient {
                 debug!(
                     ?url,
                     ?headers,
-                    ?body,
+                    // If the body can not be serialized it will be caught below, we don't want to
+                    // complicate logging by handling string serialization error here.
+                    body = serde_json::to_string(&body).unwrap_or("".to_string()),
                     "sending client request"
                 );
+                let body =
+                    Full::new(Bytes::from(serde_json::to_vec(&body).map_err(|e| {
+                        Error::internal("client request serialization failed", e)
+                    })?))
+                        .map_err(|err| match err {});
                 let request = builder
                     .body(body.boxed())
                     .map_err(|e| Error::internal("client request creation failed", e))?;
