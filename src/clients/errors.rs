@@ -48,12 +48,16 @@ impl Error {
         }
     }
 
+    /// Returns an internal client error with the corresponding message and source error.
     pub fn internal<E: Display>(message: &str, error: E) -> Self {
         Self::Internal {
             error: format!("internal client error - {}: {}", message, error),
         }
     }
 
+    /// Transforms the error into an HTTP error appropriate to use as a response to the user.
+    /// Internal errors get a 500 status code and the internal error info message is removed.
+    /// Internal errors should therefore be reported before transformation into HTTP.
     pub fn into_http(self) -> Self {
         match self {
             Error::Grpc { code, message } => Self::Http { code, message },

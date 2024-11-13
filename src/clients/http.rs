@@ -38,17 +38,21 @@ pub type BoxBody = HttpBoxBody<Bytes, hyper::Error>;
 
 pub type Request<T> = hyper::Request<T>;
 
+/// HTTP response type, thin wrapper for `hyper::http::Response` with extra functionality.
 pub struct Response(pub hyper::http::Response<BoxBody>);
 
+/// Trait blanket implemented for any type that can serialized into a request body.
 pub trait RequestLike: Serialize + Debug + Clone + Send + Sync + 'static {}
 
 impl<T> RequestLike for T where T: Serialize + Debug + Clone + Send + Sync + 'static {}
 
+/// Trait blanket implemented for any type that can be deserialized from a response body.
 pub trait ResponseLike: DeserializeOwned + Debug + Clone + Send + Sync + 'static {}
 
 impl<T> ResponseLike for T where T: DeserializeOwned + Debug + Clone + Send + Sync + 'static {}
 
 impl Response {
+    /// Deserializes the response body as JSON into type `T`.
     pub async fn json<T: DeserializeOwned>(self) -> Result<T, Error> {
         let data = self
             .0
@@ -80,10 +84,12 @@ impl From<hyper::http::response::Response<Incoming>> for Response {
 pub type HttpClientInner =
     hyper_util::client::legacy::Client<HttpsConnector<HttpConnector>, BoxBody>;
 
+/// A trait implemented by all clients that use HTTP for their inner client.
 pub trait HttpClientExt: Client {
     fn inner(&self) -> &HttpClient;
 }
 
+/// An HTTP client wrapping an inner `hyper` HTTP client providing a higher-level API.
 #[derive(Clone)]
 pub struct HttpClient {
     base_url: Url,

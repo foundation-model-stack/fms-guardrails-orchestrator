@@ -4,6 +4,7 @@ use url::Url;
 pub mod tls;
 pub mod trace;
 
+/// Simple trait used to extend `url::Url` with functionality to transform into `hyper::Uri`.
 pub trait AsUriExt {
     fn as_uri(&self) -> Uri;
 }

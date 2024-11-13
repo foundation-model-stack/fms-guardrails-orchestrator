@@ -14,6 +14,7 @@
  limitations under the License.
 
 */
+
 use crate::clients;
 use tracing::{debug, error};
 
@@ -39,6 +40,7 @@ pub enum Error {
 }
 
 impl Error {
+    /// Helper function that logs an error level trace event if the given client error is internal.
     fn handle_internal_client_error(error: &clients::Error, from_client: String) {
         debug!(?error, "error received from {}", from_client);
         if matches!(error, clients::Error::Internal { .. }) {
@@ -46,6 +48,7 @@ impl Error {
         }
     }
 
+    /// Logs error if internal and transforms error into HTTP wrapped in `DetectorRequestFailed`
     pub fn handle_detector_error(id: String, error: clients::Error) -> Self {
         Self::handle_internal_client_error(&error, format!("detector client with id: {}", id));
         Error::DetectorRequestFailed {
@@ -54,6 +57,7 @@ impl Error {
         }
     }
 
+    /// Logs error if internal and transforms error into HTTP wrapped in `TokenizeRequestFailed`
     pub fn handle_tokenize_error(id: String, error: clients::Error) -> Self {
         Self::handle_internal_client_error(
             &error,
@@ -65,6 +69,7 @@ impl Error {
         }
     }
 
+    /// Logs error if internal and transforms error into HTTP wrapped in `GenerateRequestFailed`
     pub fn handle_generate_error(id: String, error: clients::Error) -> Self {
         Self::handle_internal_client_error(&error, format!("generation client with id: {}", id));
         Error::GenerateRequestFailed {
@@ -73,6 +78,7 @@ impl Error {
         }
     }
 
+    /// Logs error if internal and transforms error into HTTP wrapped in `ChunkerRequestFailed`
     pub fn handle_chunker_error(id: String, error: clients::Error) -> Self {
         Self::handle_internal_client_error(&error, format!("chunker client with id {}", id));
         Error::ChunkerRequestFailed {

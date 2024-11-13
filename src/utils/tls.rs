@@ -10,6 +10,7 @@ use serde::Deserialize;
 
 use crate::{clients, config::TlsConfig};
 
+/// Client TLS configuration errors.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("failed to read TLS certs from file: {0}")]
@@ -25,12 +26,14 @@ pub enum Error {
 }
 
 impl Error {
+    /// Transforms TLS errors into internal client errors.
     pub fn into_client_error(self) -> clients::Error {
         clients::Error::internal("client TLS configuration failed", self)
     }
 }
 
-/// Inspired by `reqwest`
+/// A no verification `rustls::verify::ServerCertVerifier` for insecure TLS configurations
+/// Functionally identical to using `reqwest::ClientBuilder::danger_accept_invalid_certs(true)`.
 #[derive(Debug)]
 struct NoVerifier;
 
@@ -83,7 +86,7 @@ impl ServerCertVerifier for NoVerifier {
     }
 }
 
-/// Client TLS configuration
+/// Client TLS configuration builder.
 #[cfg_attr(test, derive(Default))]
 #[derive(Clone, Debug, Deserialize)]
 pub struct TlsConfigBuilder {
@@ -93,6 +96,7 @@ pub struct TlsConfigBuilder {
     pub insecure: Option<bool>,
 }
 
+/// A resolved TLS config, built by the `TlsConfigBuilder`.
 #[derive(Debug)]
 pub struct ResolvedTlsConfig<'a> {
     pub cert: Vec<CertificateDer<'a>>,
@@ -178,6 +182,7 @@ impl TlsConfigBuilder {
     }
 }
 
+/// Builds and insecure TLS client config when no `TlsConfig` is provided (assumes no client auth).
 pub fn build_insecure_client_config() -> ClientConfig {
     let mut config = ClientConfig::builder()
         .with_native_roots()
@@ -189,6 +194,7 @@ pub fn build_insecure_client_config() -> ClientConfig {
     config
 }
 
+/// Builds a TLS client config based on the provided `TlsConfig`.
 pub async fn build_client_config(tls_config: &TlsConfig) -> Result<ClientConfig, Error> {
     // Resolve the TLS config
     let tls_config = TlsConfigBuilder::from_parts(

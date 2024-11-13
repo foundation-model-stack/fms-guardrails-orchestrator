@@ -54,9 +54,15 @@ impl From<DetectorError> for Error {
     }
 }
 
+/// This trait should be implemented by all detectors.
+/// If the detector has an HTTP client (currently all detector clients are HTTP) this trait will
+/// implicitly extend the client with an HTTP detector specific post function.
 pub trait DetectorClient {}
 
+/// Provides a helper extension for HTTP detector clients.
 pub trait DetectorClientExt: HttpClientExt {
+    /// Wraps the post function with extra detector functionality
+    /// (detector id header injection & error handling)
     async fn post_to_detector<U: ResponseLike>(
         &self,
         model_id: &str,
@@ -65,12 +71,11 @@ pub trait DetectorClientExt: HttpClientExt {
         request: impl RequestLike,
     ) -> Result<U, Error>;
 
+    /// Wraps call to inner HTTP client endpoint function.
     fn endpoint(&self, path: impl Into<&'static str>) -> Url;
 }
 
 impl<C: DetectorClient + HttpClientExt> DetectorClientExt for C {
-    /// Make a POST request for an HTTP detector client and return the response.
-    /// Also injects the `traceparent` header from the current span and traces the response.
     async fn post_to_detector<U: ResponseLike>(
         &self,
         model_id: &str,
