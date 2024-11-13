@@ -19,13 +19,10 @@ use std::fmt::Debug;
 
 use axum::http::HeaderMap;
 use hyper::StatusCode;
-use serde::Deserialize;
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use url::Url;
 
-use super::{
-    http::{HttpClientExt, RequestLike, ResponseLike},
-    Error,
-};
+use super::{http::HttpClientExt, Error};
 
 pub mod text_contents;
 pub use text_contents::*;
@@ -63,12 +60,12 @@ pub trait DetectorClient {}
 pub trait DetectorClientExt: HttpClientExt {
     /// Wraps the post function with extra detector functionality
     /// (detector id header injection & error handling)
-    async fn post_to_detector<U: ResponseLike>(
+    async fn post_to_detector<U: DeserializeOwned>(
         &self,
         model_id: &str,
         url: Url,
         headers: HeaderMap,
-        request: impl RequestLike,
+        request: impl Serialize,
     ) -> Result<U, Error>;
 
     /// Wraps call to inner HTTP client endpoint function.
@@ -76,12 +73,12 @@ pub trait DetectorClientExt: HttpClientExt {
 }
 
 impl<C: DetectorClient + HttpClientExt> DetectorClientExt for C {
-    async fn post_to_detector<U: ResponseLike>(
+    async fn post_to_detector<U: DeserializeOwned>(
         &self,
         model_id: &str,
         url: Url,
         headers: HeaderMap,
-        request: impl RequestLike,
+        request: impl Serialize,
     ) -> Result<U, Error> {
         let mut headers = headers;
         headers.append(DETECTOR_ID_HEADER_NAME, model_id.parse().unwrap());

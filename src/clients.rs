@@ -348,7 +348,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        clients::http::{BoxBody, Response},
+        clients::http::Response,
         health::{HealthCheckResult, HealthStatus},
         pb::grpc::health::v1::{health_check_response::ServingStatus, HealthCheckResponse},
     };
@@ -357,12 +357,16 @@ mod tests {
         Ok(Response(
             http::Response::builder()
                 .status(status)
-                .body(BoxBody::new(body.to_string().map_err(|e| {
-                    panic!(
-                        "infallible error parsing string body in test response: {}",
-                        e
-                    )
-                })))
+                .body(
+                    body.to_string()
+                        .map_err(|e| {
+                            panic!(
+                                "infallible error parsing string body in test response: {}",
+                                e
+                            )
+                        })
+                        .boxed(),
+                )
                 .unwrap(),
         ))
     }

@@ -15,9 +15,9 @@
 
 */
 
-use std::{fmt::Debug, ops::Deref};
+use std::ops::Deref;
 
-use http_body_util::{combinators::BoxBody as HttpBoxBody, BodyExt, Full};
+use http_body_util::{combinators::BoxBody, BodyExt, Full};
 use hyper::{
     body::{Bytes, Incoming},
     HeaderMap, Method, StatusCode,
@@ -34,22 +34,8 @@ use crate::{
     utils::{trace, AsUriExt},
 };
 
-pub type BoxBody = HttpBoxBody<Bytes, hyper::Error>;
-
-pub type Request<T> = hyper::Request<T>;
-
 /// HTTP response type, thin wrapper for `hyper::http::Response` with extra functionality.
-pub struct Response(pub hyper::http::Response<BoxBody>);
-
-/// Trait blanket implemented for any type that can serialized into a request body.
-pub trait RequestLike: Serialize + Debug + Clone + Send + Sync + 'static {}
-
-impl<T> RequestLike for T where T: Serialize + Debug + Clone + Send + Sync + 'static {}
-
-/// Trait blanket implemented for any type that can be deserialized from a response body.
-pub trait ResponseLike: DeserializeOwned + Debug + Clone + Send + Sync + 'static {}
-
-impl<T> ResponseLike for T where T: DeserializeOwned + Debug + Clone + Send + Sync + 'static {}
+pub struct Response(pub hyper::http::Response<BoxBody<Bytes, hyper::Error>>);
 
 impl Response {
     /// Deserializes the response body as JSON into type `T`.
@@ -68,7 +54,7 @@ impl Response {
 }
 
 impl Deref for Response {
-    type Target = hyper::http::response::Response<BoxBody>;
+    type Target = hyper::http::response::Response<BoxBody<Bytes, hyper::Error>>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -82,7 +68,7 @@ impl From<hyper::http::response::Response<Incoming>> for Response {
 }
 
 pub type HttpClientInner =
-    hyper_util::client::legacy::Client<HttpsConnector<HttpConnector>, BoxBody>;
+    hyper_util::client::legacy::Client<HttpsConnector<HttpConnector>, BoxBody<Bytes, hyper::Error>>;
 
 /// A trait implemented by all clients that use HTTP for their inner client.
 pub trait HttpClientExt: Client {
@@ -119,7 +105,7 @@ impl HttpClient {
         &self,
         url: Url,
         headers: HeaderMap,
-        body: impl RequestLike,
+        body: impl Serialize,
     ) -> Result<Response, Error> {
         self.send(url, Method::GET, headers, body).await
     }
@@ -128,7 +114,7 @@ impl HttpClient {
         &self,
         url: Url,
         headers: HeaderMap,
-        body: impl RequestLike,
+        body: impl Serialize,
     ) -> Result<Response, Error> {
         self.send(url, Method::POST, headers, body).await
     }
@@ -138,7 +124,7 @@ impl HttpClient {
         url: Url,
         method: Method,
         headers: HeaderMap,
-        body: impl RequestLike,
+        body: impl Serialize,
     ) -> Result<Response, Error> {
         let headers = trace::with_traceparent_header(headers.to_owned());
         let body =
@@ -158,7 +144,7 @@ impl HttpClient {
                     ?body,
                     "sending client request"
                 );
-                let request: Request<BoxBody> = builder
+                let request = builder
                     .body(body.boxed())
                     .map_err(|e| Error::internal("client request creation failed", e))?;
                 Ok(self
