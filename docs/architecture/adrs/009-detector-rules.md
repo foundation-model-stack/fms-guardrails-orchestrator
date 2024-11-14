@@ -4,7 +4,7 @@ This ADR defines the concept of "rules" on detector types and gives some example
 
 ## Motivation
 
-As mentioned in the [chat completion support ADR](./005-chat-completion-support.md), users may want to apply various [detector types](./006-detector-type.md) on detector use with endpoints that include generation. We want to define some way of guiding how various detector types can be applied with various generation strategies (such as chat message generation vs. text generation), as detector types work on differing amounts of information. [`text/contents` detectors](https://foundation-model-stack.github.io/fms-guardrails-orchestrator/?urls.primaryName=Detector+API#/Text/text_content_analysis_unary_handler) work on an array of text, while [`text/chat` detectors](https://foundation-model-stack.github.io/fms-guardrails-orchestrator/?urls.primaryName=Detector+API#/Text/chat_analysis_unary_handler_api_v1_text_chat_post) work on entire chat histories.
+As mentioned in the [chat completion support ADR](./005-chat-completion-support.md), users may want to apply various [detector types](./006-detector-type.md) when using detectors with endpoints that include generation. We want to define some way of guiding how various detector types can be applied with various generation strategies (such as chat message generation vs. text generation), as detector types work on differing amounts of information. [`text/contents` detectors](https://foundation-model-stack.github.io/fms-guardrails-orchestrator/?urls.primaryName=Detector+API#/Text/text_content_analysis_unary_handler) work on an array of text, while [`text/chat` detectors](https://foundation-model-stack.github.io/fms-guardrails-orchestrator/?urls.primaryName=Detector+API#/Text/chat_analysis_unary_handler_api_v1_text_chat_post) work on entire chat histories.
 
 ## Decisions
 
@@ -33,51 +33,24 @@ NOTE: If a user-remediable "rule" is broken, validation errors are expected to b
 
 Various strategies of rule application were considered and listed below. Each is described with rationale of why this was or was not the selected decision.
 
-Today detector clients are detector endpoint-specific and are invoked e.g. `client.text_contents(detector_id, text_contents_request, request_headers)` where `client` is, for example, of `TextContentsDetectorClient` type.
-
-The original user request to orchestrator endpoints is currently _not_ passed to detector clients. This would break the current assumption detector clients only have the information necessary to call detectors.
-
-(a) At the detector client level (where today, each detector endpoint becomes its own client type) - By the time the detector client is invoked, however, the "context" of the call is lost (i.e. whether this detector was called from chat completions [chat messages] or just generation [text]). The request passed to the detector client calls only has the information needed to call the detector.
+(a) At the detector client level - Today detector clients are detector endpoint-specific and are invoked e.g. `client.text_contents(detector_id, text_contents_request, request_headers)` where `client` is, for example, of `TextContentsDetectorClient` type. The original user request to orchestrator endpoints is currently _not_ passed to detector clients. This would break the current assumption that detector clients only have the information necessary to call detectors. By the time the detector client is invoked, however, the "context" of the call is lost (i.e. whether this detector was called from chat completions [chat messages] or just generation [text]). The request passed to the detector client calls only has the information needed to call the detector.
 
 (b) At the task level - Currently the tasks closely proxy the orchestrator endpoints. Each task includes the user request parameters, such as `detectors`. However, one issue with attempting to apply rules at this level is the `detectors` by this point only have `detector_id` mapped to detector parameters. The particular `detector_type` for each detector is not tracked at the task level. In each "handler" function of the task, the particular detector clients are fetched with the `detector_id` information, with detector calls being invoked.
 
-(c) At the orchestrator endpoint handler level - The detector endpoints will still have to be specifically invoked as mentioned in (b), but this will allow rule application on the entire request, specific to the request format that the particular orchestrator endpoint expects. This can be implemented with or without a `client` invocation, as described below.
+(c) At the orchestrator endpoint handler level - The detector endpoints will still have to be specifically invoked as mentioned in (b), but this will allow rule application on the entire request, specific to the request format that the particular orchestrator endpoint expects.
 
-#### Handler calls
+The diagram below shows how we intend for rules to be applied in the stack:
+![Rules Diagram](../images/chat_completion_detector_rules.png)
 
-While ADRs typically do not prescribe implementation, this level of decision-making was determined to be appropriate as to how rules should be applied. The implementation of particular rules is not prescribed, nor are particular function names.
+At the time of writing, as noted in (b) of the previous section, the orchestrator task does not currently have `detector_type` information. The diagram illustrates that this part could be refactored to include such information, or currently the conversion functions can be provided at the task level but still invoked by the orchestrator endpoint handler.
 
-Both of these options below are assumed to be called from the orchestator endpoint handling functions, in line with strategy (c). The first option presents implicit detector endpoints via the `client` invocation. The second options presents this as "transformation" functions.
+The `conversion function` will convert or extract the parts of any object (whether request or response) that will be applicable for the detector request. For chat completions, the `Message` portion of request or response objects is the part to be extracted into a new message object (`chat_message_array` in the diagram) that will still include information on where the message came from (such as which choice in the response).
 
-1. `client` invocation
-
-For detections on input chat messages for an endpoint like `chat/completions-detection`, a function like `handle_chat_completions_detection` (or whatever the high-level endpoint handler function is called) can call `client.convert_chat_completions_request(...)` where the function signature can look like
-```
-fn convert_chat_completions_request(&self, request: ChatCompletionsRequest, detector_params: DetectorParams, roles: Vec<String>, indices: Vec<i32>) -> ContentAnalysisRequest
-```
-
-For detections on output chat completion choice messages, this can look like a call to `client.convert_chat_completion(...)` where the function signature can look like
-```
-fn convert_chat_completion(&self, response: ChatCompletion, detector_params: DetectorParams, roles: Vec<String>, indices: Vec<i32>) -> ContentAnalysisRequest
-```
-
-Here, because the `client` is used, the target output type i.e. `ContentAnalysisRequest` is implied. However, the `client` method will be given full user request information that is not usually necessary to make a detector call.
-
-
-2. Complete separation from detector clients.
-
- This would mean the detector types would have to be called out in any functions used to apply the rules. The main difference here is because the output type isn't constrained by the `client` or target detector type, this could be variable and require more functions for different input messages.
-
- For detections on input chat messages for an endpoint like `chat/completions-detection`, a function like `handle_chat_completions_detection` (or whatever the high-level endpoint handler function is called) can call `convert_chat_completions_request_for_text_contents(...)` where the function signature can look like
-```
-fn convert_chat_completions_request_for_text_contents(request: ChatCompletionsRequest, detector_params: DetectorParams, roles: Vec<String>, indices: Vec<i32>) -> ContentAnalysisRequest
-```
-
-One problem here is the args like `roles` and `indices` would still be particular to the input request of `ChatCompletionsRequest` but the function `convert_chat_completions_request_for_text_contents` would either (1) have to already be chat completions request specific or (2) try to be generic to types, which might become more difficult to maintain.
-
-For a different detector type, the function would likely have to look different, such as `convert_chat_completions_choices_for_text_contents(response: ChatCompletion, ...) -> ContextDocsDetectionRequest`
+When new requests for detectors such as the `/text/contents` detectors is formed, a `from_` function can be invoked to convert the new message object to the expected request format. Here, any "filtering" of the object can be done. For messages this can include extracting only the last message of a list, or filtering by `role`.
 
 
 ## Consequences
 
-[TODO]
+- Rules for detector types are defined and will be applied via `from_` functions when detector requests are constructed. There may have to exist many `from_` functions in the codebase to account for the variety of detector types to make compatible with various generation requests/responses.
+- "Conversion functions" will help convert various request or response objects in preparation for rule application.
+- Without refactoring, the conversion functions and application of rules will have to be applied at the orchestrator endpoint handler level, but this can be altered.
