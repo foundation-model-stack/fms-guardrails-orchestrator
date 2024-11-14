@@ -209,7 +209,15 @@ impl Orchestrator {
                         tokio::spawn(async move {
                             while let Some(result) = generation_stream.next().await {
                                 debug!(%trace_id, ?result, "sending result to client");
-                                let _ = response_tx.send(result).await;
+                                let response = response_tx.send(result).await;
+                                match response {
+                                    Err(e) => {
+                                        debug!(%trace_id, "could not send to client: {e}");
+                                        let _ = response_tx.send(Err(Error::Cancelled));
+                                        return;
+                                    }
+                                    _ => {}
+                                }
                             }
                             debug!(%trace_id, "task completed: stream closed");
                         });
