@@ -19,14 +19,13 @@ use std::ops::Deref;
 
 use http_body_util::{combinators::BoxBody, BodyExt, Full};
 use hyper::{
-    body::{Bytes, Incoming},
+    body::{Body, Bytes, Incoming},
     HeaderMap, Method, StatusCode,
 };
 use hyper_rustls::HttpsConnector;
 use hyper_util::client::legacy::connect::HttpConnector;
 use serde::{de::DeserializeOwned, Serialize};
-use tracing::{debug, error, instrument, Instrument, Span};
-use tracing_opentelemetry::OpenTelemetrySpanExt;
+use tracing::{debug, error, instrument, Span};
 use url::Url;
 
 use super::{Client, Error};
@@ -131,7 +130,7 @@ impl HttpClient {
         headers: HeaderMap,
         body: impl Serialize,
     ) -> Result<Response, Error> {
-        let ctx = Span::current().context();
+        let ctx = opentelemetry::Context::current();
         let headers = trace::with_traceparent_header(&ctx, headers.to_owned());
         let mut builder = hyper::http::request::Builder::new()
             .method(method)
@@ -158,13 +157,17 @@ impl HttpClient {
                 let response = self
                     .inner
                     .request(request)
-                    .instrument(Span::current())
                     .await
-                    .map_err(|e| Error::internal("sending client request failed", e))?
-                    .into();
+                    .map_err(|e| Error::internal("sending client request failed", e))?;
+                debug!(
+                    status = ?response.status(),
+                    headers = ?response.headers(),
+                    size = ?response.size_hint(),
+                    "incoming client response"
+                );
                 let span = Span::current();
                 trace_context_from_http_response(&span, &response);
-                Ok(response)
+                Ok(response.into())
             }
             None => Err(builder.body(body).err().map_or_else(
                 || panic!("unexpected request builder error - headers missing in builder but no errors found"),
