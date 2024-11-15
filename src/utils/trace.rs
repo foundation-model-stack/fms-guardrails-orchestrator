@@ -340,12 +340,11 @@ pub fn on_outgoing_eos(trailers: Option<&HeaderMap>, stream_duration: Duration, 
 /// vendor-specific trace context.
 /// Used by both gRPC and HTTP requests since `tonic::Metadata` uses `http::HeaderMap`.
 /// See https://www.w3.org/TR/trace-context/#trace-context-http-headers-format.
-pub fn with_traceparent_header(headers: HeaderMap) -> HeaderMap {
+pub fn with_traceparent_header(ctx: &opentelemetry::Context, headers: HeaderMap) -> HeaderMap {
     let mut headers = headers.clone();
-    let ctx = Span::current().context();
     global::get_text_map_propagator(|propagator| {
         // Injects current `traceparent` (and by default empty `tracestate`)
-        propagator.inject_context(&ctx, &mut HeaderInjector(&mut headers))
+        propagator.inject_context(ctx, &mut HeaderInjector(&mut headers))
     });
     headers
 }
@@ -354,12 +353,12 @@ pub fn with_traceparent_header(headers: HeaderMap) -> HeaderMap {
 /// tracing span context (i.e. use `traceparent` as parent to the current span).
 /// Defaults to using the current context when no `traceparent` is found.
 /// See https://www.w3.org/TR/trace-context/#trace-context-http-headers-format.
-pub fn trace_context_from_http_response(response: &http::Response) {
+pub fn trace_context_from_http_response(span: &Span, response: &http::Response) {
     let ctx = global::get_text_map_propagator(|propagator| {
         // Returns the current context if no `traceparent` is found
         propagator.extract(&HeaderExtractor(response.headers()))
     });
-    Span::current().set_parent(ctx);
+    span.set_parent(ctx);
 }
 
 /// Extracts the `traceparent` header from a gRPC response's metadata and uses it to set the current

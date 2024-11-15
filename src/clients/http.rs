@@ -26,6 +26,7 @@ use hyper_rustls::HttpsConnector;
 use hyper_util::client::legacy::connect::HttpConnector;
 use serde::{de::DeserializeOwned, Serialize};
 use tracing::{debug, error, instrument, Instrument, Span};
+use tracing_opentelemetry::OpenTelemetrySpanExt;
 use url::Url;
 
 use super::{Client, Error};
@@ -130,7 +131,8 @@ impl HttpClient {
         headers: HeaderMap,
         body: impl Serialize,
     ) -> Result<Response, Error> {
-        let headers = trace::with_traceparent_header(headers.to_owned());
+        let ctx = Span::current().context();
+        let headers = trace::with_traceparent_header(&ctx, headers.to_owned());
         let mut builder = hyper::http::request::Builder::new()
             .method(method)
             .uri(url.as_uri());
@@ -160,7 +162,8 @@ impl HttpClient {
                     .await
                     .map_err(|e| Error::internal("sending client request failed", e))?
                     .into();
-                trace_context_from_http_response(&response);
+                let span = Span::current();
+                trace_context_from_http_response(&span, &response);
                 Ok(response)
             }
             None => Err(builder.body(body).err().map_or_else(

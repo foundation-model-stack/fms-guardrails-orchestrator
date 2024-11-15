@@ -29,7 +29,8 @@ use futures::Stream;
 use ginepro::LoadBalancedChannel;
 use hyper_util::rt::TokioExecutor;
 use tonic::{metadata::MetadataMap, Request};
-use tracing::{debug, instrument};
+use tracing::{debug, instrument, Span};
+use tracing_opentelemetry::OpenTelemetrySpanExt;
 use url::Url;
 
 use crate::{
@@ -335,7 +336,8 @@ pub fn is_valid_hostname(hostname: &str) -> bool {
 /// Turns a gRPC client request body of type `T` and header map into a `tonic::Request<T>`.
 /// Will also inject the current `traceparent` header into the request based on the current span.
 fn grpc_request_with_headers<T>(request: T, headers: HeaderMap) -> Request<T> {
-    let headers = with_traceparent_header(headers);
+    let ctx = Span::current().context();
+    let headers = with_traceparent_header(&ctx, headers);
     let metadata = MetadataMap::from_headers(headers);
     Request::from_parts(metadata, Extensions::new(), request)
 }
