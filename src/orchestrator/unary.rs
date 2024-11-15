@@ -22,7 +22,7 @@ use futures::{
     future::try_join_all,
     stream::{self, StreamExt},
 };
-use tracing::{debug, error, info, instrument};
+use tracing::{debug, error, info, instrument, Instrument, Span};
 
 use super::{
     apply_masks, get_chunker_ids, ChatDetectionTask, Chunk, ClassificationWithGenTask, Context,
@@ -65,82 +65,85 @@ impl Orchestrator {
         let trace_id = task.trace_id;
         let headers = task.headers;
         info!(config = ?task.guardrails_config, "handling classification with generation task");
-        let task_handle = tokio::spawn(async move {
-            let input_text = task.inputs.clone();
-            let masks = task.guardrails_config.input_masks();
-            let input_detectors = task.guardrails_config.input_detectors();
-            // Do input detections
-            let input_detections = match input_detectors {
-                Some(detectors) if !detectors.is_empty() => {
-                    input_detection_task(
-                        &ctx,
-                        detectors,
-                        input_text.clone(),
-                        masks,
-                        headers.clone(),
-                    )
-                    .await?
-                }
-                _ => None,
-            };
-            debug!(?input_detections);
-            if let Some(mut input_detections) = input_detections {
-                // Detected HAP/PII
-                // Do tokenization to get input_token_count
-                let (input_token_count, _tokens) = tokenize(
-                    &ctx,
-                    task.model_id.clone(),
-                    task.inputs.clone(),
-                    headers.clone(),
-                )
-                .await?;
-                // Send result with input detections
-                input_detections.sort_by_key(|r| r.start);
-                Ok(ClassifiedGeneratedTextResult {
-                    input_token_count,
-                    token_classification_results: TextGenTokenClassificationResults {
-                        input: Some(input_detections),
-                        output: None,
-                    },
-                    warnings: Some(vec![InputWarning {
-                        id: Some(InputWarningReason::UnsuitableInput),
-                        message: Some(UNSUITABLE_INPUT_MESSAGE.to_string()),
-                    }]),
-                    ..Default::default()
-                })
-            } else {
-                // No HAP/PII detected
-                // Do text generation
-                let mut generation_results = generate(
-                    &ctx,
-                    task.model_id.clone(),
-                    task.inputs.clone(),
-                    task.text_gen_parameters.clone(),
-                    headers.clone(),
-                )
-                .await?;
-                debug!(?generation_results);
-                // Do output detections
-                let output_detectors = task.guardrails_config.output_detectors();
-                let output_detections = match output_detectors {
+        let task_handle = tokio::spawn(
+            async move {
+                let input_text = task.inputs.clone();
+                let masks = task.guardrails_config.input_masks();
+                let input_detectors = task.guardrails_config.input_detectors();
+                // Do input detections
+                let input_detections = match input_detectors {
                     Some(detectors) if !detectors.is_empty() => {
-                        let generated_text = generation_results
-                            .generated_text
-                            .clone()
-                            .unwrap_or_default();
-                        output_detection_task(&ctx, detectors, generated_text, headers).await?
+                        input_detection_task(
+                            &ctx,
+                            detectors,
+                            input_text.clone(),
+                            masks,
+                            headers.clone(),
+                        )
+                        .await?
                     }
                     _ => None,
                 };
-                debug!(?output_detections);
-                if let Some(mut output_detections) = output_detections {
-                    output_detections.sort_by_key(|r| r.start);
-                    generation_results.token_classification_results.output =
-                        Some(output_detections);
+                debug!(?input_detections);
+                if let Some(mut input_detections) = input_detections {
+                    // Detected HAP/PII
+                    // Do tokenization to get input_token_count
+                    let (input_token_count, _tokens) = tokenize(
+                        &ctx,
+                        task.model_id.clone(),
+                        task.inputs.clone(),
+                        headers.clone(),
+                    )
+                    .await?;
+                    // Send result with input detections
+                    input_detections.sort_by_key(|r| r.start);
+                    Ok(ClassifiedGeneratedTextResult {
+                        input_token_count,
+                        token_classification_results: TextGenTokenClassificationResults {
+                            input: Some(input_detections),
+                            output: None,
+                        },
+                        warnings: Some(vec![InputWarning {
+                            id: Some(InputWarningReason::UnsuitableInput),
+                            message: Some(UNSUITABLE_INPUT_MESSAGE.to_string()),
+                        }]),
+                        ..Default::default()
+                    })
+                } else {
+                    // No HAP/PII detected
+                    // Do text generation
+                    let mut generation_results = generate(
+                        &ctx,
+                        task.model_id.clone(),
+                        task.inputs.clone(),
+                        task.text_gen_parameters.clone(),
+                        headers.clone(),
+                    )
+                    .await?;
+                    debug!(?generation_results);
+                    // Do output detections
+                    let output_detectors = task.guardrails_config.output_detectors();
+                    let output_detections = match output_detectors {
+                        Some(detectors) if !detectors.is_empty() => {
+                            let generated_text = generation_results
+                                .generated_text
+                                .clone()
+                                .unwrap_or_default();
+                            output_detection_task(&ctx, detectors, generated_text, headers).await?
+                        }
+                        _ => None,
+                    };
+                    debug!(?output_detections);
+                    if let Some(mut output_detections) = output_detections {
+                        output_detections.sort_by_key(|r| r.start);
+                        generation_results.token_classification_results.output =
+                            Some(output_detections);
+                    }
+                    Ok(generation_results)
                 }
-                Ok(generation_results)
             }
-        });
+            .instrument(Span::current()),
+        );
         match task_handle.await {
             // Task completed successfully
             Ok(Ok(result)) => {
@@ -174,55 +177,58 @@ impl Orchestrator {
         );
         let ctx = self.ctx.clone();
         let headers = task.headers;
-        let task_handle = tokio::spawn(async move {
-            let generation_results = generate(
-                &ctx,
-                task.model_id.clone(),
-                task.prompt.clone(),
-                task.text_gen_parameters.clone(),
-                headers.clone(),
-            )
-            .await?;
+        let task_handle = tokio::spawn(
+            async move {
+                let generation_results = generate(
+                    &ctx,
+                    task.model_id.clone(),
+                    task.prompt.clone(),
+                    task.text_gen_parameters.clone(),
+                    headers.clone(),
+                )
+                .await?;
 
-            // call detection
-            let detections = try_join_all(
-                task.detectors
-                    .iter()
-                    .map(|(detector_id, detector_params)| {
-                        let ctx = ctx.clone();
-                        let detector_id = detector_id.clone();
-                        let detector_params = detector_params.clone();
-                        let prompt = task.prompt.clone();
-                        let generated_text = generation_results
-                            .generated_text
-                            .clone()
-                            .unwrap_or_default();
-                        async {
-                            detect_for_generation(
-                                ctx,
-                                detector_id,
-                                detector_params,
-                                prompt,
-                                generated_text,
-                                headers.clone(),
-                            )
-                            .await
-                        }
-                    })
-                    .collect::<Vec<_>>(),
-            )
-            .await?
-            .into_iter()
-            .flatten()
-            .collect::<Vec<_>>();
+                // call detection
+                let detections = try_join_all(
+                    task.detectors
+                        .iter()
+                        .map(|(detector_id, detector_params)| {
+                            let ctx = ctx.clone();
+                            let detector_id = detector_id.clone();
+                            let detector_params = detector_params.clone();
+                            let prompt = task.prompt.clone();
+                            let generated_text = generation_results
+                                .generated_text
+                                .clone()
+                                .unwrap_or_default();
+                            async {
+                                detect_for_generation(
+                                    ctx,
+                                    detector_id,
+                                    detector_params,
+                                    prompt,
+                                    generated_text,
+                                    headers.clone(),
+                                )
+                                .await
+                            }
+                        })
+                        .collect::<Vec<_>>(),
+                )
+                .await?
+                .into_iter()
+                .flatten()
+                .collect::<Vec<_>>();
 
-            debug!(?generation_results);
-            Ok(GenerationWithDetectionResult {
-                generated_text: generation_results.generated_text.unwrap_or_default(),
-                input_token_count: generation_results.input_token_count,
-                detections,
-            })
-        });
+                debug!(?generation_results);
+                Ok(GenerationWithDetectionResult {
+                    generated_text: generation_results.generated_text.unwrap_or_default(),
+                    input_token_count: generation_results.input_token_count,
+                    detections,
+                })
+            }
+            .instrument(Span::current()),
+        );
         match task_handle.await {
             // Task completed successfully
             Ok(Ok(result)) => Ok(result),
@@ -251,64 +257,67 @@ impl Orchestrator {
         let ctx = self.ctx.clone();
         let headers = task.headers;
 
-        let task_handle = tokio::spawn(async move {
-            let content = task.content.clone();
-            // No masking applied, so offset change is 0
-            let offset: usize = 0;
-            let text_with_offsets = [(offset, content)].to_vec();
+        let task_handle = tokio::spawn(
+            async move {
+                let content = task.content.clone();
+                // No masking applied, so offset change is 0
+                let offset: usize = 0;
+                let text_with_offsets = [(offset, content)].to_vec();
 
-            let detectors = task.detectors.clone();
+                let detectors = task.detectors.clone();
 
-            let chunker_ids = get_chunker_ids(&ctx, &detectors)?;
-            let chunks = chunk_task(&ctx, chunker_ids, text_with_offsets).await?;
+                let chunker_ids = get_chunker_ids(&ctx, &detectors)?;
+                let chunks = chunk_task(&ctx, chunker_ids, text_with_offsets).await?;
 
-            // Call detectors
-            let mut detections = try_join_all(
-                task.detectors
-                    .iter()
-                    .map(|(detector_id, detector_params)| {
-                        let ctx = ctx.clone();
-                        let detector_id = detector_id.clone();
-                        let detector_params = detector_params.clone();
-                        let detector_config =
-                            ctx.config.detectors.get(&detector_id).unwrap_or_else(|| {
-                                panic!("detector config not found for {}", detector_id)
-                            });
+                // Call detectors
+                let mut detections = try_join_all(
+                    task.detectors
+                        .iter()
+                        .map(|(detector_id, detector_params)| {
+                            let ctx = ctx.clone();
+                            let detector_id = detector_id.clone();
+                            let detector_params = detector_params.clone();
+                            let detector_config =
+                                ctx.config.detectors.get(&detector_id).unwrap_or_else(|| {
+                                    panic!("detector config not found for {}", detector_id)
+                                });
 
-                        let chunker_id = detector_config.chunker_id.as_str();
+                            let chunker_id = detector_config.chunker_id.as_str();
 
-                        let default_threshold = detector_config.default_threshold;
+                            let default_threshold = detector_config.default_threshold;
 
-                        let chunk = chunks
-                            .get(chunker_id)
-                            .unwrap_or_else(|| panic!("chunk not found for {}", chunker_id))
-                            .clone();
+                            let chunk = chunks
+                                .get(chunker_id)
+                                .unwrap_or_else(|| panic!("chunk not found for {}", chunker_id))
+                                .clone();
 
-                        let headers = headers.clone();
+                            let headers = headers.clone();
 
-                        async move {
-                            detect_content(
-                                ctx,
-                                detector_id,
-                                default_threshold,
-                                detector_params,
-                                chunk,
-                                headers,
-                            )
-                            .await
-                        }
-                    })
-                    .collect::<Vec<_>>(),
-            )
-            .await?
-            .into_iter()
-            .flatten()
-            .collect::<Vec<_>>();
+                            async move {
+                                detect_content(
+                                    ctx,
+                                    detector_id,
+                                    default_threshold,
+                                    detector_params,
+                                    chunk,
+                                    headers,
+                                )
+                                .await
+                            }
+                        })
+                        .collect::<Vec<_>>(),
+                )
+                .await?
+                .into_iter()
+                .flatten()
+                .collect::<Vec<_>>();
 
-            detections.sort_by_key(|r| r.start);
-            // Send result with detections
-            Ok(TextContentDetectionResult { detections })
-        });
+                detections.sort_by_key(|r| r.start);
+                // Send result with detections
+                Ok(TextContentDetectionResult { detections })
+            }
+            .instrument(Span::current()),
+        );
         match task_handle.await {
             // Task completed successfully
             Ok(Ok(result)) => Ok(result),
@@ -338,42 +347,45 @@ impl Orchestrator {
         );
         let ctx = self.ctx.clone();
         let headers = task.headers;
-        let task_handle = tokio::spawn(async move {
-            // call detection
-            let detections = try_join_all(
-                task.detectors
-                    .iter()
-                    .map(|(detector_id, detector_params)| {
-                        let ctx = ctx.clone();
-                        let detector_id = detector_id.clone();
-                        let detector_params = detector_params.clone();
-                        let content = task.content.clone();
-                        let context_type = task.context_type.clone();
-                        let context = task.context.clone();
-                        let headers = headers.clone();
+        let task_handle = tokio::spawn(
+            async move {
+                // call detection
+                let detections = try_join_all(
+                    task.detectors
+                        .iter()
+                        .map(|(detector_id, detector_params)| {
+                            let ctx = ctx.clone();
+                            let detector_id = detector_id.clone();
+                            let detector_params = detector_params.clone();
+                            let content = task.content.clone();
+                            let context_type = task.context_type.clone();
+                            let context = task.context.clone();
+                            let headers = headers.clone();
 
-                        async {
-                            detect_for_context(
-                                ctx,
-                                detector_id,
-                                detector_params,
-                                content,
-                                context_type,
-                                context,
-                                headers,
-                            )
-                            .await
-                        }
-                    })
-                    .collect::<Vec<_>>(),
-            )
-            .await?
-            .into_iter()
-            .flatten()
-            .collect::<Vec<_>>();
+                            async {
+                                detect_for_context(
+                                    ctx,
+                                    detector_id,
+                                    detector_params,
+                                    content,
+                                    context_type,
+                                    context,
+                                    headers,
+                                )
+                                .await
+                            }
+                        })
+                        .collect::<Vec<_>>(),
+                )
+                .await?
+                .into_iter()
+                .flatten()
+                .collect::<Vec<_>>();
 
-            Ok(ContextDocsResult { detections })
-        });
+                Ok(ContextDocsResult { detections })
+            }
+            .instrument(Span::current()),
+        );
         match task_handle.await {
             // Task completed successfully
             Ok(Ok(result)) => Ok(result),
@@ -404,39 +416,42 @@ impl Orchestrator {
         let ctx = self.ctx.clone();
         let headers = task.headers;
 
-        let task_handle = tokio::spawn(async move {
-            // call detection
-            let detections = try_join_all(
-                task.detectors
-                    .iter()
-                    .map(|(detector_id, detector_params)| {
-                        let ctx = ctx.clone();
-                        let detector_id = detector_id.clone();
-                        let detector_params = detector_params.clone();
-                        let prompt = task.prompt.clone();
-                        let generated_text = task.generated_text.clone();
-                        let headers = headers.clone();
-                        async {
-                            detect_for_generation(
-                                ctx,
-                                detector_id,
-                                detector_params,
-                                prompt,
-                                generated_text,
-                                headers,
-                            )
-                            .await
-                        }
-                    })
-                    .collect::<Vec<_>>(),
-            )
-            .await?
-            .into_iter()
-            .flatten()
-            .collect::<Vec<_>>();
+        let task_handle = tokio::spawn(
+            async move {
+                // call detection
+                let detections = try_join_all(
+                    task.detectors
+                        .iter()
+                        .map(|(detector_id, detector_params)| {
+                            let ctx = ctx.clone();
+                            let detector_id = detector_id.clone();
+                            let detector_params = detector_params.clone();
+                            let prompt = task.prompt.clone();
+                            let generated_text = task.generated_text.clone();
+                            let headers = headers.clone();
+                            async {
+                                detect_for_generation(
+                                    ctx,
+                                    detector_id,
+                                    detector_params,
+                                    prompt,
+                                    generated_text,
+                                    headers,
+                                )
+                                .await
+                            }
+                        })
+                        .collect::<Vec<_>>(),
+                )
+                .await?
+                .into_iter()
+                .flatten()
+                .collect::<Vec<_>>();
 
-            Ok(DetectionOnGenerationResult { detections })
-        });
+                Ok(DetectionOnGenerationResult { detections })
+            }
+            .instrument(Span::current()),
+        );
         match task_handle.await {
             // Task completed successfully
             Ok(Ok(result)) => Ok(result),
@@ -467,31 +482,40 @@ impl Orchestrator {
         let ctx = self.ctx.clone();
         let headers = task.headers;
 
-        let task_handle = tokio::spawn(async move {
-            // call detection
-            let detections = try_join_all(
-                task.detectors
-                    .iter()
-                    .map(|(detector_id, detector_params)| {
-                        let ctx = ctx.clone();
-                        let detector_id = detector_id.clone();
-                        let detector_params = detector_params.clone();
-                        let messages = task.messages.clone();
-                        let headers = headers.clone();
-                        async {
-                            detect_for_chat(ctx, detector_id, detector_params, messages, headers)
+        let task_handle = tokio::spawn(
+            async move {
+                // call detection
+                let detections = try_join_all(
+                    task.detectors
+                        .iter()
+                        .map(|(detector_id, detector_params)| {
+                            let ctx = ctx.clone();
+                            let detector_id = detector_id.clone();
+                            let detector_params = detector_params.clone();
+                            let messages = task.messages.clone();
+                            let headers = headers.clone();
+                            async {
+                                detect_for_chat(
+                                    ctx,
+                                    detector_id,
+                                    detector_params,
+                                    messages,
+                                    headers,
+                                )
                                 .await
-                        }
-                    })
-                    .collect::<Vec<_>>(),
-            )
-            .await?
-            .into_iter()
-            .flatten()
-            .collect::<Vec<_>>();
+                            }
+                        })
+                        .collect::<Vec<_>>(),
+                )
+                .await?
+                .into_iter()
+                .flatten()
+                .collect::<Vec<_>>();
 
-            Ok(ChatDetectionResult { detections })
-        });
+                Ok(ChatDetectionResult { detections })
+            }
+            .instrument(Span::current()),
+        );
         match task_handle.await {
             // Task completed successfully
             Ok(Ok(result)) => Ok(result),
@@ -571,17 +595,20 @@ async fn detection_task(
             let chunker_id = detector_config.chunker_id.as_str();
             let chunks = chunks.get(chunker_id).unwrap().clone();
             let headers = headers.clone();
-            Ok(tokio::spawn(async move {
-                detect(
-                    ctx,
-                    detector_id,
-                    default_threshold,
-                    detector_params,
-                    chunks,
-                    headers,
-                )
-                .await
-            }))
+            Ok(tokio::spawn(
+                async move {
+                    detect(
+                        ctx,
+                        detector_id,
+                        default_threshold,
+                        detector_params,
+                        chunks,
+                        headers,
+                    )
+                    .await
+                }
+                .instrument(Span::current()),
+            ))
         })
         .collect::<Result<Vec<_>, Error>>()?;
     let results = try_join_all(tasks)
@@ -608,7 +635,10 @@ async fn chunk_task(
         .map(|chunker_id| {
             let ctx = ctx.clone();
             let text_with_offsets = text_with_offsets.clone();
-            tokio::spawn(async move { chunk_parallel(&ctx, chunker_id, text_with_offsets).await })
+            tokio::spawn(
+                async move { chunk_parallel(&ctx, chunker_id, text_with_offsets).await }
+                    .instrument(Span::current()),
+            )
         })
         .collect::<Vec<_>>();
     let results = try_join_all(tasks)

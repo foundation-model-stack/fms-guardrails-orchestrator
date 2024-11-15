@@ -29,6 +29,7 @@ use tracing::{debug, error};
 use url::Url;
 
 use super::{Client, Error};
+use crate::utils::trace::trace_context_from_http_response;
 use crate::{
     health::{HealthCheckResult, HealthStatus, OptionalHealthCheckResponseBody},
     utils::{trace, AsUriExt},
@@ -149,12 +150,14 @@ impl HttpClient {
                 let request = builder
                     .body(body.boxed())
                     .map_err(|e| Error::internal("client request creation failed", e))?;
-                Ok(self
+                let response = self
                     .inner
                     .request(request)
                     .await
                     .map_err(|e| Error::internal("sending client request failed", e))?
-                    .into())
+                    .into();
+                trace_context_from_http_response(&response);
+                Ok(response)
             }
             None => Err(builder.body(body).err().map_or_else(
                 || panic!("unexpected request builder error - headers missing in builder but no errors found"),
