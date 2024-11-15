@@ -339,12 +339,12 @@ pub fn on_outgoing_eos(trailers: Option<&HeaderMap>, stream_duration: Duration, 
 /// Used by both gRPC and HTTP requests since `tonic::Metadata` uses `http::HeaderMap`.
 /// See https://www.w3.org/TR/trace-context/#trace-context-http-headers-format.
 pub fn with_traceparent_header(ctx: &opentelemetry::Context, headers: HeaderMap) -> HeaderMap {
-    let mut headers = headers.clone();
     global::get_text_map_propagator(|propagator| {
+        let mut headers = headers.clone();
         // Injects current `traceparent` (and by default empty `tracestate`)
-        propagator.inject_context(ctx, &mut HeaderInjector(&mut headers))
-    });
-    headers
+        propagator.inject_context(ctx, &mut HeaderInjector(&mut headers));
+        headers
+    })
 }
 
 /// Extracts the `traceparent` header from an HTTP response's headers and uses it to set the current

@@ -131,7 +131,7 @@ impl HttpClient {
         body: impl Serialize,
     ) -> Result<Response, Error> {
         let ctx = opentelemetry::Context::current();
-        let headers = trace::with_traceparent_header(&ctx, headers.to_owned());
+        let headers = trace::with_traceparent_header(&ctx, headers);
         let mut builder = hyper::http::request::Builder::new()
             .method(method)
             .uri(url.as_uri());
