@@ -25,7 +25,7 @@ use hyper::{
 use hyper_rustls::HttpsConnector;
 use hyper_util::client::legacy::connect::HttpConnector;
 use serde::{de::DeserializeOwned, Serialize};
-use tracing::{debug, error};
+use tracing::{debug, error, instrument, Instrument, Span};
 use url::Url;
 
 use super::{Client, Error};
@@ -102,6 +102,7 @@ impl HttpClient {
         self.base_url.join(path.into()).unwrap()
     }
 
+    #[instrument(skip_all, fields(url))]
     pub async fn get(
         &self,
         url: Url,
@@ -111,6 +112,7 @@ impl HttpClient {
         self.send(url, Method::GET, headers, body).await
     }
 
+    #[instrument(skip_all, fields(url))]
     pub async fn post(
         &self,
         url: Url,
@@ -120,6 +122,7 @@ impl HttpClient {
         self.send(url, Method::POST, headers, body).await
     }
 
+    #[instrument(skip_all, fields(url))]
     pub async fn send(
         &self,
         url: Url,
@@ -153,6 +156,7 @@ impl HttpClient {
                 let response = self
                     .inner
                     .request(request)
+                    .instrument(Span::current())
                     .await
                     .map_err(|e| Error::internal("sending client request failed", e))?
                     .into();

@@ -20,6 +20,7 @@ use std::fmt::Debug;
 use axum::http::HeaderMap;
 use hyper::StatusCode;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use tracing::instrument;
 use url::Url;
 
 use super::{http::HttpClientExt, Error};
@@ -73,6 +74,7 @@ pub trait DetectorClientExt: HttpClientExt {
 }
 
 impl<C: DetectorClient + HttpClientExt> DetectorClientExt for C {
+    #[instrument(skip_all, fields(model_id, url))]
     async fn post_to_detector<U: DeserializeOwned>(
         &self,
         model_id: &str,
