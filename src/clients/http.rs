@@ -26,6 +26,7 @@ use hyper_rustls::HttpsConnector;
 use hyper_util::client::legacy::connect::HttpConnector;
 use serde::{de::DeserializeOwned, Serialize};
 use tracing::{debug, error, instrument, Span};
+use tracing_opentelemetry::OpenTelemetrySpanExt;
 use url::Url;
 
 use super::{Client, Error};
@@ -130,7 +131,7 @@ impl HttpClient {
         headers: HeaderMap,
         body: impl Serialize,
     ) -> Result<Response, Error> {
-        let ctx = opentelemetry::Context::current();
+        let ctx = Span::current().context();
         let headers = trace::with_traceparent_header(&ctx, headers);
         let mut builder = hyper::http::request::Builder::new()
             .method(method)

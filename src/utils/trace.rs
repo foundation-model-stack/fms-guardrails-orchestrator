@@ -352,11 +352,14 @@ pub fn with_traceparent_header(ctx: &opentelemetry::Context, headers: HeaderMap)
 /// Defaults to using the current context when no `traceparent` is found.
 /// See https://www.w3.org/TR/trace-context/#trace-context-http-headers-format.
 pub fn trace_context_from_http_response(span: &Span, response: &hyper::Response<Incoming>) {
+    let curr_trace = span.context().span().span_context().trace_id();
     let ctx = global::get_text_map_propagator(|propagator| {
         // Returns the current context if no `traceparent` is found
         propagator.extract(&HeaderExtractor(response.headers()))
     });
-    span.set_parent(ctx);
+    if ctx.span().span_context().trace_id() == curr_trace {
+        span.set_parent(ctx);
+    }
 }
 
 /// Extracts the `traceparent` header from a gRPC response's metadata and uses it to set the current
