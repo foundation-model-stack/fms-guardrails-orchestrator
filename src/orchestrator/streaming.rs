@@ -210,13 +210,10 @@ impl Orchestrator {
                             while let Some(result) = generation_stream.next().await {
                                 debug!(%trace_id, ?result, "sending result to client");
                                 let response = response_tx.send(result).await;
-                                match response {
-                                    Err(e) => {
-                                        debug!(%trace_id, "could not send to client: {e}");
-                                        let _ = response_tx.send(Err(Error::Cancelled));
-                                        return;
-                                    }
-                                    _ => {}
+                                if let Err(e) = response {
+                                    debug!(%trace_id, "could not send to client: {e}");
+                                    let _ = response_tx.send(Err(Error::Cancelled)).await;
+                                    return;
                                 }
                             }
                             debug!(%trace_id, "task completed: stream closed");
