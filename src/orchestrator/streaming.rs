@@ -24,7 +24,7 @@ use axum::http::HeaderMap;
 use futures::{future::try_join_all, Stream, StreamExt, TryStreamExt};
 use tokio::sync::{broadcast, mpsc};
 use tokio_stream::wrappers::{BroadcastStream, ReceiverStream};
-use tracing::{debug, error, info, instrument};
+use tracing::{debug, error, info, instrument, warn};
 
 use super::{get_chunker_ids, Context, Error, Orchestrator, StreamingClassificationWithGenTask};
 use crate::{
@@ -192,7 +192,12 @@ impl Orchestrator {
                                         match result {
                                             Some(result) => {
                                                 debug!(%trace_id, ?result, "sending result to client");
-                                                let _ = response_tx.send(result).await;
+                                                if (response_tx.send(result).await).is_err() {
+                                                    warn!(%trace_id, "response channel closed (client disconnected), terminating task");
+                                                    // Broadcast cancellation signal to tasks
+                                                    let _ = error_tx.send(Error::Cancelled);
+                                                    return;
+                                                }
                                             },
                                             None => {
                                                 info!(%trace_id, "task completed: stream closed");
@@ -209,10 +214,8 @@ impl Orchestrator {
                         tokio::spawn(async move {
                             while let Some(result) = generation_stream.next().await {
                                 debug!(%trace_id, ?result, "sending result to client");
-                                let response = response_tx.send(result).await;
-                                if let Err(e) = response {
-                                    debug!(%trace_id, "could not send to client: {e}");
-                                    let _ = response_tx.send(Err(Error::Cancelled)).await;
+                                if (response_tx.send(result).await).is_err() {
+                                    warn!(%trace_id, "response channel closed (client disconnected), terminating task");
                                     return;
                                 }
                             }
@@ -342,7 +345,10 @@ async fn generation_broadcast_task(
     let mut error_rx = error_tx.subscribe();
     loop {
         tokio::select! {
-            _ = error_rx.recv() => { break },
+            _ = error_rx.recv() => {
+                warn!("cancellation signal received, terminating task");
+                break
+            },
             result = generation_stream.next() => {
                 match result {
                     Some(Ok(generation)) => {
@@ -385,7 +391,10 @@ async fn detection_task(
 
     loop {
         tokio::select! {
-            _ = error_rx.recv() => { break },
+            _ = error_rx.recv() => {
+                warn!("cancellation signal received, terminating task");
+                break
+            },
             result = chunk_rx.recv() => {
                 match result {
                     Ok(chunk) => {
@@ -513,7 +522,10 @@ async fn chunk_broadcast_task(
         async move {
             loop {
                 tokio::select! {
-                    _ = error_rx.recv() => { break },
+                    _ = error_rx.recv() => {
+                        warn!("cancellation signal received, terminating task");
+                        break
+                    },
                     result = output_stream.next() => {
                         match result {
                             Some(Ok(chunk)) => {
