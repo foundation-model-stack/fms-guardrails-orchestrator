@@ -1,6 +1,6 @@
 use tracing::{info, instrument};
 
-use super::{ChatCompletionsDetectionTask, Error, Orchestrator};
+use super::{ChatCompletionsDetectionTask, ClientKind, Error, Orchestrator};
 use crate::clients::openai::{ChatCompletionsResponse, OpenAiClient};
 
 impl Orchestrator {
@@ -15,6 +15,9 @@ impl Orchestrator {
             .clients
             .get_as::<OpenAiClient>("chat_generation")
             .expect("chat_generation client not found");
-        Ok(client.chat_completions(task.request, task.headers).await?)
+        client
+            .chat_completions(task.request, task.headers)
+            .await
+            .map_err(|error| Error::handle_client_error(error, ClientKind::ChatGeneration, ""))
     }
 }

@@ -25,9 +25,9 @@ use futures::{
 use tracing::{debug, error, info, instrument, Instrument, Span};
 
 use super::{
-    apply_masks, get_chunker_ids, ChatDetectionTask, Chunk, ClassificationWithGenTask, Context,
-    ContextDocsDetectionTask, DetectionOnGenerationTask, Error, GenerationWithDetectionTask,
-    Orchestrator, TextContentDetectionTask,
+    apply_masks, get_chunker_ids, ChatDetectionTask, Chunk, ClassificationWithGenTask, ClientKind,
+    Context, ContextDocsDetectionTask, DetectionOnGenerationTask, Error,
+    GenerationWithDetectionTask, Orchestrator, TextContentDetectionTask,
 };
 use crate::{
     clients::{
@@ -674,7 +674,9 @@ pub async fn detect(
         client
             .text_contents(&detector_id, request, headers)
             .await
-            .map_err(|error| Error::handle_detector_error(detector_id.clone(), error))?
+            .map_err(|error| {
+                Error::handle_client_error(error, ClientKind::Detector, &detector_id)
+            })?
     };
     debug!(?response, "received detector response");
     if chunks.len() != response.len() {
@@ -727,7 +729,9 @@ pub async fn detect_content(
         client
             .text_contents(&detector_id, request, headers)
             .await
-            .map_err(|error| Error::handle_detector_error(detector_id.clone(), error))?
+            .map_err(|error| {
+                Error::handle_client_error(error, ClientKind::Detector, &detector_id)
+            })?
     };
     debug!(%detector_id, ?response, "received detector response");
     if chunks.len() != response.len() {
@@ -793,7 +797,7 @@ pub async fn detect_for_generation(
                 .filter(|detection| detection.score > threshold)
                 .collect()
         })
-        .map_err(|error| Error::handle_detector_error(detector_id.clone(), error))?;
+        .map_err(|error| Error::handle_client_error(error, ClientKind::Detector, &detector_id))?;
     debug!(?response, "received generation detector response");
     Ok::<Vec<DetectionResult>, Error>(response)
 }
@@ -831,7 +835,7 @@ pub async fn detect_for_chat(
                 .filter(|detection| detection.score > threshold)
                 .collect()
         })
-        .map_err(|error| Error::handle_detector_error(detector_id.clone(), error))?;
+        .map_err(|error| Error::handle_client_error(error, ClientKind::Detector, &detector_id))?;
     debug!(%detector_id, ?response, "received chat detector response");
     Ok::<Vec<DetectionResult>, Error>(response)
 }
@@ -883,7 +887,7 @@ pub async fn detect_for_context(
                 .filter(|detection| detection.score > threshold)
                 .collect()
         })
-        .map_err(|error| Error::handle_detector_error(detector_id.clone(), error))?;
+        .map_err(|error| Error::handle_client_error(error, ClientKind::Detector, &detector_id))?;
     debug!(%detector_id, ?response, "received context detector response");
     Ok::<Vec<DetectionResult>, Error>(response)
 }
@@ -905,7 +909,7 @@ pub async fn chunk(
         client
             .tokenization_task_predict(&chunker_id, request)
             .await
-            .map_err(|error| Error::handle_chunker_error(chunker_id.clone(), error))?
+            .map_err(|error| Error::handle_client_error(error, ClientKind::Chunker, &chunker_id))?
     };
 
     debug!(?response, "received chunker response");
@@ -963,7 +967,7 @@ pub async fn tokenize(
     client
         .tokenize(model_id.clone(), text, headers)
         .await
-        .map_err(|error| Error::handle_tokenize_error(model_id.clone(), error))
+        .map_err(|error| Error::handle_client_error(error, ClientKind::Generation, &model_id))
 }
 
 /// Sends generate request to a generation service.
@@ -983,7 +987,7 @@ async fn generate(
     client
         .generate(model_id.clone(), text, params, headers)
         .await
-        .map_err(|error| Error::handle_generate_error(model_id.clone(), error))
+        .map_err(|error| Error::handle_client_error(error, ClientKind::Generation, &model_id))
 }
 
 #[cfg(test)]

@@ -129,6 +129,15 @@ impl Orchestrator {
     }
 }
 
+/// Kinds of clients supported by the guardrails orchestrator
+#[derive(Debug, Clone, Copy)]
+pub enum ClientKind {
+    Chunker,
+    Detector,
+    Generation,
+    ChatGeneration,
+}
+
 /// Slices chars between start and end indices.
 fn slice_codepoints(text: &str, start: usize, end: usize) -> String {
     let len = end - start;

@@ -16,6 +16,7 @@
 */
 
 use crate::clients;
+use crate::orchestrator::ClientKind;
 use tracing::{debug, error};
 
 /// Orchestrator errors.
@@ -29,8 +30,10 @@ pub enum Error {
     DetectorRequestFailed { id: String, error: clients::Error },
     #[error("chunker request failed for `{id}`: {error}")]
     ChunkerRequestFailed { id: String, error: clients::Error },
-    #[error("generate request failed for `{id}`: {error}")]
+    #[error("generation request failed for `{id}`: {error}")]
     GenerateRequestFailed { id: String, error: clients::Error },
+    #[error("chat generation request failed for `{id}`: {error}")]
+    ChatGenerateRequestFailed { id: String, error: clients::Error },
     #[error("tokenize request failed for `{id}`: {error}")]
     TokenizeRequestFailed { id: String, error: clients::Error },
     #[error("{0}")]
@@ -40,50 +43,27 @@ pub enum Error {
 }
 
 impl Error {
-    /// Helper function that logs an error level trace event if the given client error is internal.
-    fn handle_internal_client_error(error: &clients::Error, from_client: String) {
-        debug!(?error, "error received from {}", from_client);
+    /// Helper function that logs an error level trace event if the given client error is internal,
+    /// and transforms any incoming client error into an HTTP error ready to be returned to the user.
+    pub(crate) fn handle_client_error(
+        error: clients::Error,
+        client_kind: ClientKind,
+        client_id: &str,
+    ) -> Self {
+        debug!(
+            ?error,
+            "error received from {:?} client {}", client_kind, client_id
+        );
         if matches!(error, clients::Error::Internal { .. }) {
             error!("internal client error: {}", error);
         }
-    }
-
-    /// Logs error if internal and transforms error into HTTP wrapped in `DetectorRequestFailed`
-    pub fn handle_detector_error(id: String, error: clients::Error) -> Self {
-        Self::handle_internal_client_error(&error, format!("detector client with id: {}", id));
-        Error::DetectorRequestFailed {
-            id,
-            error: error.into_http(),
-        }
-    }
-
-    /// Logs error if internal and transforms error into HTTP wrapped in `TokenizeRequestFailed`
-    pub fn handle_tokenize_error(id: String, error: clients::Error) -> Self {
-        Self::handle_internal_client_error(
-            &error,
-            format!("tokenization in generation client with id: {}", id),
-        );
-        Error::TokenizeRequestFailed {
-            id,
-            error: error.into_http(),
-        }
-    }
-
-    /// Logs error if internal and transforms error into HTTP wrapped in `GenerateRequestFailed`
-    pub fn handle_generate_error(id: String, error: clients::Error) -> Self {
-        Self::handle_internal_client_error(&error, format!("generation client with id: {}", id));
-        Error::GenerateRequestFailed {
-            id,
-            error: error.into_http(),
-        }
-    }
-
-    /// Logs error if internal and transforms error into HTTP wrapped in `ChunkerRequestFailed`
-    pub fn handle_chunker_error(id: String, error: clients::Error) -> Self {
-        Self::handle_internal_client_error(&error, format!("chunker client with id {}", id));
-        Error::ChunkerRequestFailed {
-            id,
-            error: error.into_http(),
+        let id = client_id.to_string();
+        let error = error.into_http();
+        match client_kind {
+            ClientKind::Chunker => Self::ChunkerRequestFailed { id, error },
+            ClientKind::Detector => Self::DetectorRequestFailed { id, error },
+            ClientKind::Generation => Self::GenerateRequestFailed { id, error },
+            ClientKind::ChatGeneration => Self::ChatGenerateRequestFailed { id, error },
         }
     }
 }

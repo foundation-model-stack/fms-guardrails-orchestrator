@@ -149,9 +149,7 @@ impl HttpClient {
                 debug!(
                     ?url,
                     ?headers,
-                    // If the body can not be serialized it will be caught below, we don't want to
-                    // complicate logging by handling string serialization error here.
-                    body = serde_json::to_string(&body).unwrap_or("".to_string()),
+                    ?body,
                     "sending client request"
                 );
                 headers_mut.extend(headers);
