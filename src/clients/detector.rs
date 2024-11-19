@@ -19,11 +19,14 @@ use std::fmt::Debug;
 
 use axum::http::HeaderMap;
 use hyper::StatusCode;
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::Deserialize;
 use tracing::instrument;
 use url::Url;
 
-use super::{http::HttpClientExt, Error};
+use super::{
+    http::{HttpClientExt, RequestBody},
+    Error,
+};
 
 pub mod text_contents;
 pub use text_contents::*;
@@ -32,6 +35,7 @@ pub use text_chat::*;
 pub mod text_context_doc;
 pub use text_context_doc::*;
 pub mod text_generation;
+use crate::clients::http::ResponseBody;
 pub use text_generation::*;
 
 const DEFAULT_PORT: u16 = 8080;
@@ -61,30 +65,30 @@ pub trait DetectorClient {}
 pub trait DetectorClientExt: HttpClientExt {
     /// Wraps the post function with extra detector functionality
     /// (detector id header injection & error handling)
-    async fn post_to_detector<U: DeserializeOwned>(
+    async fn post_to_detector<U: ResponseBody>(
         &self,
         model_id: &str,
         url: Url,
         headers: HeaderMap,
-        request: impl Serialize,
+        request: impl RequestBody,
     ) -> Result<U, Error>;
 
     /// Wraps call to inner HTTP client endpoint function.
-    fn endpoint(&self, path: impl Into<&'static str>) -> Url;
+    fn endpoint(&self, path: &str) -> Url;
 }
 
 impl<C: DetectorClient + HttpClientExt> DetectorClientExt for C {
     #[instrument(skip_all, fields(model_id, url))]
-    async fn post_to_detector<U: DeserializeOwned>(
+    async fn post_to_detector<U: ResponseBody>(
         &self,
         model_id: &str,
         url: Url,
         headers: HeaderMap,
-        request: impl Serialize,
+        request: impl RequestBody,
     ) -> Result<U, Error> {
         let mut headers = headers;
         headers.append(DETECTOR_ID_HEADER_NAME, model_id.parse().unwrap());
-        let response = self.inner().clone().post(url, headers, request).await?;
+        let response = self.inner().post(url, headers, request).await?;
 
         let status = response.status();
         match status {
@@ -100,7 +104,7 @@ impl<C: DetectorClient + HttpClientExt> DetectorClientExt for C {
         }
     }
 
-    fn endpoint(&self, path: impl Into<&'static str>) -> Url {
+    fn endpoint(&self, path: &str) -> Url {
         self.inner().endpoint(path)
     }
 }

@@ -14,7 +14,7 @@
  limitations under the License.
 
 */
-
+use std::fmt::Debug;
 use std::ops::Deref;
 
 use http_body_util::{combinators::BoxBody, BodyExt, Full};
@@ -30,11 +30,20 @@ use tracing_opentelemetry::OpenTelemetrySpanExt;
 use url::Url;
 
 use super::{Client, Error};
-use crate::utils::trace::trace_context_from_http_response;
 use crate::{
     health::{HealthCheckResult, HealthStatus, OptionalHealthCheckResponseBody},
     utils::{trace, AsUriExt},
 };
+
+/// Any type that implements Debug and Serialize can be used as a request body
+pub trait RequestBody: Debug + Serialize {}
+
+impl<T> RequestBody for T where T: Debug + Serialize {}
+
+/// Any type that implements Debug and Deserialize can be used as a response body
+pub trait ResponseBody: Debug + DeserializeOwned {}
+
+impl<T> ResponseBody for T where T: Debug + DeserializeOwned {}
 
 /// HTTP response type, thin wrapper for `hyper::http::Response` with extra functionality.
 pub struct Response(pub hyper::http::Response<BoxBody<Bytes, hyper::Error>>);
@@ -45,7 +54,6 @@ impl Response {
         let data = self
             .0
             .into_body()
-            .boxed()
             .collect()
             .await
             .expect("unexpected infallible error")
@@ -99,8 +107,8 @@ impl HttpClient {
         &self.base_url
     }
 
-    pub fn endpoint(&self, path: impl Into<&'static str>) -> Url {
-        self.base_url.join(path.into()).unwrap()
+    pub fn endpoint(&self, path: &str) -> Url {
+        self.base_url.join(path).unwrap()
     }
 
     #[instrument(skip_all, fields(url))]
@@ -108,7 +116,7 @@ impl HttpClient {
         &self,
         url: Url,
         headers: HeaderMap,
-        body: impl Serialize,
+        body: impl RequestBody,
     ) -> Result<Response, Error> {
         self.send(url, Method::GET, headers, body).await
     }
@@ -118,7 +126,7 @@ impl HttpClient {
         &self,
         url: Url,
         headers: HeaderMap,
-        body: impl Serialize,
+        body: impl RequestBody,
     ) -> Result<Response, Error> {
         self.send(url, Method::POST, headers, body).await
     }
@@ -129,7 +137,7 @@ impl HttpClient {
         url: Url,
         method: Method,
         headers: HeaderMap,
-        body: impl Serialize,
+        body: impl RequestBody,
     ) -> Result<Response, Error> {
         let ctx = Span::current().context();
         let headers = trace::with_traceparent_header(&ctx, headers);
@@ -138,7 +146,6 @@ impl HttpClient {
             .uri(url.as_uri());
         match builder.headers_mut() {
             Some(headers_mut) => {
-                headers_mut.extend(headers.clone());
                 debug!(
                     ?url,
                     ?headers,
@@ -147,6 +154,7 @@ impl HttpClient {
                     body = serde_json::to_string(&body).unwrap_or("".to_string()),
                     "sending client request"
                 );
+                headers_mut.extend(headers);
                 let body =
                     Full::new(Bytes::from(serde_json::to_vec(&body).map_err(|e| {
                         Error::internal("client request serialization failed", e)
@@ -167,7 +175,7 @@ impl HttpClient {
                     "incoming client response"
                 );
                 let span = Span::current();
-                trace_context_from_http_response(&span, &response);
+                trace::trace_context_from_http_response(&span, &response);
                 Ok(response.into())
             }
             None => Err(builder.body(body).err().map_or_else(
