@@ -15,8 +15,6 @@
 
 */
 
-use std::fmt::Display;
-
 use hyper::StatusCode;
 use tracing::error;
 
@@ -29,8 +27,6 @@ pub enum Error {
     Http { code: StatusCode, message: String },
     #[error("model not found: {model_id}")]
     ModelNotFound { model_id: String },
-    #[error("{}", .error)]
-    Internal { error: String },
 }
 
 impl Error {
@@ -44,40 +40,15 @@ impl Error {
             Error::Http { code, .. } => *code,
             // Return 404 for model not found
             Error::ModelNotFound { .. } => StatusCode::NOT_FOUND,
-            Error::Internal { .. } => StatusCode::INTERNAL_SERVER_ERROR,
-        }
-    }
-
-    /// Returns an internal client error with the corresponding message and source error.
-    pub fn internal<E: Display>(message: &str, error: E) -> Self {
-        Self::Internal {
-            error: format!("internal client error - {}: {}", message, error),
-        }
-    }
-
-    /// Transforms the error into an HTTP error appropriate to use as a response to the user.
-    /// Internal errors get a 500 status code and the internal error info message is removed.
-    /// Internal errors should therefore be reported before transformation into HTTP.
-    pub fn into_http(self) -> Self {
-        match self {
-            Error::Grpc { code, message } => Self::Http { code, message },
-            Error::Http { .. } => self,
-            Error::Internal { .. } => Self::Http {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
-                message: "".to_string(),
-            },
-            _ => Self::Http {
-                code: self.status_code(),
-                message: self.to_string(),
-            },
         }
     }
 }
 
 impl From<hyper::Error> for Error {
     fn from(error: hyper::Error) -> Self {
-        Self::Internal {
-            error: error.to_string(),
+        Self::Http {
+            code: StatusCode::INTERNAL_SERVER_ERROR,
+            message: error.to_string(),
         }
     }
 }

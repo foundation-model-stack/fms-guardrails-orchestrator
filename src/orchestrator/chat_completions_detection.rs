@@ -1,6 +1,6 @@
 use tracing::{info, instrument};
 
-use super::{ChatCompletionsDetectionTask, ClientKind, Error, Orchestrator};
+use super::{ChatCompletionsDetectionTask, Error, Orchestrator};
 use crate::clients::openai::{ChatCompletionsResponse, OpenAiClient};
 
 impl Orchestrator {
@@ -10,6 +10,7 @@ impl Orchestrator {
         task: ChatCompletionsDetectionTask,
     ) -> Result<ChatCompletionsResponse, Error> {
         info!("handling chat completions detection task");
+        let model_id = task.request.model.clone();
         let client = self
             .ctx
             .clients
@@ -18,6 +19,9 @@ impl Orchestrator {
         client
             .chat_completions(task.request, task.headers)
             .await
-            .map_err(|error| Error::handle_client_error(error, ClientKind::ChatGeneration, ""))
+            .map_err(|error| Error::ChatGenerateRequestFailed {
+                id: model_id,
+                error,
+            })
     }
 }

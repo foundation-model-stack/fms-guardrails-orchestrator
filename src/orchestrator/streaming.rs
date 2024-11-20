@@ -26,9 +26,7 @@ use tokio::sync::{broadcast, mpsc};
 use tokio_stream::wrappers::{BroadcastStream, ReceiverStream};
 use tracing::{debug, warn, error, info, instrument, Instrument, Span};
 
-use super::{
-    get_chunker_ids, ClientKind, Context, Error, Orchestrator, StreamingClassificationWithGenTask,
-};
+use super::{get_chunker_ids, Context, Error, Orchestrator, StreamingClassificationWithGenTask};
 use crate::{
     clients::{
         chunker::{tokenize_whole_doc_stream, ChunkerClient, DEFAULT_CHUNKER_ID},
@@ -422,7 +420,7 @@ async fn detection_task(
                                 .unwrap_or_else(|| panic!("text contents detector client not found for {}", detector_id));
                             match client.text_contents(&detector_id, request, headers)
                                 .await
-                                .map_err(|error| Error::handle_client_error(error, ClientKind::Detector, &detector_id)) {
+                                .map_err(|error| Error::DetectorRequestFailed { id: detector_id.clone(), error }) {
                                     Ok(response) => {
                                         debug!(%detector_id, ?response, "received detector response");
                                         let detections = response
@@ -489,6 +487,7 @@ async fn chunk_broadcast_task(
         .boxed();
 
     debug!("creating chunker output stream");
+    let id = chunker_id.clone(); // workaround for StreamExt::map_err
     let response_stream = if chunker_id == DEFAULT_CHUNKER_ID {
         info!("Using default whole doc chunker");
         let (response_tx, response_rx) = mpsc::channel(1);
@@ -510,8 +509,14 @@ async fn chunk_broadcast_task(
     };
 
     let mut output_stream = response_stream
-        .map_err(|error| Error::handle_client_error(error, ClientKind::Chunker, &chunker_id))?
-        .map_err(move |error| Error::handle_client_error(error, ClientKind::Chunker, &chunker_id)); // maps stream errors
+        .map_err(|error| Error::ChunkerRequestFailed {
+            id: chunker_id.clone(),
+            error,
+        })?
+        .map_err(move |error| Error::ChunkerRequestFailed {
+            id: id.clone(),
+            error,
+        }); // maps stream errors
 
     // Spawn task to consume output stream forward to broadcast channel
     debug!("spawning chunker broadcast task");
@@ -572,8 +577,14 @@ async fn generate_stream(
     Ok(client
         .generate_stream(model_id.clone(), text, params, headers)
         .await
-        .map_err(|error| Error::handle_client_error(error, ClientKind::Generation, &model_id))?
-        .map_err(move |error| Error::handle_client_error(error, ClientKind::Generation, &model_id)) // maps stream errors
+        .map_err(|error| Error::GenerateRequestFailed {
+            id: model_id.clone(),
+            error,
+        })?
+        .map_err(move |error| Error::GenerateRequestFailed {
+            id: model_id.clone(),
+            error,
+        }) // maps stream errors
         .boxed())
 }
 

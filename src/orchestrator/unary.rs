@@ -25,9 +25,9 @@ use futures::{
 use tracing::{debug, error, info, instrument, Instrument, Span};
 
 use super::{
-    apply_masks, get_chunker_ids, ChatDetectionTask, Chunk, ClassificationWithGenTask, ClientKind,
-    Context, ContextDocsDetectionTask, DetectionOnGenerationTask, Error,
-    GenerationWithDetectionTask, Orchestrator, TextContentDetectionTask,
+    apply_masks, get_chunker_ids, ChatDetectionTask, Chunk, ClassificationWithGenTask, Context,
+    ContextDocsDetectionTask, DetectionOnGenerationTask, Error, GenerationWithDetectionTask,
+    Orchestrator, TextContentDetectionTask,
 };
 use crate::{
     clients::{
@@ -675,7 +675,11 @@ pub async fn detect(
             .text_contents(&detector_id, request, headers)
             .await
             .map_err(|error| {
-                Error::handle_client_error(error, ClientKind::Detector, &detector_id)
+                debug!(?error, "error received from detector");
+                Error::DetectorRequestFailed {
+                    id: detector_id.clone(),
+                    error,
+                }
             })?
     };
     debug!(?response, "received detector response");
@@ -730,7 +734,11 @@ pub async fn detect_content(
             .text_contents(&detector_id, request, headers)
             .await
             .map_err(|error| {
-                Error::handle_client_error(error, ClientKind::Detector, &detector_id)
+                debug!(?error, "error received from detector");
+                Error::DetectorRequestFailed {
+                    id: detector_id.clone(),
+                    error,
+                }
             })?
     };
     debug!(%detector_id, ?response, "received detector response");
@@ -797,7 +805,10 @@ pub async fn detect_for_generation(
                 .filter(|detection| detection.score > threshold)
                 .collect()
         })
-        .map_err(|error| Error::handle_client_error(error, ClientKind::Detector, &detector_id))?;
+        .map_err(|error| Error::DetectorRequestFailed {
+            id: detector_id.clone(),
+            error,
+        })?;
     debug!(?response, "received generation detector response");
     Ok::<Vec<DetectionResult>, Error>(response)
 }
@@ -835,7 +846,10 @@ pub async fn detect_for_chat(
                 .filter(|detection| detection.score > threshold)
                 .collect()
         })
-        .map_err(|error| Error::handle_client_error(error, ClientKind::Detector, &detector_id))?;
+        .map_err(|error| Error::DetectorRequestFailed {
+            id: detector_id.clone(),
+            error,
+        })?;
     debug!(%detector_id, ?response, "received chat detector response");
     Ok::<Vec<DetectionResult>, Error>(response)
 }
@@ -887,7 +901,10 @@ pub async fn detect_for_context(
                 .filter(|detection| detection.score > threshold)
                 .collect()
         })
-        .map_err(|error| Error::handle_client_error(error, ClientKind::Detector, &detector_id))?;
+        .map_err(|error| Error::DetectorRequestFailed {
+            id: detector_id.clone(),
+            error,
+        })?;
     debug!(%detector_id, ?response, "received context detector response");
     Ok::<Vec<DetectionResult>, Error>(response)
 }
@@ -909,7 +926,10 @@ pub async fn chunk(
         client
             .tokenization_task_predict(&chunker_id, request)
             .await
-            .map_err(|error| Error::handle_client_error(error, ClientKind::Chunker, &chunker_id))?
+            .map_err(|error| Error::ChunkerRequestFailed {
+                id: chunker_id.clone(),
+                error,
+            })?
     };
 
     debug!(?response, "received chunker response");
@@ -937,7 +957,7 @@ pub async fn chunk_parallel(
             let chunker_id = chunker_id.clone();
             async move {
                 let results = chunk(&ctx, chunker_id, offset, text).await?;
-                Ok(results)
+                Ok::<Vec<Chunk>, Error>(results)
             }
         })
         .buffered(DEFAULT_STREAM_BUFFER_SIZE)
@@ -967,7 +987,10 @@ pub async fn tokenize(
     client
         .tokenize(model_id.clone(), text, headers)
         .await
-        .map_err(|error| Error::handle_client_error(error, ClientKind::Generation, &model_id))
+        .map_err(|error| Error::TokenizeRequestFailed {
+            id: model_id,
+            error,
+        })
 }
 
 /// Sends generate request to a generation service.
@@ -987,7 +1010,10 @@ async fn generate(
     client
         .generate(model_id.clone(), text, params, headers)
         .await
-        .map_err(|error| Error::handle_client_error(error, ClientKind::Generation, &model_id))
+        .map_err(|error| Error::GenerateRequestFailed {
+            id: model_id,
+            error,
+        })
 }
 
 #[cfg(test)]

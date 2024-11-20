@@ -16,8 +16,7 @@
 */
 
 use crate::clients;
-use crate::orchestrator::ClientKind;
-use tracing::{debug, error};
+use tracing::error;
 
 /// Orchestrator errors.
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
@@ -30,9 +29,9 @@ pub enum Error {
     DetectorRequestFailed { id: String, error: clients::Error },
     #[error("chunker request failed for `{id}`: {error}")]
     ChunkerRequestFailed { id: String, error: clients::Error },
-    #[error("generation request failed for `{id}`: {error}")]
+    #[error("generation request failed for model `{id}`: {error}")]
     GenerateRequestFailed { id: String, error: clients::Error },
-    #[error("chat generation request failed for `{id}`: {error}")]
+    #[error("chat generation request failed for model `{id}`: {error}")]
     ChatGenerateRequestFailed { id: String, error: clients::Error },
     #[error("tokenize request failed for `{id}`: {error}")]
     TokenizeRequestFailed { id: String, error: clients::Error },
@@ -40,32 +39,6 @@ pub enum Error {
     Other(String),
     #[error("cancelled")]
     Cancelled,
-}
-
-impl Error {
-    /// Helper function that logs an error level trace event if the given client error is internal,
-    /// and transforms any incoming client error into an HTTP error ready to be returned to the user.
-    pub(crate) fn handle_client_error(
-        error: clients::Error,
-        client_kind: ClientKind,
-        client_id: &str,
-    ) -> Self {
-        debug!(
-            ?error,
-            "error received from {:?} client {}", client_kind, client_id
-        );
-        if matches!(error, clients::Error::Internal { .. }) {
-            error!("internal client error: {}", error);
-        }
-        let id = client_id.to_string();
-        let error = error.into_http();
-        match client_kind {
-            ClientKind::Chunker => Self::ChunkerRequestFailed { id, error },
-            ClientKind::Detector => Self::DetectorRequestFailed { id, error },
-            ClientKind::Generation => Self::GenerateRequestFailed { id, error },
-            ClientKind::ChatGeneration => Self::ChatGenerateRequestFailed { id, error },
-        }
-    }
 }
 
 impl From<tokio::task::JoinError> for Error {

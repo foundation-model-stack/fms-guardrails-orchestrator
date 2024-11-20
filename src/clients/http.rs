@@ -58,8 +58,10 @@ impl Response {
             .await
             .expect("unexpected infallible error")
             .to_bytes();
-        serde_json::from_slice::<T>(&data)
-            .map_err(|e| Error::internal("client response deserialization failed", e))
+        serde_json::from_slice::<T>(&data).map_err(|e| Error::Http {
+            code: StatusCode::INTERNAL_SERVER_ERROR,
+            message: format!("client response deserialization failed: {}", e),
+        })
     }
 }
 
@@ -155,17 +157,30 @@ impl HttpClient {
                 headers_mut.extend(headers);
                 let body =
                     Full::new(Bytes::from(serde_json::to_vec(&body).map_err(|e| {
-                        Error::internal("client request serialization failed", e)
+                        Error::Http {
+                            code: StatusCode::INTERNAL_SERVER_ERROR,
+                            message: format!("client request serialization failed: {}", e)
+                        }
                     })?))
                         .map_err(|err| match err {});
                 let request = builder
                     .body(body.boxed())
-                    .map_err(|e| Error::internal("client request creation failed", e))?;
+                    .map_err(|e| {
+                        Error::Http {
+                            code: StatusCode::INTERNAL_SERVER_ERROR,
+                            message: format!("client request serialization failed: {}", e)
+                        }
+                    })?;
                 let response = self
                     .inner
                     .request(request)
                     .await
-                    .map_err(|e| Error::internal("sending client request failed", e))?;
+                    .map_err(|e| {
+                        Error::Http {
+                            code: StatusCode::INTERNAL_SERVER_ERROR,
+                            message: format!("sending client request failed: {}", e)
+                        }
+                    })?;
                 debug!(
                     status = ?response.status(),
                     headers = ?response.headers(),
@@ -178,7 +193,10 @@ impl HttpClient {
             }
             None => Err(builder.body(body).err().map_or_else(
                 || panic!("unexpected request builder error - headers missing in builder but no errors found"),
-                |e| Error::internal("client request creation failed", e),
+                |e| Error::Http {
+                    code: StatusCode::INTERNAL_SERVER_ERROR,
+                    message: format!("client request creation failed: {}", e),
+                }
             )),
         }
     }
@@ -248,10 +266,10 @@ impl HttpClient {
 
     pub async fn health(&self) -> HealthCheckResult {
         let res = self.inner.get(self.health_url.as_uri()).await;
-        Self::http_response_to_health_check_result(
-            res.map(Into::into)
-                .map_err(|e| Error::internal("sending client health request failed", e)),
-        )
+        Self::http_response_to_health_check_result(res.map(Into::into).map_err(|e| Error::Http {
+            code: StatusCode::INTERNAL_SERVER_ERROR,
+            message: format!("sending client health request failed: {}", e),
+        }))
         .await
     }
 }

@@ -1,5 +1,4 @@
-use std::{fs::File, io, path::PathBuf, sync::Arc};
-
+use http_serde::http::StatusCode;
 use hyper_rustls::ConfigBuilderExt;
 use rustls::{
     client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier},
@@ -7,6 +6,7 @@ use rustls::{
     ClientConfig, DigitallySignedStruct, SignatureScheme,
 };
 use serde::Deserialize;
+use std::{fs::File, io, path::PathBuf, sync::Arc};
 
 use crate::{clients, config::TlsConfig};
 
@@ -28,7 +28,10 @@ pub enum Error {
 impl Error {
     /// Transforms TLS errors into internal client errors.
     pub fn into_client_error(self) -> clients::Error {
-        clients::Error::internal("client TLS configuration failed", self)
+        clients::Error::Http {
+            code: StatusCode::INTERNAL_SERVER_ERROR,
+            message: format!("client TLS configuration failed: {}", self),
+        }
     }
 }
 
