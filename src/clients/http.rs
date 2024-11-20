@@ -14,8 +14,8 @@
  limitations under the License.
 
 */
-use std::fmt::Debug;
-use std::ops::Deref;
+
+use std::{fmt::Debug, ops::Deref};
 
 use http_body_util::{combinators::BoxBody, BodyExt, Full};
 use hyper::{

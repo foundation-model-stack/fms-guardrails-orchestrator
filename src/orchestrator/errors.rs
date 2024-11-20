@@ -16,7 +16,6 @@
 */
 
 use crate::clients;
-use tracing::error;
 
 /// Orchestrator errors.
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]

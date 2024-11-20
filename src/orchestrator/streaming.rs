@@ -485,7 +485,6 @@ async fn chunk_broadcast_task(
             }
         })
         .boxed();
-
     debug!("creating chunker output stream");
     let id = chunker_id.clone(); // workaround for StreamExt::map_err
     let response_stream = if chunker_id == DEFAULT_CHUNKER_ID {

@@ -24,7 +24,7 @@ use tracing::instrument;
 use url::Url;
 
 use super::{
-    http::{HttpClientExt, RequestBody},
+    http::{HttpClientExt, RequestBody, ResponseBody},
     Error,
 };
 
@@ -35,7 +35,6 @@ pub use text_chat::*;
 pub mod text_context_doc;
 pub use text_context_doc::*;
 pub mod text_generation;
-use crate::clients::http::ResponseBody;
 pub use text_generation::*;
 
 const DEFAULT_PORT: u16 = 8080;
@@ -51,7 +50,7 @@ impl From<DetectorError> for Error {
     fn from(error: DetectorError) -> Self {
         Error::Http {
             code: StatusCode::from_u16(error.code).unwrap(),
-            message: format!("error response from detector: {}", error.message),
+            message: error.message,
         }
     }
 }
