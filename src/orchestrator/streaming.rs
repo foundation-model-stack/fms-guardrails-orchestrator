@@ -24,7 +24,7 @@ use axum::http::HeaderMap;
 use futures::{future::try_join_all, Stream, StreamExt, TryStreamExt};
 use tokio::sync::{broadcast, mpsc};
 use tokio_stream::wrappers::{BroadcastStream, ReceiverStream};
-use tracing::{debug, warn, error, info, instrument, Instrument, Span};
+use tracing::{debug, error, info, instrument, warn, Instrument, Span};
 
 use super::{get_chunker_ids, Context, Error, Orchestrator, StreamingClassificationWithGenTask};
 use crate::{
@@ -550,7 +550,8 @@ async fn chunk_broadcast_task(
                     }
                 }
             }
-        }.instrument(Span::current())
+        }
+        .instrument(Span::current())
     });
     Ok(chunk_tx)
 }
