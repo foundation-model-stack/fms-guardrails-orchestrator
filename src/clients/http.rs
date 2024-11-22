@@ -15,7 +15,7 @@
 
 */
 
-use std::{fmt::Debug, ops::Deref};
+use std::{fmt::Debug, ops::Deref, time::Duration};
 
 use http_body_util::{combinators::BoxBody, BodyExt, Full};
 use hyper::{
@@ -23,8 +23,10 @@ use hyper::{
     HeaderMap, Method, StatusCode,
 };
 use hyper_rustls::HttpsConnector;
+use hyper_timeout::TimeoutConnector;
 use hyper_util::client::legacy::connect::HttpConnector;
 use serde::{de::DeserializeOwned, Serialize};
+use tokio::time::timeout;
 use tracing::{debug, error, instrument, Span};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 use url::Url;
@@ -79,8 +81,10 @@ impl From<hyper::http::response::Response<Incoming>> for Response {
     }
 }
 
-pub type HttpClientInner =
-    hyper_util::client::legacy::Client<HttpsConnector<HttpConnector>, BoxBody<Bytes, hyper::Error>>;
+pub type HttpClientInner = hyper_util::client::legacy::Client<
+    TimeoutConnector<HttpsConnector<HttpConnector>>,
+    BoxBody<Bytes, hyper::Error>,
+>;
 
 /// A trait implemented by all clients that use HTTP for their inner client.
 pub trait HttpClientExt: Client {
@@ -92,15 +96,17 @@ pub trait HttpClientExt: Client {
 pub struct HttpClient {
     base_url: Url,
     health_url: Url,
+    request_timeout: Duration,
     inner: HttpClientInner,
 }
 
 impl HttpClient {
-    pub fn new(base_url: Url, inner: HttpClientInner) -> Self {
+    pub fn new(base_url: Url, request_timeout: Duration, inner: HttpClientInner) -> Self {
         let health_url = base_url.join("health").unwrap();
         Self {
             base_url,
             health_url,
+            request_timeout,
             inner,
         }
     }
@@ -171,16 +177,23 @@ impl HttpClient {
                             message: format!("client request serialization failed: {}", e)
                         }
                     })?;
-                let response = self
+                let response_fut = self
                     .inner
-                    .request(request)
-                    .await
-                    .map_err(|e| {
+                    .request(request);
+
+                let response = match timeout(self.request_timeout, response_fut).await {
+                    Ok(response) => Ok(response.map_err(|e| {
                         Error::Http {
                             code: StatusCode::INTERNAL_SERVER_ERROR,
                             message: format!("sending client request failed: {}", e)
                         }
-                    })?;
+                    })?),
+                    Err(e) => Err(Error::Http {
+                        code: StatusCode::REQUEST_TIMEOUT,
+                        message: format!("client request timeout: {}", e),
+                    }),
+                }?;
+
                 debug!(
                     status = ?response.status(),
                     headers = ?response.headers(),

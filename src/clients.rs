@@ -27,6 +27,7 @@ use async_trait::async_trait;
 use axum::http::{Extensions, HeaderMap};
 use futures::Stream;
 use ginepro::LoadBalancedChannel;
+use hyper_timeout::TimeoutConnector;
 use hyper_util::rt::TokioExecutor;
 use tonic::{metadata::MetadataMap, Request};
 use tracing::{debug, instrument, Span};
@@ -238,11 +239,12 @@ pub async fn create_http_client(
         .enable_http2()
         .build();
 
-    let client = hyper_util::client::legacy::Client::builder(TokioExecutor::new())
-        .http2_keep_alive_timeout(connect_timeout)
-        .pool_idle_timeout(request_timeout)
-        .build(https_conn);
-    Ok(HttpClient::new(base_url, client))
+    let mut timeout_conn = TimeoutConnector::new(https_conn);
+    timeout_conn.set_connect_timeout(Some(connect_timeout));
+
+    let client =
+        hyper_util::client::legacy::Client::builder(TokioExecutor::new()).build(timeout_conn);
+    Ok(HttpClient::new(base_url, request_timeout, client))
 }
 
 #[instrument(skip_all, fields(hostname = service_config.hostname))]
