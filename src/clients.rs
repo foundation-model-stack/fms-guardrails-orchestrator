@@ -30,6 +30,8 @@ use ginepro::LoadBalancedChannel;
 use hyper_timeout::TimeoutConnector;
 use hyper_util::rt::TokioExecutor;
 use tonic::{metadata::MetadataMap, Request};
+use tower::ServiceBuilder;
+use tower_timeout::TimeoutLayer;
 use tracing::{debug, instrument, Span};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 use url::Url;
@@ -244,7 +246,10 @@ pub async fn create_http_client(
 
     let client =
         hyper_util::client::legacy::Client::builder(TokioExecutor::new()).build(timeout_conn);
-    Ok(HttpClient::new(base_url, request_timeout, client))
+    let client = ServiceBuilder::new()
+        .layer(TimeoutLayer::new(request_timeout))
+        .service(client);
+    Ok(HttpClient::new(base_url, client))
 }
 
 #[instrument(skip_all, fields(hostname = service_config.hostname))]
@@ -306,6 +311,8 @@ pub async fn create_grpc_client<C>(
         .channel()
         .await
         .unwrap_or_else(|error| panic!("error creating grpc client: {error}"));
+
+    let channel = ServiceBuilder::new().service(channel);
     new(channel)
 }
 

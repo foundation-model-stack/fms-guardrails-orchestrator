@@ -30,6 +30,7 @@ http-body-util = "0.1.2"
 http-serde = "2.1.1"
 hyper = { version = "1.4.1", features = ["http1", "http2", "server"] }
 hyper-rustls = { version = "0.27.3", features = ["ring"]}
+hyper-timeout = "0.5.2"
 hyper-util = { version = "0.1.7", features = ["server-auto", "server-graceful", "tokio"] }
 mime = "0.3.17"
 mio = "1.0.2"
@@ -52,14 +53,15 @@ tokio = { version = "1.39.2", features = ["rt", "rt-multi-thread", "parking_lot"
 tokio-rustls = { version = "0.26.0", features = ["ring"]}
 tokio-stream = { version = "0.1.15", features = ["sync"] }
 tonic = { version = "0.12.1", features = ["tls", "tls-roots", "tls-webpki-roots"] }
+tower = "0.5.1"
 tower-http = { version = "0.5.2", features = ["trace"] }
 tower-service = "0.3"
+tower-timeout = "0.3.0"
 tracing = "0.1.40"
 tracing-opentelemetry = "0.25.0"
 tracing-subscriber = { version = "0.3.18", features = ["json", "env-filter"] }
 url = "2.5.2"
 uuid = { version = "1.10.0", features = ["v4", "fast-rng"] }
-hyper-timeout = "0.5.2"
 
 [build-dependencies]
 tonic-build = "0.12.1"
