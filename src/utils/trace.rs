@@ -22,7 +22,7 @@ use hyper::body::Incoming;
 use opentelemetry::{
     global,
     metrics::MetricsError,
-    trace::{TraceContextExt, TraceError, TracerProvider},
+    trace::{TraceContextExt, TraceError, TraceId, TracerProvider},
     KeyValue,
 };
 use opentelemetry_http::{HeaderExtractor, HeaderInjector};
@@ -373,4 +373,9 @@ pub fn trace_context_from_grpc_response<T>(response: &tonic::Response<T>) {
         propagator.extract(&HeaderExtractor(&metadata.into_headers()))
     });
     Span::current().set_parent(ctx);
+}
+
+/// Returns the `trace_id` of the current span according to the global tracing subscriber.
+pub fn current_trace_id() -> TraceId {
+    Span::current().context().span().span_context().trace_id()
 }
