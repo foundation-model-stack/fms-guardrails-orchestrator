@@ -60,7 +60,7 @@ pub mod errors;
 pub use errors::{grpc_to_http_code, Error};
 
 pub mod http;
-pub use http::HttpClient;
+pub use http::{http_trace_layer, HttpClient};
 
 pub mod chunker;
 
@@ -261,6 +261,7 @@ pub async fn create_http_client(
     let client =
         hyper_util::client::legacy::Client::builder(TokioExecutor::new()).build(timeout_conn);
     let client = ServiceBuilder::new()
+        .layer(http_trace_layer())
         .layer(TimeoutLayer::new(request_timeout))
         .service(client);
     Ok(HttpClient::new(base_url, client))
