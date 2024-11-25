@@ -28,9 +28,9 @@ pub enum Error {
     DetectorRequestFailed { id: String, error: clients::Error },
     #[error("chunker request failed for `{id}`: {error}")]
     ChunkerRequestFailed { id: String, error: clients::Error },
-    #[error("generation request failed for model `{id}`: {error}")]
+    #[error("generate request failed for `{id}`: {error}")]
     GenerateRequestFailed { id: String, error: clients::Error },
-    #[error("chat generation request failed for model `{id}`: {error}")]
+    #[error("chat generation request failed for `{id}`: {error}")]
     ChatGenerateRequestFailed { id: String, error: clients::Error },
     #[error("tokenize request failed for `{id}`: {error}")]
     TokenizeRequestFailed { id: String, error: clients::Error },

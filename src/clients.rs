@@ -216,7 +216,7 @@ pub async fn create_http_client(
         .unwrap_or_else(|_| panic!("error setting port: {}", port));
     debug!(%base_url, "creating HTTP client");
 
-    let connect_timeout = Duration::from_secs(DEFAULT_REQUEST_TIMEOUT_SEC);
+    let connect_timeout = Duration::from_secs(DEFAULT_CONNECT_TIMEOUT_SEC);
     let request_timeout = Duration::from_secs(
         service_config
             .request_timeout
