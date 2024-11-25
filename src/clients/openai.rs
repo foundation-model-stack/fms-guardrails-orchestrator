@@ -19,19 +19,20 @@ use std::{collections::HashMap, convert::Infallible};
 
 use async_trait::async_trait;
 use axum::response::sse;
+use eventsource_stream::Eventsource;
 use futures::StreamExt;
+use http_body_util::BodyExt;
 use hyper::{HeaderMap, StatusCode};
-use reqwest_eventsource::{Event, RequestBuilderExt};
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 use tracing::{info, instrument};
 
-use super::{create_http_client, Client, Error, HttpClient};
-use crate::{
-    config::ServiceConfig, health::HealthCheckResult, tracing_utils::with_traceparent_header,
-};
+use super::{create_http_client, http::HttpClientExt, Client, Error, HttpClient};
+use crate::{config::ServiceConfig, health::HealthCheckResult};
 
 const DEFAULT_PORT: u16 = 8080;
+
+const CHAT_COMPLETIONS_ENDPOINT: &str = "/v1/chat/completions";
 
 #[cfg_attr(test, faux::create)]
 #[derive(Clone)]
@@ -42,17 +43,24 @@ pub struct OpenAiClient {
 
 #[cfg_attr(test, faux::methods)]
 impl OpenAiClient {
-    pub async fn new(config: &ServiceConfig, health_config: Option<&ServiceConfig>) -> Self {
-        let client = create_http_client(DEFAULT_PORT, config).await;
+    pub async fn new(
+        config: &ServiceConfig,
+        health_config: Option<&ServiceConfig>,
+    ) -> Result<Self, Error> {
+        let client = create_http_client(DEFAULT_PORT, config).await?;
         let health_client = if let Some(health_config) = health_config {
-            Some(create_http_client(DEFAULT_PORT, health_config).await)
+            Some(create_http_client(DEFAULT_PORT, health_config).await?)
         } else {
             None
         };
-        Self {
+        Ok(Self {
             client,
             health_client,
-        }
+        })
+    }
+
+    pub fn client(&self) -> &HttpClient {
+        &self.client
     }
 
     #[instrument(skip_all, fields(request.model))]
@@ -61,30 +69,27 @@ impl OpenAiClient {
         request: ChatCompletionsRequest,
         headers: HeaderMap,
     ) -> Result<ChatCompletionsResponse, Error> {
-        let url = self.client.base_url().join("/v1/chat/completions").unwrap();
-        let headers = with_traceparent_header(headers);
+        let url = self.inner().endpoint(CHAT_COMPLETIONS_ENDPOINT);
         let stream = request.stream.unwrap_or_default();
-        info!(?url, ?headers, ?request, "sending client request");
+        info!("sending Open AI chat completion request to {}", url);
         if stream {
             let (tx, rx) = mpsc::channel(32);
             let mut event_stream = self
-                .client
-                .post(url)
-                .headers(headers)
-                .json(&request)
-                .eventsource()
-                .unwrap();
+                .inner()
+                .clone()
+                .post(url, headers, request)
+                .await?
+                .0
+                .into_data_stream()
+                .eventsource();
             // Spawn task to forward events to receiver
             tokio::spawn(async move {
                 while let Some(result) = event_stream.next().await {
                     match result {
                         Ok(event) => {
-                            if let Event::Message(message) = event {
-                                let event = sse::Event::default().data(message.data);
-                                let _ = tx.send(Ok(event)).await;
-                            }
+                            let event = sse::Event::default().data(event.data);
+                            let _ = tx.send(Ok(event)).await;
                         }
-                        Err(reqwest_eventsource::Error::StreamEnded) => break,
                         Err(error) => {
                             // We received an error from the event stream, send an error event
                             let event =
@@ -96,13 +101,7 @@ impl OpenAiClient {
             });
             Ok(ChatCompletionsResponse::Streaming(rx))
         } else {
-            let response = self
-                .client
-                .post(url)
-                .headers(headers)
-                .json(&request)
-                .send()
-                .await?;
+            let response = self.client.clone().post(url, headers, request).await?;
             match response.status() {
                 StatusCode::OK => Ok(response.json::<ChatCompletion>().await?.into()),
                 _ => {
@@ -132,6 +131,13 @@ impl Client for OpenAiClient {
         } else {
             self.client.health().await
         }
+    }
+}
+
+#[cfg_attr(test, faux::methods)]
+impl HttpClientExt for OpenAiClient {
+    fn inner(&self) -> &HttpClient {
+        self.client()
     }
 }
 

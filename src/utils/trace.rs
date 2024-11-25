@@ -18,6 +18,7 @@
 use std::time::Duration;
 
 use axum::{extract::Request, http::HeaderMap, response::Response};
+use hyper::body::Incoming;
 use opentelemetry::{
     global,
     metrics::MetricsError,
@@ -337,26 +338,28 @@ pub fn on_outgoing_eos(trailers: Option<&HeaderMap>, stream_duration: Duration, 
 /// vendor-specific trace context.
 /// Used by both gRPC and HTTP requests since `tonic::Metadata` uses `http::HeaderMap`.
 /// See https://www.w3.org/TR/trace-context/#trace-context-http-headers-format.
-pub fn with_traceparent_header(headers: HeaderMap) -> HeaderMap {
-    let mut headers = headers.clone();
-    let ctx = Span::current().context();
+pub fn with_traceparent_header(ctx: &opentelemetry::Context, headers: HeaderMap) -> HeaderMap {
     global::get_text_map_propagator(|propagator| {
+        let mut headers = headers.clone();
         // Injects current `traceparent` (and by default empty `tracestate`)
-        propagator.inject_context(&ctx, &mut HeaderInjector(&mut headers))
-    });
-    headers
+        propagator.inject_context(ctx, &mut HeaderInjector(&mut headers));
+        headers
+    })
 }
 
 /// Extracts the `traceparent` header from an HTTP response's headers and uses it to set the current
 /// tracing span context (i.e. use `traceparent` as parent to the current span).
 /// Defaults to using the current context when no `traceparent` is found.
 /// See https://www.w3.org/TR/trace-context/#trace-context-http-headers-format.
-pub fn trace_context_from_http_response(response: &reqwest::Response) {
+pub fn trace_context_from_http_response(span: &Span, response: &hyper::Response<Incoming>) {
+    let curr_trace = span.context().span().span_context().trace_id();
     let ctx = global::get_text_map_propagator(|propagator| {
         // Returns the current context if no `traceparent` is found
         propagator.extract(&HeaderExtractor(response.headers()))
     });
-    Span::current().set_parent(ctx);
+    if ctx.span().span_context().trace_id() == curr_trace {
+        span.set_parent(ctx);
+    }
 }
 
 /// Extracts the `traceparent` header from a gRPC response's metadata and uses it to set the current

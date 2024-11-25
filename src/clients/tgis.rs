@@ -34,7 +34,7 @@ use crate::{
         BatchedGenerationResponse, BatchedTokenizeRequest, BatchedTokenizeResponse,
         GenerationResponse, ModelInfoRequest, ModelInfoResponse, SingleGenerationRequest,
     },
-    tracing_utils::trace_context_from_grpc_response,
+    utils::trace::trace_context_from_grpc_response,
 };
 
 const DEFAULT_PORT: u16 = 8033;

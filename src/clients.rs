@@ -27,15 +27,17 @@ use async_trait::async_trait;
 use axum::http::{Extensions, HeaderMap};
 use futures::Stream;
 use ginepro::LoadBalancedChannel;
-use tokio::{fs::File, io::AsyncReadExt};
+use hyper_timeout::TimeoutConnector;
+use hyper_util::rt::TokioExecutor;
 use tonic::{metadata::MetadataMap, Request};
-use tracing::{debug, instrument};
+use tracing::{debug, instrument, Span};
+use tracing_opentelemetry::OpenTelemetrySpanExt;
 use url::Url;
 
 use crate::{
     config::{ServiceConfig, Tls},
     health::HealthCheckResult,
-    tracing_utils::with_traceparent_header,
+    utils::{tls, trace::with_traceparent_header},
 };
 
 pub mod errors;
@@ -60,7 +62,7 @@ pub use generation::GenerationClient;
 
 pub mod openai;
 
-const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(60);
+const DEFAULT_CONNECT_TIMEOUT_SEC: u64 = 60;
 const DEFAULT_REQUEST_TIMEOUT_SEC: u64 = 600;
 
 pub type BoxStream<T> = Pin<Box<dyn Stream<Item = T> + Send>>;
@@ -198,7 +200,10 @@ impl ClientMap {
 }
 
 #[instrument(skip_all, fields(hostname = service_config.hostname))]
-pub async fn create_http_client(default_port: u16, service_config: &ServiceConfig) -> HttpClient {
+pub async fn create_http_client(
+    default_port: u16,
+    service_config: &ServiceConfig,
+) -> Result<HttpClient, Error> {
     let port = service_config.port.unwrap_or(default_port);
     let protocol = match service_config.tls {
         Some(_) => "https",
@@ -210,53 +215,36 @@ pub async fn create_http_client(default_port: u16, service_config: &ServiceConfi
         .set_port(Some(port))
         .unwrap_or_else(|_| panic!("error setting port: {}", port));
     debug!(%base_url, "creating HTTP client");
+
+    let connect_timeout = Duration::from_secs(DEFAULT_CONNECT_TIMEOUT_SEC);
     let request_timeout = Duration::from_secs(
         service_config
             .request_timeout
             .unwrap_or(DEFAULT_REQUEST_TIMEOUT_SEC),
     );
-    let mut builder = reqwest::ClientBuilder::new()
-        .connect_timeout(DEFAULT_CONNECT_TIMEOUT)
-        .timeout(request_timeout);
-    if let Some(Tls::Config(tls_config)) = &service_config.tls {
-        let mut cert_buf = Vec::new();
-        let cert_path = tls_config.cert_path.as_ref().unwrap().as_path();
-        File::open(cert_path)
-            .await
-            .unwrap_or_else(|error| panic!("error reading cert from {cert_path:?}: {error}"))
-            .read_to_end(&mut cert_buf)
-            .await
-            .unwrap();
 
-        if let Some(key_path) = &tls_config.key_path {
-            File::open(key_path)
+    let https_conn_builder = match &service_config.tls {
+        Some(Tls::Config(tls)) => hyper_rustls::HttpsConnectorBuilder::new().with_tls_config(
+            tls::build_client_config(tls)
                 .await
-                .unwrap_or_else(|error| panic!("error reading key from {key_path:?}: {error}"))
-                .read_to_end(&mut cert_buf)
-                .await
-                .unwrap();
-        }
-        let identity = reqwest::Identity::from_pem(&cert_buf)
-            .unwrap_or_else(|error| panic!("error parsing bundled client certificate: {error}"));
+                .map_err(|e| e.into_client_error())?,
+        ),
+        Some(_) => panic!("unexpected unresolved TLS in client builder"),
+        None => hyper_rustls::HttpsConnectorBuilder::new()
+            .with_tls_config(tls::build_insecure_client_config()),
+    };
+    let https_conn = https_conn_builder
+        .https_or_http()
+        .enable_http1()
+        .enable_http2()
+        .build();
 
-        builder = builder.use_rustls_tls().identity(identity);
-        builder = builder.danger_accept_invalid_certs(tls_config.insecure.unwrap_or(false));
+    let mut timeout_conn = TimeoutConnector::new(https_conn);
+    timeout_conn.set_connect_timeout(Some(connect_timeout));
 
-        if let Some(client_ca_cert_path) = &tls_config.client_ca_cert_path {
-            let ca_cert = tokio::fs::read(client_ca_cert_path)
-                .await
-                .unwrap_or_else(|error| {
-                    panic!("error reading cert from {client_ca_cert_path:?}: {error}")
-                });
-            let cacert = reqwest::Certificate::from_pem(&ca_cert)
-                .unwrap_or_else(|error| panic!("error parsing ca cert: {error}"));
-            builder = builder.add_root_certificate(cacert)
-        }
-    }
-    let client = builder
-        .build()
-        .unwrap_or_else(|error| panic!("error creating http client: {error}"));
-    HttpClient::new(base_url, client)
+    let client =
+        hyper_util::client::legacy::Client::builder(TokioExecutor::new()).build(timeout_conn);
+    Ok(HttpClient::new(base_url, request_timeout, client))
 }
 
 #[instrument(skip_all, fields(hostname = service_config.hostname))]
@@ -273,13 +261,14 @@ pub async fn create_grpc_client<C>(
     let mut base_url = Url::parse(&format!("{}://{}", protocol, &service_config.hostname)).unwrap();
     base_url.set_port(Some(port)).unwrap();
     debug!(%base_url, "creating gRPC client");
+    let connect_timeout = Duration::from_secs(DEFAULT_REQUEST_TIMEOUT_SEC);
     let request_timeout = Duration::from_secs(
         service_config
             .request_timeout
             .unwrap_or(DEFAULT_REQUEST_TIMEOUT_SEC),
     );
     let mut builder = LoadBalancedChannel::builder((service_config.hostname.clone(), port))
-        .connect_timeout(DEFAULT_CONNECT_TIMEOUT)
+        .connect_timeout(connect_timeout)
         .timeout(request_timeout);
 
     let client_tls_config = if let Some(Tls::Config(tls_config)) = &service_config.tls {
@@ -349,7 +338,8 @@ pub fn is_valid_hostname(hostname: &str) -> bool {
 /// Turns a gRPC client request body of type `T` and header map into a `tonic::Request<T>`.
 /// Will also inject the current `traceparent` header into the request based on the current span.
 fn grpc_request_with_headers<T>(request: T, headers: HeaderMap) -> Request<T> {
-    let headers = with_traceparent_header(headers);
+    let ctx = Span::current().context();
+    let headers = with_traceparent_header(&ctx, headers);
     let metadata = MetadataMap::from_headers(headers);
     Request::from_parts(metadata, Extensions::new(), request)
 }
@@ -357,23 +347,30 @@ fn grpc_request_with_headers<T>(request: T, headers: HeaderMap) -> Request<T> {
 #[cfg(test)]
 mod tests {
     use errors::grpc_to_http_code;
+    use http_body_util::BodyExt;
     use hyper::{http, StatusCode};
-    use reqwest::Response;
 
     use super::*;
     use crate::{
+        clients::http::Response,
         health::{HealthCheckResult, HealthStatus},
         pb::grpc::health::v1::{health_check_response::ServingStatus, HealthCheckResponse},
     };
 
-    async fn mock_http_response(
-        status: StatusCode,
-        body: &str,
-    ) -> Result<Response, reqwest::Error> {
-        Ok(reqwest::Response::from(
+    async fn mock_http_response(status: StatusCode, body: &str) -> Result<Response, Error> {
+        Ok(Response(
             http::Response::builder()
                 .status(status)
-                .body(body.to_string())
+                .body(
+                    body.to_string()
+                        .map_err(|e| {
+                            panic!(
+                                "infallible error parsing string body in test response: {}",
+                                e
+                            )
+                        })
+                        .boxed(),
+                )
                 .unwrap(),
         ))
     }

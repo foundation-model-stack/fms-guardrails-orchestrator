@@ -40,7 +40,7 @@ use crate::{
         },
         grpc::health::v1::{health_client::HealthClient, HealthCheckRequest},
     },
-    tracing_utils::trace_context_from_grpc_response,
+    utils::trace::trace_context_from_grpc_response,
 };
 
 const DEFAULT_PORT: u16 = 8085;

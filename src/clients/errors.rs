@@ -15,8 +15,6 @@
 
 */
 
-use std::error::Error as _;
-
 use hyper::StatusCode;
 use tracing::error;
 
@@ -46,25 +44,11 @@ impl Error {
     }
 }
 
-impl From<reqwest::Error> for Error {
-    fn from(value: reqwest::Error) -> Self {
-        // Log lower level source of error.
-        // Examples:
-        // 1. client error (Connect) // Cases like connection error, wrong port etc.
-        // 2. client error (SendRequest) // Cases like cert issues
-        error!(
-            "http request failed. Source: {}",
-            value.source().unwrap().to_string()
-        );
-        // Return http status code for error responses
-        // and 500 for other errors
-        let code = match value.status() {
-            Some(code) => code,
-            None => StatusCode::INTERNAL_SERVER_ERROR,
-        };
+impl From<hyper::Error> for Error {
+    fn from(error: hyper::Error) -> Self {
         Self::Http {
-            code,
-            message: value.to_string(),
+            code: StatusCode::INTERNAL_SERVER_ERROR,
+            message: error.to_string(),
         }
     }
 }

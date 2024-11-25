@@ -10,11 +10,18 @@ impl Orchestrator {
         task: ChatCompletionsDetectionTask,
     ) -> Result<ChatCompletionsResponse, Error> {
         info!("handling chat completions detection task");
+        let model_id = task.request.model.clone();
         let client = self
             .ctx
             .clients
             .get_as::<OpenAiClient>("chat_generation")
             .expect("chat_generation client not found");
-        Ok(client.chat_completions(task.request, task.headers).await?)
+        client
+            .chat_completions(task.request, task.headers)
+            .await
+            .map_err(|error| Error::ChatGenerateRequestFailed {
+                id: model_id,
+                error,
+            })
     }
 }
