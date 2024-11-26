@@ -28,7 +28,7 @@ use tracing::{info, instrument};
 
 use super::{create_http_client, Client, Error, HttpClient};
 use crate::{
-    config::ServiceConfig, health::HealthCheckResult, models::DetectorParams, tracing_utils::with_traceparent_header
+    config::ServiceConfig, health::HealthCheckResult, models::{DetectorParams, OrchestratorDetectionResult}, tracing_utils::with_traceparent_header
 };
 
 const DEFAULT_PORT: u16 = 8080;
@@ -499,6 +499,10 @@ pub struct ChatCompletion {
     pub object: String,
     /// Usage statistics for the completion request.
     pub usage: Usage,
+    // Result of running different guardrail detectors
+    pub detection: DetectionResult,
+    // Optional warnings
+    pub warnings: Vec<OrchestratorWarning>,
 }
 
 /// A chat completion choice.
@@ -653,4 +657,27 @@ pub struct OpenAiError {
     pub r#type: Option<String>,
     pub param: Option<String>,
     pub code: u16,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DetectionResult {
+    input: InputDetectionResult,
+    output: OutputDetectionResult
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InputDetectionResult {
+    message_index: u16,
+    result: Option<Vec<OrchestratorDetectionResult>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OutputDetectionResult {
+    choice_index: u16,
+    results: Option<Vec<OrchestratorDetectionResult>>
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OrchestratorWarning {
+    r#type: String,
+    message: String
 }

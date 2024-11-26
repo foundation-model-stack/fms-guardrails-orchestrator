@@ -902,6 +902,12 @@ pub struct DetectionResult {
     pub evidence: Option<Vec<EvidenceObj>>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum OrchestratorDetectionResult {
+    ContentAnalysisResponse(ContentAnalysisResponse),
+    ClassificationResult(DetectionResult),
+}
+
 /// The request format expected in the /api/v2/text/context endpoint.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ContextDocsHttpRequest {
