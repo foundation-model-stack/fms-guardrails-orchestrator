@@ -28,7 +28,7 @@ use tracing::{info, instrument};
 
 use super::{create_http_client, Client, Error, HttpClient};
 use crate::{
-    config::ServiceConfig, health::HealthCheckResult, tracing_utils::with_traceparent_header,
+    config::ServiceConfig, health::HealthCheckResult, tracing_utils::with_traceparent_header
 };
 
 const DEFAULT_PORT: u16 = 8080;

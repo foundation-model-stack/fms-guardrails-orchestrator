@@ -18,6 +18,7 @@
 pub mod errors;
 pub use errors::Error;
 pub mod chat_completions_detection;
+pub mod detector_processing;
 pub mod streaming;
 pub mod unary;
 

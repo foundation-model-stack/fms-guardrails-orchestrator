@@ -17,10 +17,11 @@
 
 use tracing::{info, instrument};
 
-use crate::clients::openai::{Content, ChatCompletionChoice, ChatCompletionsResponse, Message, OpenAiClient,};
-use serde::{Deserialize, Serialize};
 use super::{ChatCompletionsDetectionTask, Error, Orchestrator};
-
+use crate::clients::openai::{
+    ChatCompletionChoice, ChatCompletionsRequest, ChatCompletionsResponse, Content, OpenAiClient,
+};
+use serde::{Deserialize, Serialize};
 
 /// Internal structure to capture chat messages (both request and response)
 /// and prepare it for processing
@@ -36,37 +37,37 @@ pub struct ChatMessageInternal {
     pub refusal: Option<String>,
 }
 
-impl From<Message> for ChatMessageInternal {
-    fn from(value: Message) -> Self {
-        ChatMessageInternal {
-            role: value.role,
-            content: value.content,
-            refusal: match value.refusal {
-                Some(r) => Some(r),
-                None => None,
-            }
-        }
+pub type ChatMessagesInternal = Vec<ChatMessageInternal>;
+
+// Get ChatMessagesInternal from ChatCompletionsRequest
+impl From<ChatCompletionsRequest> for ChatMessagesInternal {
+    fn from(value: ChatCompletionsRequest) -> Self {
+        let mut messages = ChatMessagesInternal::new();
+        value.messages.iter().for_each(|m| {
+            messages.push({
+                ChatMessageInternal {
+                    role: m.role.clone(),
+                    content: m.content.clone(),
+                    refusal: m.refusal.clone(),
+                }
+            })
+        });
+        messages
     }
 }
 
-impl From<ChatCompletionChoice> for ChatMessageInternal {
+// Get ChatMessagesInternal from ChatCompletionChoice
+impl From<ChatCompletionChoice> for ChatMessagesInternal {
     fn from(value: ChatCompletionChoice) -> Self {
-        ChatMessageInternal {
+        vec![ChatMessageInternal {
             role: value.message.role,
-            content: match value.message.content {
-                Some(c) => Some(Content::Text(c)),
-                None => None,
-            },
-            refusal: match value.message.refusal {
-                Some(r) => Some(r),
-                None => None,
-            },
-        }
+            content: Some(Content::Text(value.message.content.unwrap_or_default())),
+            refusal: value.message.refusal,
+        }]
     }
 }
 
 // TODO: Add from function for streaming response as well
-
 
 impl Orchestrator {
     #[instrument(skip_all, fields(trace_id = ?task.trace_id, headers = ?task.headers))]
