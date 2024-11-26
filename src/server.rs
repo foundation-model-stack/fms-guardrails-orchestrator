@@ -27,6 +27,7 @@ use std::{
 };
 
 use axum::{
+    body::{Body, BodyDataStream},
     extract::{rejection::JsonRejection, Query, Request, State},
     http::{HeaderMap, StatusCode},
     response::{
@@ -56,11 +57,12 @@ use webpki::types::{CertificateDer, PrivateKeyDer};
 
 use crate::{
     clients::openai::{ChatCompletionsRequest, ChatCompletionsResponse},
-    models::{self, InfoParams, InfoResponse},
+    models::{self, InfoParams, InfoResponse, ValidationError},
     orchestrator::{
         self, ChatCompletionsDetectionTask, ChatDetectionTask, ClassificationWithGenTask,
         ContextDocsDetectionTask, DetectionOnGenerationTask, GenerationWithDetectionTask,
-        Orchestrator, StreamingClassificationWithGenTask, TextContentDetectionTask,
+        Orchestrator, StreamingClassificationWithGenTask, StreamingContentDetectionTask,
+        TextContentDetectionTask,
     },
     utils,
 };
@@ -171,9 +173,13 @@ pub async fn run(
             post(classification_with_gen),
         )
         .route(
+            &format!("{}//api/v2/text/detection/stream-content", API_PREFIX),
+            post(stream_content_detection),
+        )
+        .route(
             &format!(
                 "{}/server-streaming-classification-with-text-generation",
-                API_PREFIX
+                TEXT_API_PREFIX
             ),
             post(stream_classification_with_gen),
         )
@@ -422,6 +428,30 @@ async fn stream_classification_with_gen(
         })
         .boxed();
     Sse::new(event_stream).keep_alive(KeepAlive::default())
+}
+
+// #[instrument(skip_all, fields(model_id = ?request.model_id))]
+#[instrument(skip_all)]
+async fn stream_content_detection(
+    State(state): State<Arc<ServerState>>,
+    headers: HeaderMap,
+    WithRejection(Json(request), _): WithRejection<
+        Json<models::StreamingContentDetectionInitHttpRequest>,
+        Error,
+    >,
+) -> Result<impl IntoResponse, Error> {
+    let trace_id = Span::current().context().span().span_context().trace_id();
+    info!(?trace_id, "handling content detection streaming request");
+    request.validate()?;
+
+    let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
+    let task = StreamingContentDetectionTask::new(trace_id, request, headers);
+    let response_stream = state
+        .orchestrator
+        .handle_streaming_content_detection(task)
+        .await;
+
+    Ok(Body::from_stream(response_stream).into_response())
 }
 
 #[instrument(skip_all)]

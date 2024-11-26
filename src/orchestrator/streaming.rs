@@ -26,7 +26,10 @@ use tokio::sync::{broadcast, mpsc};
 use tokio_stream::wrappers::{BroadcastStream, ReceiverStream};
 use tracing::{debug, error, info, instrument, warn, Instrument, Span};
 
-use super::{get_chunker_ids, Context, Error, Orchestrator, StreamingClassificationWithGenTask};
+use super::{
+    get_chunker_ids, Context, Error, Orchestrator, StreamingClassificationWithGenTask,
+    StreamingContentDetectionTask,
+};
 use crate::{
     clients::{
         chunker::{tokenize_whole_doc_stream, ChunkerClient, DEFAULT_CHUNKER_ID},
@@ -225,6 +228,98 @@ impl Orchestrator {
                 }
             }
         }.instrument(Span::current()));
+        ReceiverStream::new(response_rx)
+    }
+
+    /// Handles content detection streaming tasks.
+    #[instrument(skip_all, fields(trace_id = task.trace_id.to_string(), headers = ?task.headers))]
+    pub async fn handle_streaming_content_detection(
+        &self,
+        task: StreamingContentDetectionTask,
+    ) -> ReceiverStream<Result<ClassifiedGeneratedTextStreamResult, Error>> {
+        let ctx = self.ctx.clone();
+        let trace_id = task.trace_id;
+        let content = task.content;
+        let headers = task.headers;
+
+        // Create response channel
+        #[allow(clippy::type_complexity)]
+        let (response_tx, response_rx): (
+            mpsc::Sender<Result<ClassifiedGeneratedTextStreamResult, Error>>,
+            mpsc::Receiver<Result<ClassifiedGeneratedTextStreamResult, Error>>,
+        ) = mpsc::channel(1024);
+
+        tokio::spawn(async move {
+            let mut generation_stream: Result<
+                Pin<
+                    Box<
+                        dyn Stream<Item = Result<ClassifiedGeneratedTextStreamResult, Error>>
+                            + Send,
+                    >,
+                >,
+                Error,
+            >;
+
+            // Do output detections (streaming)
+            let detectors = task.detectors;
+            // Create error channel
+            //
+            // This channel is used for error notification & messaging and task cancellation.
+            // When a task fails, it notifies other tasks by sending the error to error_tx.
+            //
+            // The parent task receives the error, logs it, forwards it to the client via response_tx,
+            // and terminates the task.
+            let (error_tx, _) = broadcast::channel(1);
+
+            let mut result_rx = match streaming_output_detection_task(
+                &ctx,
+                &detectors,
+                generation_stream,
+                error_tx.clone(),
+                headers.clone(),
+            )
+            .await
+            {
+                Ok(result_rx) => result_rx,
+                Err(error) => {
+                    error!(%trace_id, %error, "task failed");
+                    let _ = error_tx.send(error.clone());
+                    let _ = response_tx.send(Err(error)).await;
+                    return;
+                }
+            };
+            // Forward generation results with detections to response channel
+            tokio::spawn(async move {
+                let mut error_rx = error_tx.subscribe();
+                loop {
+                    tokio::select! {
+                        Ok(error) = error_rx.recv() => {
+                            error!(%trace_id, %error, "task failed");
+                            debug!(%trace_id, "sending error to client and terminating");
+                            let _ = response_tx.send(Err(error)).await;
+                            return;
+                        },
+                        result = result_rx.recv() => {
+                            match result {
+                                Some(result) => {
+                                    debug!(%trace_id, ?result, "sending result to client");
+                                    if (response_tx.send(result).await).is_err() {
+                                        warn!(%trace_id, "response channel closed (client disconnected), terminating task");
+                                        // Broadcast cancellation signal to tasks
+                                        let _ = error_tx.send(Error::Cancelled);
+                                        return;
+                                    }
+                                },
+                                None => {
+                                    info!(%trace_id, "task completed: stream closed");
+                                    break;
+                                },
+                            }
+                        }
+                    }
+                }
+            });
+        });
         ReceiverStream::new(response_rx)
     }
 }

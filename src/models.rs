@@ -1105,6 +1105,42 @@ pub struct EvidenceObj {
     pub evidence: Option<Vec<Evidence>>,
 }
 
+/// Stream content detection initial request
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StreamingContentDetectionInitHttpRequest {
+    pub detectors: HashMap<String, DetectorParams>,
+    pub content: String,
+}
+
+/// Stream content detection initial request
+impl StreamingContentDetectionInitHttpRequest {
+    pub fn validate(&self) -> Result<(), ValidationError> {
+        // Validate required parameters
+        if self.detectors.is_empty() {
+            return Err(ValidationError::Required("detectors".into()));
+        }
+        if self.content.is_empty() {
+            return Err(ValidationError::Required("content".into()));
+        }
+
+        Ok(())
+    }
+}
+
+/// Stream content detection stream request
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StreamingContentDetectionHttpRequest {
+    content: String,
+}
+
+/// Stream content detection result
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StreamingContentDetectionResult {
+    pub detectors: Vec<ContentAnalysisResponse>,
+    pub processed_index: u32,
+    pub start_index: u32,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

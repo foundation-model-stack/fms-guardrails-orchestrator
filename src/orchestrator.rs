@@ -44,7 +44,8 @@ use crate::{
     models::{
         ChatDetectionHttpRequest, ContextDocsHttpRequest, DetectionOnGeneratedHttpRequest,
         DetectorParams, GenerationWithDetectionHttpRequest, GuardrailsConfig,
-        GuardrailsHttpRequest, GuardrailsTextGenerationParameters, TextContentDetectionHttpRequest,
+        GuardrailsHttpRequest, GuardrailsTextGenerationParameters,
+        StreamingContentDetectionInitHttpRequest, TextContentDetectionHttpRequest,
     },
 };
 
@@ -485,6 +486,30 @@ impl ChatCompletionsDetectionTask {
         Self {
             trace_id,
             request,
+            headers,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct StreamingContentDetectionTask {
+    pub trace_id: TraceId,
+    // pub model_id: String,
+    pub detectors: HashMap<String, DetectorParams>,
+    pub content: String,
+    pub headers: HeaderMap,
+}
+
+impl StreamingContentDetectionTask {
+    pub fn new(
+        trace_id: TraceId,
+        request: StreamingContentDetectionInitHttpRequest,
+        headers: HeaderMap,
+    ) -> Self {
+        Self {
+            trace_id,
+            detectors: request.detectors,
+            content: request.content,
             headers,
         }
     }
