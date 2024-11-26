@@ -28,7 +28,7 @@ use tracing::{info, instrument};
 
 use super::{create_http_client, Client, Error, HttpClient};
 use crate::{
-    config::ServiceConfig, health::HealthCheckResult, tracing_utils::with_traceparent_header
+    config::ServiceConfig, health::HealthCheckResult, models::DetectorParams, tracing_utils::with_traceparent_header
 };
 
 const DEFAULT_PORT: u16 = 8080;
@@ -255,6 +255,19 @@ pub struct ChatCompletionsRequest {
     pub skip_special_tokens: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub spaces_between_special_tokens: Option<bool>,
+
+    // Detectors
+    pub detectors: DetectorConfig,
+
+}
+
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DetectorConfig {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    input: Option<HashMap<String, DetectorParams>>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    output: Option<HashMap<String, DetectorParams>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
