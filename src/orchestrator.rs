@@ -17,13 +17,14 @@
 
 pub mod errors;
 pub use errors::Error;
+use futures::StreamExt;
 pub mod chat_completions_detection;
 pub mod streaming;
 pub mod unary;
 
 use std::{collections::HashMap, sync::Arc};
 
-use axum::http::header::HeaderMap;
+use axum::{body::BodyDataStream, http::header::HeaderMap};
 use opentelemetry::trace::TraceId;
 use tokio::{sync::RwLock, time::Instant};
 use tracing::{debug, info};
@@ -496,21 +497,45 @@ pub struct StreamingContentDetectionTask {
     pub trace_id: TraceId,
     // pub model_id: String,
     pub detectors: HashMap<String, DetectorParams>,
-    pub content: String,
+    pub input_stream: BodyDataStream,
     pub headers: HeaderMap,
 }
 
 impl StreamingContentDetectionTask {
-    pub fn new(
+    pub async fn new(
         trace_id: TraceId,
-        request: StreamingContentDetectionInitHttpRequest,
+        mut input_stream: BodyDataStream,
         headers: HeaderMap,
-    ) -> Self {
-        Self {
-            trace_id,
-            detectors: request.detectors,
-            content: request.content,
-            headers,
+    ) -> Result<Self, Error> {
+        match input_stream.next().await {
+            Some(stream_frame) => match stream_frame {
+                Ok(bytes) => {
+                    match serde_json::from_slice::<StreamingContentDetectionInitHttpRequest>(&bytes)
+                    {
+                        Ok(request) => {
+                            // request.validate_initial_request()?;
+
+                            return Ok(Self {
+                                trace_id,
+                                detectors: request.detectors.unwrap(),
+                                input_stream: input_stream,
+                                headers,
+                            })
+                        }
+                        Err(error) => {
+                            let error_message = "1234 Failed to deserialize initial request into StreamingContentDetectionInitHttpRequest";
+                            tracing::error!("{}: {}", error_message, error);
+                            return Err(Error::Other(String::from(error_message)));
+                        }
+                    }
+                }
+                Err(error) => {
+                    let error_message = "1235 Error reading stream frame";
+                    tracing::error!("{}: {}", error_message, error);
+                    return Err(Error::Other(String::from(error_message)));
+                }
+            },
+            None => return Err(Error::Other(String::from("Stream frame is empty"))),
         }
     }
 }

@@ -27,7 +27,6 @@ use std::{
 };
 
 use axum::{
-    body::{Body, BodyDataStream},
     extract::{rejection::JsonRejection, Query, Request, State},
     http::{HeaderMap, StatusCode},
     response::{
@@ -57,7 +56,7 @@ use webpki::types::{CertificateDer, PrivateKeyDer};
 
 use crate::{
     clients::openai::{ChatCompletionsRequest, ChatCompletionsResponse},
-    models::{self, InfoParams, InfoResponse, ValidationError},
+    models::{self, InfoParams, InfoResponse},
     orchestrator::{
         self, ChatCompletionsDetectionTask, ChatDetectionTask, ClassificationWithGenTask,
         ContextDocsDetectionTask, DetectionOnGenerationTask, GenerationWithDetectionTask,
@@ -173,7 +172,7 @@ pub async fn run(
             post(classification_with_gen),
         )
         .route(
-            &format!("{}//api/v2/text/detection/stream-content", API_PREFIX),
+            &format!("{}/detection/stream-content", TEXT_API_PREFIX),
             post(stream_content_detection),
         )
         .route(
@@ -435,23 +434,41 @@ async fn stream_classification_with_gen(
 async fn stream_content_detection(
     State(state): State<Arc<ServerState>>,
     headers: HeaderMap,
-    WithRejection(Json(request), _): WithRejection<
-        Json<models::StreamingContentDetectionInitHttpRequest>,
-        Error,
-    >,
-) -> Result<impl IntoResponse, Error> {
+    request: Request,
+) -> Response {
     let trace_id = Span::current().context().span().span_context().trace_id();
     info!(?trace_id, "handling content detection streaming request");
-    request.validate()?;
+
+    let input_stream = request.into_body().into_data_stream();
+
+    // input_stream.next();
+
+    // Return error as a stream if request is invalid.
+    // if let Err(error) = request.validate() {
+    //     let error_stream = stream::iter::<opentelemetry_http::Bytes>(serde_json::to_vec(&Error::from(error).to_json()).into());
+    //     return Response::new(axum::body::Body::from_stream(error_stream));
+    // }
 
     let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
-    let task = StreamingContentDetectionTask::new(trace_id, request, headers);
-    let response_stream = state
-        .orchestrator
-        .handle_streaming_content_detection(task)
-        .await;
 
-    Ok(Body::from_stream(response_stream).into_response())
+    match StreamingContentDetectionTask::new(trace_id, input_stream, headers).await {
+        Ok(task) => {
+        let response_stream = state
+            .orchestrator
+            .handle_streaming_content_detection(task)
+            .await
+            .map(|result| match result {
+                Ok(message) => serde_json::to_vec(&message).into(),
+                Err(error) => serde_json::to_vec(&Error::from(error).to_json()).into(),
+            });
+
+        Response::new(axum::body::Body::from_stream(response_stream))
+        }
+        Err(error) => {
+            // Response::new(axum::body::Body::from(serde_json::to_vec(&Error::from(error).to_json()).into()))
+            panic!("Error on creating new StreamingContentDetection");
+        }
+    }
 }
 
 #[instrument(skip_all)]
