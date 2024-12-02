@@ -1129,7 +1129,7 @@ impl StreamingContentDetectionInitHttpRequest {
     }
 
     /// validates subsequent stream requests, which must contain only the `content` field.
-    pub fn validate(&self) -> Result<(), ValidationError> {
+    pub fn validate_subsequent_request(&self) -> Result<(), ValidationError> {
         if self.detectors.is_some(){
             return Err(ValidationError::Invalid("Subsequent stream requests must not contain the `detectors` field".into()))
         }

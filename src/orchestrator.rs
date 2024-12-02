@@ -17,7 +17,6 @@
 
 pub mod errors;
 pub use errors::Error;
-use futures::StreamExt;
 pub mod chat_completions_detection;
 pub mod streaming;
 pub mod unary;
@@ -45,8 +44,7 @@ use crate::{
     models::{
         ChatDetectionHttpRequest, ContextDocsHttpRequest, DetectionOnGeneratedHttpRequest,
         DetectorParams, GenerationWithDetectionHttpRequest, GuardrailsConfig,
-        GuardrailsHttpRequest, GuardrailsTextGenerationParameters,
-        StreamingContentDetectionInitHttpRequest, TextContentDetectionHttpRequest,
+        GuardrailsHttpRequest, GuardrailsTextGenerationParameters, TextContentDetectionHttpRequest,
     },
 };
 
@@ -497,45 +495,25 @@ pub struct StreamingContentDetectionTask {
     pub trace_id: TraceId,
     // pub model_id: String,
     pub detectors: HashMap<String, DetectorParams>,
+    pub content: String,
     pub input_stream: BodyDataStream,
     pub headers: HeaderMap,
 }
 
 impl StreamingContentDetectionTask {
-    pub async fn new(
+    pub fn new(
         trace_id: TraceId,
-        mut input_stream: BodyDataStream,
+        detectors: HashMap<String, DetectorParams>,
+        content: String,
+        input_stream: BodyDataStream,
         headers: HeaderMap,
-    ) -> Result<Self, Error> {
-        match input_stream.next().await {
-            Some(stream_frame) => match stream_frame {
-                Ok(bytes) => {
-                    match serde_json::from_slice::<StreamingContentDetectionInitHttpRequest>(&bytes)
-                    {
-                        Ok(request) => {
-                            // request.validate_initial_request()?;
-
-                            return Ok(Self {
-                                trace_id,
-                                detectors: request.detectors.unwrap(),
-                                input_stream: input_stream,
-                                headers,
-                            })
-                        }
-                        Err(error) => {
-                            let error_message = "1234 Failed to deserialize initial request into StreamingContentDetectionInitHttpRequest";
-                            tracing::error!("{}: {}", error_message, error);
-                            return Err(Error::Other(String::from(error_message)));
-                        }
-                    }
-                }
-                Err(error) => {
-                    let error_message = "1235 Error reading stream frame";
-                    tracing::error!("{}: {}", error_message, error);
-                    return Err(Error::Other(String::from(error_message)));
-                }
-            },
-            None => return Err(Error::Other(String::from("Stream frame is empty"))),
+    ) -> Self {
+        Self {
+            trace_id,
+            detectors,
+            content,
+            input_stream,
+            headers,
         }
     }
 }

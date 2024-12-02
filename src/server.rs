@@ -56,7 +56,7 @@ use webpki::types::{CertificateDer, PrivateKeyDer};
 
 use crate::{
     clients::openai::{ChatCompletionsRequest, ChatCompletionsResponse},
-    models::{self, InfoParams, InfoResponse},
+    models::{self, InfoParams, InfoResponse, StreamingContentDetectionInitHttpRequest},
     orchestrator::{
         self, ChatCompletionsDetectionTask, ChatDetectionTask, ClassificationWithGenTask,
         ContextDocsDetectionTask, DetectionOnGenerationTask, GenerationWithDetectionTask,
@@ -437,36 +437,60 @@ async fn stream_content_detection(
     request: Request,
 ) -> Response {
     let trace_id = Span::current().context().span().span_context().trace_id();
+    let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
     info!(?trace_id, "handling content detection streaming request");
 
-    let input_stream = request.into_body().into_data_stream();
+    let mut input_stream = request.into_body().into_data_stream();
 
-    // input_stream.next();
+    match input_stream.next().await {
+        Some(stream_frame) => match stream_frame {
+            Ok(bytes) => {
+                match serde_json::from_slice::<StreamingContentDetectionInitHttpRequest>(&bytes) {
+                    Ok(request) => match request.validate_initial_request() {
+                        Ok(_) => {
+                            let task = StreamingContentDetectionTask::new(
+                                trace_id,
+                                request.detectors.unwrap(),
+                                request.content,
+                                input_stream,
+                                headers,
+                            );
 
-    // Return error as a stream if request is invalid.
-    // if let Err(error) = request.validate() {
-    //     let error_stream = stream::iter::<opentelemetry_http::Bytes>(serde_json::to_vec(&Error::from(error).to_json()).into());
-    //     return Response::new(axum::body::Body::from_stream(error_stream));
-    // }
+                            let response_stream = state
+                                .orchestrator
+                                .handle_streaming_content_detection(task)
+                                .await
+                                .map(|result| match result {
+                                    Ok(message) => serde_json::to_vec(&message).into(),
+                                    Err(error) => {
+                                        serde_json::to_vec(&Error::from(error).to_json()).into()
+                                    }
+                                });
 
-    let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
-
-    match StreamingContentDetectionTask::new(trace_id, input_stream, headers).await {
-        Ok(task) => {
-        let response_stream = state
-            .orchestrator
-            .handle_streaming_content_detection(task)
-            .await
-            .map(|result| match result {
-                Ok(message) => serde_json::to_vec(&message).into(),
-                Err(error) => serde_json::to_vec(&Error::from(error).to_json()).into(),
-            });
-
-        Response::new(axum::body::Body::from_stream(response_stream))
-        }
-        Err(error) => {
-            // Response::new(axum::body::Body::from(serde_json::to_vec(&Error::from(error).to_json()).into()))
-            panic!("Error on creating new StreamingContentDetection");
+                            return Response::new(axum::body::Body::from_stream(response_stream));
+                        }
+                        Err(error) => {
+                            let error_message = "1233 Error validating initial request";
+                            tracing::error!("{}: {}", error_message, error);
+                            return Error::Unexpected.into_response();
+                        }
+                    },
+                    Err(error) => {
+                        let error_message = "1234 Failed to deserialize initial request into StreamingContentDetectionInitHttpRequest";
+                        tracing::error!("{}: {}", error_message, error);
+                        return Error::Unexpected.into_response();
+                    }
+                }
+            }
+            Err(error) => {
+                let error_message = "1235 Error reading stream frame";
+                tracing::error!("{}: {}", error_message, error);
+                return Error::Unexpected.into_response();
+            }
+        },
+        None => {
+            tracing::error!("Stream frame is empty");
+            return Error::Unexpected.into_response();
         }
     }
 }

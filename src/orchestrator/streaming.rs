@@ -21,7 +21,7 @@ use std::{collections::HashMap, pin::Pin, sync::Arc, time::Duration};
 
 use aggregator::Aggregator;
 use axum::http::HeaderMap;
-use futures::{future::try_join_all, Stream, StreamExt, TryFutureExt, TryStreamExt};
+use futures::{future::try_join_all, Stream, StreamExt, TryStreamExt};
 use tokio::sync::{broadcast, mpsc};
 use tokio_stream::wrappers::{BroadcastStream, ReceiverStream};
 use tracing::{debug, error, info, instrument, warn, Instrument, Span};
@@ -38,8 +38,8 @@ use crate::{
     },
     models::{
         ClassifiedGeneratedTextStreamResult, DetectorParams, GuardrailsTextGenerationParameters,
-        InputWarning, InputWarningReason, TextGenTokenClassificationResults,
-        TokenClassificationResult,
+        InputWarning, InputWarningReason, StreamingContentDetectionInitHttpRequest,
+        TextGenTokenClassificationResults, TokenClassificationResult,
     },
     orchestrator::{
         unary::{input_detection_task, tokenize},
@@ -237,10 +237,10 @@ impl Orchestrator {
         &self,
         task: StreamingContentDetectionTask,
     ) -> ReceiverStream<Result<ClassifiedGeneratedTextStreamResult, Error>> {
-        let ctx = self.ctx.clone();
-        let trace_id = task.trace_id;
-        let input_stream = task.input_stream;
-        let headers = task.headers;
+        let _ctx = self.ctx.clone();
+        let _trace_id = task.trace_id;
+        let mut input_stream = task.input_stream;
+        let _headers = task.headers;
 
         // Create response channel
         #[allow(clippy::type_complexity)]
@@ -249,11 +249,31 @@ impl Orchestrator {
             mpsc::Receiver<Result<ClassifiedGeneratedTextStreamResult, Error>>,
         ) = mpsc::channel(1024);
 
-        for i in 1..3 {
-            let _ = response_tx.send(Ok(ClassifiedGeneratedTextStreamResult {
-                start_index: Some(i),
-                ..Default::default()
-            })).await;
+        let _ = response_tx.send(Ok(ClassifiedGeneratedTextStreamResult {
+            start_index: Some(0),
+            ..Default::default()
+        })).await;
+
+        while let Some(Ok(bytes)) = input_stream.next().await {
+            match serde_json::from_slice::<StreamingContentDetectionInitHttpRequest>(&bytes) {
+                Ok(request) => match request.validate_subsequent_request() {
+                    Ok(_) => {
+                        for i in 1..3 {
+                            let _ = response_tx
+                                .send(Ok(ClassifiedGeneratedTextStreamResult {
+                                    start_index: Some(i),
+                                    ..Default::default()
+                                }))
+                                .await;
+                        }
+                    }
+                    Err(error) => {
+                        error!("Error validating subsequent stream request");
+                        let _ = response_tx.send(Err(Error::Other(error.to_string()))).await;
+                    }
+                },
+                Err(_) => todo!(),
+            }
         }
 
         // tokio::spawn(async move {
