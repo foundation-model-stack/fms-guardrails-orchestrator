@@ -461,24 +461,24 @@ async fn stream_content_detection(
                                 .handle_streaming_content_detection(task)
                                 .await
                                 .map(|result| match result {
-                                    Ok(message) => serde_json::to_vec(&message).into(),
-                                    Err(error) => {
-                                        serde_json::to_vec(&Error::from(error).to_json()).into()
-                                    }
+                                    Ok(message) => serde_json::to_vec(&message),
+                                    Err(error) => serde_json::to_vec(&Error::from(error).to_json()),
                                 });
 
                             return Response::new(axum::body::Body::from_stream(response_stream));
                         }
                         Err(error) => {
+                            // "detectors" not present on request
                             let error_message = "1233 Error validating initial request";
                             tracing::error!("{}: {}", error_message, error);
-                            return Error::Unexpected.into_response();
+                            return Error::Validation(error.to_string()).into_response();
                         }
                     },
                     Err(error) => {
+                        // "content" not present on request
                         let error_message = "1234 Failed to deserialize initial request into StreamingContentDetectionInitHttpRequest";
                         tracing::error!("{}: {}", error_message, error);
-                        return Error::Unexpected.into_response();
+                        return Error::Validation(error.to_string()).into_response();
                     }
                 }
             }
@@ -708,6 +708,7 @@ impl From<orchestrator::Error> for Error {
                 StatusCode::SERVICE_UNAVAILABLE => Self::ServiceUnavailable(value.to_string()),
                 _ => Self::Unexpected,
             },
+            InputStreamValidationFailed { ref message } => Self::Validation(message.clone()),
             _ => Self::Unexpected,
         }
     }

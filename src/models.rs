@@ -94,7 +94,7 @@ pub struct GuardrailsHttpRequest {
     pub text_gen_parameters: Option<GuardrailsTextGenerationParameters>,
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Clone, PartialEq, thiserror::Error)]
 pub enum ValidationError {
     #[error("`{0}` is required")]
     Required(String),
@@ -1114,7 +1114,6 @@ pub struct StreamingContentDetectionInitHttpRequest {
 
 /// Stream content detection initial request
 impl StreamingContentDetectionInitHttpRequest {
-
     /// Validates initial stream request, which must contain both `detectors` and `content`.
     pub fn validate_initial_request(&self) -> Result<(), ValidationError> {
         // Validate required parameters
@@ -1130,11 +1129,13 @@ impl StreamingContentDetectionInitHttpRequest {
 
     /// validates subsequent stream requests, which must contain only the `content` field.
     pub fn validate_subsequent_request(&self) -> Result<(), ValidationError> {
-        if self.detectors.is_some(){
-            return Err(ValidationError::Invalid("Subsequent stream requests must not contain the `detectors` field".into()))
-        }
         if self.content.is_empty() {
             return Err(ValidationError::Required("content".into()));
+        }
+        if self.detectors.is_some() {
+            return Err(ValidationError::Invalid(
+                "Subsequent stream requests must not contain the `detectors` field".into(),
+            ));
         }
 
         Ok(())

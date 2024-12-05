@@ -249,10 +249,12 @@ impl Orchestrator {
             mpsc::Receiver<Result<ClassifiedGeneratedTextStreamResult, Error>>,
         ) = mpsc::channel(1024);
 
-        let _ = response_tx.send(Ok(ClassifiedGeneratedTextStreamResult {
-            start_index: Some(0),
-            ..Default::default()
-        })).await;
+        let _ = response_tx
+            .send(Ok(ClassifiedGeneratedTextStreamResult {
+                start_index: Some(0),
+                ..Default::default()
+            }))
+            .await;
 
         while let Some(Ok(bytes)) = input_stream.next().await {
             match serde_json::from_slice::<StreamingContentDetectionInitHttpRequest>(&bytes) {
@@ -269,10 +271,22 @@ impl Orchestrator {
                     }
                     Err(error) => {
                         error!("Error validating subsequent stream request");
-                        let _ = response_tx.send(Err(Error::Other(error.to_string()))).await;
+                        let _ = response_tx
+                            .send(Err(Error::InputStreamValidationFailed {
+                                message: error.to_string(),
+                            }))
+                            .await;
                     }
                 },
-                Err(_) => todo!(),
+                Err(error) => {
+                    let error_message = "1234A Failed to deserialize initial request into StreamingContentDetectionInitHttpRequest";
+                    tracing::error!("{}: {}", error_message, error);
+                    let _ = response_tx
+                        .send(Err(Error::InputStreamValidationFailed {
+                            message: error.to_string(),
+                        }))
+                        .await;
+                }
             }
         }
 
