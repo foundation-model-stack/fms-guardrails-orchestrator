@@ -700,7 +700,6 @@ dependencies = [
  "tonic-build",
  "tower 0.5.1",
  "tower-http",
- "tower-layer",
  "tracing",
  "tracing-opentelemetry",
  "tracing-subscriber",
