@@ -17,11 +17,12 @@
 
 pub mod errors;
 pub use errors::Error;
+use futures::Stream;
 pub mod chat_completions_detection;
 pub mod streaming;
 pub mod unary;
 
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, pin::Pin, sync::Arc};
 
 use axum::{body::BodyDataStream, http::header::HeaderMap};
 use opentelemetry::trace::TraceId;
@@ -44,7 +45,8 @@ use crate::{
     models::{
         ChatDetectionHttpRequest, ContextDocsHttpRequest, DetectionOnGeneratedHttpRequest,
         DetectorParams, GenerationWithDetectionHttpRequest, GuardrailsConfig,
-        GuardrailsHttpRequest, GuardrailsTextGenerationParameters, TextContentDetectionHttpRequest,
+        GuardrailsHttpRequest, GuardrailsTextGenerationParameters,
+        StreamingContentDetectionRequest, TextContentDetectionHttpRequest,
     },
 };
 
@@ -490,30 +492,27 @@ impl ChatCompletionsDetectionTask {
     }
 }
 
-#[derive(Debug)]
 pub struct StreamingContentDetectionTask {
     pub trace_id: TraceId,
-    // pub model_id: String,
-    pub detectors: HashMap<String, DetectorParams>,
-    pub content: String,
-    pub input_stream: BodyDataStream,
     pub headers: HeaderMap,
+    pub detectors: HashMap<String, DetectorParams>,
+    pub input_stream:
+        Pin<Box<dyn Stream<Item = Result<StreamingContentDetectionRequest, Error>> + Send>>,
 }
 
 impl StreamingContentDetectionTask {
     pub fn new(
         trace_id: TraceId,
-        detectors: HashMap<String, DetectorParams>,
-        content: String,
-        input_stream: BodyDataStream,
         headers: HeaderMap,
+        input_stream: Pin<
+            Box<dyn Stream<Item = Result<StreamingContentDetectionRequest, Error>> + Send>,
+        >,
     ) -> Self {
         Self {
             trace_id,
-            detectors,
-            content,
-            input_stream,
             headers,
+            detectors: HashMap::default(),
+            input_stream,
         }
     }
 }

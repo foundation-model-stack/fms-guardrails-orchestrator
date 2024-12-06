@@ -23,6 +23,7 @@ use std::{
     io::BufReader,
     net::SocketAddr,
     path::PathBuf,
+    pin::Pin,
     sync::Arc,
 };
 
@@ -37,15 +38,12 @@ use axum::{
     Json, Router,
 };
 use axum_extra::extract::WithRejection;
-use futures::{
-    stream::{self, BoxStream},
-    Stream, StreamExt,
-};
+use futures::{stream::{self, BoxStream}, Stream, StreamExt};
 use hyper::body::Incoming;
 use hyper_util::rt::{TokioExecutor, TokioIo};
 use opentelemetry::trace::TraceContextExt;
 use rustls::{server::WebPkiClientVerifier, RootCertStore, ServerConfig};
-use tokio::{net::TcpListener, signal};
+use tokio::{net::TcpListener, signal, sync::mpsc};
 use tokio_rustls::TlsAcceptor;
 use tokio_stream::wrappers::ReceiverStream;
 use tower::Service;
@@ -56,7 +54,10 @@ use webpki::types::{CertificateDer, PrivateKeyDer};
 
 use crate::{
     clients::openai::{ChatCompletionsRequest, ChatCompletionsResponse},
-    models::{self, InfoParams, InfoResponse, StreamingContentDetectionInitHttpRequest},
+    models::{
+        self, ClassifiedGeneratedTextResult, InfoParams, InfoResponse,
+        StreamingContentDetectionRequest, StreamingContentDetectionResponse,
+    },
     orchestrator::{
         self, ChatCompletionsDetectionTask, ChatDetectionTask, ClassificationWithGenTask,
         ContextDocsDetectionTask, DetectionOnGenerationTask, GenerationWithDetectionTask,
@@ -440,59 +441,50 @@ async fn stream_content_detection(
     let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
     info!(?trace_id, "handling content detection streaming request");
 
-    let mut input_stream = request.into_body().into_data_stream();
+    // Create input stream
+    let input_stream = request
+        .into_body()
+        .into_data_stream()
+        .map(|result| {
+            serde_json::from_slice::<StreamingContentDetectionRequest>(&result.unwrap()) // TODO: decide how to handle axum error
+                .map_err(|e| orchestrator::Error::JsonError(e.to_string()))
+        })
+        .boxed();
 
-    match input_stream.next().await {
-        Some(stream_frame) => match stream_frame {
-            Ok(bytes) => {
-                match serde_json::from_slice::<StreamingContentDetectionInitHttpRequest>(&bytes) {
-                    Ok(request) => match request.validate_initial_request() {
-                        Ok(_) => {
-                            let task = StreamingContentDetectionTask::new(
-                                trace_id,
-                                request.detectors.unwrap(),
-                                request.content,
-                                input_stream,
-                                headers,
-                            );
+    // Create task and submit to handler
+    let task = StreamingContentDetectionTask::new(trace_id, headers, input_stream);
+    let mut response_stream = state
+        .orchestrator
+        .handle_streaming_content_detection(task)
+        .await;
 
-                            let response_stream = state
-                                .orchestrator
-                                .handle_streaming_content_detection(task)
-                                .await
-                                .map(|result| match result {
-                                    Ok(message) => serde_json::to_vec(&message),
-                                    Err(error) => serde_json::to_vec(&Error::from(error).to_json()),
-                                });
+    // Create output stream
+    // This stream returns ND-JSON formatted messages to the client
+    // TODO: actual ND-JSON, regular JSON for now
+    // StreamingContentDetectionResponse / server::Error
+    let (output_tx, output_rx) = mpsc::channel::<Result<String, Infallible>>(32);
+    let output_stream = ReceiverStream::new(output_rx);
 
-                            return Response::new(axum::body::Body::from_stream(response_stream));
-                        }
-                        Err(error) => {
-                            // "detectors" not present on request
-                            let error_message = "1233 Error validating initial request";
-                            tracing::error!("{}: {}", error_message, error);
-                            return Error::Validation(error.to_string()).into_response();
-                        }
-                    },
-                    Err(error) => {
-                        // "content" not present on request
-                        let error_message = "1234 Failed to deserialize initial request into StreamingContentDetectionInitHttpRequest";
-                        tracing::error!("{}: {}", error_message, error);
-                        return Error::Validation(error.to_string()).into_response();
-                    }
+    // Spawn task to consume response stream (typed) and send to output stream (json)
+    tokio::spawn(async move {
+        while let Some(result) = response_stream.next().await {
+            match result {
+                Ok(msg) => {
+                    let msg = serde_json::to_string(&msg).unwrap();
+                    let _ = output_tx.send(Ok(msg)).await;
+                }
+                Err(error) => {
+                    // Convert orchestrator::Error to server::Error
+                    let error: Error = error.into();
+                    // server::Error doesn't impl Serialize, so we use to_json()
+                    let error_msg = error.to_json().to_string();
+                    let _ = output_tx.send(Ok(error_msg)).await;
                 }
             }
-            Err(error) => {
-                let error_message = "1235 Error reading stream frame";
-                tracing::error!("{}: {}", error_message, error);
-                return Error::Unexpected.into_response();
-            }
-        },
-        None => {
-            tracing::error!("Stream frame is empty");
-            return Error::Unexpected.into_response();
         }
-    }
+    });
+
+    Response::new(axum::body::Body::from_stream(output_stream))
 }
 
 #[instrument(skip_all)]
@@ -708,7 +700,7 @@ impl From<orchestrator::Error> for Error {
                 StatusCode::SERVICE_UNAVAILABLE => Self::ServiceUnavailable(value.to_string()),
                 _ => Self::Unexpected,
             },
-            InputStreamValidationFailed { ref message } => Self::Validation(message.clone()),
+            Validation(message) => Self::Validation(message),
             _ => Self::Unexpected,
         }
     }

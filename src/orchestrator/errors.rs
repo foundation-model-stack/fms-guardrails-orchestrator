@@ -34,12 +34,14 @@ pub enum Error {
     ChatGenerateRequestFailed { id: String, error: clients::Error },
     #[error("tokenize request failed for `{id}`: {error}")]
     TokenizeRequestFailed { id: String, error: clients::Error },
-    #[error("input stream validation failed: {message}")]
-    InputStreamValidationFailed { message: String },
+    #[error("validation error: {0}")]
+    Validation(String),
     #[error("{0}")]
     Other(String),
     #[error("cancelled")]
     Cancelled,
+    #[error("json deserialization error: {0}")]
+    JsonError(String),
 }
 
 impl From<tokio::task::JoinError> for Error {
@@ -49,5 +51,11 @@ impl From<tokio::task::JoinError> for Error {
         } else {
             Self::Other(format!("task panicked: {error}"))
         }
+    }
+}
+
+impl From<serde_json::Error> for Error {
+    fn from(value: serde_json::Error) -> Self {
+        Self::JsonError(value.to_string())
     }
 }

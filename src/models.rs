@@ -1144,13 +1144,14 @@ impl StreamingContentDetectionInitHttpRequest {
 
 /// Stream content detection stream request
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct StreamingContentDetectionHttpRequest {
-    content: String,
+pub struct StreamingContentDetectionRequest {
+    pub detectors: Option<HashMap<String, DetectorParams>>,
+    pub content: String,
 }
 
-/// Stream content detection result
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct StreamingContentDetectionResult {
+/// Stream content detection response
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StreamingContentDetectionResponse {
     pub detectors: Vec<ContentAnalysisResponse>,
     pub processed_index: u32,
     pub start_index: u32,

@@ -39,7 +39,8 @@ use crate::{
     models::{
         ClassifiedGeneratedTextStreamResult, DetectorParams, GuardrailsTextGenerationParameters,
         InputWarning, InputWarningReason, StreamingContentDetectionInitHttpRequest,
-        TextGenTokenClassificationResults, TokenClassificationResult,
+        StreamingContentDetectionResponse, TextGenTokenClassificationResults,
+        TokenClassificationResult,
     },
     orchestrator::{
         unary::{input_detection_task, tokenize},
@@ -236,121 +237,71 @@ impl Orchestrator {
     pub async fn handle_streaming_content_detection(
         &self,
         task: StreamingContentDetectionTask,
-    ) -> ReceiverStream<Result<ClassifiedGeneratedTextStreamResult, Error>> {
+    ) -> ReceiverStream<Result<StreamingContentDetectionResponse, Error>> {
         let _ctx = self.ctx.clone();
         let _trace_id = task.trace_id;
-        let mut input_stream = task.input_stream;
         let _headers = task.headers;
+
+        let mut input_stream = task.input_stream.peekable();
 
         // Create response channel
         #[allow(clippy::type_complexity)]
         let (response_tx, response_rx): (
-            mpsc::Sender<Result<ClassifiedGeneratedTextStreamResult, Error>>,
-            mpsc::Receiver<Result<ClassifiedGeneratedTextStreamResult, Error>>,
-        ) = mpsc::channel(1024);
+            mpsc::Sender<Result<StreamingContentDetectionResponse, Error>>,
+            mpsc::Receiver<Result<StreamingContentDetectionResponse, Error>>,
+        ) = mpsc::channel(32);
 
-        let _ = response_tx
-            .send(Ok(ClassifiedGeneratedTextStreamResult {
-                start_index: Some(0),
-                ..Default::default()
-            }))
-            .await;
-
-        while let Some(Ok(bytes)) = input_stream.next().await {
-            match serde_json::from_slice::<StreamingContentDetectionInitHttpRequest>(&bytes) {
-                Ok(request) => match request.validate_subsequent_request() {
-                    Ok(_) => {
-                        for i in 1..3 {
+        // Spawn task to process input stream
+        tokio::spawn(async move {
+            let mut detectors = HashMap::default();
+            // Get detector config from the first message
+            // We can use Peekable to get a reference to it instead of consuming the message here
+            // Peekable::peek() takes self: Pin<&mut Peekable<_>>, which is why we need to pin it
+            // https://docs.rs/futures/latest/futures/stream/struct.Peekable.html
+            if let Some(result) = Pin::new(&mut input_stream).peek().await {
+                match result {
+                    Ok(msg) => {
+                        if let Some(d) = &msg.detectors {
+                            detectors = d.clone();
+                        } else {
+                            // No detectors configured, send error message and terminate task
                             let _ = response_tx
-                                .send(Ok(ClassifiedGeneratedTextStreamResult {
-                                    start_index: Some(i),
-                                    ..Default::default()
-                                }))
+                                .send(Err(Error::Validation("no detectors configured".into())))
                                 .await;
+                            return;
                         }
                     }
                     Err(error) => {
-                        error!("Error validating subsequent stream request");
-                        let _ = response_tx
-                            .send(Err(Error::InputStreamValidationFailed {
-                                message: error.to_string(),
-                            }))
-                            .await;
+                        // json deserialization error, send error message and terminate task
+                        let _ = response_tx.send(Err(error.clone())).await;
+                        return;
                     }
-                },
-                Err(error) => {
-                    let error_message = "1234A Failed to deserialize initial request into StreamingContentDetectionInitHttpRequest";
-                    tracing::error!("{}: {}", error_message, error);
-                    let _ = response_tx
-                        .send(Err(Error::InputStreamValidationFailed {
-                            message: error.to_string(),
-                        }))
-                        .await;
                 }
             }
-        }
-
-        // tokio::spawn(async move {
-        //     // Do output detections (streaming)
-        //     let detectors = task.detectors;
-        //     // Create error channel
-        //     //
-        //     // This channel is used for error notification & messaging and task cancellation.
-        //     // When a task fails, it notifies other tasks by sending the error to error_tx.
-        //     //
-        //     // The parent task receives the error, logs it, forwards it to the client via response_tx,
-        //     // and terminates the task.
-        //     let (error_tx, _) = broadcast::channel(1);
-
-        //     let mut result_rx = match streaming_output_detection_task(
-        //         &ctx,
-        //         &detectors,
-        //         input_stream,
-        //         error_tx.clone(),
-        //         headers.clone(),
-        //     )
-        //     .await
-        //     {
-        //         Ok(result_rx) => result_rx,
-        //         Err(error) => {
-        //             error!(%trace_id, %error, "task failed");
-        //             let _ = error_tx.send(error.clone());
-        //             let _ = response_tx.send(Err(error)).await;
-        //             return;
-        //         }
-        //     };
-        //     // Forward generation results with detections to response channel
-        //     tokio::spawn(async move {
-        //         let mut error_rx = error_tx.subscribe();
-        //         loop {
-        //             tokio::select! {
-        //                 Ok(error) = error_rx.recv() => {
-        //                     error!(%trace_id, %error, "task failed");
-        //                     debug!(%trace_id, "sending error to client and terminating");
-        //                     let _ = response_tx.send(Err(error)).await;
-        //                     return;
-        //                 },
-        //                 result = result_rx.recv() => {
-        //                     match result {
-        //                         Some(result) => {
-        //                             debug!(%trace_id, ?result, "sending result to client");
-        //                             if (response_tx.send(result).await).is_err() {
-        //                                 warn!(%trace_id, "response channel closed (client disconnected), terminating task");
-        //                                 // Broadcast cancellation signal to tasks
-        //                                 let _ = error_tx.send(Error::Cancelled);
-        //                                 return;
-        //                             }
-        //                         },
-        //                         None => {
-        //                             info!(%trace_id, "task completed: stream closed");
-        //                             break;
-        //                         },
-        //                     }
-        //                 }
-        //             }
-        //         }
-        //     });
-        // });
+            // Process the input stream
+            let mut processed_index = 0;
+            while let Some(result) = input_stream.next().await {
+                match result {
+                    Ok(_msg) => {
+                        // TODO: actual processing
+                        // Send a dummy response for now
+                        let _ = response_tx
+                            .send(Ok(StreamingContentDetectionResponse {
+                                detectors: Vec::new(),
+                                processed_index,
+                                ..Default::default()
+                            }))
+                            .await;
+                        processed_index += 1;
+                    }
+                    Err(error) => {
+                        // json deserialization error, send error message and terminate task
+                        let _ = response_tx.send(Err(error)).await;
+                        return;
+                    }
+                }
+            }
+        });
         ReceiverStream::new(response_rx)
     }
 }
