@@ -1105,43 +1105,6 @@ pub struct EvidenceObj {
     pub evidence: Option<Vec<Evidence>>,
 }
 
-/// Stream content detection initial request
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct StreamingContentDetectionInitHttpRequest {
-    pub detectors: Option<HashMap<String, DetectorParams>>,
-    pub content: String,
-}
-
-/// Stream content detection initial request
-impl StreamingContentDetectionInitHttpRequest {
-    /// Validates initial stream request, which must contain both `detectors` and `content`.
-    pub fn validate_initial_request(&self) -> Result<(), ValidationError> {
-        // Validate required parameters
-        if self.detectors.is_none() {
-            return Err(ValidationError::Required("detectors".into()));
-        }
-        if self.content.is_empty() {
-            return Err(ValidationError::Required("content".into()));
-        }
-
-        Ok(())
-    }
-
-    /// validates subsequent stream requests, which must contain only the `content` field.
-    pub fn validate_subsequent_request(&self) -> Result<(), ValidationError> {
-        if self.content.is_empty() {
-            return Err(ValidationError::Required("content".into()));
-        }
-        if self.detectors.is_some() {
-            return Err(ValidationError::Invalid(
-                "Subsequent stream requests must not contain the `detectors` field".into(),
-            ));
-        }
-
-        Ok(())
-    }
-}
-
 /// Stream content detection stream request
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct StreamingContentDetectionRequest {

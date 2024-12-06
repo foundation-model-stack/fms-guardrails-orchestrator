@@ -20,11 +20,12 @@ pub use errors::Error;
 use futures::Stream;
 pub mod chat_completions_detection;
 pub mod streaming;
+pub mod streaming_content_detection;
 pub mod unary;
 
 use std::{collections::HashMap, pin::Pin, sync::Arc};
 
-use axum::{body::BodyDataStream, http::header::HeaderMap};
+use axum::http::header::HeaderMap;
 use opentelemetry::trace::TraceId;
 use tokio::{sync::RwLock, time::Instant};
 use tracing::{debug, info};
