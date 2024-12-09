@@ -16,15 +16,16 @@
 */
 
 use crate::clients::detector::ContentAnalysisRequest;
+use crate::orchestrator::chat_completions_detection::ChatMessageInternal;
 use crate::{
+    clients::openai::Content, models::DetectorParams, models::ValidationError,
     orchestrator::chat_completions_detection::ChatMessagesInternal,
-    models::ValidationError,
-    models::DetectorParams,
-    clients::openai::Content,
 };
 
 /// Function to get content analysis request from chat message by applying rules
-pub async fn request_from_chat_message(messages: ChatMessagesInternal, detector_params: DetectorParams) -> Result<ContentAnalysisRequest, ValidationError> {
+pub fn filter_chat_message(
+    messages: ChatMessagesInternal,
+) -> Result<ChatMessagesInternal, ValidationError> {
     // Implement content processing logic here
     // Rules:
     // Rule 1: Select last message from the list of messages
@@ -32,21 +33,51 @@ pub async fn request_from_chat_message(messages: ChatMessagesInternal, detector_
 
     // Rule 2: Check if the message has content or not
     if message.content.is_none() {
-        return Err(ValidationError::Invalid("Message at last index does not have content".into()));
+        return Err(ValidationError::Invalid(
+            "Message at last index does not have content".into(),
+        ));
     }
 
     // 3. Select if message is from role `user` or `assistant` otherwise return Err
     match message.role.as_str() {
-       "user" | "assistant" => (),
-       _ => return Err(ValidationError::Invalid("Message at last index is not from user or assistant".into())),
+        "user" | "assistant" => (),
+        _ => {
+            return Err(ValidationError::Invalid(
+                "Message at last index is not from user or assistant".into(),
+            ))
+        }
     }
 
     let content = match message.content.clone().unwrap() {
-        Content::Text(text) => text,
-        _ => return Err(ValidationError::Invalid("Incorrect type requested".into()))
+        Content::Text(text) => Content::Text(text),
+        _ => return Err(ValidationError::Invalid("Incorrect type requested".into())),
     };
-    Ok(ContentAnalysisRequest::new(
-        vec![content],
-        detector_params,
-    ))
+    Ok(ChatMessagesInternal::from(vec![
+        ChatMessageInternal {
+            role: message.role.clone(),
+            content: Some(content),
+            refusal: message.refusal.clone(),
+        }
+    ]))
+}
+
+pub async fn get_content_analysis_request(
+    messages: ChatMessagesInternal,
+    detector_params: DetectorParams,
+) -> Result<ContentAnalysisRequest, ValidationError> {
+
+    if messages.is_empty() {
+        return Err(ValidationError::Invalid("No messages provided".into()));
+    }
+
+    if messages.len() > 1 {
+        return Err(ValidationError::Invalid("More than one message is not supported".into()));
+    }
+
+    let content = match messages.first().unwrap().content.as_ref().unwrap() {
+        Content::Text(text) => text,
+        _ => return Err(ValidationError::Invalid("Message does not have content".into())),
+    };
+
+    Ok(ContentAnalysisRequest::new(vec![content.to_string()], detector_params))
 }
