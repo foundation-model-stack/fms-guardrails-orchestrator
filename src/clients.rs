@@ -567,7 +567,7 @@ impl OnEos for ClientOnEos {
             monotonic_counter.client_stream_response_count = 1,
             stream_duration = stream_duration.as_millis()
         );
-        info!(monotonic_histogram.client_stream_response_duration = stream_duration.as_millis());
+        info!(histogram.client_stream_response_duration = stream_duration.as_millis());
     }
 }
 

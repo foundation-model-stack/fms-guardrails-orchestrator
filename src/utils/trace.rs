@@ -332,7 +332,7 @@ pub fn on_outgoing_eos(trailers: Option<&HeaderMap>, stream_duration: Duration, 
         monotonic_counter.service_stream_response_count = 1,
         stream_duration = stream_duration.as_millis()
     );
-    info!(monotonic_histogram.service_stream_response_duration = stream_duration.as_millis());
+    info!(histogram.service_stream_response_duration = stream_duration.as_millis());
 }
 
 /// Injects the `traceparent` header into the header map from the current tracing span context.
