@@ -397,7 +397,6 @@ impl OnResponse<Incoming> for ClientOnResponse {
         );
 
         if response.status().is_server_error() {
-            // ServerOnFailure should catch 5xx as failures, TODO: check if this block is ever reached
             // On every server error (HTTP 5xx) response
             info!(
                 monotonic_counter.client_5xx_response_count = 1,

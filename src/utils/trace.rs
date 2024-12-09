@@ -294,8 +294,10 @@ pub fn on_outgoing_response(response: &Response, latency: Duration, span: &Span)
         );
     } else if response.status().is_client_error() {
         // On every client error (HTTP 4xx) response
+        // Named so that this does not get mixed up with orchestrator
+        // client response metrics
         info!(
-            monotonic_counter.client_error_response_count = 1,
+            monotonic_counter.client_app_error_response_count = 1,
             response_status = response.status().as_u16(),
             request_duration = latency.as_millis()
         );
