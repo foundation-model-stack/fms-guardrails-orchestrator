@@ -28,7 +28,10 @@ use tracing::{info, instrument};
 
 use super::{create_http_client, Client, Error, HttpClient};
 use crate::{
-    config::ServiceConfig, health::HealthCheckResult, models::{DetectorParams, OrchestratorDetectionResult}, tracing_utils::with_traceparent_header
+    config::ServiceConfig,
+    health::HealthCheckResult,
+    models::{DetectorParams, OrchestratorDetectionResult},
+    tracing_utils::with_traceparent_header,
 };
 
 const DEFAULT_PORT: u16 = 8080;
@@ -258,16 +261,15 @@ pub struct ChatCompletionsRequest {
 
     // Detectors
     pub detectors: DetectorConfig,
-
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DetectorConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
-    input: Option<HashMap<String, DetectorParams>>,
+    pub input: Option<HashMap<String, DetectorParams>>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    output: Option<HashMap<String, DetectorParams>>,
+    pub output: Option<HashMap<String, DetectorParams>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -499,10 +501,13 @@ pub struct ChatCompletion {
     pub object: String,
     /// Usage statistics for the completion request.
     pub usage: Usage,
+
     // Result of running different guardrail detectors
-    pub detection: DetectionResult,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detection: Option<DetectionResult>,
     // Optional warnings
-    pub warnings: Vec<OrchestratorWarning>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub warnings: Option<Vec<OrchestratorWarning>>,
 }
 
 /// A chat completion choice.
@@ -660,8 +665,8 @@ pub struct OpenAiError {
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DetectionResult {
-    input: InputDetectionResult,
-    output: OutputDetectionResult
+    input: Vec<InputDetectionResult>,
+    output: Vec<OutputDetectionResult>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -673,11 +678,11 @@ pub struct InputDetectionResult {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OutputDetectionResult {
     choice_index: u16,
-    results: Option<Vec<OrchestratorDetectionResult>>
+    results: Option<Vec<OrchestratorDetectionResult>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OrchestratorWarning {
     r#type: String,
-    message: String
+    message: String,
 }
