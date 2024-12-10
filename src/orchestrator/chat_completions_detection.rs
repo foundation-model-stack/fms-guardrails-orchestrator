@@ -35,7 +35,7 @@ use crate::{
     orchestrator::{
         Chunk,
         detector_processing::content,
-        unary::chunk_task,
+        unary::chunk,
     },
 };
 use serde::{Deserialize, Serialize};
@@ -145,14 +145,11 @@ pub async fn input_detection(
 
     let ctx = ctx.clone();
 
-    // Get chunker ids
-    let chunker_ids = get_chunker_ids(&ctx, &detectors)?;
     // filter chat messages based on individual detectors to prepare for chunking
-    let chat_messages = filter_chat_messages(&ctx, &detectors, chat_messages)?;
+    let filtered_chat_messages = filter_chat_messages(&ctx, &detectors, chat_messages)?;
 
     // Call out to the chunker to get chunks of messages based on detector type
-    // let chunks = Arc::new(detector_chunk_task(&ctx, chat_messages, chunker_ids)?);
-    let chunks = detector_chunk_task(&ctx, chat_messages, chunker_ids).await?;
+    let chunks = detector_chunk_task(&ctx, filtered_chat_messages).await?;
 
     let tasks = detectors
         .iter()
@@ -165,21 +162,22 @@ pub async fn input_detection(
                     panic!("detector config not found for {}", detector_id)
                 });
             let default_threshold = detector_config.default_threshold;
-            let chunker_id = detector_config.chunker_id.as_str();
+
             let detector_type = &detector_config.r#type;
 
             let headers = headers.clone();
 
             let messages = chunks
-                .get(chunker_id)
-                .unwrap_or_else(|| panic!("chunk not found for {}", chunker_id))
+                .get(&detector_id)
+                .unwrap()
+                // .unwrap_or_else(|| panic!("chunk not found for {}", chunker_id))
                 .clone();
 
             async move {
 
                 match detector_type {
                     DetectorType::TextContents => {
-                        // call detect_content function
+                        // call detection using curated chunks
                         tokio::spawn(async move {
                             detect_content(
                                 detector_id,
@@ -246,17 +244,61 @@ fn filter_chat_messages(
 // Function to chunk ChatMessagesInternal based on the chunker id and return chunks in ChatMessagesInternal form
 async fn detector_chunk_task(
     ctx: &Arc<Context>,
-    detector_chat_messages: HashMap<String, ChatMessagesInternal>,
-    chunker_ids: Vec<String>) -> Result<HashMap<String, ChatMessagesInternal>, Error> {
-    // chunker_ids: Vec<String>) -> Result<HashMap<String, ChunkResult<ChatMessagesInternal>>, Error> {
+    detector_chat_messages: HashMap<String, ChatMessagesInternal> ) -> Result<HashMap<String, Vec<Chunk>>, Error> {
 
-    todo!()
+    // let chunking_tasks = Vec::new();
+    let mut chunks = HashMap::<String, Vec<Chunk>>::new();
+
+    // TODO: Improve error handling for the code below
+    for (detector_id, chat_messages) in detector_chat_messages.iter() {
+
+        let chunk_tasks = chat_messages
+            .iter()
+            .map(|message|{
+                let text = match message.content.as_ref().unwrap() {
+                    Content::Text(value) => value,
+                    _ => panic!("Only text content accepted")
+                };
+                let offset: usize = 0;
+                let detector_id = detector_id.as_str().clone();
+                let task = tokio::spawn({
+                    let ctx = ctx.clone();
+                    async move {
+                        let chunker_id = ctx
+                            .config
+                            .get_chunker_id(detector_id)
+                            .unwrap();
+                        chunk(&ctx, chunker_id, offset, text.clone()).await
+                    }
+                });
+                task
+                // chunking_tasks.push((detector_id, task));
+            })
+            .collect::<Vec<_>>();
+        
+        let results = try_join_all(chunk_tasks)
+            .await?
+            .into_iter()
+            .collect::<Result<Vec<_>, Error>>()?
+            // .collect::<Vec<_>>()?
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>();
+        
+        chunks.insert(detector_id.clone(), results);
+    }
+
+   Ok(chunks)
+
 }
 
+async fn chunk_texts() {
+
+}
 async fn detect_content(
     detector_id: String,
     detector_params: DetectorParams,
-    chunk: Vec<ChatMessageInternal>,
+    chunk: Vec<Chunk>,
     // chunk_task: &Arc<Pin<Box<dyn Future<Output = Vec<ChatMessageInternal>> + Send>>>,
     default_threshold: f64,
     headers: HeaderMap,
