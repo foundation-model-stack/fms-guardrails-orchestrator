@@ -280,8 +280,9 @@ pub fn on_outgoing_response(response: &Response, latency: Duration, span: &Span)
         response_status = response.status().as_u16(),
         request_duration = latency.as_millis()
     );
+    // Note: tracing_opentelemetry expects u64/f64 for histograms but as_millis returns u128
     info!(
-        histogram.service_request_duration = latency.as_millis(),
+        histogram.service_request_duration = latency.as_millis() as u64,
         response_status = response.status().as_u16()
     );
 
@@ -332,7 +333,7 @@ pub fn on_outgoing_eos(trailers: Option<&HeaderMap>, stream_duration: Duration, 
         monotonic_counter.service_stream_response_count = 1,
         stream_duration = stream_duration.as_millis()
     );
-    info!(histogram.service_stream_response_duration = stream_duration.as_millis());
+    info!(histogram.service_stream_response_duration = stream_duration.as_millis() as u64);
 }
 
 /// Injects the `traceparent` header into the header map from the current tracing span context.

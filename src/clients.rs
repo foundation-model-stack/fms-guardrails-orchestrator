@@ -268,7 +268,7 @@ pub async fn create_http_client(
 }
 
 #[instrument(skip_all, fields(hostname = service_config.hostname))]
-pub async fn create_grpc_client<C: std::fmt::Debug + std::clone::Clone>(
+pub async fn create_grpc_client<C: Debug + Clone>(
     default_port: u16,
     service_config: &ServiceConfig,
     new: fn(LoadBalancedChannel) -> C,
@@ -471,7 +471,7 @@ impl OnResponse<Incoming> for ClientOnResponse {
             request_duration = latency.as_millis()
         );
         info!(
-            histogram.client_request_duration = latency.as_millis(),
+            histogram.client_request_duration = latency.as_millis() as u64,
             response_status = response.status().as_u16()
         );
 
@@ -567,7 +567,7 @@ impl OnEos for ClientOnEos {
             monotonic_counter.client_stream_response_count = 1,
             stream_duration = stream_duration.as_millis()
         );
-        info!(histogram.client_stream_response_duration = stream_duration.as_millis());
+        info!(histogram.client_stream_response_duration = stream_duration.as_millis() as u64);
     }
 }
 
