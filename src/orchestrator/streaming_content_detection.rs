@@ -50,7 +50,8 @@ impl Orchestrator {
                     }
                     Err(error) => {
                         // json deserialization error, send error message and terminate task
-                        let _ = response_tx.send(Err(error.clone())).await;
+                        tracing::error!("{:#?}", error);
+                        let _ = response_tx.send(Err(Error::Validation(error.to_string()))).await;
                         return;
                     }
                 }
