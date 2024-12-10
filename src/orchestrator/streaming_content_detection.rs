@@ -64,7 +64,7 @@ impl Orchestrator {
                         // Send a dummy response for now
                         let _ = response_tx
                             .send(Ok(StreamingContentDetectionResponse {
-                                detectors: Vec::new(),
+                                detections: Vec::new(),
                                 processed_index,
                                 ..Default::default()
                             }))

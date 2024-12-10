@@ -1115,7 +1115,7 @@ pub struct StreamingContentDetectionRequest {
 /// Stream content detection response
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct StreamingContentDetectionResponse {
-    pub detectors: Vec<ContentAnalysisResponse>,
+    pub detections: Vec<ContentAnalysisResponse>,
     pub processed_index: u32,
     pub start_index: u32,
 }
