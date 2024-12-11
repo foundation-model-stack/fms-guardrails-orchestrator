@@ -312,6 +312,7 @@ pub async fn create_grpc_client<C>(
         .await
         .unwrap_or_else(|error| panic!("error creating grpc client: {error}"));
 
+    // Adds tower::Service wrapper to allow for enable middleware layers to be added
     let channel = ServiceBuilder::new().service(channel);
     new(channel)
 }
