@@ -175,7 +175,7 @@ pub async fn run(
         .route(
             &format!(
                 "{}/server-streaming-classification-with-text-generation",
-                TEXT_API_PREFIX
+                API_PREFIX
             ),
             post(stream_classification_with_gen),
         )
