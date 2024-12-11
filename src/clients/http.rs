@@ -233,10 +233,11 @@ impl HttpClient {
         }
     }
 
-    /// This is sectioned off to allow for testing.
-    pub(super) async fn http_response_to_health_check_result(
-        res: Result<TracedResponse, Error>,
-    ) -> HealthCheckResult {
+    pub async fn health(&self) -> HealthCheckResult {
+        let req = Request::get(self.health_url.as_uri())
+            .body(BoxBody::default())
+            .unwrap();
+        let res = self.inner.clone().call(req).await;
         match res {
             Ok(response) => {
                 let response = Response::from(response);
@@ -290,23 +291,11 @@ impl HttpClient {
                 error!("error checking health: {}", e);
                 HealthCheckResult {
                     status: HealthStatus::Unknown,
-                    code: e.status_code(),
+                    code: StatusCode::INTERNAL_SERVER_ERROR,
                     reason: Some(e.to_string()),
                 }
             }
         }
-    }
-
-    pub async fn health(&self) -> HealthCheckResult {
-        let req = Request::get(self.health_url.as_uri())
-            .body(BoxBody::default())
-            .unwrap();
-        let res = self.inner.clone().call(req).await;
-        Self::http_response_to_health_check_result(res.map(Into::into).map_err(|e| Error::Http {
-            code: StatusCode::INTERNAL_SERVER_ERROR,
-            message: format!("sending client health request failed: {}", e),
-        }))
-        .await
     }
 }
 
