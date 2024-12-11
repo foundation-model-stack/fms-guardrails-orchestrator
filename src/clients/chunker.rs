@@ -26,7 +26,7 @@ use tracing::{info, instrument};
 
 use super::{
     create_grpc_client, errors::grpc_to_http_code, grpc_request_with_headers, BoxStream, Client,
-    Error,
+    Error, GrpcClient,
 };
 use crate::{
     config::ServiceConfig,
@@ -53,8 +53,8 @@ type StreamingTokenizationResult =
 #[cfg_attr(test, faux::create)]
 #[derive(Clone)]
 pub struct ChunkerClient {
-    client: ChunkersServiceClient<LoadBalancedChannel>,
-    health_client: HealthClient<LoadBalancedChannel>,
+    client: GrpcClient<ChunkersServiceClient<LoadBalancedChannel>>,
+    health_client: GrpcClient<HealthClient<LoadBalancedChannel>>,
 }
 
 #[cfg_attr(test, faux::methods)]

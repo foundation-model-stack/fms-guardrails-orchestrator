@@ -20,14 +20,24 @@ use std::{fmt::Debug, ops::Deref, time::Duration};
 use http_body_util::{combinators::BoxBody, BodyExt, Full};
 use hyper::{
     body::{Body, Bytes, Incoming},
-    HeaderMap, Method, StatusCode,
+    HeaderMap, Method, Request, StatusCode,
 };
 use hyper_rustls::HttpsConnector;
 use hyper_timeout::TimeoutConnector;
 use hyper_util::client::legacy::connect::HttpConnector;
 use serde::{de::DeserializeOwned, Serialize};
-use tokio::time::timeout;
-use tracing::{debug, error, instrument, Span};
+use tower::timeout::Timeout;
+use tower::Service;
+use tower_http::{
+    classify::{
+        NeverClassifyEos, ServerErrorsAsFailures, ServerErrorsFailureClass, SharedClassifier,
+    },
+    trace::{
+        DefaultOnBodyChunk, HttpMakeClassifier, MakeSpan, OnEos, OnFailure, OnRequest, OnResponse,
+        Trace, TraceLayer,
+    },
+};
+use tracing::{debug, error, info, info_span, instrument, Span};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 use url::Url;
 
@@ -75,15 +85,26 @@ impl Deref for Response {
     }
 }
 
-impl From<hyper::http::response::Response<Incoming>> for Response {
-    fn from(response: hyper::http::Response<Incoming>) -> Self {
+impl From<TracedResponse> for Response {
+    fn from(response: TracedResponse) -> Self {
         Response(response.map(|body| body.boxed()))
     }
 }
 
-pub type HttpClientInner = hyper_util::client::legacy::Client<
-    TimeoutConnector<HttpsConnector<HttpConnector>>,
-    BoxBody<Bytes, hyper::Error>,
+pub type HttpClientInner = Trace<
+    Timeout<
+        hyper_util::client::legacy::Client<
+            TimeoutConnector<HttpsConnector<HttpConnector>>,
+            BoxBody<Bytes, hyper::Error>,
+        >,
+    >,
+    SharedClassifier<ServerErrorsAsFailures>,
+    ClientMakeSpan,
+    ClientOnRequest,
+    ClientOnResponse,
+    DefaultOnBodyChunk,
+    ClientOnEos,
+    ClientOnFailure,
 >;
 
 /// A trait implemented by all clients that use HTTP for their inner client.
@@ -96,17 +117,15 @@ pub trait HttpClientExt: Client {
 pub struct HttpClient {
     base_url: Url,
     health_url: Url,
-    request_timeout: Duration,
     inner: HttpClientInner,
 }
 
 impl HttpClient {
-    pub fn new(base_url: Url, request_timeout: Duration, inner: HttpClientInner) -> Self {
+    pub fn new(base_url: Url, inner: HttpClientInner) -> Self {
         let health_url = base_url.join("health").unwrap();
         Self {
             base_url,
             health_url,
-            request_timeout,
             inner,
         }
     }
@@ -177,21 +196,21 @@ impl HttpClient {
                             message: format!("client request serialization failed: {}", e)
                         }
                     })?;
-                let response_fut = self
+                let response = match self
                     .inner
-                    .request(request);
-
-                let response = match timeout(self.request_timeout, response_fut).await {
-                    Ok(response) => Ok(response.map_err(|e| {
-                        Error::Http {
-                            code: StatusCode::INTERNAL_SERVER_ERROR,
-                            message: format!("sending client request failed: {}", e)
-                        }
-                    })?),
-                    Err(e) => Err(Error::Http {
-                        code: StatusCode::REQUEST_TIMEOUT,
-                        message: format!("client request timeout: {}", e),
-                    }),
+                    .clone()
+                    .call(request)
+                    .await {
+                        Ok(response) => Ok(response.map_err(|e| {
+                            Error::Http {
+                                code: StatusCode::INTERNAL_SERVER_ERROR,
+                                message: format!("sending client request failed: {}", e)
+                            }
+                        }).into_inner()),
+                        Err(e) => Err(Error::Http {
+                            code: StatusCode::REQUEST_TIMEOUT,
+                            message: format!("client request timeout: {}", e),
+                        }),
                 }?;
 
                 debug!(
@@ -214,13 +233,15 @@ impl HttpClient {
         }
     }
 
-    /// This is sectioned off to allow for testing.
-    pub(super) async fn http_response_to_health_check_result(
-        res: Result<Response, Error>,
-    ) -> HealthCheckResult {
+    pub async fn health(&self) -> HealthCheckResult {
+        let req = Request::get(self.health_url.as_uri())
+            .body(BoxBody::default())
+            .unwrap();
+        let res = self.inner.clone().call(req).await;
         match res {
             Ok(response) => {
-                if response.0.status() == StatusCode::OK {
+                let response = Response::from(response);
+                if response.status() == StatusCode::OK {
                     if let Ok(body) = response.json::<OptionalHealthCheckResponseBody>().await {
                         // If the service provided a body, we only anticipate a minimal health status and optional reason.
                         HealthCheckResult {
@@ -270,20 +291,195 @@ impl HttpClient {
                 error!("error checking health: {}", e);
                 HealthCheckResult {
                     status: HealthStatus::Unknown,
-                    code: e.status_code(),
+                    code: StatusCode::INTERNAL_SERVER_ERROR,
                     reason: Some(e.to_string()),
                 }
             }
         }
     }
+}
 
-    pub async fn health(&self) -> HealthCheckResult {
-        let res = self.inner.get(self.health_url.as_uri()).await;
-        Self::http_response_to_health_check_result(res.map(Into::into).map_err(|e| Error::Http {
-            code: StatusCode::INTERNAL_SERVER_ERROR,
-            message: format!("sending client health request failed: {}", e),
-        }))
-        .await
+pub type TracedResponse = hyper::Response<
+    tower_http::trace::ResponseBody<
+        Incoming,
+        NeverClassifyEos<ServerErrorsFailureClass>,
+        DefaultOnBodyChunk,
+        ClientOnEos,
+        ClientOnFailure,
+    >,
+>;
+
+pub type HttpClientTraceLayer = TraceLayer<
+    HttpMakeClassifier,
+    ClientMakeSpan,
+    ClientOnRequest,
+    ClientOnResponse,
+    DefaultOnBodyChunk, // no metrics currently per body chunk
+    ClientOnEos,
+    ClientOnFailure,
+>;
+
+pub fn http_trace_layer() -> HttpClientTraceLayer {
+    TraceLayer::new_for_http()
+        .make_span_with(ClientMakeSpan)
+        .on_request(ClientOnRequest)
+        .on_response(ClientOnResponse)
+        .on_failure(ClientOnFailure)
+        .on_eos(ClientOnEos)
+}
+
+#[derive(Debug, Clone)]
+pub struct ClientMakeSpan;
+
+impl MakeSpan<BoxBody<Bytes, hyper::Error>> for ClientMakeSpan {
+    fn make_span(&mut self, request: &Request<BoxBody<Bytes, hyper::Error>>) -> Span {
+        info_span!(
+            "client HTTP request",
+            request_method = request.method().to_string(),
+            request_path = request.uri().path().to_string(),
+        )
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ClientOnRequest;
+
+impl OnRequest<BoxBody<Bytes, hyper::Error>> for ClientOnRequest {
+    fn on_request(&mut self, request: &Request<BoxBody<Bytes, hyper::Error>>, span: &Span) {
+        let _guard = span.enter();
+        info!(
+            "outgoing HTTP client request to {} {} with trace {:?}",
+            request.method(),
+            request.uri().path(),
+            trace::current_trace_id(),
+        );
+        info!(
+            monotonic_counter.incoming_request_count = 1,
+            request_method = request.method().as_str(),
+            request_path = request.uri().path()
+        );
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ClientOnResponse;
+
+impl OnResponse<Incoming> for ClientOnResponse {
+    fn on_response(self, response: &hyper::Response<Incoming>, latency: Duration, span: &Span) {
+        let _guard = span.enter();
+        info!(
+            "HTTP client response {} for request with trace {:?} received in {} ms",
+            &response.status(),
+            trace::current_trace_id(),
+            latency.as_millis()
+        );
+
+        // On every response
+        info!(
+            monotonic_counter.client_response_count = 1,
+            response_status = response.status().as_u16(),
+            request_duration = latency.as_millis()
+        );
+        info!(
+            histogram.client_request_duration = latency.as_millis() as u64,
+            response_status = response.status().as_u16()
+        );
+
+        if response.status().is_server_error() {
+            // On every server error (HTTP 5xx) response
+            info!(
+                monotonic_counter.client_5xx_response_count = 1,
+                response_status = response.status().as_u16(),
+                request_duration = latency.as_millis()
+            );
+        } else if response.status().is_client_error() {
+            // On every client error (HTTP 4xx) response
+            info!(
+                monotonic_counter.client_4xx_response_count = 1,
+                response_status = response.status().as_u16(),
+                request_duration = latency.as_millis()
+            );
+        } else if response.status().is_success() {
+            // On every successful (HTTP 2xx) response
+            info!(
+                monotonic_counter.client_success_response_count = 1,
+                response_status = response.status().as_u16(),
+                request_duration = latency.as_millis()
+            );
+        } else {
+            error!(
+                "unexpected HTTP client response status code: {}",
+                response.status().as_u16()
+            );
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ClientOnFailure;
+
+impl OnFailure<ServerErrorsFailureClass> for ClientOnFailure {
+    fn on_failure(
+        &mut self,
+        failure_classification: ServerErrorsFailureClass,
+        latency: Duration,
+        span: &Span,
+    ) {
+        let _guard = span.enter();
+        let trace_id = trace::current_trace_id();
+        let latency_ms = latency.as_millis().to_string();
+
+        let (status_code, error) = match failure_classification {
+            ServerErrorsFailureClass::StatusCode(status_code) => {
+                error!(
+                    ?trace_id,
+                    ?status_code,
+                    latency_ms,
+                    "HTTP client failed to handle request",
+                );
+                (Some(status_code), None)
+            }
+            ServerErrorsFailureClass::Error(error) => {
+                error!(
+                    ?trace_id,
+                    latency_ms, "HTTP client failed to handle request: {}", error,
+                );
+                (None, Some(error))
+            }
+        };
+
+        info!(
+            monotonic_counter.client_request_failure_count = 1,
+            latency_ms,
+            ?status_code,
+            ?error
+        );
+        info!(
+            monotonic_counter.client_5xx_response_count = 1,
+            latency_ms,
+            ?status_code,
+            ?error
+        );
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ClientOnEos;
+
+impl OnEos for ClientOnEos {
+    fn on_eos(self, trailers: Option<&HeaderMap>, stream_duration: Duration, span: &Span) {
+        let _guard = span.enter();
+        info!(
+            "HTTP client stream response for request with trace {:?} closed after {} ms with trailers: {:?}",
+            trace::current_trace_id(),
+            stream_duration.as_millis(),
+            trailers
+        );
+        info!(
+            monotonic_counter.client_stream_response_count = 1,
+            stream_duration = stream_duration.as_millis()
+        );
+        info!(histogram.client_stream_response_duration = stream_duration.as_millis() as u64);
     }
 }
 
