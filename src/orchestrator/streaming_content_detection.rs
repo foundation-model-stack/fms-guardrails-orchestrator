@@ -19,7 +19,8 @@ impl Orchestrator {
         let _trace_id = task.trace_id;
         let _headers = task.headers;
 
-        let mut input_stream = task.input_stream.peekable();
+        let mut input_stream = task.input_stream;
+        let mut processed_index = 0;
 
         // Create response channel
         #[allow(clippy::type_complexity)]
@@ -35,9 +36,18 @@ impl Orchestrator {
             // We can use Peekable to get a reference to it instead of consuming the message here
             // Peekable::peek() takes self: Pin<&mut Peekable<_>>, which is why we need to pin it
             // https://docs.rs/futures/latest/futures/stream/struct.Peekable.html
-            if let Some(result) = Pin::new(&mut input_stream).peek().await {
+            if let Some(result) = input_stream.next().await {
                 match result {
                     Ok(msg) => {
+                        // validate initial stream frame
+                        if let Err(error) = msg.validate_initial_request() {
+                            tracing::error!("{:#?}", error);
+                            let _ = response_tx
+                                .send(Err(Error::Validation(error.to_string())))
+                                .await;
+                            return;
+                        }
+
                         if let Some(d) = &msg.detectors {
                             detectors = d.clone();
                         } else {
@@ -47,20 +57,38 @@ impl Orchestrator {
                                 .await;
                             return;
                         }
+
+                        let _ = response_tx
+                            .send(Ok(StreamingContentDetectionResponse {
+                                detections: Vec::new(),
+                                processed_index,
+                                ..Default::default()
+                            }))
+                            .await;
+                        processed_index += 1;
                     }
                     Err(error) => {
                         // json deserialization error, send error message and terminate task
                         tracing::error!("{:#?}", error);
-                        let _ = response_tx.send(Err(Error::Validation(error.to_string()))).await;
+                        let _ = response_tx
+                            .send(Err(Error::Validation(error.to_string())))
+                            .await;
                         return;
                     }
                 }
             }
             // Process the input stream
-            let mut processed_index = 0;
             while let Some(result) = input_stream.next().await {
                 match result {
-                    Ok(_msg) => {
+                    Ok(msg) => {
+                        if let Err(error) = msg.validate_subsequent_requests() {
+                            tracing::error!("{:#?}", error);
+                            let _ = response_tx
+                                .send(Err(Error::Validation(error.to_string())))
+                                .await;
+                            return;
+                        }
+
                         // TODO: actual processing
                         // Send a dummy response for now
                         let _ = response_tx
@@ -74,7 +102,9 @@ impl Orchestrator {
                     }
                     Err(error) => {
                         // json deserialization error, send error message and terminate task
-                        let _ = response_tx.send(Err(error)).await;
+                        let _ = response_tx
+                            .send(Err(Error::Validation(error.to_string())))
+                            .await;
                         return;
                     }
                 }
