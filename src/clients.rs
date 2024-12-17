@@ -439,10 +439,10 @@ impl OnRequest<BoxBody<Bytes, hyper::Error>> for ClientOnRequest {
     fn on_request(&mut self, request: &hyper::Request<BoxBody<Bytes, hyper::Error>>, span: &Span) {
         let _guard = span.enter();
         info!(
-            "outgoing gRPC client request to {} {} with trace {:?}",
-            request.method(),
-            request.uri().path(),
-            current_trace_id(),
+            trace_id = %current_trace_id(),
+            method = %request.method(),
+            path = %request.uri().path(),
+            "started processing request",
         );
         info!(
             monotonic_counter.incoming_request_count = 1,
@@ -459,10 +459,10 @@ impl OnResponse<Incoming> for ClientOnResponse {
     fn on_response(self, response: &Response<Incoming>, latency: Duration, span: &Span) {
         let _guard = span.enter();
         info!(
-            "gRPC client response {} for request with trace {:?} received in {} ms",
-            &response.status(),
-            current_trace_id(),
-            latency.as_millis()
+            trace_id = %current_trace_id(),
+            status = %response.status(),
+            duration_ms = %latency.as_millis(),
+            "finished processing request",
         );
 
         // On every response
@@ -556,13 +556,12 @@ impl OnFailure<GrpcFailureClass> for ClientOnFailure {
 pub struct ClientOnEos;
 
 impl OnEos for ClientOnEos {
-    fn on_eos(self, trailers: Option<&HeaderMap>, stream_duration: Duration, span: &Span) {
+    fn on_eos(self, _trailers: Option<&HeaderMap>, stream_duration: Duration, span: &Span) {
         let _guard = span.enter();
         info!(
-            "gRPC client stream response for request with trace {:?} closed after {} ms with trailers: {:?}",
-            current_trace_id(),
-            stream_duration.as_millis(),
-            trailers
+            trace_id = %current_trace_id(),
+            duration_ms = stream_duration.as_millis(),
+            "end of stream",
         );
         info!(
             monotonic_counter.client_stream_response_count = 1,
