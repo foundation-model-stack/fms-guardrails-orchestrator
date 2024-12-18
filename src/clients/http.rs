@@ -351,12 +351,8 @@ impl OnRequest<BoxBody<Bytes, hyper::Error>> for ClientOnRequest {
             trace_id = %trace::current_trace_id(),
             method = %request.method(),
             path = %request.uri().path(),
-            "started processing request",
-        );
-        info!(
             monotonic_counter.incoming_request_count = 1,
-            request_method = request.method().as_str(),
-            request_path = request.uri().path()
+            "started processing request",
         );
     }
 }
@@ -367,45 +363,25 @@ pub struct ClientOnResponse;
 impl OnResponse<Incoming> for ClientOnResponse {
     fn on_response(self, response: &hyper::Response<Incoming>, latency: Duration, span: &Span) {
         let _guard = span.enter();
+        // On every response
         info!(
             trace_id = %trace::current_trace_id(),
             status = %response.status(),
             duration_ms = %latency.as_millis(),
-            "finished processing request",
-        );
-
-        // On every response
-        info!(
             monotonic_counter.client_response_count = 1,
-            response_status = response.status().as_u16(),
-            request_duration = latency.as_millis()
-        );
-        info!(
             histogram.client_request_duration = latency.as_millis() as u64,
-            response_status = response.status().as_u16()
+            "finished processing request"
         );
 
         if response.status().is_server_error() {
             // On every server error (HTTP 5xx) response
-            info!(
-                monotonic_counter.client_5xx_response_count = 1,
-                response_status = response.status().as_u16(),
-                request_duration = latency.as_millis()
-            );
+            info!(monotonic_counter.client_5xx_response_count = 1);
         } else if response.status().is_client_error() {
             // On every client error (HTTP 4xx) response
-            info!(
-                monotonic_counter.client_4xx_response_count = 1,
-                response_status = response.status().as_u16(),
-                request_duration = latency.as_millis()
-            );
+            info!(monotonic_counter.client_4xx_response_count = 1);
         } else if response.status().is_success() {
             // On every successful (HTTP 2xx) response
-            info!(
-                monotonic_counter.client_success_response_count = 1,
-                response_status = response.status().as_u16(),
-                request_duration = latency.as_millis()
-            );
+            info!(monotonic_counter.client_success_response_count = 1);
         } else {
             error!(
                 "unexpected HTTP client response status code: {}",
@@ -432,8 +408,8 @@ impl OnFailure<ServerErrorsFailureClass> for ClientOnFailure {
         let (status_code, error) = match failure_classification {
             ServerErrorsFailureClass::StatusCode(status_code) => {
                 error!(
-                    ?trace_id,
-                    ?status_code,
+                    %trace_id,
+                    %status_code,
                     latency_ms,
                     "failure handling request",
                 );
@@ -447,11 +423,6 @@ impl OnFailure<ServerErrorsFailureClass> for ClientOnFailure {
 
         info!(
             monotonic_counter.client_request_failure_count = 1,
-            latency_ms,
-            ?status_code,
-            ?error
-        );
-        info!(
             monotonic_counter.client_5xx_response_count = 1,
             latency_ms,
             ?status_code,
@@ -469,13 +440,10 @@ impl OnEos for ClientOnEos {
         info!(
             trace_id = %trace::current_trace_id(),
             duration_ms = stream_duration.as_millis(),
+            monotonic_counter.client_stream_response_count = 1,
+            histogram.client_stream_response_duration = stream_duration.as_millis() as u64,
             "end of stream",
         );
-        info!(
-            monotonic_counter.client_stream_response_count = 1,
-            stream_duration = stream_duration.as_millis()
-        );
-        info!(histogram.client_stream_response_duration = stream_duration.as_millis() as u64);
     }
 }
 
