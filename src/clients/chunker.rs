@@ -22,7 +22,7 @@ use axum::http::HeaderMap;
 use futures::{Future, Stream, StreamExt, TryStreamExt};
 use ginepro::LoadBalancedChannel;
 use tonic::{Code, Request, Response, Status, Streaming};
-use tracing::{info, instrument};
+use tracing::{debug, info, instrument, Span};
 
 use super::{
     create_grpc_client, errors::grpc_to_http_code, grpc_request_with_headers, BoxStream, Client,
@@ -76,9 +76,10 @@ impl ChunkerClient {
     ) -> Result<TokenizationResults, Error> {
         let mut client = self.client.clone();
         let request = request_with_headers(request, model_id);
-        info!(?request, "sending client request");
+        debug!(?request, "sending client request");
         let response = client.chunker_tokenization_task_predict(request).await?;
-        trace_context_from_grpc_response(&response);
+        let span = Span::current();
+        trace_context_from_grpc_response(&span, &response);
         Ok(response.into_inner())
     }
 
@@ -96,7 +97,8 @@ impl ChunkerClient {
         let response_stream_fut: Pin<Box<dyn Future<Output = StreamingTokenizationResult> + Send>> =
             Box::pin(client.bidi_streaming_chunker_tokenization_task_predict(request));
         let response_stream = response_stream_fut.await?;
-        trace_context_from_grpc_response(&response_stream);
+        let span = Span::current();
+        trace_context_from_grpc_response(&span, &response_stream);
         Ok(response_stream.into_inner().map_err(Into::into).boxed())
     }
 }

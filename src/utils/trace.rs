@@ -369,13 +369,16 @@ pub fn trace_context_from_http_response(span: &Span, response: &TracedResponse) 
 /// tracing span context (i.e. use `traceparent` as parent to the current span).
 /// Defaults to using the current context when no `traceparent` is found.
 /// See https://www.w3.org/TR/trace-context/#trace-context-http-headers-format.
-pub fn trace_context_from_grpc_response<T>(response: &tonic::Response<T>) {
+pub fn trace_context_from_grpc_response<T>(span: &Span, response: &tonic::Response<T>) {
+    let curr_trace = span.context().span().span_context().trace_id();
     let ctx = global::get_text_map_propagator(|propagator| {
         let metadata = response.metadata().clone();
         // Returns the current context if no `traceparent` is found
         propagator.extract(&HeaderExtractor(&metadata.into_headers()))
     });
-    Span::current().set_parent(ctx);
+    if ctx.span().span_context().trace_id() == curr_trace {
+        span.set_parent(ctx);
+    }
 }
 
 /// Returns the `trace_id` of the current span according to the global tracing subscriber.
