@@ -19,6 +19,8 @@
 use std::{
     any::TypeId,
     collections::{hash_map, HashMap},
+    fmt::Debug,
+    ops::{Deref, DerefMut},
     pin::Pin,
     time::Duration,
 };
@@ -27,26 +29,38 @@ use async_trait::async_trait;
 use axum::http::{Extensions, HeaderMap};
 use futures::Stream;
 use ginepro::LoadBalancedChannel;
+use http_body_util::combinators::BoxBody;
+use hyper::{
+    body::{Bytes, Incoming},
+    Response,
+};
 use hyper_timeout::TimeoutConnector;
 use hyper_util::rt::TokioExecutor;
 use tonic::{metadata::MetadataMap, Request};
 use tower::timeout::TimeoutLayer;
 use tower::ServiceBuilder;
-use tracing::{debug, instrument, Span};
+use tower_http::{
+    classify::{GrpcErrorsAsFailures, GrpcFailureClass, SharedClassifier},
+    trace::{
+        DefaultOnBodyChunk, GrpcMakeClassifier, MakeSpan, OnEos, OnFailure, OnRequest, OnResponse,
+        Trace, TraceLayer,
+    },
+};
+use tracing::{debug, error, info, info_span, instrument, Span};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 use url::Url;
 
 use crate::{
     config::{ServiceConfig, Tls},
     health::HealthCheckResult,
-    utils::{tls, trace::with_traceparent_header},
+    utils::{tls, trace::current_trace_id, trace::with_traceparent_header},
 };
 
 pub mod errors;
-pub use errors::Error;
+pub use errors::{grpc_to_http_code, Error};
 
 pub mod http;
-pub use http::HttpClient;
+pub use http::{http_trace_layer, HttpClient};
 
 pub mod chunker;
 
@@ -247,17 +261,18 @@ pub async fn create_http_client(
     let client =
         hyper_util::client::legacy::Client::builder(TokioExecutor::new()).build(timeout_conn);
     let client = ServiceBuilder::new()
+        .layer(http_trace_layer())
         .layer(TimeoutLayer::new(request_timeout))
         .service(client);
     Ok(HttpClient::new(base_url, client))
 }
 
 #[instrument(skip_all, fields(hostname = service_config.hostname))]
-pub async fn create_grpc_client<C>(
+pub async fn create_grpc_client<C: Debug + Clone>(
     default_port: u16,
     service_config: &ServiceConfig,
     new: fn(LoadBalancedChannel) -> C,
-) -> C {
+) -> GrpcClient<C> {
     let port = service_config.port.unwrap_or(default_port);
     let protocol = match service_config.tls {
         Some(_) => "https",
@@ -312,9 +327,12 @@ pub async fn create_grpc_client<C>(
         .await
         .unwrap_or_else(|error| panic!("error creating grpc client: {error}"));
 
+    let client = new(channel);
     // Adds tower::Service wrapper to allow for enable middleware layers to be added
-    let channel = ServiceBuilder::new().service(channel);
-    new(channel)
+    let channel = ServiceBuilder::new()
+        .layer(grpc_trace_layer())
+        .service(client);
+    GrpcClient(channel)
 }
 
 /// Returns `true` if hostname is valid according to [IETF RFC 1123](https://tools.ietf.org/html/rfc1123).
@@ -352,36 +370,178 @@ fn grpc_request_with_headers<T>(request: T, headers: HeaderMap) -> Request<T> {
     Request::from_parts(metadata, Extensions::new(), request)
 }
 
+pub type GrpcServiceRequest = hyper::Request<tonic::body::BoxBody>;
+
+#[derive(Debug, Clone)]
+pub struct GrpcClient<C: Debug + Clone>(
+    Trace<
+        C,
+        SharedClassifier<GrpcErrorsAsFailures>,
+        ClientMakeSpan,
+        ClientOnRequest,
+        ClientOnResponse,
+        DefaultOnBodyChunk,
+        ClientOnEos,
+        ClientOnFailure,
+    >,
+);
+
+impl<C: Debug + Clone> Deref for GrpcClient<C> {
+    type Target = C;
+
+    fn deref(&self) -> &Self::Target {
+        self.0.get_ref()
+    }
+}
+
+impl<C: Debug + Clone> DerefMut for GrpcClient<C> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.0.get_mut()
+    }
+}
+
+pub type GrpcClientTraceLayer = TraceLayer<
+    GrpcMakeClassifier,
+    ClientMakeSpan,
+    ClientOnRequest,
+    ClientOnResponse,
+    DefaultOnBodyChunk, // no metrics currently per body chunk
+    ClientOnEos,
+    ClientOnFailure,
+>;
+
+pub fn grpc_trace_layer() -> GrpcClientTraceLayer {
+    TraceLayer::new_for_grpc()
+        .make_span_with(ClientMakeSpan)
+        .on_request(ClientOnRequest)
+        .on_response(ClientOnResponse)
+        .on_failure(ClientOnFailure)
+        .on_eos(ClientOnEos)
+}
+
+#[derive(Debug, Clone)]
+pub struct ClientMakeSpan;
+
+impl MakeSpan<BoxBody<Bytes, hyper::Error>> for ClientMakeSpan {
+    fn make_span(&mut self, request: &hyper::Request<BoxBody<Bytes, hyper::Error>>) -> Span {
+        info_span!(
+            "client gRPC request",
+            request_method = request.method().to_string(),
+            request_path = request.uri().path().to_string(),
+        )
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ClientOnRequest;
+
+impl OnRequest<BoxBody<Bytes, hyper::Error>> for ClientOnRequest {
+    fn on_request(&mut self, request: &hyper::Request<BoxBody<Bytes, hyper::Error>>, span: &Span) {
+        let _guard = span.enter();
+        info!(
+            trace_id = %current_trace_id(),
+            method = %request.method(),
+            path = %request.uri().path(),
+            monotonic_counter.incoming_request_count = 1,
+            "started processing request",
+        );
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ClientOnResponse;
+
+impl OnResponse<Incoming> for ClientOnResponse {
+    fn on_response(self, response: &Response<Incoming>, latency: Duration, span: &Span) {
+        let _guard = span.enter();
+        // On every response
+        info!(
+            trace_id = %current_trace_id(),
+            status = %response.status(),
+            duration_ms = %latency.as_millis(),
+            monotonic_counter.client_response_count = 1,
+            histogram.client_request_duration = latency.as_millis() as u64,
+            "finished processing request",
+        );
+
+        if response.status().is_server_error() {
+            // On every server error (HTTP 5xx) response
+            info!(monotonic_counter.client_5xx_response_count = 1);
+        } else if response.status().is_client_error() {
+            // On every client error (HTTP 4xx) response
+            info!(monotonic_counter.client_4xx_response_count = 1);
+        } else if response.status().is_success() {
+            // On every successful (HTTP 2xx) response
+            info!(monotonic_counter.client_success_response_count = 1);
+        } else {
+            error!(
+                "unexpected gRPC client response status code: {}",
+                response.status().as_u16()
+            );
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ClientOnFailure;
+
+impl OnFailure<GrpcFailureClass> for ClientOnFailure {
+    fn on_failure(
+        &mut self,
+        failure_classification: GrpcFailureClass,
+        latency: Duration,
+        span: &Span,
+    ) {
+        let _guard = span.enter();
+        let trace_id = current_trace_id();
+        let latency_ms = latency.as_millis().to_string();
+
+        let (status_code, error) = match failure_classification {
+            GrpcFailureClass::Code(code) => {
+                error!(%trace_id, code, latency_ms, "failure handling request",);
+                (Some(grpc_to_http_code(tonic::Code::from(code.get()))), None)
+            }
+            GrpcFailureClass::Error(error) => {
+                error!(%trace_id, latency_ms, "failure handling request: {}", error,);
+                (None, Some(error))
+            }
+        };
+
+        info!(
+            monotonic_counter.client_request_failure_count = 1,
+            monotonic_counter.client_5xx_response_count = 1,
+            latency_ms,
+            ?status_code,
+            ?error
+        );
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ClientOnEos;
+
+impl OnEos for ClientOnEos {
+    fn on_eos(self, _trailers: Option<&HeaderMap>, stream_duration: Duration, span: &Span) {
+        let _guard = span.enter();
+        info!(
+            trace_id = %current_trace_id(),
+            duration_ms = stream_duration.as_millis(),
+            monotonic_counter.client_stream_response_count = 1,
+            histogram.client_stream_response_duration = stream_duration.as_millis() as u64,
+            "end of stream",
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use errors::grpc_to_http_code;
-    use http_body_util::BodyExt;
-    use hyper::{http, StatusCode};
 
     use super::*;
     use crate::{
-        clients::http::Response,
         health::{HealthCheckResult, HealthStatus},
         pb::grpc::health::v1::{health_check_response::ServingStatus, HealthCheckResponse},
     };
-
-    async fn mock_http_response(status: StatusCode, body: &str) -> Result<Response, Error> {
-        Ok(Response(
-            http::Response::builder()
-                .status(status)
-                .body(
-                    body.to_string()
-                        .map_err(|e| {
-                            panic!(
-                                "infallible error parsing string body in test response: {}",
-                                e
-                            )
-                        })
-                        .boxed(),
-                )
-                .unwrap(),
-        ))
-    }
 
     async fn mock_grpc_response(
         health_status: Option<i32>,
@@ -394,132 +554,6 @@ mod tests {
             None => Err(tonic_status
                 .expect("tonic_status must be provided for test if health_status is None")),
         }
-    }
-
-    #[tokio::test]
-    async fn test_http_health_check_responses() {
-        // READY responses from HTTP 200 OK with or without reason
-        let response = [
-            (StatusCode::OK, r#"{}"#),
-            (StatusCode::OK, r#"{ "status": "HEALTHY" }"#),
-            (StatusCode::OK, r#"{ "status": "meaningless status" }"#),
-            (
-                StatusCode::OK,
-                r#"{ "status": "HEALTHY", "reason": "needless reason" }"#,
-            ),
-        ];
-        for (status, body) in response.iter() {
-            let response = mock_http_response(*status, body).await;
-            let result = HttpClient::http_response_to_health_check_result(response).await;
-            assert_eq!(result.status, HealthStatus::Healthy);
-            assert_eq!(result.code, StatusCode::OK);
-            assert_eq!(result.reason, None);
-            let serialized = serde_json::to_string(&result).unwrap();
-            assert_eq!(serialized, r#"{"status":"HEALTHY"}"#);
-        }
-
-        // NOT_READY response from HTTP 200 OK without reason
-        let response = mock_http_response(StatusCode::OK, r#"{ "status": "UNHEALTHY" }"#).await;
-        let result = HttpClient::http_response_to_health_check_result(response).await;
-        assert_eq!(result.status, HealthStatus::Unhealthy);
-        assert_eq!(result.code, StatusCode::OK);
-        assert_eq!(result.reason, None);
-        let serialized = serde_json::to_string(&result).unwrap();
-        assert_eq!(serialized, r#"{"status":"UNHEALTHY"}"#);
-
-        // UNKNOWN response from HTTP 200 OK without reason
-        let response = mock_http_response(StatusCode::OK, r#"{ "status": "UNKNOWN" }"#).await;
-        let result = HttpClient::http_response_to_health_check_result(response).await;
-        assert_eq!(result.status, HealthStatus::Unknown);
-        assert_eq!(result.code, StatusCode::OK);
-        assert_eq!(result.reason, None);
-        let serialized = serde_json::to_string(&result).unwrap();
-        assert_eq!(serialized, r#"{"status":"UNKNOWN"}"#);
-
-        // NOT_READY response from HTTP 200 OK with reason
-        let response = mock_http_response(
-            StatusCode::OK,
-            r#"{"status": "UNHEALTHY", "reason": "some reason" }"#,
-        )
-        .await;
-        let result = HttpClient::http_response_to_health_check_result(response).await;
-        assert_eq!(result.status, HealthStatus::Unhealthy);
-        assert_eq!(result.code, StatusCode::OK);
-        assert_eq!(result.reason, Some("some reason".to_string()));
-        let serialized = serde_json::to_string(&result).unwrap();
-        assert_eq!(
-            serialized,
-            r#"{"status":"UNHEALTHY","reason":"some reason"}"#
-        );
-
-        // UNKNOWN response from HTTP 200 OK with reason
-        let response = mock_http_response(
-            StatusCode::OK,
-            r#"{ "status": "UNKNOWN", "reason": "some reason" }"#,
-        )
-        .await;
-        let result = HttpClient::http_response_to_health_check_result(response).await;
-        assert_eq!(result.status, HealthStatus::Unknown);
-        assert_eq!(result.code, StatusCode::OK);
-        assert_eq!(result.reason, Some("some reason".to_string()));
-        let serialized = serde_json::to_string(&result).unwrap();
-        assert_eq!(serialized, r#"{"status":"UNKNOWN","reason":"some reason"}"#);
-
-        // NOT_READY response from HTTP 503 SERVICE UNAVAILABLE with reason
-        let response = mock_http_response(
-            StatusCode::SERVICE_UNAVAILABLE,
-            r#"{ "message": "some error message" }"#,
-        )
-        .await;
-        let result = HttpClient::http_response_to_health_check_result(response).await;
-        assert_eq!(result.status, HealthStatus::Unhealthy);
-        assert_eq!(result.code, StatusCode::SERVICE_UNAVAILABLE);
-        assert_eq!(result.reason, Some("Service Unavailable".to_string()));
-        let serialized = serde_json::to_string(&result).unwrap();
-        assert_eq!(
-            serialized,
-            r#"{"status":"UNHEALTHY","code":503,"reason":"Service Unavailable"}"#
-        );
-
-        // UNKNOWN response from HTTP 404 NOT FOUND with reason
-        let response = mock_http_response(
-            StatusCode::NOT_FOUND,
-            r#"{ "message": "service not found" }"#,
-        )
-        .await;
-        let result = HttpClient::http_response_to_health_check_result(response).await;
-        assert_eq!(result.status, HealthStatus::Unknown);
-        assert_eq!(result.code, StatusCode::NOT_FOUND);
-        assert_eq!(result.reason, Some("Not Found".to_string()));
-        let serialized = serde_json::to_string(&result).unwrap();
-        assert_eq!(
-            serialized,
-            r#"{"status":"UNKNOWN","code":404,"reason":"Not Found"}"#
-        );
-
-        // NOT_READY response from HTTP 500 INTERNAL SERVER ERROR without reason
-        let response = mock_http_response(StatusCode::INTERNAL_SERVER_ERROR, r#""#).await;
-        let result = HttpClient::http_response_to_health_check_result(response).await;
-        assert_eq!(result.status, HealthStatus::Unhealthy);
-        assert_eq!(result.code, StatusCode::INTERNAL_SERVER_ERROR);
-        assert_eq!(result.reason, Some("Internal Server Error".to_string()));
-        let serialized = serde_json::to_string(&result).unwrap();
-        assert_eq!(
-            serialized,
-            r#"{"status":"UNHEALTHY","code":500,"reason":"Internal Server Error"}"#
-        );
-
-        // UNKNOWN response from HTTP 400 BAD REQUEST without reason
-        let response = mock_http_response(StatusCode::BAD_REQUEST, r#""#).await;
-        let result = HttpClient::http_response_to_health_check_result(response).await;
-        assert_eq!(result.status, HealthStatus::Unknown);
-        assert_eq!(result.code, StatusCode::BAD_REQUEST);
-        assert_eq!(result.reason, Some("Bad Request".to_string()));
-        let serialized = serde_json::to_string(&result).unwrap();
-        assert_eq!(
-            serialized,
-            r#"{"status":"UNKNOWN","code":400,"reason":"Bad Request"}"#
-        );
     }
 
     #[tokio::test]

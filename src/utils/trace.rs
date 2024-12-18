@@ -18,11 +18,10 @@
 use std::time::Duration;
 
 use axum::{extract::Request, http::HeaderMap, response::Response};
-use hyper::body::Incoming;
 use opentelemetry::{
     global,
     metrics::MetricsError,
-    trace::{TraceContextExt, TraceError, TracerProvider},
+    trace::{TraceContextExt, TraceError, TraceId, TracerProvider},
     KeyValue,
 };
 use opentelemetry_http::{HeaderExtractor, HeaderInjector};
@@ -42,6 +41,7 @@ use tracing_opentelemetry::{MetricsLayer, OpenTelemetrySpanExt};
 use tracing_subscriber::{layer::SubscriberExt, EnvFilter, Layer};
 
 use crate::args::{LogFormat, OtlpProtocol, TracingConfig};
+use crate::clients::http::TracedResponse;
 
 #[derive(Debug, thiserror::Error)]
 pub enum TracingError {
@@ -280,8 +280,9 @@ pub fn on_outgoing_response(response: &Response, latency: Duration, span: &Span)
         response_status = response.status().as_u16(),
         request_duration = latency.as_millis()
     );
+    // Note: tracing_opentelemetry expects u64/f64 for histograms but as_millis returns u128
     info!(
-        histogram.service_request_duration = latency.as_millis(),
+        histogram.service_request_duration = latency.as_millis() as u64,
         response_status = response.status().as_u16()
     );
 
@@ -294,8 +295,10 @@ pub fn on_outgoing_response(response: &Response, latency: Duration, span: &Span)
         );
     } else if response.status().is_client_error() {
         // On every client error (HTTP 4xx) response
+        // Named so that this does not get mixed up with orchestrator
+        // client response metrics
         info!(
-            monotonic_counter.client_error_response_count = 1,
+            monotonic_counter.client_app_error_response_count = 1,
             response_status = response.status().as_u16(),
             request_duration = latency.as_millis()
         );
@@ -330,7 +333,7 @@ pub fn on_outgoing_eos(trailers: Option<&HeaderMap>, stream_duration: Duration, 
         monotonic_counter.service_stream_response_count = 1,
         stream_duration = stream_duration.as_millis()
     );
-    info!(monotonic_histogram.service_stream_response_duration = stream_duration.as_millis());
+    info!(histogram.service_stream_response_duration = stream_duration.as_millis() as u64);
 }
 
 /// Injects the `traceparent` header into the header map from the current tracing span context.
@@ -351,7 +354,7 @@ pub fn with_traceparent_header(ctx: &opentelemetry::Context, headers: HeaderMap)
 /// tracing span context (i.e. use `traceparent` as parent to the current span).
 /// Defaults to using the current context when no `traceparent` is found.
 /// See https://www.w3.org/TR/trace-context/#trace-context-http-headers-format.
-pub fn trace_context_from_http_response(span: &Span, response: &hyper::Response<Incoming>) {
+pub fn trace_context_from_http_response(span: &Span, response: &TracedResponse) {
     let curr_trace = span.context().span().span_context().trace_id();
     let ctx = global::get_text_map_propagator(|propagator| {
         // Returns the current context if no `traceparent` is found
@@ -373,4 +376,9 @@ pub fn trace_context_from_grpc_response<T>(response: &tonic::Response<T>) {
         propagator.extract(&HeaderExtractor(&metadata.into_headers()))
     });
     Span::current().set_parent(ctx);
+}
+
+/// Returns the `trace_id` of the current span according to the global tracing subscriber.
+pub fn current_trace_id() -> TraceId {
+    Span::current().context().span().span_context().trace_id()
 }
