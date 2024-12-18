@@ -435,15 +435,12 @@ impl OnFailure<ServerErrorsFailureClass> for ClientOnFailure {
                     ?trace_id,
                     ?status_code,
                     latency_ms,
-                    "HTTP client failed to handle request",
+                    "failure handling request",
                 );
                 (Some(status_code), None)
             }
             ServerErrorsFailureClass::Error(error) => {
-                error!(
-                    ?trace_id,
-                    latency_ms, "HTTP client failed to handle request: {}", error,
-                );
+                error!(?trace_id, latency_ms, "failure handling request: {}", error,);
                 (None, Some(error))
             }
         };

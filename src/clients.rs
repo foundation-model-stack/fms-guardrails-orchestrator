@@ -522,17 +522,11 @@ impl OnFailure<GrpcFailureClass> for ClientOnFailure {
 
         let (status_code, error) = match failure_classification {
             GrpcFailureClass::Code(code) => {
-                error!(
-                    ?trace_id,
-                    code, latency_ms, "gRPC client failed to handle request",
-                );
+                error!(?trace_id, code, latency_ms, "failure handling request",);
                 (Some(grpc_to_http_code(tonic::Code::from(code.get()))), None)
             }
             GrpcFailureClass::Error(error) => {
-                error!(
-                    ?trace_id,
-                    latency_ms, "gRPC client failed to handle request: {}", error,
-                );
+                error!(?trace_id, latency_ms, "failure handling request: {}", error,);
                 (None, Some(error))
             }
         };
