@@ -82,6 +82,8 @@ curl -v http://localhost:8034/health
 
 ### Server configuration
 
+Metrics and traces for observability are gathered through the [OpenTelemetry](https://opentelemetry.io/) framework. Details are provided in [orchestrator's OpenTelemetry reference doc](./docs/open-telemetry.md).
+
 Server configuration args can also be provided through environment variables.
 
 - For TLS, provide `TLS_KEY_PATH` and `TLS_CERT_PATH` for paths to the server key and cert respectively.
