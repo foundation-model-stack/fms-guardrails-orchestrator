@@ -38,7 +38,7 @@ pub mod text_generation;
 pub use text_generation::*;
 
 const DEFAULT_PORT: u16 = 8080;
-const DETECTOR_ID_HEADER_NAME: &str = "detector-id";
+pub const DETECTOR_ID_HEADER_NAME: &str = "detector-id";
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct DetectorError {

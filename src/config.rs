@@ -67,6 +67,17 @@ pub struct ServiceConfig {
     pub tls: Option<Tls>,
 }
 
+impl ServiceConfig {
+    pub fn new(hostname: String, port: u16) -> Self {
+        Self {
+            hostname,
+            port: Some(port),
+            request_timeout: None,
+            tls: None,
+        }
+    }
+}
+
 /// TLS provider
 #[derive(Clone, Debug, Deserialize)]
 #[serde(untagged)]
