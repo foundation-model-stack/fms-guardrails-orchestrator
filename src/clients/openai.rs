@@ -18,7 +18,7 @@
 use std::collections::HashMap;
 
 use async_trait::async_trait;
-use eventsource_stream::{EventStreamError, Eventsource};
+use eventsource_stream::Eventsource;
 use futures::StreamExt;
 use http_body_util::BodyExt;
 use hyper::{HeaderMap, StatusCode};
@@ -101,14 +101,9 @@ impl OpenAiClient {
                         }
                         Err(error) => {
                             // We received an error from the event stream, send error message
-                            let message = match error {
-                                EventStreamError::Utf8(e) => e.to_string(),
-                                EventStreamError::Parser(e) => e.to_string(),
-                                EventStreamError::Transport(e) => e.to_string(),
-                            };
                             let error = Error::Http {
                                 code: StatusCode::INTERNAL_SERVER_ERROR,
-                                message,
+                                message: error.to_string(),
                             };
                             let _ = tx.send(Err(error)).await;
                         }
