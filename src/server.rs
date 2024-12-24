@@ -23,7 +23,6 @@ use std::{
     io::BufReader,
     net::SocketAddr,
     path::PathBuf,
-    pin::Pin,
     sync::Arc,
 };
 
@@ -38,7 +37,10 @@ use axum::{
     Json, Router,
 };
 use axum_extra::extract::WithRejection;
-use futures::{stream, Stream, StreamExt};
+use futures::{
+    stream::{self, BoxStream},
+    Stream, StreamExt,
+};
 use hyper::body::Incoming;
 use hyper_util::rt::{TokioExecutor, TokioIo};
 use opentelemetry::trace::TraceContextExt;
@@ -521,19 +523,18 @@ async fn chat_completions_detection(
             Streaming(response_rx) => {
                 let response_stream = ReceiverStream::new(response_rx);
                 // Convert response stream to a stream of SSE events
-                let event_stream: Pin<Box<dyn Stream<Item = Result<Event, Infallible>> + Send>> =
-                    response_stream
-                        .map(|message| match message {
-                            Ok(chunk) => Ok(Event::default().json_data(chunk).unwrap()),
-                            Err(error) => {
-                                let error: Error = orchestrator::Error::from(error).into();
-                                Ok(Event::default()
-                                    .event("error")
-                                    .json_data(error.to_json())
-                                    .unwrap())
-                            }
-                        })
-                        .boxed();
+                let event_stream: BoxStream<Result<Event, Infallible>> = response_stream
+                    .map(|message| match message {
+                        Ok(chunk) => Ok(Event::default().json_data(chunk).unwrap()),
+                        Err(error) => {
+                            let error: Error = orchestrator::Error::from(error).into();
+                            Ok(Event::default()
+                                .event("error")
+                                .json_data(error.to_json())
+                                .unwrap())
+                        }
+                    })
+                    .boxed();
                 let sse = Sse::new(event_stream).keep_alive(KeepAlive::default());
                 Ok(sse.into_response())
             }
