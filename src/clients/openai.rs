@@ -15,11 +15,10 @@
 
 */
 
-use std::{collections::HashMap, convert::Infallible};
+use std::collections::HashMap;
 
 use async_trait::async_trait;
-use axum::response::sse;
-use eventsource_stream::Eventsource;
+use eventsource_stream::{EventStreamError, Eventsource};
 use futures::StreamExt;
 use http_body_util::BodyExt;
 use hyper::{HeaderMap, StatusCode};
@@ -87,14 +86,31 @@ impl OpenAiClient {
                 while let Some(result) = event_stream.next().await {
                     match result {
                         Ok(event) => {
-                            let event = sse::Event::default().data(event.data);
-                            let _ = tx.send(Ok(event)).await;
+                            match serde_json::from_str::<ChatCompletionChunk>(&event.data) {
+                                Ok(chunk) => {
+                                    let _ = tx.send(Ok(chunk)).await;
+                                }
+                                Err(e) => {
+                                    let error = Error::Http {
+                                        code: StatusCode::INTERNAL_SERVER_ERROR,
+                                        message: format!("deserialization error: {e}"),
+                                    };
+                                    let _ = tx.send(Err(error)).await;
+                                }
+                            }
                         }
                         Err(error) => {
-                            // We received an error from the event stream, send an error event
-                            let event =
-                                sse::Event::default().event("error").data(error.to_string());
-                            let _ = tx.send(Ok(event)).await;
+                            // We received an error from the event stream, send error message
+                            let message = match error {
+                                EventStreamError::Utf8(e) => e.to_string(),
+                                EventStreamError::Parser(e) => e.to_string(),
+                                EventStreamError::Transport(e) => e.to_string(),
+                            };
+                            let error = Error::Http {
+                                code: StatusCode::INTERNAL_SERVER_ERROR,
+                                message,
+                            };
+                            let _ = tx.send(Err(error)).await;
                         }
                     }
                 }
@@ -144,7 +160,7 @@ impl HttpClientExt for OpenAiClient {
 #[derive(Debug)]
 pub enum ChatCompletionsResponse {
     Unary(ChatCompletion),
-    Streaming(mpsc::Receiver<Result<sse::Event, Infallible>>),
+    Streaming(mpsc::Receiver<Result<ChatCompletionChunk, Error>>),
 }
 
 impl From<ChatCompletion> for ChatCompletionsResponse {

@@ -23,6 +23,7 @@ use std::{
     io::BufReader,
     net::SocketAddr,
     path::PathBuf,
+    pin::Pin,
     sync::Arc,
 };
 
@@ -505,6 +506,7 @@ async fn chat_completions_detection(
     headers: HeaderMap,
     WithRejection(Json(request), _): WithRejection<Json<ChatCompletionsRequest>, Error>,
 ) -> Result<impl IntoResponse, Error> {
+    use ChatCompletionsResponse::*;
     let trace_id = Span::current().context().span().span_context().trace_id();
     info!(?trace_id, "handling request");
     let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
@@ -515,10 +517,24 @@ async fn chat_completions_detection(
         .await
     {
         Ok(response) => match response {
-            ChatCompletionsResponse::Unary(response) => Ok(Json(response).into_response()),
-            ChatCompletionsResponse::Streaming(response_rx) => {
+            Unary(response) => Ok(Json(response).into_response()),
+            Streaming(response_rx) => {
                 let response_stream = ReceiverStream::new(response_rx);
-                let sse = Sse::new(response_stream).keep_alive(KeepAlive::default());
+                // Convert response stream to a stream of SSE events
+                let event_stream: Pin<Box<dyn Stream<Item = Result<Event, Infallible>> + Send>> =
+                    response_stream
+                        .map(|message| match message {
+                            Ok(chunk) => Ok(Event::default().json_data(chunk).unwrap()),
+                            Err(error) => {
+                                let error: Error = orchestrator::Error::from(error).into();
+                                Ok(Event::default()
+                                    .event("error")
+                                    .json_data(error.to_json())
+                                    .unwrap())
+                            }
+                        })
+                        .boxed();
+                let sse = Sse::new(event_stream).keep_alive(KeepAlive::default());
                 Ok(sse.into_response())
             }
         },
