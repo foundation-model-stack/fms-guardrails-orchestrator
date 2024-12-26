@@ -467,7 +467,7 @@ async fn stream_content_detection(
             match result {
                 Ok(msg) => {
                     let msg = serde_json::to_string(&msg).unwrap();
-                    let _ = output_tx.send(Ok(msg)).await;
+                    let _ = output_tx.send(Ok(to_ndjson(msg))).await;
                 }
                 Err(error) => {
                     // Convert orchestrator::Error to server::Error
@@ -481,6 +481,13 @@ async fn stream_content_detection(
     });
 
     Response::new(axum::body::Body::from_stream(output_stream))
+}
+
+fn to_ndjson<T>(json: T) -> String
+where
+    T: std::fmt::Display,
+{
+    format!("{json}\n")
 }
 
 #[instrument(skip_all)]
