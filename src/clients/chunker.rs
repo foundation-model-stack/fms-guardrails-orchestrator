@@ -22,11 +22,12 @@ use axum::http::HeaderMap;
 use futures::{Future, Stream, StreamExt, TryStreamExt};
 use ginepro::LoadBalancedChannel;
 use tonic::{Code, Request, Response, Status, Streaming};
+use tonic_tracing_opentelemetry::middleware::client::OtelGrpcService;
 use tracing::{debug, info, instrument, Span};
 
 use super::{
     create_grpc_client, errors::grpc_to_http_code, grpc_request_with_headers, BoxStream, Client,
-    Error, GrpcClient,
+    Error,
 };
 use crate::{
     config::ServiceConfig,
@@ -53,8 +54,8 @@ type StreamingTokenizationResult =
 #[cfg_attr(test, faux::create)]
 #[derive(Clone)]
 pub struct ChunkerClient {
-    client: GrpcClient<ChunkersServiceClient<LoadBalancedChannel>>,
-    health_client: GrpcClient<HealthClient<LoadBalancedChannel>>,
+    client: ChunkersServiceClient<OtelGrpcService<LoadBalancedChannel>>,
+    health_client: HealthClient<OtelGrpcService<LoadBalancedChannel>>,
 }
 
 #[cfg_attr(test, faux::methods)]

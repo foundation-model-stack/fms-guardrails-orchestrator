@@ -20,11 +20,12 @@ use axum::http::HeaderMap;
 use futures::{StreamExt, TryStreamExt};
 use ginepro::LoadBalancedChannel;
 use tonic::Code;
+use tonic_tracing_opentelemetry::middleware::client::OtelGrpcService;
 use tracing::{debug, instrument, Span};
 
 use super::{
     create_grpc_client, errors::grpc_to_http_code, grpc_request_with_headers, BoxStream, Client,
-    Error, GrpcClient,
+    Error,
 };
 use crate::{
     config::ServiceConfig,
@@ -42,7 +43,7 @@ const DEFAULT_PORT: u16 = 8033;
 #[cfg_attr(test, faux::create)]
 #[derive(Clone)]
 pub struct TgisClient {
-    client: GrpcClient<GenerationServiceClient<LoadBalancedChannel>>,
+    client: GenerationServiceClient<OtelGrpcService<LoadBalancedChannel>>,
 }
 
 #[cfg_attr(test, faux::methods)]

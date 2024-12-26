@@ -20,11 +20,12 @@ use axum::http::HeaderMap;
 use futures::{StreamExt, TryStreamExt};
 use ginepro::LoadBalancedChannel;
 use tonic::{Code, Request};
+use tonic_tracing_opentelemetry::middleware::client::OtelGrpcService;
 use tracing::{debug, instrument, Span};
 
 use super::{
     create_grpc_client, errors::grpc_to_http_code, grpc_request_with_headers, BoxStream, Client,
-    Error, GrpcClient,
+    Error,
 };
 use crate::{
     config::ServiceConfig,
@@ -49,8 +50,8 @@ const MODEL_ID_HEADER_NAME: &str = "mm-model-id";
 #[cfg_attr(test, faux::create)]
 #[derive(Clone)]
 pub struct NlpClient {
-    client: GrpcClient<NlpServiceClient<LoadBalancedChannel>>,
-    health_client: GrpcClient<HealthClient<LoadBalancedChannel>>,
+    client: NlpServiceClient<OtelGrpcService<LoadBalancedChannel>>,
+    health_client: HealthClient<OtelGrpcService<LoadBalancedChannel>>,
 }
 
 #[cfg_attr(test, faux::methods)]

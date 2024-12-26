@@ -20,7 +20,6 @@ use std::{
     any::TypeId,
     collections::{hash_map, HashMap},
     fmt::Debug,
-    ops::{Deref, DerefMut},
     pin::Pin,
     time::Duration,
 };
@@ -29,21 +28,19 @@ use async_trait::async_trait;
 use axum::http::{Extensions, HeaderMap};
 use futures::Stream;
 use ginepro::LoadBalancedChannel;
-use http_body_util::combinators::BoxBody;
-use hyper::{
-    body::{Bytes, Incoming},
-    Response,
-};
+use hyper::{body::Incoming, Response};
 use hyper_timeout::TimeoutConnector;
 use hyper_util::rt::TokioExecutor;
+use tonic::body::BoxBody;
 use tonic::{metadata::MetadataMap, Request};
+use tonic_tracing_opentelemetry::middleware::client::{OtelGrpcLayer, OtelGrpcService};
 use tower::timeout::TimeoutLayer;
 use tower::ServiceBuilder;
 use tower_http::{
-    classify::{GrpcErrorsAsFailures, GrpcFailureClass, SharedClassifier},
+    classify::GrpcFailureClass,
     trace::{
         DefaultOnBodyChunk, GrpcMakeClassifier, MakeSpan, OnEos, OnFailure, OnRequest, OnResponse,
-        Trace, TraceLayer,
+        TraceLayer,
     },
 };
 use tracing::{debug, error, info, info_span, instrument, Span};
@@ -271,8 +268,8 @@ pub async fn create_http_client(
 pub async fn create_grpc_client<C: Debug + Clone>(
     default_port: u16,
     service_config: &ServiceConfig,
-    new: fn(LoadBalancedChannel) -> C,
-) -> GrpcClient<C> {
+    new: fn(OtelGrpcService<LoadBalancedChannel>) -> C,
+) -> C {
     let port = service_config.port.unwrap_or(default_port);
     let protocol = match service_config.tls {
         Some(_) => "https",
@@ -327,12 +324,10 @@ pub async fn create_grpc_client<C: Debug + Clone>(
         .await
         .unwrap_or_else(|error| panic!("error creating grpc client: {error}"));
 
-    let client = new(channel);
+    //let client = new(channel);
     // Adds tower::Service wrapper to allow for enable middleware layers to be added
-    let channel = ServiceBuilder::new()
-        .layer(grpc_trace_layer())
-        .service(client);
-    GrpcClient(channel)
+    let channel = ServiceBuilder::new().layer(OtelGrpcLayer).service(channel);
+    new(channel)
 }
 
 /// Returns `true` if hostname is valid according to [IETF RFC 1123](https://tools.ietf.org/html/rfc1123).
@@ -372,33 +367,24 @@ fn grpc_request_with_headers<T>(request: T, headers: HeaderMap) -> Request<T> {
 
 pub type GrpcServiceRequest = hyper::Request<tonic::body::BoxBody>;
 
-#[derive(Debug, Clone)]
-pub struct GrpcClient<C: Debug + Clone>(
-    Trace<
-        C,
-        SharedClassifier<GrpcErrorsAsFailures>,
-        ClientMakeSpan,
-        ClientOnRequest,
-        ClientOnResponse,
-        DefaultOnBodyChunk,
-        ClientOnEos,
-        ClientOnFailure,
-    >,
-);
+// #[derive(Debug, Clone)]
+// pub struct GrpcClient<C: Debug + Clone>(
+//     OtelGrpcService<C>,
+// );
 
-impl<C: Debug + Clone> Deref for GrpcClient<C> {
-    type Target = C;
+// impl<C: Debug + Clone> Deref for GrpcClient<C> {
+//     type Target = C;
 
-    fn deref(&self) -> &Self::Target {
-        self.0.get_ref()
-    }
-}
+//     fn deref(&self) -> &Self::Target {
+//         self.0.get_ref()
+//     }
+// }
 
-impl<C: Debug + Clone> DerefMut for GrpcClient<C> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        self.0.get_mut()
-    }
-}
+// impl<C: Debug + Clone> DerefMut for GrpcClient<C> {
+//     fn deref_mut(&mut self) -> &mut Self::Target {
+//         self.0.get_mut()
+//     }
+// }
 
 pub type GrpcClientTraceLayer = TraceLayer<
     GrpcMakeClassifier,
@@ -411,6 +397,7 @@ pub type GrpcClientTraceLayer = TraceLayer<
 >;
 
 pub fn grpc_trace_layer() -> GrpcClientTraceLayer {
+    info!("GRPC trace layer!!");
     TraceLayer::new_for_grpc()
         .make_span_with(ClientMakeSpan)
         .on_request(ClientOnRequest)
@@ -422,8 +409,9 @@ pub fn grpc_trace_layer() -> GrpcClientTraceLayer {
 #[derive(Debug, Clone)]
 pub struct ClientMakeSpan;
 
-impl MakeSpan<BoxBody<Bytes, hyper::Error>> for ClientMakeSpan {
-    fn make_span(&mut self, request: &hyper::Request<BoxBody<Bytes, hyper::Error>>) -> Span {
+impl MakeSpan<BoxBody> for ClientMakeSpan {
+    fn make_span(&mut self, request: &hyper::Request<BoxBody>) -> Span {
+        error!("In make span????");
         info_span!(
             "client gRPC request",
             request_method = request.method().to_string(),
@@ -435,8 +423,8 @@ impl MakeSpan<BoxBody<Bytes, hyper::Error>> for ClientMakeSpan {
 #[derive(Debug, Clone)]
 pub struct ClientOnRequest;
 
-impl OnRequest<BoxBody<Bytes, hyper::Error>> for ClientOnRequest {
-    fn on_request(&mut self, request: &hyper::Request<BoxBody<Bytes, hyper::Error>>, span: &Span) {
+impl OnRequest<BoxBody> for ClientOnRequest {
+    fn on_request(&mut self, request: &hyper::Request<BoxBody>, span: &Span) {
         let _guard = span.enter();
         info!(
             trace_id = %current_trace_id(),
