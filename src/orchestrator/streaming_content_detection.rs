@@ -31,7 +31,7 @@ impl Orchestrator {
 
         // Spawn task to process input stream
         tokio::spawn(async move {
-            let mut detectors = HashMap::default();
+            let mut detectors: HashMap<String, crate::models::DetectorParams>;
             // Get detector config from the first message
             // We can use Peekable to get a reference to it instead of consuming the message here
             // Peekable::peek() takes self: Pin<&mut Peekable<_>>, which is why we need to pin it
