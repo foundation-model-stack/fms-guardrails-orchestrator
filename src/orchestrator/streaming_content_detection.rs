@@ -1,8 +1,9 @@
-use std::{collections::HashMap, pin::Pin};
+use std::collections::HashMap;
 
 use futures::StreamExt;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
+use tracing::error;
 use tracing::instrument;
 
 use super::{Error, Orchestrator, StreamingContentDetectionTask};
@@ -31,7 +32,7 @@ impl Orchestrator {
 
         // Spawn task to process input stream
         tokio::spawn(async move {
-            let mut detectors: HashMap<String, crate::models::DetectorParams>;
+            let mut _detectors: HashMap<String, crate::models::DetectorParams>;
             // Get detector config from the first message
             // We can use Peekable to get a reference to it instead of consuming the message here
             // Peekable::peek() takes self: Pin<&mut Peekable<_>>, which is why we need to pin it
@@ -41,7 +42,7 @@ impl Orchestrator {
                     Ok(msg) => {
                         // validate initial stream frame
                         if let Err(error) = msg.validate_initial_request() {
-                            tracing::error!("{:#?}", error);
+                            error!("{:#?}", error);
                             let _ = response_tx
                                 .send(Err(Error::Validation(error.to_string())))
                                 .await;
@@ -49,7 +50,7 @@ impl Orchestrator {
                         }
 
                         if let Some(d) = &msg.detectors {
-                            detectors = d.clone();
+                            _detectors = d.clone();
                         } else {
                             // No detectors configured, send error message and terminate task
                             let _ = response_tx
@@ -77,6 +78,7 @@ impl Orchestrator {
                     }
                 }
             }
+
             // Process the input stream
             while let Some(result) = input_stream.next().await {
                 match result {

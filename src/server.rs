@@ -474,7 +474,7 @@ async fn stream_content_detection(
                     let error: Error = error.into();
                     // server::Error doesn't impl Serialize, so we use to_json()
                     let error_msg = error.to_json().to_string();
-                    let _ = output_tx.send(Ok(error_msg)).await;
+                    let _ = output_tx.send(Ok(to_ndjson(error_msg))).await;
                 }
             }
         }
