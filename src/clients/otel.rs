@@ -1,5 +1,5 @@
 // Adapted from https://github.com/davidB/tracing-opentelemetry-instrumentation-sdk/tree/main/tonic-tracing-opentelemetry
-use crate::utils::trace::current_trace_id;
+use crate::utils::trace::{current_trace_id, with_traceparent_header};
 use http::{Request, Response, StatusCode};
 use pin_project_lite::pin_project;
 use std::{
@@ -12,7 +12,7 @@ use tokio::time::Instant;
 use tonic::client::GrpcService;
 use tower::Layer;
 use tracing::{error, info, info_span, Span};
-use tracing_opentelemetry_instrumentation_sdk::{find_context_from_tracing, http as otel_http};
+use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 /// Update from https://github.com/davidB/tracing-opentelemetry-instrumentation-sdk/tree/main/tonic-tracing-opentelemetry
 /// layer for grpc (tonic client):
@@ -38,7 +38,6 @@ pub struct OtelGrpcService<S> {
 }
 
 pub fn make_span_from_request<B>(req: &http::Request<B>) -> tracing::Span {
-    //let (service, method) = otel_http::extract_service_method(req.uri());
     info_span!(
         "client gRPC request",
         request_method = req.method().to_string(),
@@ -63,7 +62,6 @@ pub fn update_span_from_response_or_error<B, E>(
                 histogram.client_request_duration = latency as u64,
                 "finished processing request",
             );
-            //grpc_update_span_from_response(span, response, false);
             if response.status().is_server_error() {
                 // On every server error (HTTP 5xx) response
                 info!(monotonic_counter.client_5xx_response_count = 1);
@@ -100,15 +98,11 @@ where
     S::Future: Send + 'static,
     S::Error: Error + 'static,
     B: Send + 'static,
-    // B2: tonic::codegen::Body,
     B2: http_body::Body,
 {
     type ResponseBody = B2;
     type Error = S::Error;
     type Future = ResponseFuture<S::Future>;
-    // #[allow(clippy::type_complexity)]
-    // type Future =
-    //     futures::future::BoxFuture<'static, Result<http::Response<S::ResponseBody>, Self::Error>>;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         self.inner.poll_ready(cx) //.map_err(|e| e.into())
@@ -118,11 +112,9 @@ where
         // This is necessary because tonic internally uses `tower::buffer::Buffer`.
         // See https://github.com/tower-rs/tower/issues/547#issuecomment-767629149
         // for details on why this is necessary
-        // let clone = self.inner.clone();
-        // let mut inner = std::mem::replace(&mut self.inner, clone);
-        let mut req = req;
         let span = make_span_from_request(&req);
-        otel_http::inject_context(&find_context_from_tracing(&span), req.headers_mut());
+        let ctx = span.context();
+        let _headers = with_traceparent_header(&ctx, req.headers().clone());
         let _guard = span.enter();
         info!(
             trace_id = %current_trace_id(),
@@ -150,7 +142,6 @@ pin_project! {
         #[pin]
         pub(crate) inner: F,
         pub(crate) span: Span,
-        // pub(crate) start: Instant,
     }
 }
 

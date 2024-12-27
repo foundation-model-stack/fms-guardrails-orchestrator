@@ -59,7 +59,6 @@ tower = { version = "0.5.1", features = ["timeout"] }
 tower-http = { version = "0.5.2", features = ["trace"] }
 tracing = "0.1.40"
 tracing-opentelemetry = "0.25.0"
-tracing-opentelemetry-instrumentation-sdk = { version = "0.24.0", features = ["http"]}
 tracing-subscriber = { version = "0.3.18", features = ["json", "env-filter"] }
 url = "2.5.2"
 uuid = { version = "1.10.0", features = ["v4", "fast-rng"] }
