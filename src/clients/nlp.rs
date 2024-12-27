@@ -20,12 +20,11 @@ use axum::http::HeaderMap;
 use futures::{StreamExt, TryStreamExt};
 use ginepro::LoadBalancedChannel;
 use tonic::{Code, Request};
-use tonic_tracing_opentelemetry::middleware::client::OtelGrpcService;
 use tracing::{debug, instrument, Span};
 
 use super::{
-    create_grpc_client, errors::grpc_to_http_code, grpc_request_with_headers, BoxStream, Client,
-    Error,
+    create_grpc_client, errors::grpc_to_http_code, grpc_request_with_headers,
+    otel::OtelGrpcService, BoxStream, Client, Error,
 };
 use crate::{
     config::ServiceConfig,
