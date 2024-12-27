@@ -250,15 +250,11 @@ pub fn incoming_request_span(request: &Request) -> Span {
 pub fn on_incoming_request(request: &Request, span: &Span) {
     let _guard = span.enter();
     info!(
-        "incoming request to {} {} with trace_id {}",
-        request.method(),
-        request.uri().path(),
-        span.context().span().span_context().trace_id().to_string()
-    );
-    info!(
+        trace_id = span.context().span().span_context().trace_id().to_string(),
+        method = %request.method(),
+        path = %request.uri().path(),
         monotonic_counter.incoming_request_count = 1,
-        request_method = request.method().as_str(),
-        request_path = request.uri().path()
+        "started processing orchestrator request",
     );
 }
 
@@ -267,48 +263,28 @@ pub fn on_outgoing_response(response: &Response, latency: Duration, span: &Span)
     span.record("response_status_code", response.status().as_u16());
     span.record("request_duration_ms", latency.as_millis());
 
-    info!(
-        "response {} for request with with trace_id {} generated in {} ms",
-        &response.status(),
-        span.context().span().span_context().trace_id().to_string(),
-        latency.as_millis()
-    );
-
     // On every response
-    info!(
-        monotonic_counter.handled_request_count = 1,
-        response_status = response.status().as_u16(),
-        request_duration = latency.as_millis()
-    );
     // Note: tracing_opentelemetry expects u64/f64 for histograms but as_millis returns u128
     info!(
+        trace_id = span.context().span().span_context().trace_id().to_string(),
+        status = %response.status(),
+        duration_ms = %latency.as_millis(),
+        monotonic_counter.handled_request_count = 1,
         histogram.service_request_duration = latency.as_millis() as u64,
-        response_status = response.status().as_u16()
+        "finished processing orchestrator request"
     );
 
     if response.status().is_server_error() {
         // On every server error (HTTP 5xx) response
-        info!(
-            monotonic_counter.server_error_response_count = 1,
-            response_status = response.status().as_u16(),
-            request_duration = latency.as_millis()
-        );
+        info!(monotonic_counter.server_error_response_count = 1);
     } else if response.status().is_client_error() {
         // On every client error (HTTP 4xx) response
         // Named so that this does not get mixed up with orchestrator
         // client response metrics
-        info!(
-            monotonic_counter.client_app_error_response_count = 1,
-            response_status = response.status().as_u16(),
-            request_duration = latency.as_millis()
-        );
+        info!(monotonic_counter.client_app_error_response_count = 1);
     } else if response.status().is_success() {
         // On every successful (HTTP 2xx) response
-        info!(
-            monotonic_counter.success_response_count = 1,
-            response_status = response.status().as_u16(),
-            request_duration = latency.as_millis()
-        );
+        info!(monotonic_counter.success_response_count = 1);
     } else {
         error!(
             "unexpected response status code: {}",
@@ -317,23 +293,19 @@ pub fn on_outgoing_response(response: &Response, latency: Duration, span: &Span)
     }
 }
 
-pub fn on_outgoing_eos(trailers: Option<&HeaderMap>, stream_duration: Duration, span: &Span) {
+pub fn on_outgoing_eos(_trailers: Option<&HeaderMap>, stream_duration: Duration, span: &Span) {
     let _guard = span.enter();
 
     span.record("stream_response", true);
     span.record("stream_response_duration_ms", stream_duration.as_millis());
 
     info!(
-        "stream response for request with trace_id {} closed after {} ms with trailers: {:?}",
-        span.context().span().span_context().trace_id().to_string(),
-        stream_duration.as_millis(),
-        trailers
-    );
-    info!(
+        trace_id = span.context().span().span_context().trace_id().to_string(),
         monotonic_counter.service_stream_response_count = 1,
-        stream_duration = stream_duration.as_millis()
+        histogram.service_stream_response_duration = stream_duration.as_millis() as u64,
+        stream_duration = stream_duration.as_millis(),
+        "end of orchestrator stream"
     );
-    info!(histogram.service_stream_response_duration = stream_duration.as_millis() as u64);
 }
 
 /// Injects the `traceparent` header into the header map from the current tracing span context.
