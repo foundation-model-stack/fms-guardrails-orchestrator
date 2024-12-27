@@ -44,7 +44,6 @@ use crate::clients::chunker::ChunkerClient;
 use crate::clients::chunker::DEFAULT_CHUNKER_ID;
 use crate::clients::detector::ContentAnalysisRequest;
 use crate::clients::TextContentsDetectorClient;
-use crate::models::ClassifiedGeneratedTextStreamResult;
 use crate::models::DetectorParams;
 use crate::models::StreamingContentDetectionRequest;
 use crate::models::StreamingContentDetectionResponse;
@@ -318,7 +317,7 @@ async fn streaming_output_detection_task(
 async fn chunk_broadcast_task(
     ctx: Arc<Context>,
     chunker_id: String,
-    generation_rx: broadcast::Receiver<ClassifiedGeneratedTextStreamResult>,
+    generation_rx: broadcast::Receiver<StreamingContentDetectionRequest>,
     error_tx: broadcast::Sender<Error>,
 ) -> Result<broadcast::Sender<Chunk>, Error> {
     // Consume generation stream and convert to chunker input stream
@@ -330,10 +329,7 @@ async fn chunk_broadcast_task(
     let input_stream = BroadcastStream::new(generation_rx)
         .enumerate()
         .map(|(token_pointer, generation_result)| {
-            let generated_text = generation_result
-                .unwrap()
-                .generated_text
-                .unwrap_or_default();
+            let generated_text = generation_result.unwrap().content;
             chunkers::BidiStreamingChunkerTokenizationTaskRequest {
                 text_stream: generated_text,
                 input_index_stream: token_pointer as i64,
