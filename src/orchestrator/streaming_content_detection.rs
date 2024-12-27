@@ -99,7 +99,7 @@ impl Orchestrator {
             // and terminates the task.
             let (error_tx, _) = broadcast::channel(1);
 
-            let mut _result_rx = match streaming_output_detection_task(
+            let mut result_rx = match streaming_output_detection_task(
                 &ctx,
                 &detectors,
                 input_stream,
@@ -116,6 +116,36 @@ impl Orchestrator {
                     return;
                 }
             };
+            tokio::spawn(async move {
+                let mut error_rx = error_tx.subscribe();
+                loop {
+                    tokio::select! {
+                        Ok(error) = error_rx.recv() => {
+                            error!(%trace_id, %error, "task failed");
+                            debug!(%trace_id, "sending error to client and terminating");
+                            let _ = response_tx.send(Err(error)).await;
+                            return;
+                        },
+                        result = result_rx.recv() => {
+                            match result {
+                                Some(result) => {
+                                    debug!(%trace_id, ?result, "sending result to client");
+                                    if (response_tx.send(result).await).is_err() {
+                                        warn!(%trace_id, "response channel closed (client disconnected), terminating task");
+                                        // Broadcast cancellation signal to tasks
+                                        let _ = error_tx.send(Error::Cancelled);
+                                        return;
+                                    }
+                                },
+                                None => {
+                                    info!(%trace_id, "task completed: stream closed");
+                                    break;
+                                },
+                            }
+                        }
+                    }
+                }
+            });
 
             //     // Process the input stream
             //     while let Some(result) = input_stream.next().await {
