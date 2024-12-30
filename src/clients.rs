@@ -63,8 +63,8 @@ pub use nlp::NlpClient;
 pub mod generation;
 pub use generation::GenerationClient;
 
-pub mod otel;
-pub use otel::{OtelGrpcLayer, OtelGrpcService};
+pub mod otel_grpc;
+pub use otel_grpc::{OtelGrpcLayer, OtelGrpcService};
 
 pub mod openai;
 
@@ -317,7 +317,6 @@ pub async fn create_grpc_client<C: Debug + Clone>(
         .await
         .unwrap_or_else(|error| panic!("error creating grpc client: {error}"));
 
-    //let client = new(channel);
     // Adds tower::Service wrapper to allow for enable middleware layers to be added
     let channel = ServiceBuilder::new().layer(OtelGrpcLayer).service(channel);
     new(channel)

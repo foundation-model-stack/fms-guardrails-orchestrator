@@ -26,7 +26,7 @@ use tracing::{debug, info, instrument, Span};
 
 use super::{
     create_grpc_client, errors::grpc_to_http_code, grpc_request_with_headers,
-    otel::OtelGrpcService, BoxStream, Client, Error,
+    otel_grpc::OtelGrpcService, BoxStream, Client, Error,
 };
 use crate::{
     config::ServiceConfig,

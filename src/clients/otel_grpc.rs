@@ -1,4 +1,20 @@
-// Adapted from https://github.com/davidB/tracing-opentelemetry-instrumentation-sdk/tree/main/tonic-tracing-opentelemetry
+/*
+ Copyright FMS Guardrails Orchestrator Authors
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+
+*/
+
 use crate::utils::trace::{current_trace_id, with_traceparent_header};
 use http::{Request, Response, StatusCode};
 use pin_project_lite::pin_project;
@@ -14,8 +30,8 @@ use tower::Layer;
 use tracing::{error, info, info_span, Span};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
-/// Update from https://github.com/davidB/tracing-opentelemetry-instrumentation-sdk/tree/main/tonic-tracing-opentelemetry
-/// layer for grpc (tonic client):
+/// Adapted from https://github.com/davidB/tracing-opentelemetry-instrumentation-sdk/tree/main/tonic-tracing-opentelemetry
+/// Layer for grpc (tonic client):
 ///
 /// - propagate `OpenTelemetry` context (`trace_id`,...) to server
 /// - create a Span for `OpenTelemetry` (and tracing) on call
@@ -46,7 +62,6 @@ pub fn make_span_from_request<B>(req: &http::Request<B>) -> tracing::Span {
 }
 
 pub fn update_span_from_response_or_error<B, E>(
-    _span: &tracing::Span,
     latency: u128,
     response: &Result<http::Response<B>, E>,
 ) where
@@ -105,7 +120,7 @@ where
     type Future = ResponseFuture<S::Future>;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        self.inner.poll_ready(cx) //.map_err(|e| e.into())
+        self.inner.poll_ready(cx)
     }
 
     fn call(&mut self, req: Request<B>) -> Self::Future {
@@ -161,7 +176,7 @@ where
             .checked_duration_since(start_time)
             .unwrap()
             .as_millis();
-        update_span_from_response_or_error(this.span, request_duration_ms, &result);
+        update_span_from_response_or_error(request_duration_ms, &result);
         Poll::Ready(result)
     }
 }
