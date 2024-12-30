@@ -30,11 +30,11 @@ use tower::Layer;
 use tracing::{error, info, info_span, Span};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
-/// Adapted from https://github.com/davidB/tracing-opentelemetry-instrumentation-sdk/tree/main/tonic-tracing-opentelemetry
+// Adapted from https://github.com/davidB/tracing-opentelemetry-instrumentation-sdk/tree/main/tonic-tracing-opentelemetry
 /// Layer for grpc (tonic client):
 ///
-/// - propagate `OpenTelemetry` context (`trace_id`,...) to server
-/// - create a Span for `OpenTelemetry` (and tracing) on call
+/// - Propagate `OpenTelemetry` context (`trace_id`,...)
+/// - Create a Span for `OpenTelemetry` on call
 ///
 /// `OpenTelemetry` context are extracted from tracing's span.
 #[derive(Default, Debug, Clone)]
@@ -53,7 +53,8 @@ pub struct OtelGrpcService<S> {
     inner: S,
 }
 
-pub fn make_span_from_request<B>(req: &http::Request<B>) -> tracing::Span {
+/// Construct info span on grpc client request
+fn make_span_from_request<B>(req: &http::Request<B>) -> tracing::Span {
     info_span!(
         "client gRPC request",
         request_method = req.method().to_string(),
@@ -61,10 +62,9 @@ pub fn make_span_from_request<B>(req: &http::Request<B>) -> tracing::Span {
     )
 }
 
-pub fn update_span_from_response_or_error<B, E>(
-    latency: u128,
-    response: &Result<http::Response<B>, E>,
-) where
+/// Log metrics based on response
+fn log_on_response_or_error<B, E>(latency: u128, response: &Result<http::Response<B>, E>)
+where
     E: Error,
 {
     match response {
@@ -176,7 +176,7 @@ where
             .checked_duration_since(start_time)
             .unwrap()
             .as_millis();
-        update_span_from_response_or_error(request_duration_ms, &result);
+        log_on_response_or_error(request_duration_ms, &result);
         Poll::Ready(result)
     }
 }
