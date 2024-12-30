@@ -290,8 +290,10 @@ pub async fn create_grpc_client<C: Debug + Clone>(
             .await
             .unwrap_or_else(|error| panic!("error reading key from {key_path:?}: {error}"));
         let identity = tonic::transport::Identity::from_pem(cert_pem, key_pem);
+        // assume_http2 added ref. https://github.com/hyperium/tonic/issues/1427
         let mut client_tls_config = tonic::transport::ClientTlsConfig::new()
             .identity(identity)
+            .assume_http2(true)
             .with_native_roots()
             .with_webpki_roots();
         if let Some(client_ca_cert_path) = &tls_config.client_ca_cert_path {
