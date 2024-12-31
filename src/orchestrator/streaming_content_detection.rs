@@ -188,14 +188,14 @@ async fn extract_detectors(
 async fn streaming_output_detection_task(
     ctx: &Arc<Context>,
     detectors: &HashMap<String, DetectorParams>,
-    generation_stream: ContentInputStream,
+    input_stream: ContentInputStream,
     error_tx: broadcast::Sender<Error>,
     headers: HeaderMap,
 ) -> Result<mpsc::Receiver<Result<StreamingContentDetectionResponse, Error>>, Error> {
     debug!(?detectors, "creating chunk broadcast streams");
 
-    // Create generation broadcast stream
-    let (generation_tx, generation_rx) = broadcast::channel(1024);
+    // Create input broadcast stream
+    let (input_tx, input_rx) = broadcast::channel(1024);
 
     let chunker_ids = get_chunker_ids(ctx, detectors)?;
     // Create a map of chunker_id->chunk_broadcast_stream
@@ -208,12 +208,11 @@ async fn streaming_output_detection_task(
                 debug!(%chunker_id, "creating chunk broadcast stream");
                 let ctx = ctx.clone();
                 let error_tx = error_tx.clone();
-                // Subscribe to generation stream
-                let generation_rx = generation_tx.subscribe();
+                // Subscribe to input stream
+                let input_rx = input_tx.subscribe();
                 async move {
                     let chunk_tx =
-                        chunk_broadcast_task(ctx, chunker_id.clone(), generation_rx, error_tx)
-                            .await?;
+                        chunk_broadcast_task(ctx, chunker_id.clone(), input_rx, error_tx).await?;
                     Ok::<(String, broadcast::Sender<Chunk>), Error>((chunker_id, chunk_tx))
                 }
             })
@@ -271,39 +270,39 @@ async fn streaming_output_detection_task(
 
     debug!("processing detection streams");
     let aggregator = Aggregator::default();
-    let result_rx = aggregator.run(generation_tx.subscribe(), detection_streams);
+    let result_rx = aggregator.run(input_tx.subscribe(), detection_streams);
 
-    debug!("spawning generation broadcast task");
-    // Spawn task to consume generation stream and forward to broadcast stream
-    tokio::spawn(generation_broadcast_task(
-        generation_stream,
-        generation_tx,
+    debug!("spawning input broadcast task");
+    // Spawn task to consume input stream and forward to broadcast stream
+    tokio::spawn(input_broadcast_task(
+        input_stream,
+        input_tx,
         error_tx.clone(),
     ));
-    drop(generation_rx);
+    drop(input_rx);
 
     Ok(result_rx)
 }
 
 /// Opens bi-directional stream to a chunker service
-/// with generation stream input and returns chunk broadcast stream.
+/// with input stream input and returns chunk broadcast stream.
 #[instrument(skip_all, fields(chunker_id))]
 async fn chunk_broadcast_task(
     ctx: Arc<Context>,
     chunker_id: String,
-    generation_rx: broadcast::Receiver<StreamingContentDetectionRequest>,
+    input_rx: broadcast::Receiver<StreamingContentDetectionRequest>,
     error_tx: broadcast::Sender<Error>,
 ) -> Result<broadcast::Sender<Chunk>, Error> {
-    // Consume generation stream and convert to chunker input stream
+    // Consume input stream and convert to chunker input stream
     debug!("creating chunker input stream");
     // NOTE: Text gen providers can return more than 1 token in single stream object. This can create
     // edge cases where the enumeration generated below may not line up with token / response boundaries.
     // So the more accurate way here might be to use `Tokens` object from response, but since that is an
     // optional response parameter, we are avoiding that for now.
-    let input_stream = BroadcastStream::new(generation_rx)
+    let input_stream = BroadcastStream::new(input_rx)
         .enumerate()
-        .map(|(token_pointer, generation_result)| {
-            let generated_text = generation_result.unwrap().content;
+        .map(|(token_pointer, input_result)| {
+            let generated_text = input_result.unwrap().content;
             chunkers::BidiStreamingChunkerTokenizationTaskRequest {
                 text_stream: generated_text,
                 input_index_stream: token_pointer as i64,
@@ -463,11 +462,11 @@ async fn detection_task(
 }
 
 #[instrument(skip_all)]
-async fn generation_broadcast_task(
-    mut generation_stream: Pin<
+async fn input_broadcast_task(
+    mut input_stream: Pin<
         Box<dyn Stream<Item = Result<StreamingContentDetectionRequest, Error>> + Send>,
     >,
-    generation_tx: broadcast::Sender<StreamingContentDetectionRequest>,
+    input_tx: broadcast::Sender<StreamingContentDetectionRequest>,
     error_tx: broadcast::Sender<Error>,
 ) {
     debug!("forwarding response stream");
@@ -478,11 +477,12 @@ async fn generation_broadcast_task(
                 warn!("cancellation signal received, terminating task");
                 break
             },
-            result = generation_stream.next() => {
+            result = input_stream.next() => {
                 match result {
-                    Some(Ok(generation)) => {
-                        debug!(?generation, "received input request frame");
-                        let _ = generation_tx.send(generation);
+                    Some(Ok(input_frame)) => {
+                        debug!(?input_frame, "received input request frame");
+                        // todo validate frames
+                        let _ = input_tx.send(input_frame);
                     },
                     Some(Err(error)) => {
                         error!(%error, "error on input stream, cancelling task");
