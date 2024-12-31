@@ -146,62 +146,6 @@ impl Orchestrator {
                     }
                 }
             });
-
-            //     // Process the input stream
-            //     while let Some(result) = input_stream.next().await {
-            //         match result {
-            //             Ok(msg) => {
-            //                 // Validation for second input stream frame onward
-            //                 if !first_frame {
-            //                     if let Err(error) = msg.validate_subsequent_requests() {
-            //                         error!("{:#?}", error);
-            //                         let _ = response_tx
-            //                             .send(Err(Error::Validation(error.to_string())))
-            //                             .await;
-            //                         return;
-            //                     }
-            //                 } else {
-            //                     first_frame = false;
-            //                 }
-
-            //                 // TODO: actual processing
-            //                 // Send a dummy response for now
-            //                 let start_index = processed_index;
-            //                 processed_index += msg.content.len();
-
-            //                 // let mut result_rx = match streaming_output_detection_task(
-            //                 //     &ctx,
-            //                 //     &detectors,
-            //                 //     input_stream.into_inner(),
-            //                 //     error_tx.clone(),
-            //                 //     headers.clone(),
-            //                 // )
-            //                 // .await
-            //                 // {
-            //                 //     Ok(result_rx) => result_rx,
-            //                 //     Err(error) => {
-            //                 //         error!(%trace_id, %error, "task failed");
-            //                 //         let _ = error_tx.send(error.clone());
-            //                 //         let _ = respostreaming_content_detection
-
-            //                 let _ = response_tx
-            //                     .send(Ok(StreamingContentDetectionResponse {
-            //                         detections: Vec::new(),
-            //                         processed_index: processed_index as u32,
-            //                         start_index: start_index as u32,
-            //                     }))
-            //                     .await;
-            //             }
-            //             Err(error) => {
-            //                 // json deserialization error, send error message and terminate task
-            //                 error!("{:#?}", error);
-            //                 let _ = response_tx
-            //                     .send(Err(Error::Validation(error.to_string())))
-            //                     .await;
-            //                 return;
-            //             }
-            //         }
-            //     }
         });
         ReceiverStream::new(response_rx)
     }
