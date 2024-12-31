@@ -537,12 +537,12 @@ async fn generation_broadcast_task(
             result = generation_stream.next() => {
                 match result {
                     Some(Ok(generation)) => {
-                        debug!(?generation, "received generation");
+                        debug!(?generation, "received input request frame");
                         let _ = generation_tx.send(generation);
                     },
                     Some(Err(error)) => {
-                        error!(%error, "generation error, cancelling task");
-                        let _ = error_tx.send(error);
+                        error!(%error, "error on input stream, cancelling task");
+                        let _ = error_tx.send(Error::Validation(error.to_string()));
                         tokio::time::sleep(Duration::from_millis(5)).await;
                         break;
                     },
