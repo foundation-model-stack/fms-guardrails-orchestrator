@@ -471,6 +471,7 @@ async fn input_broadcast_task(
 ) {
     debug!("forwarding response stream");
     let mut error_rx = error_tx.subscribe();
+    let mut first_frame = true;
     loop {
         tokio::select! {
             _ = error_rx.recv() => {
@@ -481,7 +482,22 @@ async fn input_broadcast_task(
                 match result {
                     Some(Ok(input_frame)) => {
                         debug!(?input_frame, "received input request frame");
-                        // todo validate frames
+                        // Combining these in a single if raises a warning that if let expressions are unstable.
+                        if !first_frame {
+                            if let Err(error) = input_frame.validate_subsequent_requests() {
+                                let _ = error_tx.send(Error::Validation(error.to_string()));
+                                tokio::time::sleep(Duration::from_millis(5)).await;
+                                break;
+                            }
+                        } else {
+                            if let Err(error) = input_frame.validate_initial_request() {
+                                let _ = error_tx.send(Error::Validation(error.to_string()));
+                                tokio::time::sleep(Duration::from_millis(5)).await;
+                                break;
+                            }
+                            first_frame = false;
+                        }
+
                         let _ = input_tx.send(input_frame);
                     },
                     Some(Err(error)) => {
