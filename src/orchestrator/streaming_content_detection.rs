@@ -87,9 +87,6 @@ impl Orchestrator {
                 }
             };
 
-            // TODO: figure out a way not to need this bool
-            let mut _first_frame = true;
-
             // Create error channel
             //
             // This channel is used for error notification & messaging and task cancellation.
@@ -177,8 +174,8 @@ async fn extract_detectors(
             }
         }
     } else {
-        // TODO: Is this the proper error here?
-        let error = Error::Other("Error on extract_detectors outer else".to_string());
+        let error =
+            Error::Other("Error extracting detectors from first input stream frame".to_string());
         Err(error)
     }
 }

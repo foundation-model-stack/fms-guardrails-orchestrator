@@ -120,7 +120,6 @@ impl ResultActor {
             .detections
             .iter()
             .map(|item| ContentAnalysisResponse {
-                // TODO: Does this mapping look right?
                 start: item.start as usize,
                 end: item.end as usize,
                 text: item.word.clone(),

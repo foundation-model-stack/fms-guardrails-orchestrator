@@ -426,7 +426,6 @@ async fn stream_classification_with_gen(
     Sse::new(event_stream).keep_alive(KeepAlive::default())
 }
 
-// #[instrument(skip_all, fields(model_id = ?request.model_id))]
 #[instrument(skip_all)]
 async fn stream_content_detection(
     State(state): State<Arc<ServerState>>,
@@ -442,7 +441,7 @@ async fn stream_content_detection(
         .into_body()
         .into_data_stream()
         .map(|result| {
-            serde_json::from_slice::<StreamingContentDetectionRequest>(&result.unwrap()) // TODO: decide how to handle axum error
+            serde_json::from_slice::<StreamingContentDetectionRequest>(&result.unwrap())
                 .map_err(|e| orchestrator::Error::JsonError(e.to_string()))
         })
         .boxed();
@@ -456,7 +455,6 @@ async fn stream_content_detection(
 
     // Create output stream
     // This stream returns ND-JSON formatted messages to the client
-    // TODO: actual ND-JSON, regular JSON for now
     // StreamingContentDetectionResponse / server::Error
     let (output_tx, output_rx) = mpsc::channel::<Result<String, Infallible>>(32);
     let output_stream = ReceiverStream::new(output_rx);
