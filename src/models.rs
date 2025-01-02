@@ -1107,6 +1107,7 @@ pub struct EvidenceObj {
 
 /// Stream content detection stream request
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(Default))]
 pub struct StreamingContentDetectionRequest {
     pub detectors: Option<HashMap<String, DetectorParams>>,
     pub content: String,
