@@ -16,7 +16,7 @@
 */
 use std::{borrow::BorrowMut, future::IntoFuture, ops::Deref, pin::Pin};
 use axum::http::HeaderMap;
-use futures::{future::{try_join, try_join_all}, Future};
+use futures::{future::{try_join_all}, Future};
 use std::{collections::HashMap, sync::Arc};
 use tracing::{debug, info, instrument};
 use tokio::sync::Mutex;
@@ -24,7 +24,7 @@ use tokio::sync::Mutex;
 use super::{get_chunker_ids, ChatCompletionsDetectionTask, Context, Error, Orchestrator};
 use crate::{
     clients::{
-        detector::{ChatDetectionRequest, ContentAnalysisRequest, ContentAnalysisResponse},
+        detector::{self, ChatDetectionRequest, ContentAnalysisRequest, ContentAnalysisResponse},
         openai::{
             ChatCompletionChoice, ChatCompletionsRequest, ChatCompletionsResponse, Content,
             InputDetectionResult, OpenAiClient,
@@ -33,9 +33,7 @@ use crate::{
     config::DetectorType,
     models::DetectorParams,
     orchestrator::{
-        Chunk,
-        detector_processing::content,
-        unary::chunk,
+        detector_processing::content, unary::chunk, Chunk
     },
 };
 use serde::{Deserialize, Serialize};
@@ -172,14 +170,15 @@ pub async fn input_detection(
                 .unwrap()
                 // .unwrap_or_else(|| panic!("chunk not found for {}", chunker_id))
                 .clone();
-
+            
+            let ctx = ctx.clone();
             async move {
-
                 match detector_type {
                     DetectorType::TextContents => {
                         // call detection using curated chunks
                         tokio::spawn(async move {
                             detect_content(
+                                ctx,
                                 detector_id,
                                 detector_params,
                                 messages,
@@ -244,7 +243,7 @@ fn filter_chat_messages(
 // Function to chunk ChatMessagesInternal based on the chunker id and return chunks in ChatMessagesInternal form
 async fn detector_chunk_task(
     ctx: &Arc<Context>,
-    detector_chat_messages: HashMap<String, ChatMessagesInternal> ) -> Result<HashMap<String, Vec<Chunk>>, Error> {
+    detector_chat_messages: HashMap<String, ChatMessagesInternal>) -> Result<HashMap<String, Vec<Chunk>>, Error> {
 
     // let chunking_tasks = Vec::new();
     let mut chunks = HashMap::<String, Vec<Chunk>>::new();
@@ -260,15 +259,16 @@ async fn detector_chunk_task(
                     _ => panic!("Only text content accepted")
                 };
                 let offset: usize = 0;
-                let detector_id = detector_id.as_str().clone();
                 let task = tokio::spawn({
+                    let detector_id = detector_id.clone();
+                    let text = text.clone();
                     let ctx = ctx.clone();
                     async move {
                         let chunker_id = ctx
                             .config
-                            .get_chunker_id(detector_id)
+                            .get_chunker_id(&detector_id)
                             .unwrap();
-                        chunk(&ctx, chunker_id, offset, text.clone()).await
+                        chunk(&ctx, chunker_id, offset, text).await
                     }
                 });
                 task
@@ -286,16 +286,15 @@ async fn detector_chunk_task(
             .collect::<Vec<_>>();
         
         chunks.insert(detector_id.clone(), results);
+
     }
 
    Ok(chunks)
 
 }
 
-async fn chunk_texts() {
-
-}
 async fn detect_content(
+    ctx: Arc<Context>,
     detector_id: String,
     detector_params: DetectorParams,
     chunk: Vec<Chunk>,
