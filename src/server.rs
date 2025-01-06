@@ -525,7 +525,11 @@ async fn chat_completions_detection(
                 // Convert response stream to a stream of SSE events
                 let event_stream: BoxStream<Result<Event, Infallible>> = response_stream
                     .map(|message| match message {
-                        Ok(chunk) => Ok(Event::default().json_data(chunk).unwrap()),
+                        Ok(Some(chunk)) => Ok(Event::default().json_data(chunk).unwrap()),
+                        Ok(None) => {
+                            // The stream completed, send [DONE] message
+                            Ok(Event::default().data("[DONE]"))
+                        }
                         Err(error) => {
                             let error: Error = orchestrator::Error::from(error).into();
                             Ok(Event::default()
