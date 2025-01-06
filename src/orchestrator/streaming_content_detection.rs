@@ -28,13 +28,13 @@ use tracing::{debug, error, info, instrument, warn};
 
 use super::{streaming::Detections, Context, Error, Orchestrator, StreamingContentDetectionTask};
 use crate::clients::{
-chunker::{tokenize_whole_doc_stream, ChunkerClient, DEFAULT_CHUNKER_ID},
-detector::ContentAnalysisRequest,
-TextContentsDetectorClient,
+    chunker::{tokenize_whole_doc_stream, ChunkerClient, DEFAULT_CHUNKER_ID},
+    detector::ContentAnalysisRequest,
+    TextContentsDetectorClient,
 };
 use crate::models::{
-DetectorParams, StreamingContentDetectionRequest, StreamingContentDetectionResponse,
-TokenClassificationResult,
+    DetectorParams, StreamingContentDetectionRequest, StreamingContentDetectionResponse,
+    TokenClassificationResult,
 };
 use crate::orchestrator::{get_chunker_ids, streaming::Chunk};
 use crate::pb::caikit::runtime::chunkers;
@@ -147,7 +147,7 @@ async fn extract_detectors(
         match result {
             Ok(msg) => {
                 // validate initial stream frame
-                if let Err(error) = msg.validate_initial_request() {
+                if let Err(error) = msg.validate_initial_frame() {
                     error!("{:#?}", error);
                     return Err(Error::Validation(error.to_string()));
                 }
@@ -468,13 +468,13 @@ async fn input_broadcast_task(
                         debug!(?input_frame, "received input request frame");
                         // Combining these in a single if raises a warning that if let expressions are unstable.
                         if !first_frame {
-                            if let Err(error) = input_frame.validate_subsequent_requests() {
+                            if let Err(error) = input_frame.validate_subsequent_frames() {
                                 let _ = error_tx.send(Error::Validation(error.to_string()));
                                 tokio::time::sleep(Duration::from_millis(5)).await;
                                 break;
                             }
                         } else {
-                            if let Err(error) = input_frame.validate_initial_request() {
+                            if let Err(error) = input_frame.validate_initial_frame() {
                                 let _ = error_tx.send(Error::Validation(error.to_string()));
                                 tokio::time::sleep(Duration::from_millis(5)).await;
                                 break;
