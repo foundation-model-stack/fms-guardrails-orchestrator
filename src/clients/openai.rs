@@ -671,8 +671,8 @@ pub struct DetectionResult {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InputDetectionResult {
-    message_index: u16,
-    result: Option<Vec<OrchestratorDetectionResult>>,
+    pub message_index: u16,
+    pub result: Option<Vec<OrchestratorDetectionResult>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

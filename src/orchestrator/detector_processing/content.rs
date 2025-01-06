@@ -54,6 +54,8 @@ pub fn filter_chat_message(
     };
     Ok(ChatMessagesInternal::from(vec![
         ChatMessageInternal {
+            // index of last message
+            message_index: messages.len() -1, 
             role: message.role.clone(),
             content: Some(content),
             refusal: message.refusal.clone(),
