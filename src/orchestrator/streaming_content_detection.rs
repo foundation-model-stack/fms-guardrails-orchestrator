@@ -67,7 +67,7 @@ impl Orchestrator {
             let detectors = match extract_detectors(&mut input_stream).await {
                 Ok(detectors) => detectors,
                 Err(error) => {
-                    error!("{:#?}", error);
+                    error!(%error, "error extracting detector information from first stream frame");
                     let _ = response_tx.send(Err(error)).await;
                     return;
                 }
@@ -147,7 +147,7 @@ async fn extract_detectors(
             Ok(msg) => {
                 // validate initial stream frame
                 if let Err(error) = msg.validate_initial_frame() {
-                    error!("{:#?}", error);
+                    error!(%error, "Error validating first stream frame");
                     return Err(Error::Validation(error.to_string()));
                 }
 
