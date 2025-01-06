@@ -75,7 +75,6 @@ impl OpenAiClient {
             let (tx, rx) = mpsc::channel(32);
             let mut event_stream = self
                 .inner()
-                .clone()
                 .post(url, headers, request)
                 .await?
                 .0
