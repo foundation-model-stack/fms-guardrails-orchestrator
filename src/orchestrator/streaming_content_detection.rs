@@ -54,7 +54,6 @@ impl Orchestrator {
         let headers = task.headers;
 
         let mut input_stream = Box::pin(task.input_stream.peekable());
-        let mut _processed_index = 0;
 
         // Create response channel
         #[allow(clippy::type_complexity)]
