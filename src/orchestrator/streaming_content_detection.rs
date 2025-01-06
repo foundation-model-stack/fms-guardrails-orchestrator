@@ -18,38 +18,25 @@
 mod aggregator;
 
 use aggregator::Aggregator;
-use std::collections::HashMap;
-use std::pin::Pin;
-use std::sync::Arc;
-use std::time::Duration;
+use std::{collections::HashMap, pin::Pin, sync::Arc, time::Duration};
 
-use futures::future::try_join_all;
-use futures::stream::Peekable;
-use futures::Stream;
-use futures::StreamExt;
-use futures::TryStreamExt;
+use futures::{future::try_join_all, stream::Peekable, Stream, StreamExt, TryStreamExt};
 use hyper::HeaderMap;
-use tokio::sync::broadcast;
-use tokio::sync::mpsc;
-use tokio_stream::wrappers::BroadcastStream;
-use tokio_stream::wrappers::ReceiverStream;
-use tracing::instrument;
-use tracing::{debug, error, info, warn};
+use tokio::sync::{broadcast, mpsc};
+use tokio_stream::wrappers::{BroadcastStream, ReceiverStream};
+use tracing::{debug, error, info, instrument, warn};
 
-use super::streaming::Detections;
-use super::Context;
-use super::{Error, Orchestrator, StreamingContentDetectionTask};
-use crate::clients::chunker::tokenize_whole_doc_stream;
-use crate::clients::chunker::ChunkerClient;
-use crate::clients::chunker::DEFAULT_CHUNKER_ID;
-use crate::clients::detector::ContentAnalysisRequest;
-use crate::clients::TextContentsDetectorClient;
-use crate::models::DetectorParams;
-use crate::models::StreamingContentDetectionRequest;
-use crate::models::StreamingContentDetectionResponse;
-use crate::models::TokenClassificationResult;
-use crate::orchestrator::get_chunker_ids;
-use crate::orchestrator::streaming::Chunk;
+use super::{streaming::Detections, Context, Error, Orchestrator, StreamingContentDetectionTask};
+use crate::clients::{
+chunker::{tokenize_whole_doc_stream, ChunkerClient, DEFAULT_CHUNKER_ID},
+detector::ContentAnalysisRequest,
+TextContentsDetectorClient,
+};
+use crate::models::{
+DetectorParams, StreamingContentDetectionRequest, StreamingContentDetectionResponse,
+TokenClassificationResult,
+};
+use crate::orchestrator::{get_chunker_ids, streaming::Chunk};
 use crate::pb::caikit::runtime::chunkers;
 
 type ContentInputStream =
