@@ -20,11 +20,11 @@ use axum::http::HeaderMap;
 use futures::{StreamExt, TryStreamExt};
 use ginepro::LoadBalancedChannel;
 use tonic::{Code, Request};
-use tracing::{info, instrument};
+use tracing::{debug, instrument, Span};
 
 use super::{
-    create_grpc_client, errors::grpc_to_http_code, grpc_request_with_headers, BoxStream, Client,
-    Error, GrpcClient,
+    create_grpc_client, errors::grpc_to_http_code, grpc_request_with_headers,
+    otel_grpc::OtelGrpcService, BoxStream, Client, Error,
 };
 use crate::{
     config::ServiceConfig,
@@ -49,8 +49,8 @@ const MODEL_ID_HEADER_NAME: &str = "mm-model-id";
 #[cfg_attr(test, faux::create)]
 #[derive(Clone)]
 pub struct NlpClient {
-    client: GrpcClient<NlpServiceClient<LoadBalancedChannel>>,
-    health_client: GrpcClient<HealthClient<LoadBalancedChannel>>,
+    client: NlpServiceClient<OtelGrpcService<LoadBalancedChannel>>,
+    health_client: HealthClient<OtelGrpcService<LoadBalancedChannel>>,
 }
 
 #[cfg_attr(test, faux::methods)]
@@ -73,9 +73,10 @@ impl NlpClient {
     ) -> Result<TokenizationResults, Error> {
         let mut client = self.client.clone();
         let request = request_with_headers(request, model_id, headers);
-        info!(?request, "sending request to NLP gRPC service");
+        debug!(?request, "sending request to NLP gRPC service");
         let response = client.tokenization_task_predict(request).await?;
-        trace_context_from_grpc_response(&response);
+        let span = Span::current();
+        trace_context_from_grpc_response(&span, &response);
         Ok(response.into_inner())
     }
 
@@ -86,11 +87,12 @@ impl NlpClient {
         request: TokenClassificationTaskRequest,
         headers: HeaderMap,
     ) -> Result<TokenClassificationResults, Error> {
+        let span = Span::current();
         let mut client = self.client.clone();
         let request = request_with_headers(request, model_id, headers);
-        info!(?request, "sending request to NLP gRPC service");
+        debug!(?request, "sending request to NLP gRPC service");
         let response = client.token_classification_task_predict(request).await?;
-        trace_context_from_grpc_response(&response);
+        trace_context_from_grpc_response(&span, &response);
         Ok(response.into_inner())
     }
 
@@ -103,9 +105,10 @@ impl NlpClient {
     ) -> Result<GeneratedTextResult, Error> {
         let mut client = self.client.clone();
         let request = request_with_headers(request, model_id, headers);
-        info!(?request, "sending request to NLP gRPC service");
+        debug!(?request, "sending request to NLP gRPC service");
         let response = client.text_generation_task_predict(request).await?;
-        trace_context_from_grpc_response(&response);
+        let span: Span = Span::current();
+        trace_context_from_grpc_response(&span, &response);
         Ok(response.into_inner())
     }
 
@@ -118,11 +121,12 @@ impl NlpClient {
     ) -> Result<BoxStream<Result<GeneratedTextStreamResult, Error>>, Error> {
         let mut client = self.client.clone();
         let request = request_with_headers(request, model_id, headers);
-        info!(?request, "sending stream request to NLP gRPC service");
+        debug!(?request, "sending stream request to NLP gRPC service");
         let response = client
             .server_streaming_text_generation_task_predict(request)
             .await?;
-        trace_context_from_grpc_response(&response);
+        let span = Span::current();
+        trace_context_from_grpc_response(&span, &response);
         let response_stream = response.into_inner().map_err(Into::into).boxed();
         Ok(response_stream)
     }

@@ -20,7 +20,6 @@ use std::{
     any::TypeId,
     collections::{hash_map, HashMap},
     fmt::Debug,
-    ops::{Deref, DerefMut},
     pin::Pin,
     time::Duration,
 };
@@ -29,35 +28,23 @@ use async_trait::async_trait;
 use axum::http::{Extensions, HeaderMap};
 use futures::Stream;
 use ginepro::LoadBalancedChannel;
-use http_body_util::combinators::BoxBody;
-use hyper::{
-    body::{Bytes, Incoming},
-    Response,
-};
 use hyper_timeout::TimeoutConnector;
 use hyper_util::rt::TokioExecutor;
 use tonic::{metadata::MetadataMap, Request};
 use tower::timeout::TimeoutLayer;
 use tower::ServiceBuilder;
-use tower_http::{
-    classify::{GrpcErrorsAsFailures, GrpcFailureClass, SharedClassifier},
-    trace::{
-        DefaultOnBodyChunk, GrpcMakeClassifier, MakeSpan, OnEos, OnFailure, OnRequest, OnResponse,
-        Trace, TraceLayer,
-    },
-};
-use tracing::{debug, error, info, info_span, instrument, Span};
+use tracing::{debug, instrument, Span};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 use url::Url;
 
 use crate::{
     config::{ServiceConfig, Tls},
     health::HealthCheckResult,
-    utils::{tls, trace::current_trace_id, trace::with_traceparent_header},
+    utils::{tls, trace::with_traceparent_header},
 };
 
 pub mod errors;
-pub use errors::{grpc_to_http_code, Error};
+pub use errors::Error;
 
 pub mod http;
 pub use http::{http_trace_layer, HttpClient};
@@ -75,6 +62,9 @@ pub use nlp::NlpClient;
 
 pub mod generation;
 pub use generation::GenerationClient;
+
+pub mod otel_grpc;
+pub use otel_grpc::{OtelGrpcLayer, OtelGrpcService};
 
 pub mod openai;
 
@@ -271,8 +261,8 @@ pub async fn create_http_client(
 pub async fn create_grpc_client<C: Debug + Clone>(
     default_port: u16,
     service_config: &ServiceConfig,
-    new: fn(LoadBalancedChannel) -> C,
-) -> GrpcClient<C> {
+    new: fn(OtelGrpcService<LoadBalancedChannel>) -> C,
+) -> C {
     let port = service_config.port.unwrap_or(default_port);
     let protocol = match service_config.tls {
         Some(_) => "https",
@@ -327,12 +317,9 @@ pub async fn create_grpc_client<C: Debug + Clone>(
         .await
         .unwrap_or_else(|error| panic!("error creating grpc client: {error}"));
 
-    let client = new(channel);
     // Adds tower::Service wrapper to allow for enable middleware layers to be added
-    let channel = ServiceBuilder::new()
-        .layer(grpc_trace_layer())
-        .service(client);
-    GrpcClient(channel)
+    let channel = ServiceBuilder::new().layer(OtelGrpcLayer).service(channel);
+    new(channel)
 }
 
 /// Returns `true` if hostname is valid according to [IETF RFC 1123](https://tools.ietf.org/html/rfc1123).
@@ -368,169 +355,6 @@ fn grpc_request_with_headers<T>(request: T, headers: HeaderMap) -> Request<T> {
     let headers = with_traceparent_header(&ctx, headers);
     let metadata = MetadataMap::from_headers(headers);
     Request::from_parts(metadata, Extensions::new(), request)
-}
-
-pub type GrpcServiceRequest = hyper::Request<tonic::body::BoxBody>;
-
-#[derive(Debug, Clone)]
-pub struct GrpcClient<C: Debug + Clone>(
-    Trace<
-        C,
-        SharedClassifier<GrpcErrorsAsFailures>,
-        ClientMakeSpan,
-        ClientOnRequest,
-        ClientOnResponse,
-        DefaultOnBodyChunk,
-        ClientOnEos,
-        ClientOnFailure,
-    >,
-);
-
-impl<C: Debug + Clone> Deref for GrpcClient<C> {
-    type Target = C;
-
-    fn deref(&self) -> &Self::Target {
-        self.0.get_ref()
-    }
-}
-
-impl<C: Debug + Clone> DerefMut for GrpcClient<C> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        self.0.get_mut()
-    }
-}
-
-pub type GrpcClientTraceLayer = TraceLayer<
-    GrpcMakeClassifier,
-    ClientMakeSpan,
-    ClientOnRequest,
-    ClientOnResponse,
-    DefaultOnBodyChunk, // no metrics currently per body chunk
-    ClientOnEos,
-    ClientOnFailure,
->;
-
-pub fn grpc_trace_layer() -> GrpcClientTraceLayer {
-    TraceLayer::new_for_grpc()
-        .make_span_with(ClientMakeSpan)
-        .on_request(ClientOnRequest)
-        .on_response(ClientOnResponse)
-        .on_failure(ClientOnFailure)
-        .on_eos(ClientOnEos)
-}
-
-#[derive(Debug, Clone)]
-pub struct ClientMakeSpan;
-
-impl MakeSpan<BoxBody<Bytes, hyper::Error>> for ClientMakeSpan {
-    fn make_span(&mut self, request: &hyper::Request<BoxBody<Bytes, hyper::Error>>) -> Span {
-        info_span!(
-            "client gRPC request",
-            request_method = request.method().to_string(),
-            request_path = request.uri().path().to_string(),
-        )
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct ClientOnRequest;
-
-impl OnRequest<BoxBody<Bytes, hyper::Error>> for ClientOnRequest {
-    fn on_request(&mut self, request: &hyper::Request<BoxBody<Bytes, hyper::Error>>, span: &Span) {
-        let _guard = span.enter();
-        info!(
-            trace_id = %current_trace_id(),
-            method = %request.method(),
-            path = %request.uri().path(),
-            monotonic_counter.incoming_request_count = 1,
-            "started processing request",
-        );
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct ClientOnResponse;
-
-impl OnResponse<Incoming> for ClientOnResponse {
-    fn on_response(self, response: &Response<Incoming>, latency: Duration, span: &Span) {
-        let _guard = span.enter();
-        // On every response
-        info!(
-            trace_id = %current_trace_id(),
-            status = %response.status(),
-            duration_ms = %latency.as_millis(),
-            monotonic_counter.client_response_count = 1,
-            histogram.client_request_duration = latency.as_millis() as u64,
-            "finished processing request",
-        );
-
-        if response.status().is_server_error() {
-            // On every server error (HTTP 5xx) response
-            info!(monotonic_counter.client_5xx_response_count = 1);
-        } else if response.status().is_client_error() {
-            // On every client error (HTTP 4xx) response
-            info!(monotonic_counter.client_4xx_response_count = 1);
-        } else if response.status().is_success() {
-            // On every successful (HTTP 2xx) response
-            info!(monotonic_counter.client_success_response_count = 1);
-        } else {
-            error!(
-                "unexpected gRPC client response status code: {}",
-                response.status().as_u16()
-            );
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct ClientOnFailure;
-
-impl OnFailure<GrpcFailureClass> for ClientOnFailure {
-    fn on_failure(
-        &mut self,
-        failure_classification: GrpcFailureClass,
-        latency: Duration,
-        span: &Span,
-    ) {
-        let _guard = span.enter();
-        let trace_id = current_trace_id();
-        let latency_ms = latency.as_millis().to_string();
-
-        let (status_code, error) = match failure_classification {
-            GrpcFailureClass::Code(code) => {
-                error!(%trace_id, code, latency_ms, "failure handling request",);
-                (Some(grpc_to_http_code(tonic::Code::from(code.get()))), None)
-            }
-            GrpcFailureClass::Error(error) => {
-                error!(%trace_id, latency_ms, "failure handling request: {}", error,);
-                (None, Some(error))
-            }
-        };
-
-        info!(
-            monotonic_counter.client_request_failure_count = 1,
-            monotonic_counter.client_5xx_response_count = 1,
-            latency_ms,
-            ?status_code,
-            ?error
-        );
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct ClientOnEos;
-
-impl OnEos for ClientOnEos {
-    fn on_eos(self, _trailers: Option<&HeaderMap>, stream_duration: Duration, span: &Span) {
-        let _guard = span.enter();
-        info!(
-            trace_id = %current_trace_id(),
-            duration_ms = stream_duration.as_millis(),
-            monotonic_counter.client_stream_response_count = 1,
-            histogram.client_stream_response_duration = stream_duration.as_millis() as u64,
-            "end of stream",
-        );
-    }
 }
 
 #[cfg(test)]

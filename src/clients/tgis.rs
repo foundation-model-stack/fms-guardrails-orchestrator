@@ -20,11 +20,11 @@ use axum::http::HeaderMap;
 use futures::{StreamExt, TryStreamExt};
 use ginepro::LoadBalancedChannel;
 use tonic::Code;
-use tracing::{info, instrument};
+use tracing::{debug, instrument, Span};
 
 use super::{
-    create_grpc_client, errors::grpc_to_http_code, grpc_request_with_headers, BoxStream, Client,
-    Error, GrpcClient,
+    create_grpc_client, errors::grpc_to_http_code, grpc_request_with_headers,
+    otel_grpc::OtelGrpcService, BoxStream, Client, Error,
 };
 use crate::{
     config::ServiceConfig,
@@ -42,7 +42,7 @@ const DEFAULT_PORT: u16 = 8033;
 #[cfg_attr(test, faux::create)]
 #[derive(Clone)]
 pub struct TgisClient {
-    client: GrpcClient<GenerationServiceClient<LoadBalancedChannel>>,
+    client: GenerationServiceClient<OtelGrpcService<LoadBalancedChannel>>,
 }
 
 #[cfg_attr(test, faux::methods)]
@@ -59,9 +59,12 @@ impl TgisClient {
         headers: HeaderMap,
     ) -> Result<BatchedGenerationResponse, Error> {
         let request = grpc_request_with_headers(request, headers);
-        info!(?request, "sending request to TGIS gRPC service");
+        debug!(?request, "sending request to TGIS gRPC service");
         let mut client = self.client.clone();
-        Ok(client.generate(request).await?.into_inner())
+        let response = client.generate(request).await?;
+        let span = Span::current();
+        trace_context_from_grpc_response(&span, &response);
+        Ok(response.into_inner())
     }
 
     #[instrument(skip_all, fields(model_id = request.model_id))]
@@ -71,10 +74,11 @@ impl TgisClient {
         headers: HeaderMap,
     ) -> Result<BoxStream<Result<GenerationResponse, Error>>, Error> {
         let request = grpc_request_with_headers(request, headers);
-        info!(?request, "sending request to TGIS gRPC service");
+        debug!(?request, "sending request to TGIS gRPC service");
         let mut client = self.client.clone();
         let response = client.generate_stream(request).await?;
-        trace_context_from_grpc_response(&response);
+        let span = Span::current();
+        trace_context_from_grpc_response(&span, &response);
         Ok(response.into_inner().map_err(Into::into).boxed())
     }
 
@@ -84,20 +88,22 @@ impl TgisClient {
         request: BatchedTokenizeRequest,
         headers: HeaderMap,
     ) -> Result<BatchedTokenizeResponse, Error> {
-        info!(?request, "sending request to TGIS gRPC service");
         let mut client = self.client.clone();
         let request = grpc_request_with_headers(request, headers);
+        debug!(?request, "sending request to TGIS gRPC service");
         let response = client.tokenize(request).await?;
-        trace_context_from_grpc_response(&response);
+        let span = Span::current();
+        trace_context_from_grpc_response(&span, &response);
         Ok(response.into_inner())
     }
 
     pub async fn model_info(&self, request: ModelInfoRequest) -> Result<ModelInfoResponse, Error> {
-        info!(?request, "sending request to TGIS gRPC service");
+        debug!(?request, "sending request to TGIS gRPC service");
         let request = grpc_request_with_headers(request, HeaderMap::new());
         let mut client = self.client.clone();
         let response = client.model_info(request).await?;
-        trace_context_from_grpc_response(&response);
+        let span = Span::current();
+        trace_context_from_grpc_response(&span, &response);
         Ok(response.into_inner())
     }
 }
