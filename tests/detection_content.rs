@@ -15,24 +15,25 @@
 
 */
 
+use std::collections::HashMap;
+
 use axum_test::TestServer;
 use common::{ensure_global_rustls_state, shared_state, ONCE};
 use fms_guardrails_orchestr8::{
     clients::detector::{ContentAnalysisRequest, ContentAnalysisResponse},
-    models::{DetectorParams, TextContentDetectionResult},
+    models::{DetectorParams, TextContentDetectionHttpRequest, TextContentDetectionResult},
     server::get_app,
 };
 use hyper::StatusCode;
 use mocktail::mock::MockSet;
 use mocktail::prelude::*;
-use serde_json::json;
 use tracing::debug;
 use tracing_test::traced_test;
 
 mod common;
 
 /// Asserts a scenario with a single detection works as expected.
-/// 
+///
 /// This test mocks a detector that detects the word "word" in a given input.
 #[traced_test]
 #[tokio::test]
@@ -40,17 +41,17 @@ async fn test_single_detection() {
     ensure_global_rustls_state();
     let shared_state = ONCE.get_or_init(shared_state).await.clone();
     let server = TestServer::new(get_app(shared_state)).unwrap();
-    let detector_name = "content_detector";
+    let detector_name = "content_detector".to_string();
 
     // Add detector mock
     let mut mocks = MockSet::new();
     mocks.insert(
         MockPath::new(Method::POST, "/api/v1/text/contents"),
         Mock::new(
-            MockRequest::json(json!({
-                "contents": ["This sentence has a detection on the last word."],
-                "detector_params": {},
-            })),
+            MockRequest::json(ContentAnalysisRequest {
+                contents: vec!["This sentence has a detection on the last word.".to_string()],
+                detector_params: DetectorParams::new(),
+            }),
             MockResponse::json(vec![vec![ContentAnalysisResponse {
                 start: 42,
                 end: 46,
@@ -69,29 +70,24 @@ async fn test_single_detection() {
 
     let response = server
         .post("/api/v2/text/detection/content")
-        .json(&json!({
-            "content": "This sentence has a detection on the last word.",
-            "detectors": {
-                detector_name: {}
-            }
-        }))
+        .json(&TextContentDetectionHttpRequest {
+            content: "This sentence has a detection on the last word.".to_string(),
+            detectors: HashMap::from([(detector_name, DetectorParams::new())]),
+        })
         .await;
 
-    debug!("{:#?}", response);
+    debug!(?response);
 
     response.assert_status(StatusCode::OK);
-    response.assert_json(&json!(
-        {
-            "detections": [
-                {
-                    "start": 42,
-                    "end": 46,
-                    "text": "word",
-                    "detection": "word",
-                    "detection_type": "word_detection",
-                    "score": 1.0,
-                }
-            ]
-        }
-    ));
+    response.assert_json(&TextContentDetectionResult {
+        detections: vec![ContentAnalysisResponse {
+            start: 42,
+            end: 46,
+            text: "word".to_string(),
+            detection: "word".to_string(),
+            detection_type: "word_detection".to_string(),
+            score: 1.0,
+            evidence: None,
+        }],
+    });
 }
