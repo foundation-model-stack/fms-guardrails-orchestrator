@@ -480,7 +480,7 @@ pub struct Function {
 }
 
 /// Represents a chat completion response returned by model, based on the provided input.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct ChatCompletion {
     /// A unique identifier for the chat completion.
     pub id: String,
@@ -619,7 +619,7 @@ pub struct ChatCompletionDelta {
 }
 
 /// Usage statistics for a completion.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Usage {
     /// Number of tokens in the generated completion.
     pub completion_tokens: u32,
@@ -665,8 +665,10 @@ pub struct OpenAiError {
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DetectionResult {
-    input: Vec<InputDetectionResult>,
-    output: Vec<OutputDetectionResult>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input: Option<Vec<InputDetectionResult>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output: Option<Vec<OutputDetectionResult>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

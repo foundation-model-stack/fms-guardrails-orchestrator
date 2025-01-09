@@ -14,19 +14,19 @@
  limitations under the License.
 
 */
-use std::{borrow::BorrowMut, future::IntoFuture, ops::Deref, pin::Pin};
+use std::{pin::Pin, time::{SystemTime, UNIX_EPOCH}};
 use axum::http::HeaderMap;
 use futures::{future::{join_all, try_join_all}, Future};
 use std::{collections::HashMap, sync::Arc};
 use tracing::{debug, info, instrument};
 
-use super::{get_chunker_ids, ChatCompletionsDetectionTask, Context, Error, Orchestrator};
+use super::{ChatCompletionsDetectionTask, Context, Error, Orchestrator};
 use crate::{
     clients::{
-        detector::{self, ChatDetectionRequest, ContentAnalysisRequest, ContentAnalysisResponse},
+        detector::{ChatDetectionRequest, ContentAnalysisRequest},
         openai::{
-            ChatCompletionChoice, ChatCompletionsRequest, ChatCompletionsResponse, Content,
-            InputDetectionResult, OpenAiClient,
+            ChatCompletion, ChatCompletionChoice, ChatCompletionsRequest, ChatCompletionsResponse, Content,
+            DetectionResult, InputDetectionResult, OpenAiClient
         },
     },
     config::DetectorType,
@@ -99,7 +99,7 @@ impl From<ChatCompletionChoice> for ChatMessagesInternal {
 
 impl Orchestrator {
     #[instrument(skip_all, fields(trace_id = ?task.trace_id, headers = ?task.headers))]
-    
+
     pub async fn handle_chat_completions_detection(
         &self,
         task: ChatCompletionsDetectionTask,
@@ -116,20 +116,84 @@ impl Orchestrator {
 
             let input_detections = match input_detectors {
                 Some(detectors) if !detectors.is_empty() => {
-                    
+
                     // Call out to input detectors using chunk
                     input_detection(&ctx, &detectors, chat_messages, headers.clone()).await.unwrap()
                 }
                 _ => None,
             };
+
+            debug!(?input_detections);
+
+            if let Some(mut input_detections) = input_detections {
+                // Sort input detections by message_index
+                input_detections
+                    .sort_by_key(|value| value.message_index);
+
+                let input_detections = input_detections
+                .into_iter()
+                .map(|detection| {
+                    let last_idx = detection.result.clone().unwrap().len();
+                    // sort detection by starting span, if span is not present then move to the end of the message
+                    detection.result.clone().unwrap().sort_by_key(|r| {
+                        match r {
+                            OrchestratorDetectionResult::ContentAnalysisResponse(value) => value.start,
+                            _ => last_idx,
+                        }
+                    });
+                    detection
+                })
+                .collect::<Vec<_>>();
+                // .for_each(|mut detection| {
+                //     let last_idx = detection.result.clone().unwrap().len();
+                //     // sort detection by starting span, if span is not present then move to the end of the message
+                //     detection.result.unwrap().sort_by_key(|r| {
+                //         match r {
+                //             OrchestratorDetectionResult::ContentAnalysisResponse(value) => value.start,
+                //             _ => last_idx,
+                //         }
+                //     });
+                // });
+
+                Ok(ChatCompletionsResponse::Unary( ChatCompletion {
+                    id: "dummy-id".to_string(), // TODO: Replace with real unique ID generator
+                    model: request.model,
+                    choices: vec![],
+                    created: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64,
+                    detection: Some(DetectionResult {
+                        input: Some(input_detections),
+                        output: None
+                    }),
+                    ..Default::default()
+                }))
+
+            }
+            else {
+
+                let client = ctx
+                    .clients
+                    .get_as::<OpenAiClient>("chat_generation")
+                    .expect("chat_generation client not found");
+                Ok(client.chat_completions(task.request, task.headers).await?)
+            }
         });
 
-        let client = self
-            .ctx
-            .clients
-            .get_as::<OpenAiClient>("chat_generation")
-            .expect("chat_generation client not found");
-        Ok(client.chat_completions(task.request, task.headers).await?)
+        match task_handle.await {
+            // Task completed successfully
+            Ok(Ok(result)) => {
+                Ok(result)
+            }
+            // Task failed, return error propagated from child task that failed
+            Ok(Err(error)) => {
+                Err(error)
+            }
+            // Task cancelled or panicked
+            Err(error) => {
+                let error = error.into();
+                Err(error)
+            }
+        }
+
     }
 }
 
@@ -157,7 +221,7 @@ pub async fn input_detection(
         .map(|(detector_id, detector_params)| {
             let detector_id = detector_id.clone();
             let detector_params = detector_params.clone();
-   
+
             let detector_config =
                 ctx.config.detectors.get(&detector_id).unwrap_or_else(|| {
                     panic!("detector config not found for {}", detector_id)
@@ -175,7 +239,7 @@ pub async fn input_detection(
                 .clone();
 
             let (chunk_to_idx_map, flattended_chunks) = flatten_chat_chunks(messages);
-            
+
             let ctx = ctx.clone();
             async move {
                 match detector_type {
@@ -207,7 +271,7 @@ pub async fn input_detection(
                                     })
                                     .collect::<Vec<_>>();
                                     Ok(input_detection_result)
-                                    
+
                                 },
                                 Err(error) => Err(error)
                             }
@@ -305,7 +369,7 @@ async fn detector_chunk_task(
                 // chunking_tasks.push((detector_id, task));
             })
             .collect::<Vec<_>>();
-        
+
         let results = join_all(
                 chunk_tasks.into_iter().map(|(index, handle)| async move {
 
@@ -325,7 +389,7 @@ async fn detector_chunk_task(
             .into_iter()
             .flatten()
             .collect::<Vec<_>>();
-        
+
         chunks.insert(detector_id.clone(), results);
 
     }
