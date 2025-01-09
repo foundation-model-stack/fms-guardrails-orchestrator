@@ -253,7 +253,7 @@ async fn streaming_output_detection_task(
 
     debug!("processing detection streams");
     let aggregator = Aggregator::default();
-    let result_rx = aggregator.run(input_tx.subscribe(), detection_streams);
+    let result_rx = aggregator.run(detection_streams);
 
     debug!("spawning input broadcast task");
     // Spawn task to consume input stream and forward to broadcast stream

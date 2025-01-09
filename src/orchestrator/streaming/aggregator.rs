@@ -445,6 +445,12 @@ impl Tracker {
     }
 }
 
+impl Default for Tracker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
