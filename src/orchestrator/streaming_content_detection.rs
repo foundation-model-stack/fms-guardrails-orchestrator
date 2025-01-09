@@ -82,7 +82,7 @@ impl Orchestrator {
             // and terminates the task.
             let (error_tx, _) = broadcast::channel(1);
 
-            let mut result_rx = match streaming_output_detection_task(
+            let mut result_rx = match streaming_detection_task(
                 &ctx,
                 &detectors,
                 input_stream,
@@ -168,7 +168,7 @@ async fn extract_detectors(
 
 /// Handles streaming output detection task.
 #[instrument(skip_all)]
-async fn streaming_output_detection_task(
+async fn streaming_detection_task(
     ctx: &Arc<Context>,
     detectors: &HashMap<String, DetectorParams>,
     input_stream: ContentInputStream,
