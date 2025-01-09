@@ -441,11 +441,12 @@ async fn stream_content_detection(
         .into_body()
         .into_data_stream()
         .map(|result| {
-            serde_json::from_slice::<StreamingContentDetectionRequest>(&result.unwrap())
-                .map_err(|e| orchestrator::Error::JsonError(e.to_string()))
+            let message =
+                serde_json::from_slice::<StreamingContentDetectionRequest>(&result.unwrap())?;
+            message.validate()?;
+            Ok(message)
         })
         .boxed();
-
     // Create task and submit to handler
     let task = StreamingContentDetectionTask::new(trace_id, headers, input_stream);
     let mut response_stream = state
@@ -675,6 +676,8 @@ pub enum Error {
     Unexpected,
     #[error(transparent)]
     JsonExtractorRejection(#[from] JsonRejection),
+    #[error("{0}")]
+    JsonError(String),
 }
 
 impl From<orchestrator::Error> for Error {
@@ -694,6 +697,7 @@ impl From<orchestrator::Error> for Error {
                 StatusCode::SERVICE_UNAVAILABLE => Self::ServiceUnavailable(value.to_string()),
                 _ => Self::Unexpected,
             },
+            JsonError(message) => Self::JsonError(message),
             Validation(message) => Self::Validation(message),
             _ => Self::Unexpected,
         }
@@ -716,6 +720,7 @@ impl Error {
                 }
                 _ => (json_rejection.status(), json_rejection.body_text()),
             },
+            JsonError(_) => (StatusCode::UNPROCESSABLE_ENTITY, self.to_string()),
         };
         serde_json::json!({
             "code": code.as_u16(),
@@ -740,6 +745,7 @@ impl IntoResponse for Error {
                 }
                 _ => (json_rejection.status(), json_rejection.body_text()),
             },
+            JsonError(_) => (StatusCode::UNPROCESSABLE_ENTITY, self.to_string()),
         };
         let error = serde_json::json!({
             "code": code.as_u16(),

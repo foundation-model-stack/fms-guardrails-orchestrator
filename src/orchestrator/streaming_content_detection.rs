@@ -134,36 +134,31 @@ impl Orchestrator {
     }
 }
 
-/// Validates first request frame and returns detectors configuration.
+/// Extracts detectors config from first message.
 async fn extract_detectors(
     input_stream: &mut Peekable<ContentInputStream>,
 ) -> Result<HashMap<String, DetectorParams>, Error> {
-    // Get detector config from the first message
     // We can use Peekable to get a reference to it instead of consuming the message here
     // Peekable::peek() takes self: Pin<&mut Peekable<_>>, which is why we need to pin it
     // https://docs.rs/futures/latest/futures/stream/struct.Peekable.html
     if let Some(result) = Pin::new(input_stream).peek().await {
         match result {
             Ok(msg) => {
-                // validate initial stream frame
-                if let Err(error) = msg.validate_initial_frame() {
-                    error!(%error, "Error validating first stream frame");
-                    return Err(Error::Validation(error.to_string()));
+                if let Some(detectors) = &msg.detectors {
+                    if detectors.is_empty() {
+                        return Err(Error::Validation(
+                            "`detectors` must not be empty".to_string(),
+                        ));
+                    }
+                    return Ok(detectors.clone());
                 }
-
-                // validate_initial_request() already asserts that `detectors` field exist.
-                Ok(msg.detectors.clone().unwrap())
             }
-            Err(error) => {
-                // json deserialization error, send error message and terminate task
-                Err(Error::Validation(error.to_string()))
-            }
+            Err(error) => return Err(error.clone()),
         }
-    } else {
-        let error =
-            Error::Other("Error extracting detectors from first input stream frame".to_string());
-        Err(error)
     }
+    Err(Error::Validation(
+        "`detectors` is required for the first message".into(),
+    ))
 }
 
 /// Handles streaming output detection task.
@@ -444,17 +439,15 @@ async fn detection_task(
     }
 }
 
+/// Broadcasts messages from input stream to input broadcast channel.
+/// Triggers task cancellation if an error message is received.
 #[instrument(skip_all)]
 async fn input_broadcast_task(
-    mut input_stream: Pin<
-        Box<dyn Stream<Item = Result<StreamingContentDetectionRequest, Error>> + Send>,
-    >,
+    mut input_stream: ContentInputStream,
     input_tx: broadcast::Sender<StreamingContentDetectionRequest>,
     error_tx: broadcast::Sender<Error>,
 ) {
-    debug!("forwarding response stream");
     let mut error_rx = error_tx.subscribe();
-    let mut first_frame = true;
     loop {
         tokio::select! {
             _ = error_rx.recv() => {
@@ -463,29 +456,13 @@ async fn input_broadcast_task(
             },
             result = input_stream.next() => {
                 match result {
-                    Some(Ok(input_frame)) => {
-                        debug!(?input_frame, "received input request frame");
-                        // Combining these in a single if raises a warning that if let expressions are unstable.
-                        if !first_frame {
-                            if let Err(error) = input_frame.validate_subsequent_frames() {
-                                let _ = error_tx.send(Error::Validation(error.to_string()));
-                                tokio::time::sleep(Duration::from_millis(5)).await;
-                                break;
-                            }
-                        } else {
-                            if let Err(error) = input_frame.validate_initial_frame() {
-                                let _ = error_tx.send(Error::Validation(error.to_string()));
-                                tokio::time::sleep(Duration::from_millis(5)).await;
-                                break;
-                            }
-                            first_frame = false;
-                        }
-
-                        let _ = input_tx.send(input_frame);
+                    Some(Ok(msg)) => {
+                        debug!(?msg, "received message");
+                        let _ = input_tx.send(msg);
                     },
                     Some(Err(error)) => {
-                        error!(%error, "error on input stream, cancelling task");
-                        let _ = error_tx.send(Error::Validation(error.to_string()));
+                        error!(%error, "received error message, cancelling task");
+                        let _ = error_tx.send(error);
                         tokio::time::sleep(Duration::from_millis(5)).await;
                         break;
                     },

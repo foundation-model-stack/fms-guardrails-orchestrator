@@ -1115,45 +1115,13 @@ pub struct StreamingContentDetectionRequest {
 
 impl StreamingContentDetectionRequest {
     /// validates stream messages
-    fn validate(&self) -> Result<(), ValidationError> {
+    pub fn validate(&self) -> Result<(), ValidationError> {
         if self.content.is_empty() {
             return Err(ValidationError::Invalid(
                 "`content` cannot be empty".to_string(),
             ));
         }
-
         Ok(())
-    }
-
-    /// validates the first stream message
-    pub fn validate_initial_frame(&self) -> Result<(), ValidationError> {
-        match &self.detectors {
-            Some(detectors) => {
-                if detectors.is_empty() {
-                    return Err(ValidationError::Invalid(
-                        "`detectors` must not be empty".to_string(),
-                    ));
-                }
-            }
-            None => {
-                return Err(ValidationError::Invalid(
-                    "`detectors` is required on first stream frame".to_string(),
-                ));
-            }
-        }
-
-        self.validate()
-    }
-
-    /// validates the second stream message onwards
-    pub fn validate_subsequent_frames(&self) -> Result<(), ValidationError> {
-        if self.detectors.is_some() {
-            return Err(ValidationError::Invalid(
-                "`detectors` is only supported on the first stream frame".to_string(),
-            ));
-        }
-
-        self.validate()
     }
 }
 
