@@ -14,8 +14,7 @@
  limitations under the License.
 
 */
-
-use crate::clients;
+use crate::{clients, models::ValidationError};
 
 /// Orchestrator errors.
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
@@ -57,5 +56,11 @@ impl From<tokio::task::JoinError> for Error {
 impl From<serde_json::Error> for Error {
     fn from(value: serde_json::Error) -> Self {
         Self::JsonError(value.to_string())
+    }
+}
+
+impl From<ValidationError> for Error {
+    fn from(value: ValidationError) -> Self {
+        Self::Validation(value.to_string())
     }
 }

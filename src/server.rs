@@ -464,28 +464,21 @@ async fn stream_content_detection(
         while let Some(result) = response_stream.next().await {
             match result {
                 Ok(msg) => {
-                    let msg = serde_json::to_string(&msg).unwrap();
-                    let _ = output_tx.send(Ok(to_ndjson(msg))).await;
+                    let msg = utils::json::to_nd_string(&msg).unwrap();
+                    let _ = output_tx.send(Ok(msg)).await;
                 }
                 Err(error) => {
                     // Convert orchestrator::Error to server::Error
                     let error: Error = error.into();
                     // server::Error doesn't impl Serialize, so we use to_json()
-                    let error_msg = error.to_json().to_string();
-                    let _ = output_tx.send(Ok(to_ndjson(error_msg))).await;
+                    let error_msg = utils::json::to_nd_string(&error.to_json()).unwrap();
+                    let _ = output_tx.send(Ok(error_msg)).await;
                 }
             }
         }
     });
 
     Response::new(axum::body::Body::from_stream(output_stream))
-}
-
-fn to_ndjson<T>(json: T) -> String
-where
-    T: std::fmt::Display,
-{
-    format!("{json}\n")
 }
 
 #[instrument(skip_all)]
