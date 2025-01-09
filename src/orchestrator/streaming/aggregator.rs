@@ -370,7 +370,7 @@ impl GenerationActorHandle {
 }
 
 #[derive(Debug, Clone)]
-struct TrackerEntry {
+pub struct TrackerEntry {
     pub chunk: Chunk,
     pub detections: Vec<Detections>,
 }
@@ -385,7 +385,7 @@ impl TrackerEntry {
 }
 
 #[derive(Debug, Clone)]
-struct Tracker {
+pub struct Tracker {
     state: BTreeMap<Span, TrackerEntry>,
 }
 

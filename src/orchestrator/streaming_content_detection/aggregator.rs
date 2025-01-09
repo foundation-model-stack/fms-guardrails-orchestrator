@@ -16,10 +16,7 @@
 */
 
 #![allow(dead_code)]
-use std::{
-    collections::{btree_map, BTreeMap},
-    sync::Arc,
-};
+use std::sync::Arc;
 
 use tokio::sync::{broadcast, mpsc, oneshot};
 use tracing::instrument;
@@ -28,18 +25,13 @@ use crate::{
     clients::detector::ContentAnalysisResponse,
     models::{StreamingContentDetectionRequest, StreamingContentDetectionResponse},
     orchestrator::{
-        streaming::{Chunk, Detections},
+        streaming::{
+            aggregator::{AggregationStrategy, DetectorId, Tracker, TrackerEntry},
+            Chunk, Detections,
+        },
         Error,
     },
 };
-
-pub type DetectorId = String;
-pub type Span = (i64, i64);
-
-#[derive(Debug, Clone, Copy)]
-pub enum AggregationStrategy {
-    MaxProcessedIndex,
-}
 
 pub struct Aggregator {
     strategy: AggregationStrategy,
@@ -367,87 +359,12 @@ impl GenerationActorHandle {
     }
 }
 
-#[derive(Debug, Clone)]
-struct TrackerEntry {
-    pub chunk: Chunk,
-    pub detections: Vec<Detections>,
-}
-
-impl TrackerEntry {
-    pub fn new(chunk: Chunk, detections: Detections) -> Self {
-        Self {
-            chunk,
-            detections: vec![detections],
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-struct Tracker {
-    state: BTreeMap<Span, TrackerEntry>,
-}
-
-impl Tracker {
-    pub fn new() -> Self {
-        Self {
-            state: BTreeMap::new(),
-        }
-    }
-
-    pub fn insert(&mut self, key: Span, value: TrackerEntry) {
-        match self.state.entry(key) {
-            btree_map::Entry::Vacant(entry) => {
-                // New span, insert entry with chunk and detections
-                entry.insert(value);
-            }
-            btree_map::Entry::Occupied(mut entry) => {
-                // Existing span, extend detections
-                entry.get_mut().detections.extend(value.detections);
-            }
-        }
-    }
-
-    /// Returns the key-value pair of the first span.
-    pub fn first_key_value(&self) -> Option<(&Span, &TrackerEntry)> {
-        self.state.first_key_value()
-    }
-
-    /// Returns the value of the first span.
-    pub fn first(&self) -> Option<&TrackerEntry> {
-        self.state.first_key_value().map(|(_, value)| value)
-    }
-
-    /// Removes and returns the key-value pair of the first span.
-    pub fn pop_first(&mut self) -> Option<(Span, TrackerEntry)> {
-        self.state.pop_first()
-    }
-
-    /// Returns the number of elements in the tracker.
-    pub fn len(&self) -> usize {
-        self.state.len()
-    }
-
-    /// Returns true if the tracker contains no elements.
-    pub fn is_empty(&self) -> bool {
-        self.state.is_empty()
-    }
-
-    /// Gets an iterator over the keys of the tracker, in sorted order.
-    pub fn keys(&self) -> btree_map::Keys<'_, (i64, i64), TrackerEntry> {
-        self.state.keys()
-    }
-
-    /// Gets an iterator over the values of the tracker, in sorted order.
-    pub fn values(&self) -> btree_map::Values<'_, (i64, i64), TrackerEntry> {
-        self.state.values()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::{
         models::TokenClassificationResult,
+        orchestrator::streaming::aggregator::Span,
         pb::caikit_data_model::nlp::{ChunkerTokenizationStreamResult, Token},
     };
 
