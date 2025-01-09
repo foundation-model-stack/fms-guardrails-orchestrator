@@ -32,7 +32,7 @@ use tracing_test::traced_test;
 
 mod common;
 
-/// Asserts a scenario with a single detection works as expected.
+/// Asserts a scenario with a single detection works as expected (assumes a detector configured with whole_doc_chunker).
 ///
 /// This test mocks a detector that detects the word "word" in a given input.
 #[traced_test]
@@ -41,7 +41,7 @@ async fn test_single_detection() {
     ensure_global_rustls_state();
     let shared_state = ONCE.get_or_init(shared_state).await.clone();
     let server = TestServer::new(get_app(shared_state)).unwrap();
-    let detector_name = "content_detector".to_string();
+    let detector_name = "content_detector_whole_doc".to_string();
 
     // Add detector mock
     let mut mocks = MockSet::new();

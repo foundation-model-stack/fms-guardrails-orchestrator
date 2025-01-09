@@ -17,10 +17,10 @@ detectors:
       port: 8000
     chunker_id: test_chunker
     default_threshold: 0.5
-  content_detector:
+  content_detector_whole_doc:
     type: text_contents
     service:
-      hostname: 0.0.0.0
+      hostname: localhost
       port: 8001
     chunker_id: whole_doc_chunker
     default_threshold: 0.5
