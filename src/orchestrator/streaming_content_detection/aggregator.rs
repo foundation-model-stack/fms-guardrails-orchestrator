@@ -15,6 +15,17 @@
 
 */
 
+//////////////////////////////////////////////////////////////////////////////////////
+// This file contains a simplified version of the code in                           //
+// src/orchestrator/streaming/aggregator.rs.                                        //
+// The main difference is that this file does not contain generation nor a          //
+// result actor. This code also reuses whatever is possible from the aforementioned //
+// file, such as tracker and aggregation strategy structs.                          //
+// `ClassifiedGeneratedTextStreamResult` with `StreamingContentDetectionRequest`    //
+// and `StreamingContentDetectionResponse`.                                         //
+// This can likely be improved in a future refactor to use generics instead of      //
+// duplicating these very similar methods.                                          //
+//////////////////////////////////////////////////////////////////////////////////////
 #![allow(dead_code)]
 use std::sync::Arc;
 

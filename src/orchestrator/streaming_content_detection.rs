@@ -15,6 +15,16 @@
 
 */
 
+///////////////////////////////////////////////////////////////////////////////////
+// A lot of the code in this file is similar to src/orchestrator/streaming.rs,   //
+// with expection of `Orchestrator::handle_streaming_content_detection()`` and   //
+// `extract_detectors().`                                                        //
+// The main difference in the remaining methods was the replacement of           //
+// `ClassifiedGeneratedTextStreamResult` with `StreamingContentDetectionRequest` //
+// and `StreamingContentDetectionResponse`.                                      //
+// This can likely be improved in a future refactor to use generics instead of   //
+// duplicating these very similar methods.                                       //
+///////////////////////////////////////////////////////////////////////////////////
 mod aggregator;
 
 use aggregator::Aggregator;
