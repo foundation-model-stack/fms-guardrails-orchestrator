@@ -32,6 +32,8 @@ pub enum Error {
     GenerateRequestFailed { id: String, error: clients::Error },
     #[error("tokenize request failed for `{id}`: {error}")]
     TokenizeRequestFailed { id: String, error: clients::Error },
+    #[error("validation failed for `{id}`: {error}")]
+    ValidationFailed { id: String, error: String },
     #[error("{0}")]
     Other(String),
     #[error("cancelled")]

@@ -522,7 +522,9 @@ async fn chat_completions_detection(
                 Ok(sse.into_response())
             }
         },
-        Err(error) => Err(error.into()),
+        Err(error) => {println!("error: {:?}", error);
+            Err(error.into())
+        },
     }
 }
 
@@ -615,6 +617,7 @@ impl From<orchestrator::Error> for Error {
                 StatusCode::SERVICE_UNAVAILABLE => Self::ServiceUnavailable(value.to_string()),
                 _ => Self::Unexpected,
             },
+            ValidationFailed { id: _, error } => Self::Validation(error),
             _ => Self::Unexpected,
         }
     }

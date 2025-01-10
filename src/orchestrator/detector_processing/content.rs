@@ -26,6 +26,7 @@ use crate::{
 pub fn filter_chat_message(
     messages: ChatMessagesInternal,
 ) -> Result<ChatMessagesInternal, ValidationError> {
+
     // Implement content processing logic here
     // Rules:
     // Rule 1: Select last message from the list of messages
@@ -55,7 +56,7 @@ pub fn filter_chat_message(
     Ok(ChatMessagesInternal::from(vec![
         ChatMessageInternal {
             // index of last message
-            message_index: messages.len() -1, 
+            message_index: messages.len() -1,
             role: message.role.clone(),
             content: Some(content),
             refusal: message.refusal.clone(),

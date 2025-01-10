@@ -118,7 +118,7 @@ impl Orchestrator {
                 Some(detectors) if !detectors.is_empty() => {
 
                     // Call out to input detectors using chunk
-                    input_detection(&ctx, &detectors, chat_messages, headers.clone()).await.unwrap()
+                    input_detection(&ctx, &detectors, chat_messages, headers.clone()).await?
                 }
                 _ => None,
             };
@@ -216,6 +216,7 @@ pub async fn input_detection(
     // Call out to the chunker to get chunks of messages based on detector type
     let chunks = detector_chunk_task(&ctx, filtered_chat_messages).await?;
 
+    println!("chunks: {:?}", chunks);
     let tasks = detectors
         .iter()
         .map(|(detector_id, detector_params)| {
@@ -303,9 +304,9 @@ fn filter_chat_messages(
     messages: Vec<ChatMessageInternal>,
 ) -> Result<HashMap<String, ChatMessagesInternal>, Error> {
 
-    let chat_messages = detectors
-    .iter()
-    .map(|(detector_id, _)| {
+    detectors
+    .into_iter()
+    .map(|(detector_id, _)| -> Result<(String, Vec<ChatMessageInternal>), Error> {
         let ctx = ctx.clone();
         let detector_id = detector_id.clone();
         let detector_config =
@@ -314,21 +315,18 @@ fn filter_chat_messages(
             });
         let detector_type = &detector_config.r#type;
         // Filter messages based on detector type
-        match detector_type {
+        let value = match detector_type {
             DetectorType::TextContents => {
                 match content::filter_chat_message(messages.clone()) {
-                    Ok(filtered_messages) => Ok((detector_id, filtered_messages)),
-                    Err(e) => return Err(e),
+                    Ok(filtered_messages) => Ok(filtered_messages),
+                    Err(e) => Err(Error::ValidationFailed { id: detector_id.clone(), error: e.to_string() }),
                 }
             }
             _ => unimplemented!(),
-        }
+        }?;
+        Ok((detector_id, value))
     })
-    .take_while(Result::is_ok)
-    .map(Result::unwrap)
-    .collect::<HashMap<String, ChatMessagesInternal>>();
-
-    Ok(chat_messages)
+    .collect::<Result<HashMap<String, ChatMessagesInternal>, Error>>()
 }
 
 // Function to chunk ChatMessagesInternal based on the chunker id and return chunks in ChatMessagesInternal form
@@ -336,9 +334,7 @@ fn filter_chat_messages(
 async fn detector_chunk_task(
     ctx: &Arc<Context>,
     detector_chat_messages: HashMap<String, ChatMessagesInternal>) -> Result<HashMap<String, Vec<(usize, Vec<Chunk>)>>, Error> {
-    // detector_chat_messages: HashMap<String, ChatMessagesInternal>) -> Result<HashMap<String, Vec<Chunk>>, Error> {
 
-    // let chunking_tasks = Vec::new();
     let mut chunks = HashMap::<String, Vec<(usize, Vec<Chunk>)>>::new();
 
     // TODO: Improve error handling for the code below
