@@ -37,7 +37,10 @@ use axum::{
     Json, Router,
 };
 use axum_extra::extract::WithRejection;
-use futures::{stream::{self, BoxStream}, Stream, StreamExt};
+use futures::{
+    stream::{self, BoxStream},
+    Stream, StreamExt,
+};
 use hyper::body::Incoming;
 use hyper_util::rt::{TokioExecutor, TokioIo};
 use opentelemetry::trace::TraceContextExt;
