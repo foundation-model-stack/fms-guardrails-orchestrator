@@ -260,7 +260,11 @@ pub struct ChatCompletionsRequest {
     pub spaces_between_special_tokens: Option<bool>,
 
     // Detectors
-    pub detectors: DetectorConfig,
+    // Note: We need to make it optional, since this structure also gets used to
+    // form request for chat completions. And downstream server, like vLLM would
+    // reject extra parameters.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detectors: Option<DetectorConfig>,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]

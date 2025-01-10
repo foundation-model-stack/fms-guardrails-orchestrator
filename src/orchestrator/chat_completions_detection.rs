@@ -109,7 +109,7 @@ impl Orchestrator {
         let task_handle = tokio::spawn(async move {
             // Convert the request into a format that can be used for processing
             let chat_messages = ChatMessagesInternal::from(request.clone());
-            let input_detectors = request.detectors.input;
+            let input_detectors = request.detectors.unwrap_or_default().input;
 
             let input_detections = match input_detectors {
                 Some(detectors) if !detectors.is_empty() => {
@@ -160,7 +160,10 @@ impl Orchestrator {
                     .clients
                     .get_as::<OpenAiClient>("chat_generation")
                     .expect("chat_generation client not found");
-                Ok(client.chat_completions(task.request, task.headers).await?)
+                let mut chat_request = task.request;
+                // Remove detectors as chat completion server would reject extra parameter
+                chat_request.detectors = None;
+                Ok(client.chat_completions(chat_request, task.headers).await?)
             }
         });
 
@@ -171,10 +174,12 @@ impl Orchestrator {
             }
             // Task failed, return error propagated from child task that failed
             Ok(Err(error)) => {
+                // TODO: Transform error from chat completion client
                 Err(error)
             }
             // Task cancelled or panicked
             Err(error) => {
+                // TODO: Transform error from chat completion client
                 let error = error.into();
                 Err(error)
             }
