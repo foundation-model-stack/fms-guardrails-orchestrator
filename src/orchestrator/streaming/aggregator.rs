@@ -384,7 +384,7 @@ impl TrackerEntry {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Tracker {
     state: BTreeMap<Span, TrackerEntry>,
 }
@@ -442,12 +442,6 @@ impl Tracker {
     /// Gets an iterator over the values of the tracker, in sorted order.
     pub fn values(&self) -> btree_map::Values<'_, (i64, i64), TrackerEntry> {
         self.state.values()
-    }
-}
-
-impl Default for Tracker {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
