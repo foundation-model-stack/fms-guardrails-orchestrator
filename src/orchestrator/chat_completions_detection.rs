@@ -371,8 +371,14 @@ async fn detector_chunk_task(
 
                     match handle.await {
                         Ok(Ok(value)) => Ok((index, value)), // Success
-                        Ok(Err(err)) => Err(err),           // Task returned an error
-                        Err(_) => Err(Error::Other("Chunking task failed".to_string())), // Chunking failed
+                        Ok(Err(err)) => {
+                            println!("Chunking failed error: {:?}", err);
+                            Err(err)           // Task returned an error
+                        }
+                        Err(_) => {
+                            println!("Chunking failed error");
+                            Err(Error::Other("Chunking task failed".to_string())) // Chunking failed
+                        }
                     }
 
                 })
@@ -381,13 +387,19 @@ async fn detector_chunk_task(
             // .iter()
             .into_iter()
             // .collect::<(usize, Result<Vec<_>, Error>)>()
-            .collect::<Result<Vec<_>, Error>>()
-            .into_iter()
-            .flatten()
-            .collect::<Vec<_>>();
+            .collect::<Result<Vec<_>, Error>>();
 
-        chunks.insert(detector_id.clone(), results);
-
+        match results {
+            Ok(chunk_value) => {
+                let chunk_values = chunk_value
+                    .into_iter()
+                    // .flatten()
+                    .collect::<Vec<_>>();
+                chunks.insert(detector_id.clone(), chunk_values);
+                Ok(())
+            }
+            Err(err) => Err(err)
+        }?
     }
 
    Ok(chunks)
