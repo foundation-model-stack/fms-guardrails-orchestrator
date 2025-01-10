@@ -26,7 +26,6 @@ use crate::{
 pub fn filter_chat_message(
     messages: ChatMessagesInternal,
 ) -> Result<ChatMessagesInternal, ValidationError> {
-
     // Implement content processing logic here
     // Rules:
     // Rule 1: Select last message from the list of messages
@@ -53,34 +52,40 @@ pub fn filter_chat_message(
         Content::Text(text) => Content::Text(text),
         _ => return Err(ValidationError::Invalid("Incorrect type requested".into())),
     };
-    Ok(ChatMessagesInternal::from(vec![
-        ChatMessageInternal {
-            // index of last message
-            message_index: messages.len() -1,
-            role: message.role.clone(),
-            content: Some(content),
-            refusal: message.refusal.clone(),
-        }
-    ]))
+    Ok(ChatMessagesInternal::from(vec![ChatMessageInternal {
+        // index of last message
+        message_index: messages.len() - 1,
+        role: message.role.clone(),
+        content: Some(content),
+        refusal: message.refusal.clone(),
+    }]))
 }
 
 pub async fn get_content_analysis_request(
     messages: ChatMessagesInternal,
     detector_params: DetectorParams,
 ) -> Result<ContentAnalysisRequest, ValidationError> {
-
     if messages.is_empty() {
         return Err(ValidationError::Invalid("No messages provided".into()));
     }
 
     if messages.len() > 1 {
-        return Err(ValidationError::Invalid("More than one message is not supported".into()));
+        return Err(ValidationError::Invalid(
+            "More than one message is not supported".into(),
+        ));
     }
 
     let content = match messages.first().unwrap().content.as_ref().unwrap() {
         Content::Text(text) => text,
-        _ => return Err(ValidationError::Invalid("Message does not have content".into())),
+        _ => {
+            return Err(ValidationError::Invalid(
+                "Message does not have content".into(),
+            ))
+        }
     };
 
-    Ok(ContentAnalysisRequest::new(vec![content.to_string()], detector_params))
+    Ok(ContentAnalysisRequest::new(
+        vec![content.to_string()],
+        detector_params,
+    ))
 }

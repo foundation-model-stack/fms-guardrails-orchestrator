@@ -543,9 +543,7 @@ async fn chat_completions_detection(
                 Ok(sse.into_response())
             }
         },
-        Err(error) => {
-            Err(error.into())
-        },
+        Err(error) => Err(error.into()),
     }
 }
 

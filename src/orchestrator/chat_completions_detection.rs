@@ -14,10 +14,16 @@
  limitations under the License.
 
 */
-use std::{pin::Pin, time::{SystemTime, UNIX_EPOCH}};
 use axum::http::HeaderMap;
-use futures::{future::{join_all, try_join_all}, Future};
+use futures::{
+    future::{join_all, try_join_all},
+    Future,
+};
 use std::{collections::HashMap, sync::Arc};
+use std::{
+    pin::Pin,
+    time::{SystemTime, UNIX_EPOCH},
+};
 use tracing::{debug, info, instrument};
 
 use super::{ChatCompletionsDetectionTask, Context, Error, Orchestrator};
@@ -25,20 +31,21 @@ use crate::{
     clients::{
         detector::{ChatDetectionRequest, ContentAnalysisRequest},
         openai::{
-            ChatCompletion, ChatCompletionChoice, ChatCompletionsRequest, ChatCompletionsResponse, Content,
-            DetectionResult, InputDetectionResult, OpenAiClient
+            ChatCompletion, ChatCompletionChoice, ChatCompletionsRequest, ChatCompletionsResponse,
+            Content, DetectionResult, InputDetectionResult, OpenAiClient,
         },
     },
     config::DetectorType,
     models::{DetectorParams, OrchestratorDetectionResult},
     orchestrator::{
-        detector_processing::content, unary::{chunk, detect_content}, Chunk
+        detector_processing::content,
+        unary::{chunk, detect_content},
+        Chunk,
     },
 };
 use serde::{Deserialize, Serialize};
 
 pub type ChunkResult<T> = Pin<Box<dyn Future<Output = T> + Send>>;
-
 
 /// Internal structure to capture chat messages (both request and response)
 /// and prepare it for processing
@@ -113,7 +120,6 @@ impl Orchestrator {
 
             let input_detections = match input_detectors {
                 Some(detectors) if !detectors.is_empty() => {
-
                     // Call out to input detectors using chunk
                     input_detection(&ctx, &detectors, chat_messages, headers.clone()).await?
                 }
@@ -124,38 +130,38 @@ impl Orchestrator {
 
             if let Some(mut input_detections) = input_detections {
                 // Sort input detections by message_index
-                input_detections
-                    .sort_by_key(|value| value.message_index);
+                input_detections.sort_by_key(|value| value.message_index);
 
                 let input_detections = input_detections
-                .into_iter()
-                .map(|detection| {
-                    let last_idx = detection.results.clone().unwrap().len();
-                    // sort detection by starting span, if span is not present then move to the end of the message
-                    detection.results.clone().unwrap().sort_by_key(|r| {
-                        match r {
-                            OrchestratorDetectionResult::ContentAnalysisResponse(value) => value.start,
+                    .into_iter()
+                    .map(|detection| {
+                        let last_idx = detection.results.clone().unwrap().len();
+                        // sort detection by starting span, if span is not present then move to the end of the message
+                        detection.results.clone().unwrap().sort_by_key(|r| match r {
+                            OrchestratorDetectionResult::ContentAnalysisResponse(value) => {
+                                value.start
+                            }
                             _ => last_idx,
-                        }
-                    });
-                    detection
-                })
-                .collect::<Vec<_>>();
+                        });
+                        detection
+                    })
+                    .collect::<Vec<_>>();
 
-                Ok(ChatCompletionsResponse::Unary( ChatCompletion {
+                Ok(ChatCompletionsResponse::Unary(Box::new(ChatCompletion {
                     id: "dummy-id".to_string(), // TODO: Replace with real unique ID generator
                     model: request.model,
                     choices: vec![],
-                    created: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64,
+                    created: SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap()
+                        .as_secs() as i64,
                     detections: Some(DetectionResult {
                         input: Some(input_detections),
-                        output: None
+                        output: None,
                     }),
                     ..Default::default()
-                }))
-
-            }
-            else {
+                })))
+            } else {
                 let model_id = task.request.model.clone();
                 let client = ctx
                     .clients
@@ -165,20 +171,18 @@ impl Orchestrator {
                 // Remove detectors as chat completion server would reject extra parameter
                 chat_request.detectors = None;
                 client
-                .chat_completions(chat_request, task.headers)
-                .await
-                .map_err(|error| Error::ChatGenerateRequestFailed {
-                    id: model_id,
-                    error,
-                })
+                    .chat_completions(chat_request, task.headers)
+                    .await
+                    .map_err(|error| Error::ChatGenerateRequestFailed {
+                        id: model_id,
+                        error,
+                    })
             }
         });
 
         match task_handle.await {
             // Task completed successfully
-            Ok(Ok(result)) => {
-                Ok(result)
-            }
+            Ok(Ok(result)) => Ok(result),
             // Task failed, return error propagated from child task that failed
             Ok(Err(error)) => {
                 // TODO: Transform error from chat completion client
@@ -191,7 +195,6 @@ impl Orchestrator {
                 Err(error)
             }
         }
-
     }
 }
 
@@ -207,7 +210,7 @@ pub async fn input_detection(
     let ctx = ctx.clone();
 
     // filter chat messages based on individual detectors to prepare for chunking
-    let filtered_chat_messages = filter_chat_messages(&ctx, &detectors, chat_messages)?;
+    let filtered_chat_messages = filter_chat_messages(&ctx, detectors, chat_messages)?;
 
     // Call out to the chunker to get chunks of messages based on detector type
     let chunks = detector_chunk_task(&ctx, filtered_chat_messages).await?;
@@ -253,7 +256,7 @@ pub async fn input_detection(
                             .await;
                             match result {
                                 Ok(value) => {
-                                    if value.len() > 0 {
+                                    if !value.is_empty() {
                                         let input_detection_result = chunk_to_idx_map
                                         .into_iter()
                                         .map(|(index, range)| {
@@ -282,7 +285,7 @@ pub async fn input_detection(
         })
         .collect::<Vec<_>>();
 
-        let detections = try_join_all(tasks)
+    let detections = try_join_all(tasks)
         .await?
         .into_iter()
         .collect::<Result<Vec<_>, Error>>()?
@@ -293,56 +296,59 @@ pub async fn input_detection(
     Ok((!detections.is_empty()).then_some(detections))
 }
 
-
 // Function to filter messages based on individual detectors
 fn filter_chat_messages(
     ctx: &Arc<Context>,
     detectors: &HashMap<String, DetectorParams>,
     messages: Vec<ChatMessageInternal>,
 ) -> Result<HashMap<String, ChatMessagesInternal>, Error> {
-
     detectors
-    .into_iter()
-    .map(|(detector_id, _)| -> Result<(String, Vec<ChatMessageInternal>), Error> {
-        let ctx = ctx.clone();
-        let detector_id = detector_id.clone();
-        let detector_config =
-            ctx.config.detectors.get(&detector_id).unwrap_or_else(|| {
-                panic!("detector config not found for {}", detector_id)
-            });
-        let detector_type = &detector_config.r#type;
-        // Filter messages based on detector type
-        let value = match detector_type {
-            DetectorType::TextContents => {
-                match content::filter_chat_message(messages.clone()) {
-                    Ok(filtered_messages) => Ok(filtered_messages),
-                    Err(e) => Err(Error::ValidationFailed { id: detector_id.clone(), error: e.to_string() }),
-                }
-            }
-            _ => unimplemented!(),
-        }?;
-        Ok((detector_id, value))
-    })
-    .collect::<Result<HashMap<String, ChatMessagesInternal>, Error>>()
+        .iter()
+        .map(
+            |(detector_id, _)| -> Result<(String, Vec<ChatMessageInternal>), Error> {
+                let ctx = ctx.clone();
+                let detector_id = detector_id.clone();
+                let detector_config = ctx
+                    .config
+                    .detectors
+                    .get(&detector_id)
+                    .unwrap_or_else(|| panic!("detector config not found for {}", detector_id));
+                let detector_type = &detector_config.r#type;
+                // Filter messages based on detector type
+                let value = match detector_type {
+                    DetectorType::TextContents => {
+                        match content::filter_chat_message(messages.clone()) {
+                            Ok(filtered_messages) => Ok(filtered_messages),
+                            Err(e) => Err(Error::ValidationFailed {
+                                id: detector_id.clone(),
+                                error: e.to_string(),
+                            }),
+                        }
+                    }
+                    _ => unimplemented!(),
+                }?;
+                Ok((detector_id, value))
+            },
+        )
+        .collect::<Result<HashMap<String, ChatMessagesInternal>, Error>>()
 }
 
 // Function to chunk ChatMessagesInternal based on the chunker id and return chunks in ChatMessagesInternal form
 // Output maps each detector_id with corresponding chunk
 async fn detector_chunk_task(
     ctx: &Arc<Context>,
-    detector_chat_messages: HashMap<String, ChatMessagesInternal>) -> Result<HashMap<String, Vec<(usize, Vec<Chunk>)>>, Error> {
-
+    detector_chat_messages: HashMap<String, ChatMessagesInternal>,
+) -> Result<HashMap<String, Vec<(usize, Vec<Chunk>)>>, Error> {
     let mut chunks = HashMap::<String, Vec<(usize, Vec<Chunk>)>>::new();
 
     // TODO: Improve error handling for the code below
     for (detector_id, chat_messages) in detector_chat_messages.iter() {
-
         let chunk_tasks = chat_messages
             .iter()
-            .map(|message|{
+            .map(|message| {
                 let text = match message.content.as_ref().unwrap() {
                     Content::Text(value) => value,
-                    _ => panic!("Only text content accepted")
+                    _ => panic!("Only text content accepted"),
                 };
                 let offset: usize = 0;
                 let task = tokio::spawn({
@@ -350,10 +356,7 @@ async fn detector_chunk_task(
                     let text = text.clone();
                     let ctx = ctx.clone();
                     async move {
-                        let chunker_id = ctx
-                            .config
-                            .get_chunker_id(&detector_id)
-                            .unwrap();
+                        let chunker_id = ctx.config.get_chunker_id(&detector_id).unwrap();
                         chunk(&ctx, chunker_id, offset, text).await
                     }
                 });
@@ -363,50 +366,42 @@ async fn detector_chunk_task(
             })
             .collect::<Vec<_>>();
 
-        let results = join_all(
-                chunk_tasks.into_iter().map(|(index, handle)| async move {
-
-                    match handle.await {
-                        Ok(Ok(value)) => Ok((index, value)), // Success
-                        Ok(Err(err)) => {
-                            // Task returned an error
-                            Err(err)
-                        }
-                        Err(_) => {
-                            // Chunking failed
-                            Err(Error::Other("Chunking task failed".to_string()))
-                        }
-                    }
-
-                })
-            )
-            .await
-            .into_iter()
-            .collect::<Result<Vec<_>, Error>>();
+        let results = join_all(chunk_tasks.into_iter().map(|(index, handle)| async move {
+            match handle.await {
+                Ok(Ok(value)) => Ok((index, value)), // Success
+                Ok(Err(err)) => {
+                    // Task returned an error
+                    Err(err)
+                }
+                Err(_) => {
+                    // Chunking failed
+                    Err(Error::Other("Chunking task failed".to_string()))
+                }
+            }
+        }))
+        .await
+        .into_iter()
+        .collect::<Result<Vec<_>, Error>>();
 
         match results {
             Ok(chunk_value) => {
-                let chunk_values = chunk_value
-                    .into_iter()
-                    .collect::<Vec<_>>();
+                let chunk_values = chunk_value.into_iter().collect::<Vec<_>>();
                 chunks.insert(detector_id.clone(), chunk_values);
                 Ok(())
             }
-            Err(err) => Err(err)
+            Err(err) => Err(err),
         }?
     }
 
-   Ok(chunks)
-
+    Ok(chunks)
 }
-
 
 // Function that goes over vector of tuple containing index and Vec<Chunk>
 // and returns Hashmap mapping index to length of its Vec<Chunk> starting 0
 // along with flattended Vec<Chunk> combining all the Vec<Chunk> such that
 // we can later retrieve individual chunk mapped to each index.
 fn flatten_chat_chunks(
-    messages: Vec<(usize, Vec<Chunk>)>
+    messages: Vec<(usize, Vec<Chunk>)>,
 ) -> (HashMap<usize, std::ops::Range<usize>>, Vec<Chunk>) {
     // Initialize the flattened chunks and index mapping
     let mut flattened_chunks = Vec::new();

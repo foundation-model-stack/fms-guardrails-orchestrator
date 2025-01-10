@@ -161,13 +161,13 @@ impl HttpClientExt for OpenAiClient {
 
 #[derive(Debug)]
 pub enum ChatCompletionsResponse {
-    Unary(ChatCompletion),
+    Unary(Box<ChatCompletion>),
     Streaming(mpsc::Receiver<Result<Option<ChatCompletionChunk>, Error>>),
 }
 
 impl From<ChatCompletion> for ChatCompletionsResponse {
     fn from(value: ChatCompletion) -> Self {
-        Self::Unary(value)
+        Self::Unary(Box::new(value))
     }
 }
 
