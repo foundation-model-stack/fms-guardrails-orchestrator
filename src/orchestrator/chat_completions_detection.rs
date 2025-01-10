@@ -215,12 +215,11 @@ pub async fn input_detection(
     // Call out to the chunker to get chunks of messages based on detector type
     let chunks = detector_chunk_task(&ctx, filtered_chat_messages).await?;
 
+    // We run over each detector and take out messages that are appropriate for that detector.
     let tasks = detectors
         .iter()
-        .map(|(detector_id, detector_params)| {
+        .flat_map(|(detector_id, detector_params)| {
             let detector_id = detector_id.clone();
-            let detector_params = detector_params.clone();
-
             let detector_config =
                 ctx.config.detectors.get(&detector_id).unwrap_or_else(|| {
                     panic!("detector config not found for {}", detector_id)
@@ -229,58 +228,61 @@ pub async fn input_detection(
 
             let detector_type = &detector_config.r#type;
 
-            let headers = headers.clone();
-
+            // Get chunks corresponding to each message
             let messages = chunks
                 .get(&detector_id)
                 .unwrap()
-                // .unwrap_or_else(|| panic!("chunk not found for {}", chunker_id))
                 .clone();
 
-            let (chunk_to_idx_map, flattended_chunks) = flatten_chat_chunks(messages);
+            match detector_type {
+                DetectorType::TextContents => {
 
-            let ctx = ctx.clone();
-            async move {
-                match detector_type {
-                    DetectorType::TextContents => {
-                        // call detection using curated chunks
+                    // spawn parallel processes for each message index and run detection on them.
+                    let tasks = messages
+                    .into_iter()
+                    .map(|(idx, chunks)| {
+                        let ctx = ctx.clone();
+                        let detector_id = detector_id.clone();
+                        let detector_params = detector_params.clone();
+                        let headers = headers.clone();
+
                         tokio::spawn(async move {
+                            // Call content detector on the chunks of particular message
+                            // and return the index and detection results
                             let result = detect_content(
-                                ctx,
-                                detector_id,
+                                ctx.clone(),
+                                detector_id.clone(),
                                 default_threshold,
-                                detector_params,
-                                flattended_chunks,
+                                detector_params.clone(),
+                                chunks,
                                 headers.clone(),
-                            )
-                            .await;
+                            ).await;
                             match result {
                                 Ok(value) => {
                                     if !value.is_empty() {
-                                        let input_detection_result = chunk_to_idx_map
-                                        .into_iter()
-                                        .map(|(index, range)| {
-                                            InputDetectionResult {
-                                                message_index: index as u16,
-                                                results: Some(
-                                                    value[range]
-                                                    .iter()
-                                                    .map(|result| {OrchestratorDetectionResult::ContentAnalysisResponse(result.clone())})
-                                                    .collect::<Vec<_>>())
-                                            }
-                                        })
-                                        .collect::<Vec<_>>();
+                                        let input_detection_result = InputDetectionResult {
+                                            message_index: idx as u16,
+                                            results: Some(
+                                                value
+                                                .iter()
+                                                .map(|result| {OrchestratorDetectionResult::ContentAnalysisResponse(result.clone())})
+                                                .collect::<Vec<_>>())
+                                        };
                                         Ok(input_detection_result)
-                                    } else {
-                                        Ok(Vec::new())
+                                    }
+                                    else {
+                                        Ok(InputDetectionResult { message_index: idx as u16, results: None })
                                     }
                                 },
                                 Err(error) => Err(error)
                             }
-                        }).await
-                    }
-                    _ => unimplemented!(),
+                        })
+                    })
+                    .collect::<Vec<_>>();
+                    tasks
+
                 }
+                _ => unimplemented!(),
             }
         })
         .collect::<Vec<_>>();
@@ -290,7 +292,7 @@ pub async fn input_detection(
         .into_iter()
         .collect::<Result<Vec<_>, Error>>()?
         .into_iter()
-        .flatten()
+        .filter(|detection| detection.results.is_some())
         .collect::<Vec<InputDetectionResult>>();
 
     Ok((!detections.is_empty()).then_some(detections))
@@ -396,30 +398,5 @@ async fn detector_chunk_task(
     Ok(chunks)
 }
 
-// Function that goes over vector of tuple containing index and Vec<Chunk>
-// and returns Hashmap mapping index to length of its Vec<Chunk> starting 0
-// along with flattended Vec<Chunk> combining all the Vec<Chunk> such that
-// we can later retrieve individual chunk mapped to each index.
-fn flatten_chat_chunks(
-    messages: Vec<(usize, Vec<Chunk>)>,
-) -> (HashMap<usize, std::ops::Range<usize>>, Vec<Chunk>) {
-    // Initialize the flattened chunks and index mapping
-    let mut flattened_chunks = Vec::new();
-    let mut index_to_range = HashMap::new();
-
-    // Use an iterator to process chunks and maintain an index counter
-    let mut start_index = 0;
-    for (index, chunks) in messages {
-        // NOTE: end_index is not inclusive
-        let end_index = start_index + chunks.len();
-        // Insert the range into the map
-        index_to_range.insert(index, start_index..end_index);
-        // Extend the flattened chunks
-        flattened_chunks.extend(chunks);
-        // Update the starting index
-        start_index = end_index;
-    }
-
-    // Return the mapping and the flattened chunk list
-    (index_to_range, flattened_chunks)
-}
+#[cfg(test)]
+mod tests {}
