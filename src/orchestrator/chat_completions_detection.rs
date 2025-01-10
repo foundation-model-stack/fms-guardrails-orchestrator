@@ -130,9 +130,9 @@ impl Orchestrator {
                 let input_detections = input_detections
                 .into_iter()
                 .map(|detection| {
-                    let last_idx = detection.result.clone().unwrap().len();
+                    let last_idx = detection.results.clone().unwrap().len();
                     // sort detection by starting span, if span is not present then move to the end of the message
-                    detection.result.clone().unwrap().sort_by_key(|r| {
+                    detection.results.clone().unwrap().sort_by_key(|r| {
                         match r {
                             OrchestratorDetectionResult::ContentAnalysisResponse(value) => value.start,
                             _ => last_idx,
@@ -147,7 +147,7 @@ impl Orchestrator {
                     model: request.model,
                     choices: vec![],
                     created: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64,
-                    detection: Some(DetectionResult {
+                    detections: Some(DetectionResult {
                         input: Some(input_detections),
                         output: None
                     }),
@@ -247,7 +247,7 @@ pub async fn input_detection(
                                         .map(|(index, range)| {
                                             InputDetectionResult {
                                                 message_index: index as u16,
-                                                result: Some(
+                                                results: Some(
                                                     value[range]
                                                     .iter()
                                                     .map(|result| {OrchestratorDetectionResult::ContentAnalysisResponse(result.clone())})

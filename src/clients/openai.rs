@@ -504,7 +504,7 @@ pub struct ChatCompletion {
 
     // Result of running different guardrail detectors
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub detection: Option<DetectionResult>,
+    pub detections: Option<DetectionResult>,
     // Optional warnings
     #[serde(skip_serializing_if = "Option::is_none")]
     pub warnings: Option<Vec<OrchestratorWarning>>,
@@ -674,7 +674,7 @@ pub struct DetectionResult {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InputDetectionResult {
     pub message_index: u16,
-    pub result: Option<Vec<OrchestratorDetectionResult>>,
+    pub results: Option<Vec<OrchestratorDetectionResult>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
