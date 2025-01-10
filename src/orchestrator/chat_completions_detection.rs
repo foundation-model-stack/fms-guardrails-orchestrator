@@ -37,9 +37,6 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 
-
-// pub type ChunkChatMessagesResult = Box<dyn Future<Output = ChatMessagesInternal> + Send>;
-// pub type ChunkChatMessagesResult = Pin<dyn Future<Output = ChatMessagesInternal> + Send>;
 pub type ChunkResult<T> = Pin<Box<dyn Future<Output = T> + Send>>;
 
 
@@ -144,16 +141,6 @@ impl Orchestrator {
                     detection
                 })
                 .collect::<Vec<_>>();
-                // .for_each(|mut detection| {
-                //     let last_idx = detection.result.clone().unwrap().len();
-                //     // sort detection by starting span, if span is not present then move to the end of the message
-                //     detection.result.unwrap().sort_by_key(|r| {
-                //         match r {
-                //             OrchestratorDetectionResult::ContentAnalysisResponse(value) => value.start,
-                //             _ => last_idx,
-                //         }
-                //     });
-                // });
 
                 Ok(ChatCompletionsResponse::Unary( ChatCompletion {
                     id: "dummy-id".to_string(), // TODO: Replace with real unique ID generator
@@ -169,7 +156,6 @@ impl Orchestrator {
 
             }
             else {
-
                 let client = ctx
                     .clients
                     .get_as::<OpenAiClient>("chat_generation")
@@ -201,8 +187,6 @@ impl Orchestrator {
 pub async fn input_detection(
     ctx: &Arc<Context>,
     detectors: &HashMap<String, DetectorParams>,
-    // chunks: Arc<HashMap<String, ChunkResult<ChatMessagesInternal>>>,
-    // chunks: HashMap<String, Arc<ChunkResult<ChatMessagesInternal>>>,
     chat_messages: ChatMessagesInternal,
     headers: HeaderMap,
 ) -> Result<Option<Vec<InputDetectionResult>>, Error> {
@@ -216,7 +200,6 @@ pub async fn input_detection(
     // Call out to the chunker to get chunks of messages based on detector type
     let chunks = detector_chunk_task(&ctx, filtered_chat_messages).await?;
 
-    println!("chunks: {:?}", chunks);
     let tasks = detectors
         .iter()
         .map(|(detector_id, detector_params)| {
@@ -258,21 +241,24 @@ pub async fn input_detection(
                             .await;
                             match result {
                                 Ok(value) => {
-                                    let input_detection_result = chunk_to_idx_map
-                                    .into_iter()
-                                    .map(|(index, range)| {
-                                        InputDetectionResult {
-                                            message_index: index as u16,
-                                            result: Some(
-                                                value[range]
-                                                .iter()
-                                                .map(|result| {OrchestratorDetectionResult::ContentAnalysisResponse(result.clone())})
-                                                .collect::<Vec<_>>())
-                                        }
-                                    })
-                                    .collect::<Vec<_>>();
-                                    Ok(input_detection_result)
-
+                                    if value.len() > 0 {
+                                        let input_detection_result = chunk_to_idx_map
+                                        .into_iter()
+                                        .map(|(index, range)| {
+                                            InputDetectionResult {
+                                                message_index: index as u16,
+                                                result: Some(
+                                                    value[range]
+                                                    .iter()
+                                                    .map(|result| {OrchestratorDetectionResult::ContentAnalysisResponse(result.clone())})
+                                                    .collect::<Vec<_>>())
+                                            }
+                                        })
+                                        .collect::<Vec<_>>();
+                                        Ok(input_detection_result)
+                                    } else {
+                                        Ok(Vec::new())
+                                    }
                                 },
                                 Err(error) => Err(error)
                             }
@@ -282,10 +268,9 @@ pub async fn input_detection(
                 }
             }
         })
-        // .collect::<Result<Vec<_>, Error>>()?;
         .collect::<Vec<_>>();
 
-        let results = try_join_all(tasks)
+        let detections = try_join_all(tasks)
         .await?
         .into_iter()
         .collect::<Result<Vec<_>, Error>>()?
@@ -293,7 +278,7 @@ pub async fn input_detection(
         .flatten()
         .collect::<Vec<InputDetectionResult>>();
 
-    Ok(Some(results))
+    Ok((!detections.is_empty()).then_some(detections))
 }
 
 
@@ -372,28 +357,25 @@ async fn detector_chunk_task(
                     match handle.await {
                         Ok(Ok(value)) => Ok((index, value)), // Success
                         Ok(Err(err)) => {
-                            println!("Chunking failed error: {:?}", err);
-                            Err(err)           // Task returned an error
+                            // Task returned an error
+                            Err(err)
                         }
                         Err(_) => {
-                            println!("Chunking failed error");
-                            Err(Error::Other("Chunking task failed".to_string())) // Chunking failed
+                            // Chunking failed
+                            Err(Error::Other("Chunking task failed".to_string()))
                         }
                     }
 
                 })
             )
             .await
-            // .iter()
             .into_iter()
-            // .collect::<(usize, Result<Vec<_>, Error>)>()
             .collect::<Result<Vec<_>, Error>>();
 
         match results {
             Ok(chunk_value) => {
                 let chunk_values = chunk_value
                     .into_iter()
-                    // .flatten()
                     .collect::<Vec<_>>();
                 chunks.insert(detector_id.clone(), chunk_values);
                 Ok(())
