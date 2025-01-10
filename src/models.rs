@@ -903,6 +903,7 @@ pub struct DetectionResult {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
 pub enum OrchestratorDetectionResult {
     ContentAnalysisResponse(ContentAnalysisResponse),
     ClassificationResult(DetectionResult),
