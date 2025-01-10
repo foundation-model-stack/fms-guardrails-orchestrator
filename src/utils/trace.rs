@@ -21,7 +21,7 @@ use axum::{extract::Request, http::HeaderMap, response::Response};
 use opentelemetry::{
     global,
     metrics::MetricsError,
-    trace::{TraceContextExt, TraceError, TracerProvider},
+    trace::{TraceContextExt, TraceError, TraceId, TracerProvider},
     KeyValue,
 };
 use opentelemetry_http::{HeaderExtractor, HeaderInjector};
@@ -41,6 +41,7 @@ use tracing_opentelemetry::{MetricsLayer, OpenTelemetrySpanExt};
 use tracing_subscriber::{layer::SubscriberExt, EnvFilter, Layer};
 
 use crate::args::{LogFormat, OtlpProtocol, TracingConfig};
+use crate::clients::http::TracedResponse;
 
 #[derive(Debug, thiserror::Error)]
 pub enum TracingError {
@@ -249,15 +250,11 @@ pub fn incoming_request_span(request: &Request) -> Span {
 pub fn on_incoming_request(request: &Request, span: &Span) {
     let _guard = span.enter();
     info!(
-        "incoming request to {} {} with trace_id {}",
-        request.method(),
-        request.uri().path(),
-        span.context().span().span_context().trace_id().to_string()
-    );
-    info!(
+        trace_id = span.context().span().span_context().trace_id().to_string(),
+        method = %request.method(),
+        path = %request.uri().path(),
         monotonic_counter.incoming_request_count = 1,
-        request_method = request.method().as_str(),
-        request_path = request.uri().path()
+        "started processing orchestrator request",
     );
 }
 
@@ -266,45 +263,28 @@ pub fn on_outgoing_response(response: &Response, latency: Duration, span: &Span)
     span.record("response_status_code", response.status().as_u16());
     span.record("request_duration_ms", latency.as_millis());
 
-    info!(
-        "response {} for request with with trace_id {} generated in {} ms",
-        &response.status(),
-        span.context().span().span_context().trace_id().to_string(),
-        latency.as_millis()
-    );
-
     // On every response
+    // Note: tracing_opentelemetry expects u64/f64 for histograms but as_millis returns u128
     info!(
+        trace_id = span.context().span().span_context().trace_id().to_string(),
+        status = %response.status(),
+        duration_ms = %latency.as_millis(),
         monotonic_counter.handled_request_count = 1,
-        response_status = response.status().as_u16(),
-        request_duration = latency.as_millis()
-    );
-    info!(
-        histogram.service_request_duration = latency.as_millis(),
-        response_status = response.status().as_u16()
+        histogram.service_request_duration = latency.as_millis() as u64,
+        "finished processing orchestrator request"
     );
 
     if response.status().is_server_error() {
         // On every server error (HTTP 5xx) response
-        info!(
-            monotonic_counter.server_error_response_count = 1,
-            response_status = response.status().as_u16(),
-            request_duration = latency.as_millis()
-        );
+        info!(monotonic_counter.server_error_response_count = 1);
     } else if response.status().is_client_error() {
         // On every client error (HTTP 4xx) response
-        info!(
-            monotonic_counter.client_error_response_count = 1,
-            response_status = response.status().as_u16(),
-            request_duration = latency.as_millis()
-        );
+        // Named so that this does not get mixed up with orchestrator
+        // client response metrics
+        info!(monotonic_counter.client_app_error_response_count = 1);
     } else if response.status().is_success() {
         // On every successful (HTTP 2xx) response
-        info!(
-            monotonic_counter.success_response_count = 1,
-            response_status = response.status().as_u16(),
-            request_duration = latency.as_millis()
-        );
+        info!(monotonic_counter.success_response_count = 1);
     } else {
         error!(
             "unexpected response status code: {}",
@@ -313,23 +293,19 @@ pub fn on_outgoing_response(response: &Response, latency: Duration, span: &Span)
     }
 }
 
-pub fn on_outgoing_eos(trailers: Option<&HeaderMap>, stream_duration: Duration, span: &Span) {
+pub fn on_outgoing_eos(_trailers: Option<&HeaderMap>, stream_duration: Duration, span: &Span) {
     let _guard = span.enter();
 
     span.record("stream_response", true);
     span.record("stream_response_duration_ms", stream_duration.as_millis());
 
     info!(
-        "stream response for request with trace_id {} closed after {} ms with trailers: {:?}",
-        span.context().span().span_context().trace_id().to_string(),
-        stream_duration.as_millis(),
-        trailers
-    );
-    info!(
+        trace_id = span.context().span().span_context().trace_id().to_string(),
         monotonic_counter.service_stream_response_count = 1,
-        stream_duration = stream_duration.as_millis()
+        histogram.service_stream_response_duration = stream_duration.as_millis() as u64,
+        stream_duration = stream_duration.as_millis(),
+        "end of orchestrator stream"
     );
-    info!(monotonic_histogram.service_stream_response_duration = stream_duration.as_millis());
 }
 
 /// Injects the `traceparent` header into the header map from the current tracing span context.
@@ -337,37 +313,47 @@ pub fn on_outgoing_eos(trailers: Option<&HeaderMap>, stream_duration: Duration, 
 /// vendor-specific trace context.
 /// Used by both gRPC and HTTP requests since `tonic::Metadata` uses `http::HeaderMap`.
 /// See https://www.w3.org/TR/trace-context/#trace-context-http-headers-format.
-pub fn with_traceparent_header(headers: HeaderMap) -> HeaderMap {
-    let mut headers = headers.clone();
-    let ctx = Span::current().context();
+pub fn with_traceparent_header(ctx: &opentelemetry::Context, headers: HeaderMap) -> HeaderMap {
     global::get_text_map_propagator(|propagator| {
+        let mut headers = headers.clone();
         // Injects current `traceparent` (and by default empty `tracestate`)
-        propagator.inject_context(&ctx, &mut HeaderInjector(&mut headers))
-    });
-    headers
+        propagator.inject_context(ctx, &mut HeaderInjector(&mut headers));
+        headers
+    })
 }
 
 /// Extracts the `traceparent` header from an HTTP response's headers and uses it to set the current
 /// tracing span context (i.e. use `traceparent` as parent to the current span).
 /// Defaults to using the current context when no `traceparent` is found.
 /// See https://www.w3.org/TR/trace-context/#trace-context-http-headers-format.
-pub fn trace_context_from_http_response(response: &reqwest::Response) {
+pub fn trace_context_from_http_response(span: &Span, response: &TracedResponse) {
+    let curr_trace = span.context().span().span_context().trace_id();
     let ctx = global::get_text_map_propagator(|propagator| {
         // Returns the current context if no `traceparent` is found
         propagator.extract(&HeaderExtractor(response.headers()))
     });
-    Span::current().set_parent(ctx);
+    if ctx.span().span_context().trace_id() == curr_trace {
+        span.set_parent(ctx);
+    }
 }
 
 /// Extracts the `traceparent` header from a gRPC response's metadata and uses it to set the current
 /// tracing span context (i.e. use `traceparent` as parent to the current span).
 /// Defaults to using the current context when no `traceparent` is found.
 /// See https://www.w3.org/TR/trace-context/#trace-context-http-headers-format.
-pub fn trace_context_from_grpc_response<T>(response: &tonic::Response<T>) {
+pub fn trace_context_from_grpc_response<T>(span: &Span, response: &tonic::Response<T>) {
+    let curr_trace = span.context().span().span_context().trace_id();
     let ctx = global::get_text_map_propagator(|propagator| {
         let metadata = response.metadata().clone();
         // Returns the current context if no `traceparent` is found
         propagator.extract(&HeaderExtractor(&metadata.into_headers()))
     });
-    Span::current().set_parent(ctx);
+    if ctx.span().span_context().trace_id() == curr_trace {
+        span.set_parent(ctx);
+    }
+}
+
+/// Returns the `trace_id` of the current span according to the global tracing subscriber.
+pub fn current_trace_id() -> TraceId {
+    Span::current().context().span().span_context().trace_id()
 }

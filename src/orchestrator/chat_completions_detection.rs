@@ -156,6 +156,7 @@ impl Orchestrator {
 
             }
             else {
+                let model_id = task.request.model.clone();
                 let client = ctx
                     .clients
                     .get_as::<OpenAiClient>("chat_generation")
@@ -163,7 +164,13 @@ impl Orchestrator {
                 let mut chat_request = task.request;
                 // Remove detectors as chat completion server would reject extra parameter
                 chat_request.detectors = None;
-                Ok(client.chat_completions(chat_request, task.headers).await?)
+                client
+                .chat_completions(chat_request, task.headers)
+                .await
+                .map_err(|error| Error::ChatGenerateRequestFailed {
+                    id: model_id,
+                    error,
+                })
             }
         });
 

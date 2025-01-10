@@ -15,26 +15,27 @@
 
 */
 
-use std::{collections::HashMap, convert::Infallible};
+use std::collections::HashMap;
 
 use async_trait::async_trait;
-use axum::response::sse;
+use eventsource_stream::Eventsource;
 use futures::StreamExt;
+use http_body_util::BodyExt;
 use hyper::{HeaderMap, StatusCode};
-use reqwest_eventsource::{Event, RequestBuilderExt};
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 use tracing::{info, instrument};
 
-use super::{create_http_client, Client, Error, HttpClient};
+use super::{create_http_client, http::HttpClientExt, Client, Error, HttpClient};
 use crate::{
     config::ServiceConfig,
     health::HealthCheckResult,
     models::{DetectorParams, OrchestratorDetectionResult},
-    tracing_utils::with_traceparent_header,
 };
 
 const DEFAULT_PORT: u16 = 8080;
+
+const CHAT_COMPLETIONS_ENDPOINT: &str = "/v1/chat/completions";
 
 #[cfg_attr(test, faux::create)]
 #[derive(Clone)]
@@ -45,17 +46,24 @@ pub struct OpenAiClient {
 
 #[cfg_attr(test, faux::methods)]
 impl OpenAiClient {
-    pub async fn new(config: &ServiceConfig, health_config: Option<&ServiceConfig>) -> Self {
-        let client = create_http_client(DEFAULT_PORT, config).await;
+    pub async fn new(
+        config: &ServiceConfig,
+        health_config: Option<&ServiceConfig>,
+    ) -> Result<Self, Error> {
+        let client = create_http_client(DEFAULT_PORT, config).await?;
         let health_client = if let Some(health_config) = health_config {
-            Some(create_http_client(DEFAULT_PORT, health_config).await)
+            Some(create_http_client(DEFAULT_PORT, health_config).await?)
         } else {
             None
         };
-        Self {
+        Ok(Self {
             client,
             health_client,
-        }
+        })
+    }
+
+    pub fn client(&self) -> &HttpClient {
+        &self.client
     }
 
     #[instrument(skip_all, fields(request.model))]
@@ -64,48 +72,54 @@ impl OpenAiClient {
         request: ChatCompletionsRequest,
         headers: HeaderMap,
     ) -> Result<ChatCompletionsResponse, Error> {
-        let url = self.client.base_url().join("/v1/chat/completions").unwrap();
-        let headers = with_traceparent_header(headers);
+        let url = self.inner().endpoint(CHAT_COMPLETIONS_ENDPOINT);
         let stream = request.stream.unwrap_or_default();
-        info!(?url, ?headers, ?request, "sending client request");
+        info!("sending Open AI chat completion request to {}", url);
         if stream {
             let (tx, rx) = mpsc::channel(32);
             let mut event_stream = self
-                .client
-                .post(url)
-                .headers(headers)
-                .json(&request)
-                .eventsource()
-                .unwrap();
+                .inner()
+                .post(url, headers, request)
+                .await?
+                .0
+                .into_data_stream()
+                .eventsource();
             // Spawn task to forward events to receiver
             tokio::spawn(async move {
                 while let Some(result) = event_stream.next().await {
                     match result {
-                        Ok(event) => {
-                            if let Event::Message(message) = event {
-                                let event = sse::Event::default().data(message.data);
-                                let _ = tx.send(Ok(event)).await;
-                            }
+                        Ok(event) if event.data == "[DONE]" => {
+                            // Send None to signal that the stream completed
+                            let _ = tx.send(Ok(None)).await;
+                            break;
                         }
-                        Err(reqwest_eventsource::Error::StreamEnded) => break,
+                        Ok(event) => match serde_json::from_str::<ChatCompletionChunk>(&event.data)
+                        {
+                            Ok(chunk) => {
+                                let _ = tx.send(Ok(Some(chunk))).await;
+                            }
+                            Err(e) => {
+                                let error = Error::Http {
+                                    code: StatusCode::INTERNAL_SERVER_ERROR,
+                                    message: format!("deserialization error: {e}"),
+                                };
+                                let _ = tx.send(Err(error)).await;
+                            }
+                        },
                         Err(error) => {
-                            // We received an error from the event stream, send an error event
-                            let event =
-                                sse::Event::default().event("error").data(error.to_string());
-                            let _ = tx.send(Ok(event)).await;
+                            // We received an error from the event stream, send error message
+                            let error = Error::Http {
+                                code: StatusCode::INTERNAL_SERVER_ERROR,
+                                message: error.to_string(),
+                            };
+                            let _ = tx.send(Err(error)).await;
                         }
                     }
                 }
             });
             Ok(ChatCompletionsResponse::Streaming(rx))
         } else {
-            let response = self
-                .client
-                .post(url)
-                .headers(headers)
-                .json(&request)
-                .send()
-                .await?;
+            let response = self.client.clone().post(url, headers, request).await?;
             match response.status() {
                 StatusCode::OK => Ok(response.json::<ChatCompletion>().await?.into()),
                 _ => {
@@ -138,10 +152,17 @@ impl Client for OpenAiClient {
     }
 }
 
+#[cfg_attr(test, faux::methods)]
+impl HttpClientExt for OpenAiClient {
+    fn inner(&self) -> &HttpClient {
+        self.client()
+    }
+}
+
 #[derive(Debug)]
 pub enum ChatCompletionsResponse {
     Unary(ChatCompletion),
-    Streaming(mpsc::Receiver<Result<sse::Event, Infallible>>),
+    Streaming(mpsc::Receiver<Result<Option<ChatCompletionChunk>, Error>>),
 }
 
 impl From<ChatCompletion> for ChatCompletionsResponse {
@@ -488,24 +509,23 @@ pub struct Function {
 pub struct ChatCompletion {
     /// A unique identifier for the chat completion.
     pub id: String,
-    /// A list of chat completion choices. Can be more than one if n is greater than 1.
-    pub choices: Vec<ChatCompletionChoice>,
+    /// The object type, which is always `chat.completion`.
+    pub object: String,
     /// The Unix timestamp (in seconds) of when the chat completion was created.
     pub created: i64,
     /// The model used for the chat completion.
     pub model: String,
+    /// A list of chat completion choices. Can be more than one if n is greater than 1.
+    pub choices: Vec<ChatCompletionChoice>,
+    /// Usage statistics for the completion request.
+    pub usage: Usage,
+    /// This fingerprint represents the backend configuration that the model runs with.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub system_fingerprint: Option<String>,
     /// The service tier used for processing the request.
     /// This field is only included if the `service_tier` parameter is specified in the request.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub service_tier: Option<String>,
-    /// This fingerprint represents the backend configuration that the model runs with.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub system_fingerprint: Option<String>,
-    /// The object type, which is always `chat.completion`.
-    pub object: String,
-    /// Usage statistics for the completion request.
-    pub usage: Usage,
-
     // Result of running different guardrail detectors
     #[serde(skip_serializing_if = "Option::is_none")]
     pub detections: Option<DetectionResult>,
@@ -517,27 +537,29 @@ pub struct ChatCompletion {
 /// A chat completion choice.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatCompletionChoice {
-    /// The reason the model stopped generating tokens.
-    pub finish_reason: String,
     /// The index of the choice in the list of choices.
     pub index: usize,
     /// A chat completion message generated by the model.
     pub message: ChatCompletionMessage,
     /// Log probability information for the choice.
     pub logprobs: Option<ChatCompletionLogprobs>,
+    /// The reason the model stopped generating tokens.
+    pub finish_reason: String,
 }
 
 /// A chat completion message generated by the model.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatCompletionMessage {
+    /// The role of the author of this message.
+    pub role: String,
     /// The contents of the message.
     pub content: Option<String>,
+    /// The tool calls generated by the model, such as function calls.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tool_calls: Vec<ToolCall>,
     /// The refusal message generated by the model.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub refusal: Option<String>,
-    pub tool_calls: Vec<ToolCall>,
-    /// The role of the author of this message.
-    pub role: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -545,6 +567,7 @@ pub struct ChatCompletionLogprobs {
     /// A list of message content tokens with log probability information.
     pub content: Option<Vec<ChatCompletionLogprob>>,
     /// A list of message refusal tokens with log probability information.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub refusal: Option<Vec<ChatCompletionLogprob>>,
 }
 
@@ -575,68 +598,69 @@ pub struct ChatCompletionTopLogprob {
 pub struct ChatCompletionChunk {
     /// A unique identifier for the chat completion. Each chunk has the same ID.
     pub id: String,
-    /// A list of chat completion choices.
-    pub choices: Vec<ChatCompletionChunkChoice>,
+    /// The object type, which is always `chat.completion.chunk`.
+    pub object: String,
     /// The Unix timestamp (in seconds) of when the chat completion was created. Each chunk has the same timestamp.
     pub created: i64,
     /// The model to generate the completion.
     pub model: String,
+    /// This fingerprint represents the backend configuration that the model runs with.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub system_fingerprint: Option<String>,
+    /// A list of chat completion choices.
+    pub choices: Vec<ChatCompletionChunkChoice>,
     /// The service tier used for processing the request.
     /// This field is only included if the service_tier parameter is specified in the request.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub service_tier: Option<String>,
-    /// This fingerprint represents the backend configuration that the model runs with.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub system_fingerprint: Option<String>,
-    /// The object type, which is always `chat.completion.chunk`.
-    pub object: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub usage: Option<Usage>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatCompletionChunkChoice {
+    /// The index of the choice in the list of choices.
+    pub index: u32,
     /// A chat completion delta generated by streamed model responses.
     pub delta: ChatCompletionDelta,
     /// Log probability information for the choice.
     pub logprobs: Option<ChatCompletionLogprobs>,
     /// The reason the model stopped generating tokens.
     pub finish_reason: Option<String>,
-    /// The index of the choice in the list of choices.
-    pub index: u32,
 }
 
 /// A chat completion delta generated by streamed model responses.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatCompletionDelta {
+    /// The role of the author of this message.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub role: Option<String>,
     /// The contents of the message.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content: Option<String>,
     /// The refusal message generated by the model.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub refusal: Option<String>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    /// The tool calls generated by the model, such as function calls.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tool_calls: Vec<ToolCall>,
-    /// The role of the author of this message.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub role: Option<String>,
 }
 
 /// Usage statistics for a completion.
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Usage {
-    /// Number of tokens in the generated completion.
-    pub completion_tokens: u32,
     /// Number of tokens in the prompt.
     pub prompt_tokens: u32,
     /// Total number of tokens used in the request (prompt + completion).
     pub total_tokens: u32,
-    /// Breakdown of tokens used in a completion.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub completion_token_details: Option<CompletionTokenDetails>,
+    /// Number of tokens in the generated completion.
+    pub completion_tokens: u32,
     /// Breakdown of tokens used in the prompt.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prompt_token_details: Option<PromptTokenDetails>,
+    /// Breakdown of tokens used in a completion.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub completion_token_details: Option<CompletionTokenDetails>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

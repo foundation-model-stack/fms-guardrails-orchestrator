@@ -19,10 +19,14 @@ use std::fmt::Debug;
 
 use axum::http::HeaderMap;
 use hyper::StatusCode;
-use reqwest::Response;
-use serde::{Deserialize, Serialize};
-use tracing::info;
+use serde::Deserialize;
+use tracing::instrument;
 use url::Url;
+
+use super::{
+    http::{HttpClientExt, RequestBody, ResponseBody},
+    Error,
+};
 
 pub mod text_contents;
 pub use text_contents::*;
@@ -33,11 +37,8 @@ pub use text_context_doc::*;
 pub mod text_generation;
 pub use text_generation::*;
 
-use super::{Error, HttpClient};
-use crate::tracing_utils::{trace_context_from_http_response, with_traceparent_header};
-
 const DEFAULT_PORT: u16 = 8080;
-const DETECTOR_ID_HEADER_NAME: &str = "detector-id";
+pub const DETECTOR_ID_HEADER_NAME: &str = "detector-id";
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct DetectorError {
@@ -54,24 +55,55 @@ impl From<DetectorError> for Error {
     }
 }
 
-/// Make a POST request for an HTTP detector client and return the response.
-/// Also injects the `traceparent` header from the current span and traces the response.
-pub async fn post_with_headers<T: Debug + Serialize>(
-    client: HttpClient,
-    url: Url,
-    request: T,
-    headers: HeaderMap,
-    model_id: &str,
-) -> Result<Response, Error> {
-    let headers = with_traceparent_header(headers);
-    info!(?url, ?headers, ?request, "sending client request");
-    let response = client
-        .post(url)
-        .headers(headers)
-        .header(DETECTOR_ID_HEADER_NAME, model_id)
-        .json(&request)
-        .send()
-        .await?;
-    trace_context_from_http_response(&response);
-    Ok(response)
+/// This trait should be implemented by all detectors.
+/// If the detector has an HTTP client (currently all detector clients are HTTP) this trait will
+/// implicitly extend the client with an HTTP detector specific post function.
+pub trait DetectorClient {}
+
+/// Provides a helper extension for HTTP detector clients.
+pub trait DetectorClientExt: HttpClientExt {
+    /// Wraps the post function with extra detector functionality
+    /// (detector id header injection & error handling)
+    async fn post_to_detector<U: ResponseBody>(
+        &self,
+        model_id: &str,
+        url: Url,
+        headers: HeaderMap,
+        request: impl RequestBody,
+    ) -> Result<U, Error>;
+
+    /// Wraps call to inner HTTP client endpoint function.
+    fn endpoint(&self, path: &str) -> Url;
+}
+
+impl<C: DetectorClient + HttpClientExt> DetectorClientExt for C {
+    #[instrument(skip_all, fields(model_id, url))]
+    async fn post_to_detector<U: ResponseBody>(
+        &self,
+        model_id: &str,
+        url: Url,
+        headers: HeaderMap,
+        request: impl RequestBody,
+    ) -> Result<U, Error> {
+        let mut headers = headers;
+        headers.append(DETECTOR_ID_HEADER_NAME, model_id.parse().unwrap());
+        let response = self.inner().post(url, headers, request).await?;
+
+        let status = response.status();
+        match status {
+            StatusCode::OK => Ok(response.json().await?),
+            _ => Err(response
+                .json::<DetectorError>()
+                .await
+                .unwrap_or(DetectorError {
+                    code: status.as_u16(),
+                    message: "".into(),
+                })
+                .into()),
+        }
+    }
+
+    fn endpoint(&self, path: &str) -> Url {
+        self.inner().endpoint(path)
+    }
 }

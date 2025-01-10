@@ -37,7 +37,10 @@ use axum::{
     Json, Router,
 };
 use axum_extra::extract::WithRejection;
-use futures::{stream, Stream, StreamExt};
+use futures::{
+    stream::{self, BoxStream},
+    Stream, StreamExt,
+};
 use hyper::body::Incoming;
 use hyper_util::rt::{TokioExecutor, TokioIo};
 use opentelemetry::trace::TraceContextExt;
@@ -45,8 +48,8 @@ use rustls::{server::WebPkiClientVerifier, RootCertStore, ServerConfig};
 use tokio::{net::TcpListener, signal};
 use tokio_rustls::TlsAcceptor;
 use tokio_stream::wrappers::ReceiverStream;
+use tower::Service;
 use tower_http::trace::TraceLayer;
-use tower_service::Service;
 use tracing::{debug, error, info, instrument, warn, Span};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 use webpki::types::{CertificateDer, PrivateKeyDer};
@@ -59,7 +62,7 @@ use crate::{
         ContextDocsDetectionTask, DetectionOnGenerationTask, GenerationWithDetectionTask,
         Orchestrator, StreamingClassificationWithGenTask, TextContentDetectionTask,
     },
-    tracing_utils,
+    utils,
 };
 
 const API_PREFIX: &str = r#"/api/v1/task"#;
@@ -206,10 +209,10 @@ pub async fn run(
 
     let app = router.with_state(shared_state).layer(
         TraceLayer::new_for_http()
-            .make_span_with(tracing_utils::incoming_request_span)
-            .on_request(tracing_utils::on_incoming_request)
-            .on_response(tracing_utils::on_outgoing_response)
-            .on_eos(tracing_utils::on_outgoing_eos),
+            .make_span_with(utils::trace::incoming_request_span)
+            .on_request(utils::trace::on_incoming_request)
+            .on_response(utils::trace::on_outgoing_response)
+            .on_eos(utils::trace::on_outgoing_eos),
     );
 
     // (2c) Generate main guardrails server handle based on whether TLS is needed
@@ -505,6 +508,7 @@ async fn chat_completions_detection(
     headers: HeaderMap,
     WithRejection(Json(request), _): WithRejection<Json<ChatCompletionsRequest>, Error>,
 ) -> Result<impl IntoResponse, Error> {
+    use ChatCompletionsResponse::*;
     let trace_id = Span::current().context().span().span_context().trace_id();
     info!(?trace_id, "handling request");
     let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
@@ -515,10 +519,27 @@ async fn chat_completions_detection(
         .await
     {
         Ok(response) => match response {
-            ChatCompletionsResponse::Unary(response) => Ok(Json(response).into_response()),
-            ChatCompletionsResponse::Streaming(response_rx) => {
+            Unary(response) => Ok(Json(response).into_response()),
+            Streaming(response_rx) => {
                 let response_stream = ReceiverStream::new(response_rx);
-                let sse = Sse::new(response_stream).keep_alive(KeepAlive::default());
+                // Convert response stream to a stream of SSE events
+                let event_stream: BoxStream<Result<Event, Infallible>> = response_stream
+                    .map(|message| match message {
+                        Ok(Some(chunk)) => Ok(Event::default().json_data(chunk).unwrap()),
+                        Ok(None) => {
+                            // The stream completed, send [DONE] message
+                            Ok(Event::default().data("[DONE]"))
+                        }
+                        Err(error) => {
+                            let error: Error = orchestrator::Error::from(error).into();
+                            Ok(Event::default()
+                                .event("error")
+                                .json_data(error.to_json())
+                                .unwrap())
+                        }
+                    })
+                    .boxed();
+                let sse = Sse::new(event_stream).keep_alive(KeepAlive::default());
                 Ok(sse.into_response())
             }
         },
@@ -595,7 +616,7 @@ pub enum Error {
     NotFound(String),
     #[error("{0}")]
     ServiceUnavailable(String),
-    #[error("unexpected error occured while processing request")]
+    #[error("unexpected error occurred while processing request")]
     Unexpected,
     #[error(transparent)]
     JsonExtractorRejection(#[from] JsonRejection),
@@ -609,6 +630,7 @@ impl From<orchestrator::Error> for Error {
             DetectorRequestFailed { ref error, .. }
             | ChunkerRequestFailed { ref error, .. }
             | GenerateRequestFailed { ref error, .. }
+            | ChatGenerateRequestFailed { ref error, .. }
             | TokenizeRequestFailed { ref error, .. } => match error.status_code() {
                 StatusCode::BAD_REQUEST | StatusCode::UNPROCESSABLE_ENTITY => {
                     Self::Validation(value.to_string())

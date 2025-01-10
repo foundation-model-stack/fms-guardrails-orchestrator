@@ -15,27 +15,118 @@
 
 */
 
-use hyper::StatusCode;
-use reqwest::Response;
-use tracing::error;
+use std::{fmt::Debug, ops::Deref, time::Duration};
+
+use http_body_util::{combinators::BoxBody, BodyExt, Full};
+use hyper::{
+    body::{Body, Bytes, Incoming},
+    HeaderMap, Method, Request, StatusCode,
+};
+use hyper_rustls::HttpsConnector;
+use hyper_timeout::TimeoutConnector;
+use hyper_util::client::legacy::connect::HttpConnector;
+use serde::{de::DeserializeOwned, Serialize};
+use tower::timeout::Timeout;
+use tower::Service;
+use tower_http::{
+    classify::{
+        NeverClassifyEos, ServerErrorsAsFailures, ServerErrorsFailureClass, SharedClassifier,
+    },
+    trace::{
+        DefaultOnBodyChunk, HttpMakeClassifier, MakeSpan, OnEos, OnFailure, OnRequest, OnResponse,
+        Trace, TraceLayer,
+    },
+};
+use tracing::{debug, error, info, info_span, instrument, Span};
+use tracing_opentelemetry::OpenTelemetrySpanExt;
 use url::Url;
 
-use crate::health::{HealthCheckResult, HealthStatus, OptionalHealthCheckResponseBody};
+use super::{Client, Error};
+use crate::{
+    health::{HealthCheckResult, HealthStatus, OptionalHealthCheckResponseBody},
+    utils::{trace, AsUriExt},
+};
 
+/// Any type that implements Debug and Serialize can be used as a request body
+pub trait RequestBody: Debug + Serialize {}
+
+impl<T> RequestBody for T where T: Debug + Serialize {}
+
+/// Any type that implements Debug and Deserialize can be used as a response body
+pub trait ResponseBody: Debug + DeserializeOwned {}
+
+impl<T> ResponseBody for T where T: Debug + DeserializeOwned {}
+
+/// HTTP response type, thin wrapper for `hyper::http::Response` with extra functionality.
+pub struct Response(pub hyper::http::Response<BoxBody<Bytes, hyper::Error>>);
+
+impl Response {
+    /// Deserializes the response body as JSON into type `T`.
+    pub async fn json<T: DeserializeOwned>(self) -> Result<T, Error> {
+        let data = self
+            .0
+            .into_body()
+            .collect()
+            .await
+            .expect("unexpected infallible error")
+            .to_bytes();
+        serde_json::from_slice::<T>(&data).map_err(|e| Error::Http {
+            code: StatusCode::INTERNAL_SERVER_ERROR,
+            message: format!("client response deserialization failed: {}", e),
+        })
+    }
+}
+
+impl Deref for Response {
+    type Target = hyper::http::response::Response<BoxBody<Bytes, hyper::Error>>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl From<TracedResponse> for Response {
+    fn from(response: TracedResponse) -> Self {
+        Response(response.map(|body| body.boxed()))
+    }
+}
+
+pub type HttpClientInner = Trace<
+    Timeout<
+        hyper_util::client::legacy::Client<
+            TimeoutConnector<HttpsConnector<HttpConnector>>,
+            BoxBody<Bytes, hyper::Error>,
+        >,
+    >,
+    SharedClassifier<ServerErrorsAsFailures>,
+    ClientMakeSpan,
+    ClientOnRequest,
+    ClientOnResponse,
+    DefaultOnBodyChunk,
+    ClientOnEos,
+    ClientOnFailure,
+>;
+
+/// A trait implemented by all clients that use HTTP for their inner client.
+pub trait HttpClientExt: Client {
+    fn inner(&self) -> &HttpClient;
+}
+
+/// An HTTP client wrapping an inner `hyper` HTTP client providing a higher-level API.
 #[derive(Clone)]
 pub struct HttpClient {
     base_url: Url,
     health_url: Url,
-    client: reqwest::Client,
+    inner: HttpClientInner,
 }
 
 impl HttpClient {
-    pub fn new(base_url: Url, client: reqwest::Client) -> Self {
+    pub fn new(base_url: Url, inner: HttpClientInner) -> Self {
         let health_url = base_url.join("health").unwrap();
         Self {
             base_url,
             health_url,
-            client,
+            inner,
         }
     }
 
@@ -43,12 +134,113 @@ impl HttpClient {
         &self.base_url
     }
 
-    /// This is sectioned off to allow for testing.
-    pub(super) async fn http_response_to_health_check_result(
-        res: Result<Response, reqwest::Error>,
-    ) -> HealthCheckResult {
+    pub fn endpoint(&self, path: &str) -> Url {
+        self.base_url.join(path).unwrap()
+    }
+
+    #[instrument(skip_all, fields(url))]
+    pub async fn get(
+        &self,
+        url: Url,
+        headers: HeaderMap,
+        body: impl RequestBody,
+    ) -> Result<Response, Error> {
+        self.send(url, Method::GET, headers, body).await
+    }
+
+    #[instrument(skip_all, fields(url))]
+    pub async fn post(
+        &self,
+        url: Url,
+        headers: HeaderMap,
+        body: impl RequestBody,
+    ) -> Result<Response, Error> {
+        self.send(url, Method::POST, headers, body).await
+    }
+
+    #[instrument(skip_all, fields(url))]
+    pub async fn send(
+        &self,
+        url: Url,
+        method: Method,
+        headers: HeaderMap,
+        body: impl RequestBody,
+    ) -> Result<Response, Error> {
+        let ctx = Span::current().context();
+        let headers = trace::with_traceparent_header(&ctx, headers);
+        let mut builder = hyper::http::request::Builder::new()
+            .method(method)
+            .uri(url.as_uri());
+        match builder.headers_mut() {
+            Some(headers_mut) => {
+                debug!(
+                    ?url,
+                    ?headers,
+                    ?body,
+                    "sending client request"
+                );
+                headers_mut.extend(headers);
+                let body =
+                    Full::new(Bytes::from(serde_json::to_vec(&body).map_err(|e| {
+                        Error::Http {
+                            code: StatusCode::INTERNAL_SERVER_ERROR,
+                            message: format!("client request serialization failed: {}", e)
+                        }
+                    })?))
+                        .map_err(|err| match err {});
+                let request = builder
+                    .body(body.boxed())
+                    .map_err(|e| {
+                        Error::Http {
+                            code: StatusCode::INTERNAL_SERVER_ERROR,
+                            message: format!("client request serialization failed: {}", e)
+                        }
+                    })?;
+                let response = match self
+                    .inner
+                    .clone()
+                    .call(request)
+                    .await {
+                        Ok(response) => Ok(response.map_err(|e| {
+                            Error::Http {
+                                code: StatusCode::INTERNAL_SERVER_ERROR,
+                                message: format!("sending client request failed: {}", e)
+                            }
+                        }).into_inner()),
+                        Err(e) => Err(Error::Http {
+                            code: StatusCode::REQUEST_TIMEOUT,
+                            message: format!("client request timeout: {}", e),
+                        }),
+                }?;
+
+                debug!(
+                    status = ?response.status(),
+                    headers = ?response.headers(),
+                    size = ?response.size_hint(),
+                    "incoming client response"
+                );
+                let span = Span::current();
+                trace::trace_context_from_http_response(&span, &response);
+                Ok(response.into())
+            }
+            None => Err(builder.body(body).err().map_or_else(
+                || panic!("unexpected request builder error - headers missing in builder but no errors found"),
+                |e| Error::Http {
+                    code: StatusCode::INTERNAL_SERVER_ERROR,
+                    message: format!("client request creation failed: {}", e),
+                }
+            )),
+        }
+    }
+
+    pub async fn health(&self) -> HealthCheckResult {
+        let req = Request::get(self.health_url.as_uri())
+            .body(BoxBody::default())
+            .unwrap();
+        let res = self.inner.clone().call(req).await;
         match res {
             Ok(response) => {
+                let response = Response::from(response);
                 if response.status() == StatusCode::OK {
                     if let Ok(body) = response.json::<OptionalHealthCheckResponseBody>().await {
                         // If the service provided a body, we only anticipate a minimal health status and optional reason.
@@ -99,24 +291,159 @@ impl HttpClient {
                 error!("error checking health: {}", e);
                 HealthCheckResult {
                     status: HealthStatus::Unknown,
-                    code: e.status().unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+                    code: StatusCode::INTERNAL_SERVER_ERROR,
                     reason: Some(e.to_string()),
                 }
             }
         }
     }
+}
 
-    pub async fn health(&self) -> HealthCheckResult {
-        let res = self.get(self.health_url.clone()).send().await;
-        Self::http_response_to_health_check_result(res).await
+pub type TracedResponse = hyper::Response<
+    tower_http::trace::ResponseBody<
+        Incoming,
+        NeverClassifyEos<ServerErrorsFailureClass>,
+        DefaultOnBodyChunk,
+        ClientOnEos,
+        ClientOnFailure,
+    >,
+>;
+
+pub type HttpClientTraceLayer = TraceLayer<
+    HttpMakeClassifier,
+    ClientMakeSpan,
+    ClientOnRequest,
+    ClientOnResponse,
+    DefaultOnBodyChunk, // no metrics currently per body chunk
+    ClientOnEos,
+    ClientOnFailure,
+>;
+
+pub fn http_trace_layer() -> HttpClientTraceLayer {
+    TraceLayer::new_for_http()
+        .make_span_with(ClientMakeSpan)
+        .on_request(ClientOnRequest)
+        .on_response(ClientOnResponse)
+        .on_failure(ClientOnFailure)
+        .on_eos(ClientOnEos)
+}
+
+#[derive(Debug, Clone)]
+pub struct ClientMakeSpan;
+
+impl MakeSpan<BoxBody<Bytes, hyper::Error>> for ClientMakeSpan {
+    fn make_span(&mut self, request: &Request<BoxBody<Bytes, hyper::Error>>) -> Span {
+        info_span!(
+            "client HTTP request",
+            request_method = request.method().to_string(),
+            request_path = request.uri().path().to_string(),
+        )
     }
 }
 
-impl std::ops::Deref for HttpClient {
-    type Target = reqwest::Client;
+#[derive(Debug, Clone)]
+pub struct ClientOnRequest;
 
-    fn deref(&self) -> &Self::Target {
-        &self.client
+impl OnRequest<BoxBody<Bytes, hyper::Error>> for ClientOnRequest {
+    fn on_request(&mut self, request: &Request<BoxBody<Bytes, hyper::Error>>, span: &Span) {
+        let _guard = span.enter();
+        info!(
+            trace_id = %trace::current_trace_id(),
+            method = %request.method(),
+            path = %request.uri().path(),
+            monotonic_counter.incoming_request_count = 1,
+            "started processing request",
+        );
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ClientOnResponse;
+
+impl OnResponse<Incoming> for ClientOnResponse {
+    fn on_response(self, response: &hyper::Response<Incoming>, latency: Duration, span: &Span) {
+        let _guard = span.enter();
+        // On every response
+        info!(
+            trace_id = %trace::current_trace_id(),
+            status = %response.status(),
+            duration_ms = %latency.as_millis(),
+            monotonic_counter.client_response_count = 1,
+            histogram.client_request_duration = latency.as_millis() as u64,
+            "finished processing request"
+        );
+
+        if response.status().is_server_error() {
+            // On every server error (HTTP 5xx) response
+            info!(monotonic_counter.client_5xx_response_count = 1);
+        } else if response.status().is_client_error() {
+            // On every client error (HTTP 4xx) response
+            info!(monotonic_counter.client_4xx_response_count = 1);
+        } else if response.status().is_success() {
+            // On every successful (HTTP 2xx) response
+            info!(monotonic_counter.client_success_response_count = 1);
+        } else {
+            error!(
+                "unexpected HTTP client response status code: {}",
+                response.status().as_u16()
+            );
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ClientOnFailure;
+
+impl OnFailure<ServerErrorsFailureClass> for ClientOnFailure {
+    fn on_failure(
+        &mut self,
+        failure_classification: ServerErrorsFailureClass,
+        latency: Duration,
+        span: &Span,
+    ) {
+        let _guard = span.enter();
+        let trace_id = trace::current_trace_id();
+        let latency_ms = latency.as_millis().to_string();
+
+        let (status_code, error) = match failure_classification {
+            ServerErrorsFailureClass::StatusCode(status_code) => {
+                error!(
+                    %trace_id,
+                    %status_code,
+                    latency_ms,
+                    "failure handling request",
+                );
+                (Some(status_code), None)
+            }
+            ServerErrorsFailureClass::Error(error) => {
+                error!(?trace_id, latency_ms, "failure handling request: {}", error,);
+                (None, Some(error))
+            }
+        };
+
+        info!(
+            monotonic_counter.client_request_failure_count = 1,
+            monotonic_counter.client_5xx_response_count = 1,
+            latency_ms,
+            ?status_code,
+            ?error
+        );
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ClientOnEos;
+
+impl OnEos for ClientOnEos {
+    fn on_eos(self, _trailers: Option<&HeaderMap>, stream_duration: Duration, span: &Span) {
+        let _guard = span.enter();
+        info!(
+            trace_id = %trace::current_trace_id(),
+            duration_ms = stream_duration.as_millis(),
+            monotonic_counter.client_stream_response_count = 1,
+            histogram.client_stream_response_duration = stream_duration.as_millis() as u64,
+            "end of stream",
+        );
     }
 }
 

@@ -24,7 +24,7 @@ use axum::http::HeaderMap;
 use futures::{future::try_join_all, Stream, StreamExt, TryStreamExt};
 use tokio::sync::{broadcast, mpsc};
 use tokio_stream::wrappers::{BroadcastStream, ReceiverStream};
-use tracing::{debug, error, info, instrument, warn};
+use tracing::{debug, error, info, instrument, warn, Instrument, Span};
 
 use super::{get_chunker_ids, Context, Error, Orchestrator, StreamingClassificationWithGenTask};
 use crate::{
@@ -224,7 +224,7 @@ impl Orchestrator {
                     }
                 }
             }
-        });
+        }.instrument(Span::current()));
         ReceiverStream::new(response_rx)
     }
 }
@@ -304,16 +304,19 @@ async fn streaming_output_detection_task(
             .unwrap()
             .subscribe();
         let error_tx = error_tx.clone();
-        tokio::spawn(detection_task(
-            ctx.clone(),
-            detector_id.clone(),
-            detector_params,
-            threshold,
-            detector_tx,
-            chunk_rx,
-            error_tx,
-            headers.clone(),
-        ));
+        tokio::spawn(
+            detection_task(
+                ctx.clone(),
+                detector_id.clone(),
+                detector_params,
+                threshold,
+                detector_tx,
+                chunk_rx,
+                error_tx,
+                headers.clone(),
+            )
+            .instrument(Span::current()),
+        );
         detection_streams.push((detector_id, detector_rx));
     }
 
@@ -323,11 +326,10 @@ async fn streaming_output_detection_task(
 
     debug!("spawning generation broadcast task");
     // Spawn task to consume generation stream and forward to broadcast stream
-    tokio::spawn(generation_broadcast_task(
-        generation_stream,
-        generation_tx,
-        error_tx.clone(),
-    ));
+    tokio::spawn(
+        generation_broadcast_task(generation_stream, generation_tx, error_tx.clone())
+            .instrument(Span::current()),
+    );
     drop(generation_rx);
 
     Ok(result_rx)
@@ -485,16 +487,18 @@ async fn chunk_broadcast_task(
         .boxed();
     debug!("creating chunker output stream");
     let id = chunker_id.clone(); // workaround for StreamExt::map_err
-
     let response_stream = if chunker_id == DEFAULT_CHUNKER_ID {
         info!("Using default whole doc chunker");
         let (response_tx, response_rx) = mpsc::channel(1);
         // Spawn task to collect input stream
-        tokio::spawn(async move {
-            // NOTE: this will not resolve until the input stream is closed
-            let response = tokenize_whole_doc_stream(input_stream).await;
-            let _ = response_tx.send(response).await;
-        });
+        tokio::spawn(
+            async move {
+                // NOTE: this will not resolve until the input stream is closed
+                let response = tokenize_whole_doc_stream(input_stream).await;
+                let _ = response_tx.send(response).await;
+            }
+            .instrument(Span::current()),
+        );
         Ok(ReceiverStream::new(response_rx).boxed())
     } else {
         let client = ctx.clients.get_as::<ChunkerClient>(&chunker_id).unwrap();
@@ -547,6 +551,7 @@ async fn chunk_broadcast_task(
                 }
             }
         }
+        .instrument(Span::current())
     });
     Ok(chunk_tx)
 }
@@ -607,19 +612,21 @@ mod tests {
                 ..Default::default()
             },
         ];
-        tokio::spawn({
-            let results = results.clone();
-            async move {
-                for result in results {
-                    let _ = generation_tx.send(Ok(result)).await;
+        tokio::spawn(
+            {
+                let results = results.clone();
+                async move {
+                    for result in results {
+                        let _ = generation_tx.send(Ok(result)).await;
+                    }
                 }
             }
-        });
-        tokio::spawn(generation_broadcast_task(
-            generation_stream,
-            generation_broadcast_tx,
-            error_tx,
-        ));
+            .instrument(Span::current()),
+        );
+        tokio::spawn(
+            generation_broadcast_task(generation_stream, generation_broadcast_tx, error_tx)
+                .instrument(Span::current()),
+        );
         let mut broadcast_results = Vec::with_capacity(results.len());
         while let Ok(result) = generation_broadcast_rx.recv().await {
             println!("{result:?}");
