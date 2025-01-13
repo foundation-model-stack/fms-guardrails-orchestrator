@@ -40,7 +40,7 @@ pub fn filter_chat_message(
 
     // 3. Select if message is from role `user` or `assistant` otherwise return Err
     match message.role.as_str() {
-        "user" | "assistant" => (),
+        "user" | "assistant" | "system" => (),
         _ => {
             return Err(ValidationError::Invalid(
                 "Message at last index is not from user or assistant".into(),

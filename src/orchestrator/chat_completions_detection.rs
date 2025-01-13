@@ -44,6 +44,7 @@ use crate::{
     },
 };
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 pub type ChunkResult<T> = Pin<Box<dyn Future<Output = T> + Send>>;
 
@@ -148,7 +149,7 @@ impl Orchestrator {
                     .collect::<Vec<_>>();
 
                 Ok(ChatCompletionsResponse::Unary(Box::new(ChatCompletion {
-                    id: "dummy-id".to_string(), // TODO: Replace with real unique ID generator
+                    id: Uuid::new_v4().simple().to_string(),
                     model: request.model,
                     choices: vec![],
                     created: SystemTime::now()
