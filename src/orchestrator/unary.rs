@@ -695,9 +695,10 @@ pub async fn detect(
             response
                 .into_iter()
                 .filter_map(|resp| {
-                    let mut result: TokenClassificationResult = resp.into();
+                    let mut result: TokenClassificationResult = (detector_id.clone(), resp).into();
                     result.start += chunk.offset as u32;
                     result.end += chunk.offset as u32;
+                    result.detector_id = Some(detector_id.clone()); // attach detector_id to the result
                     (result.score >= threshold).then_some(result)
                 })
                 .collect::<Vec<_>>()

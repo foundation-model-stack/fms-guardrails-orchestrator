@@ -459,6 +459,9 @@ pub struct TokenClassificationResult {
     /// Aggregate label, if applicable
     pub entity_group: String,
 
+    /// id of detector (model) responsible for result(s)
+    pub detector_id: Option<String>,
+
     /// Confidence-like score of this classification prediction in [0, 1]
     pub score: f64,
 
@@ -893,6 +896,9 @@ pub struct DetectionResult {
 
     // The detection class
     pub detection: String,
+
+    // The id of the detector
+    pub detector_id: String,
 
     // The confidence level in the detection class
     pub score: f64,

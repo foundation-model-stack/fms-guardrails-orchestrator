@@ -139,15 +139,17 @@ pub struct ContentAnalysisResponse {
     pub evidence: Option<Vec<EvidenceObj>>,
 }
 
-impl From<ContentAnalysisResponse> for crate::models::TokenClassificationResult {
-    fn from(value: ContentAnalysisResponse) -> Self {
+impl From<(String, ContentAnalysisResponse)> for crate::models::TokenClassificationResult {
+    fn from(value: (String, ContentAnalysisResponse)) -> Self {
+        let (detector_id, response) = value;
         Self {
-            start: value.start as u32,
-            end: value.end as u32,
-            word: value.text,
-            entity: value.detection,
-            entity_group: value.detection_type,
-            score: value.score,
+            start: response.start as u32,
+            end: response.end as u32,
+            word: response.text,
+            entity: response.detection,
+            entity_group: response.detection_type,
+            detector_id: Some(detector_id),
+            score: response.score,
             token_count: None,
         }
     }
