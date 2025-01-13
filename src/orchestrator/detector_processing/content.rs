@@ -89,3 +89,69 @@ pub async fn get_content_analysis_request(
         detector_params,
     ))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use crate::orchestrator::chat_completions_detection::ChatMessagesInternal;
+
+    #[tokio::test]
+    async fn test_filter_chat_message_single_messagae() {
+        let message = vec![ChatMessageInternal {
+            message_index: 0,
+            content: Some(Content::Text("hello".to_string())),
+            role: "assistant".to_string(),
+            ..Default::default()
+        }];
+
+        let filtered_messages = filter_chat_message(ChatMessagesInternal::from(message.clone()));
+
+        // Assertions
+        assert!(filtered_messages.is_ok());
+        assert_eq!(filtered_messages.unwrap(), message);
+    }
+
+    #[tokio::test]
+    async fn test_filter_chat_message_multiple_messages() {
+        let message = vec![
+            ChatMessageInternal {
+                message_index: 0,
+                content: Some(Content::Text("hello".to_string())),
+                role: "assistant".to_string(),
+                ..Default::default()
+            },
+            ChatMessageInternal {
+                message_index: 1,
+                content: Some(Content::Text("bot".to_string())),
+                role: "assistant".to_string(),
+                ..Default::default()
+            },
+        ];
+
+        let filtered_messages = filter_chat_message(ChatMessagesInternal::from(message.clone()));
+
+        // Assertions
+        assert!(filtered_messages.is_ok());
+        assert_eq!(filtered_messages.unwrap(), vec![message[1].clone()]);
+    }
+
+    #[tokio::test]
+    async fn test_filter_chat_messages_incorrect_role() {
+        let message = vec![ChatMessageInternal {
+            message_index: 0,
+            content: Some(Content::Text("hello".to_string())),
+            role: "invalid_role".to_string(),
+            ..Default::default()
+        }];
+
+        let filtered_messages = filter_chat_message(ChatMessagesInternal::from(message.clone()));
+
+        // Assertions
+        assert!(filtered_messages.is_err());
+        assert_eq!(
+            filtered_messages.unwrap_err().to_string(),
+            "Message at last index is not from user or assistant"
+        );
+    }
+}

@@ -406,7 +406,7 @@ pub struct Message {
     pub tool_call_id: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(untagged)]
 pub enum Content {
     /// The text contents of the message.
@@ -450,7 +450,7 @@ impl From<Vec<String>> for Content {
     }
 }
 
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
 pub enum ContentType {
     #[serde(rename = "text")]
     #[default]
@@ -459,7 +459,7 @@ pub enum ContentType {
     ImageUrl,
 }
 
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ContentPart {
     /// The type of the content part.
     #[serde(rename = "type")]
@@ -475,7 +475,7 @@ pub struct ContentPart {
     pub refusal: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ImageUrl {
     /// Either a URL of the image or the base64 encoded image data.
     pub url: String,

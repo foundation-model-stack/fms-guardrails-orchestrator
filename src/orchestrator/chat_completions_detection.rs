@@ -49,7 +49,7 @@ pub type ChunkResult<T> = Pin<Box<dyn Future<Output = T> + Send>>;
 
 /// Internal structure to capture chat messages (both request and response)
 /// and prepare it for processing
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ChatMessageInternal {
     // Index of the message
     pub message_index: usize,
@@ -298,16 +298,17 @@ pub async fn input_detection(
     Ok((!detections.is_empty()).then_some(detections))
 }
 
-// Function to filter messages based on individual detectors
+/// Function to filter messages based on individual detectors
+/// Returns a HashMap of detector id to filtered messages
 fn filter_chat_messages(
     ctx: &Arc<Context>,
     detectors: &HashMap<String, DetectorParams>,
-    messages: Vec<ChatMessageInternal>,
+    messages: ChatMessagesInternal,
 ) -> Result<HashMap<String, ChatMessagesInternal>, Error> {
     detectors
         .iter()
         .map(
-            |(detector_id, _)| -> Result<(String, Vec<ChatMessageInternal>), Error> {
+            |(detector_id, _)| -> Result<(String, ChatMessagesInternal), Error> {
                 let ctx = ctx.clone();
                 let detector_id = detector_id.clone();
                 let detector_config = ctx
@@ -399,4 +400,90 @@ async fn detector_chunk_task(
 }
 
 #[cfg(test)]
-mod tests {}
+mod tests {
+    use std::any::{Any, TypeId};
+
+    use super::*;
+    use crate::config::DetectorConfig;
+    use crate::orchestrator::{ClientMap, OrchestratorConfig};
+
+    // Test to verify filter_chat_message works correctly for multiple content type detectors
+    // with single message in chat request
+    #[tokio::test]
+    async fn test_filter_chat_messages_multiple_content_detector() {
+        // Test setup
+        let clients = ClientMap::new();
+        let detector_1_id = "detector1";
+        let detector_2_id = "detector2";
+        let mut ctx = Context::new(OrchestratorConfig::default(), clients);
+        // add detector
+        ctx.config.detectors.insert(
+            detector_1_id.to_string().clone(),
+            DetectorConfig {
+                ..Default::default()
+            },
+        );
+        ctx.config.detectors.insert(
+            detector_2_id.to_string().clone(),
+            DetectorConfig {
+                ..Default::default()
+            },
+        );
+
+        let ctx = Arc::new(ctx);
+        let mut detectors = HashMap::new();
+        detectors.insert(detector_1_id.to_string(), DetectorParams::new());
+        detectors.insert(detector_2_id.to_string(), DetectorParams::new());
+
+        let messages = vec![ChatMessageInternal {
+            message_index: 0,
+            content: Some(Content::Text("hello".to_string())),
+            role: "assistant".to_string(),
+            ..Default::default()
+        }];
+        let filtered_messages = filter_chat_messages(&ctx, &detectors, messages).unwrap();
+        // Assertions
+        assert!(filtered_messages[detector_1_id].len() == 1);
+        assert!(filtered_messages[detector_2_id].len() == 1);
+    }
+
+    // Test filter_chat_message returns error correctly for multiple content type detectors
+    // with incorrect message requirements
+    #[tokio::test]
+    async fn test_filter_chat_messages_error_handling() {
+        // Test setup
+        let clients = ClientMap::new();
+        let detector_1_id = "detector1";
+        let mut ctx = Context::new(OrchestratorConfig::default(), clients);
+        // add detector
+        ctx.config.detectors.insert(
+            detector_1_id.to_string().clone(),
+            DetectorConfig {
+                ..Default::default()
+            },
+        );
+
+        let ctx = Arc::new(ctx);
+        let mut detectors = HashMap::new();
+        detectors.insert(detector_1_id.to_string(), DetectorParams::new());
+
+        let messages = vec![ChatMessageInternal {
+            message_index: 0,
+            content: Some(Content::Text("hello".to_string())),
+            // Invalid role will return error used for testing
+            role: "foo".to_string(),
+            ..Default::default()
+        }];
+
+        let filtered_messages = filter_chat_messages(&ctx, &detectors, messages);
+
+        // Assertions
+        assert!(filtered_messages.is_err());
+        let error = filtered_messages.unwrap_err();
+        assert_eq!(error.type_id(), TypeId::of::<Error>());
+        assert_eq!(
+            error.to_string(),
+            "validation failed for `detector1`: Message at last index is not from user or assistant"
+        );
+    }
+}
