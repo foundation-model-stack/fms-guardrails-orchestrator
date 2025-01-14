@@ -323,10 +323,7 @@ fn preprocess_chat_messages(
                     DetectorType::TextContents => {
                         match content::filter_chat_message(messages.clone()) {
                             Ok(filtered_messages) => Ok(filtered_messages),
-                            Err(e) => Err(Error::ValidationFailed {
-                                id: detector_id.clone(),
-                                error: e.to_string(),
-                            }),
+                            Err(e) => Err(Error::Validation(e.to_string())),
                         }
                     }
                     _ => unimplemented!(),
@@ -484,7 +481,7 @@ mod tests {
         assert_eq!(error.type_id(), TypeId::of::<Error>());
         assert_eq!(
             error.to_string(),
-            "validation failed for `detector1`: Message at last index is not from user or assistant"
+            "validation error: Message at last index is not from user or assistant"
         );
     }
 }
