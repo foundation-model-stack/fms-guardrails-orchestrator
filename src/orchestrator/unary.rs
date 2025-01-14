@@ -698,7 +698,7 @@ pub async fn detect(
                     let mut result: TokenClassificationResult = (detector_id.clone(), resp).into();
                     result.start += chunk.offset as u32;
                     result.end += chunk.offset as u32;
-                    result.detector_id = Some(detector_id.clone()); // attach detector_id to the result
+                    // result.detector_id = detector_id.clone();  attach detector_id to the result
                     (result.score >= threshold).then_some(result)
                 })
                 .collect::<Vec<_>>()
@@ -804,6 +804,16 @@ pub async fn detect_for_generation(
             results
                 .into_iter()
                 .filter(|detection| detection.score > threshold)
+                .map(|detection| {
+                    //add detector_id
+                    DetectionResult {
+                        detection_type: detection.detection_type,
+                        detection: detection.detection,
+                        detector_id: detector_id.clone(),
+                        score: detection.score,
+                        evidence: detection.evidence,
+                    }
+                })
                 .collect()
         })
         .map_err(|error| Error::DetectorRequestFailed {
@@ -845,6 +855,16 @@ pub async fn detect_for_chat(
             results
                 .into_iter()
                 .filter(|detection| detection.score > threshold)
+                .map(|detection| {
+                    //add detector_id
+                    DetectionResult {
+                        detection_type: detection.detection_type,
+                        detection: detection.detection,
+                        detector_id: detector_id.clone(),
+                        score: detection.score,
+                        evidence: detection.evidence,
+                    }
+                })
                 .collect()
         })
         .map_err(|error| Error::DetectorRequestFailed {
@@ -900,6 +920,16 @@ pub async fn detect_for_context(
             results
                 .into_iter()
                 .filter(|detection| detection.score > threshold)
+                .map(|detection| {
+                    //add detector_id
+                    DetectionResult {
+                        detection_type: detection.detection_type,
+                        detection: detection.detection,
+                        detector_id: detector_id.clone(),
+                        score: detection.score,
+                        evidence: detection.evidence,
+                    }
+                })
                 .collect()
         })
         .map_err(|error| Error::DetectorRequestFailed {
@@ -1132,6 +1162,7 @@ mod tests {
             word: second_sentence.clone(),
             entity: "has_HAP".to_string(),
             entity_group: "hap".to_string(),
+            detector_id: detector_id.to_string(),
             score: 0.9,
             token_count: None,
         }];
