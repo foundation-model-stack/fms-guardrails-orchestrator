@@ -898,7 +898,7 @@ pub struct DetectionResult {
     pub detection: String,
 
     // The id of the detector
-    pub detector_id: String,
+    pub detector_id: Option<String>,
 
     // The confidence level in the detection class
     pub score: f64,

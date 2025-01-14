@@ -809,7 +809,7 @@ pub async fn detect_for_generation(
                     DetectionResult {
                         detection_type: detection.detection_type,
                         detection: detection.detection,
-                        detector_id: detector_id.clone(),
+                        detector_id: Some(detector_id.clone()),
                         score: detection.score,
                         evidence: detection.evidence,
                     }
@@ -860,7 +860,7 @@ pub async fn detect_for_chat(
                     DetectionResult {
                         detection_type: detection.detection_type,
                         detection: detection.detection,
-                        detector_id: detector_id.clone(),
+                        detector_id: Some(detector_id.clone()),
                         score: detection.score,
                         evidence: detection.evidence,
                     }
@@ -925,7 +925,7 @@ pub async fn detect_for_context(
                     DetectionResult {
                         detection_type: detection.detection_type,
                         detection: detection.detection,
-                        detector_id: detector_id.clone(),
+                        detector_id: Some(detector_id.clone()),
                         score: detection.score,
                         evidence: detection.evidence,
                     }
