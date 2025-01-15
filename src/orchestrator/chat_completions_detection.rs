@@ -125,12 +125,15 @@ impl Orchestrator {
 
                 let input_detections = input_detections
                     .into_iter()
-                    .map(|detection| {
+                    .map(|mut detection| {
                         let last_idx = detection.results.clone().len();
                         // sort detection by starting span, if span is not present then move to the end of the message
-                        detection.results.clone().sort_by_key(|r| match r {
-                            GuardrailDetection::ContentAnalysisResponse(value) => value.start,
-                            _ => last_idx,
+                        detection.results.sort_by(|a, b| match (a, b) {
+                            (
+                                GuardrailDetection::ContentAnalysisResponse(content_a),
+                                GuardrailDetection::ContentAnalysisResponse(content_b),
+                            ) => content_a.start.cmp(&content_b.start),
+                            _ => last_idx.cmp(&last_idx),
                         });
                         detection
                     })
@@ -224,7 +227,7 @@ pub async fn input_detection(
             match detector_type {
                 DetectorType::TextContents => {
                     // spawn parallel processes for each message index and run detection on them.
-                    let tasks = messages
+                    messages
                         .into_iter()
                         .map(|(idx, chunks)| {
                             let ctx = ctx.clone();
@@ -250,10 +253,10 @@ pub async fn input_detection(
                                             let input_detection_result = InputDetectionResult {
                                                 message_index: idx,
                                                 results: value
-                                                    .iter()
+                                                    .into_iter()
                                                     .map(|result| {
                                                         GuardrailDetection::ContentAnalysisResponse(
-                                                            result.clone(),
+                                                            result,
                                                         )
                                                     })
                                                     .collect::<Vec<_>>(),
@@ -270,8 +273,7 @@ pub async fn input_detection(
                                 }
                             })
                         })
-                        .collect::<Vec<_>>();
-                    tasks
+                        .collect::<Vec<_>>()
                 }
                 _ => unimplemented!(),
             }
@@ -283,7 +285,7 @@ pub async fn input_detection(
         .into_iter()
         .collect::<Result<Vec<_>, Error>>()?
         .into_iter()
-        .filter(|detection| detection.results.is_empty())
+        .filter(|detection| !detection.results.is_empty())
         .collect::<Vec<InputDetectionResult>>();
 
     Ok((!detections.is_empty()).then_some(detections))
@@ -376,8 +378,7 @@ async fn detector_chunk_task(
 
         match results {
             Ok(chunk_value) => {
-                let chunk_values = chunk_value.into_iter().collect::<Vec<_>>();
-                chunks.insert(detector_id.clone(), chunk_values);
+                chunks.insert(detector_id.clone(), chunk_value);
                 Ok(())
             }
             Err(err) => Err(err),
