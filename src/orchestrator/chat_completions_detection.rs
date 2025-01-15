@@ -44,7 +44,7 @@ use uuid::Uuid;
 /// and prepare it for processing
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ChatMessageInternal {
-    // Index of the message
+    /// Index of the message
     pub message_index: usize,
     /// The role of the messages author.
     pub role: String,
@@ -65,18 +65,17 @@ pub enum DetectorRequest {
 // Get ChatMessagesInternal from ChatCompletionsRequest
 impl From<ChatCompletionsRequest> for ChatMessagesInternal {
     fn from(value: ChatCompletionsRequest) -> Self {
-        let mut messages = ChatMessagesInternal::new();
-        value.messages.iter().enumerate().for_each(|(index, m)| {
-            messages.push({
-                ChatMessageInternal {
-                    message_index: index,
-                    role: m.role.clone(),
-                    content: m.content.clone(),
-                    refusal: m.refusal.clone(),
-                }
+        value
+            .messages
+            .into_iter()
+            .enumerate()
+            .map(|(index, message)| ChatMessageInternal {
+                message_index: index,
+                role: message.role,
+                content: message.content,
+                refusal: message.refusal,
             })
-        });
-        messages
+            .collect()
     }
 }
 
