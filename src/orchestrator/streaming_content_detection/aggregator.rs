@@ -158,6 +158,7 @@ impl AggregationActor {
                             text: r.word,
                             detection: r.entity,
                             detection_type: r.entity_group,
+                            detector_id: Some(r.detector_id),
                             score: r.score,
                             evidence: None,
                         })
@@ -206,6 +207,7 @@ mod tests {
         text: &str,
         detection: &str,
         detection_type: &str,
+        detector_id: &str,
     ) -> TokenClassificationResult {
         TokenClassificationResult {
             start: span.0 as u32,
@@ -213,6 +215,7 @@ mod tests {
             word: text.to_string(),
             entity: detection.to_string(),
             entity_group: detection_type.to_string(),
+            detector_id: detector_id.to_string(),
             score: 0.99,
             token_count: None,
         }
@@ -246,11 +249,11 @@ mod tests {
             let partial_span = (chunk_token.start + 2, chunk_token.end - 2);
 
             let (detector_tx1, detector_rx1) = mpsc::channel(1);
-            let detection = get_detection_obj(whole_span, text, "has_HAP", "HAP");
+            let detection = get_detection_obj(whole_span, text, "has_HAP", "HAP", "en-hap");
             let _ = detector_tx1.send((chunk.clone(), vec![detection])).await;
 
             let (detector_tx2, detector_rx2) = mpsc::channel(1);
-            let detection = get_detection_obj(partial_span, text, "email_ID", "PII");
+            let detection = get_detection_obj(partial_span, text, "email_ID", "PII", "en-pii");
             let _ = detector_tx2.send((chunk.clone(), vec![detection])).await;
 
             // Push HAP after PII to make sure detection ordering is not coincidental
