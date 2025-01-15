@@ -904,7 +904,7 @@ pub struct DetectionResult {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
-pub enum OrchestratorDetectionResult {
+pub enum GuardrailDetection {
     ContentAnalysisResponse(ContentAnalysisResponse),
     ClassificationResult(DetectionResult),
 }

@@ -14,17 +14,15 @@
  limitations under the License.
 
 */
-
-use crate::orchestrator::chat_completions_detection::ChatMessageInternal;
 use crate::{
     clients::openai::Content, models::ValidationError,
-    orchestrator::chat_completions_detection::ChatMessagesInternal,
+    orchestrator::chat_completions_detection::ChatMessageInternal,
 };
 
 /// Function to get content analysis request from chat message by applying rules
 pub fn filter_chat_message(
-    messages: ChatMessagesInternal,
-) -> Result<ChatMessagesInternal, ValidationError> {
+    messages: Vec<ChatMessageInternal>,
+) -> Result<Vec<ChatMessageInternal>, ValidationError> {
     // Implement content processing logic here
     // Rules:
     // Rule 1: Select last message from the list of messages
@@ -55,20 +53,20 @@ pub fn filter_chat_message(
             ))
         }
     };
-    Ok(ChatMessagesInternal::from(vec![ChatMessageInternal {
+    Ok(vec![ChatMessageInternal {
         // index of last message
         message_index: messages.len() - 1,
         role: message.role.clone(),
         content: Some(content),
         refusal: message.refusal.clone(),
-    }]))
+    }])
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    use crate::orchestrator::chat_completions_detection::ChatMessagesInternal;
+    use crate::orchestrator::chat_completions_detection::ChatMessageInternal;
 
     #[tokio::test]
     async fn test_filter_chat_message_single_messagae() {
@@ -79,7 +77,7 @@ mod tests {
             ..Default::default()
         }];
 
-        let filtered_messages = filter_chat_message(ChatMessagesInternal::from(message.clone()));
+        let filtered_messages = filter_chat_message(message.clone());
 
         // Assertions
         assert!(filtered_messages.is_ok());
@@ -103,7 +101,7 @@ mod tests {
             },
         ];
 
-        let filtered_messages = filter_chat_message(ChatMessagesInternal::from(message.clone()));
+        let filtered_messages = filter_chat_message(message.clone());
 
         // Assertions
         assert!(filtered_messages.is_ok());
@@ -119,7 +117,7 @@ mod tests {
             ..Default::default()
         }];
 
-        let filtered_messages = filter_chat_message(ChatMessagesInternal::from(message.clone()));
+        let filtered_messages = filter_chat_message(message.clone());
 
         // Assertions
         assert!(filtered_messages.is_err());
