@@ -132,6 +132,8 @@ pub struct ContentAnalysisResponse {
     pub detection: String,
     /// Detection type or aggregate detection label
     pub detection_type: String,
+    /// ID of Detector
+    pub detector_id: Option<String>,
     /// Score of detection
     pub score: f64,
     /// Optional, any applicable evidence for detection
