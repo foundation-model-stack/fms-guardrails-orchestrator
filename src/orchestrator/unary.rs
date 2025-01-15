@@ -1184,6 +1184,7 @@ mod tests {
                 text: first_sentence.clone(),
                 detection: "has_HAP".to_string(),
                 detection_type: "hap".to_string(),
+                detector_id: Some(detector_id.to_string()),
                 score: 0.1,
                 evidence: Some(vec![]),
             }],
@@ -1193,6 +1194,7 @@ mod tests {
                 text: second_sentence.clone(),
                 detection: "has_HAP".to_string(),
                 detection_type: "hap".to_string(),
+                detector_id: Some(detector_id.to_string()),
                 score: 0.9,
                 evidence: Some(vec![]),
             }],
@@ -1333,6 +1335,7 @@ mod tests {
         let expected_response: Vec<DetectionResult> = vec![DetectionResult {
             detection_type: "relevance".to_string(),
             detection: "is_relevant".to_string(),
+            detector_id: Some(detector_id.to_string()),
             score: 0.9,
             evidence: Some(
                 [EvidenceObj {
@@ -1358,6 +1361,7 @@ mod tests {
         .then_return(Ok(vec![DetectionResult {
             detection_type: "relevance".to_string(),
             detection: "is_relevant".to_string(),
+            detector_id: Some(detector_id.to_string()),
             score: 0.9,
             evidence: Some(
                 [EvidenceObj {
@@ -1426,6 +1430,7 @@ mod tests {
         .then_return(Ok(vec![DetectionResult {
             detection_type: "relevance".to_string(),
             detection: "is_relevant".to_string(),
+            detector_id: Some(detector_id.to_string()),
             score: 0.1,
             evidence: None,
         }]));
