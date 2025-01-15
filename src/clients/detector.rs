@@ -87,6 +87,8 @@ impl<C: DetectorClient + HttpClientExt> DetectorClientExt for C {
     ) -> Result<U, Error> {
         let mut headers = headers;
         headers.append(DETECTOR_ID_HEADER_NAME, model_id.parse().unwrap());
+        headers.append("content-type", "application/json".parse().unwrap());
+
         let response = self.inner().post(url, headers, request).await?;
 
         let status = response.status();
