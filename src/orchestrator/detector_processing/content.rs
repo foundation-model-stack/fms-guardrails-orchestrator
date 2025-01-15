@@ -15,10 +15,9 @@
 
 */
 
-use crate::clients::detector::ContentAnalysisRequest;
 use crate::orchestrator::chat_completions_detection::ChatMessageInternal;
 use crate::{
-    clients::openai::Content, models::DetectorParams, models::ValidationError,
+    clients::openai::Content, models::ValidationError,
     orchestrator::chat_completions_detection::ChatMessagesInternal,
 };
 
@@ -43,14 +42,18 @@ pub fn filter_chat_message(
         "user" | "assistant" | "system" => (),
         _ => {
             return Err(ValidationError::Invalid(
-                "Message at last index is not from user or assistant".into(),
+                "Message at last index is not from user or assistant or system".into(),
             ))
         }
     }
 
     let content = match message.content.clone().unwrap() {
         Content::Text(text) => Content::Text(text),
-        _ => return Err(ValidationError::Invalid("Incorrect type requested".into())),
+        _ => {
+            return Err(ValidationError::Invalid(
+                "Only text content support currently".into(),
+            ))
+        }
     };
     Ok(ChatMessagesInternal::from(vec![ChatMessageInternal {
         // index of last message
@@ -59,35 +62,6 @@ pub fn filter_chat_message(
         content: Some(content),
         refusal: message.refusal.clone(),
     }]))
-}
-
-pub async fn get_content_analysis_request(
-    messages: ChatMessagesInternal,
-    detector_params: DetectorParams,
-) -> Result<ContentAnalysisRequest, ValidationError> {
-    if messages.is_empty() {
-        return Err(ValidationError::Invalid("No messages provided".into()));
-    }
-
-    if messages.len() > 1 {
-        return Err(ValidationError::Invalid(
-            "More than one message is not supported".into(),
-        ));
-    }
-
-    let content = match messages.first().unwrap().content.as_ref().unwrap() {
-        Content::Text(text) => text,
-        _ => {
-            return Err(ValidationError::Invalid(
-                "Message does not have content".into(),
-            ))
-        }
-    };
-
-    Ok(ContentAnalysisRequest::new(
-        vec![content.to_string()],
-        detector_params,
-    ))
 }
 
 #[cfg(test)]
@@ -151,7 +125,7 @@ mod tests {
         assert!(filtered_messages.is_err());
         assert_eq!(
             filtered_messages.unwrap_err().to_string(),
-            "Message at last index is not from user or assistant"
+            "Message at last index is not from user or assistant or system"
         );
     }
 }

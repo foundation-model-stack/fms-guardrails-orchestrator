@@ -15,15 +15,9 @@
 
 */
 use axum::http::HeaderMap;
-use futures::{
-    future::{join_all, try_join_all},
-    Future,
-};
+use futures::future::{join_all, try_join_all};
+use std::time::{SystemTime, UNIX_EPOCH};
 use std::{collections::HashMap, sync::Arc};
-use std::{
-    pin::Pin,
-    time::{SystemTime, UNIX_EPOCH},
-};
 use tracing::{debug, info, instrument};
 
 use super::{ChatCompletionsDetectionTask, Context, Error, Orchestrator};
@@ -45,8 +39,6 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-
-pub type ChunkResult<T> = Pin<Box<dyn Future<Output = T> + Send>>;
 
 /// Internal structure to capture chat messages (both request and response)
 /// and prepare it for processing
@@ -481,7 +473,7 @@ mod tests {
         assert_eq!(error.type_id(), TypeId::of::<Error>());
         assert_eq!(
             error.to_string(),
-            "validation error: Message at last index is not from user or assistant"
+            "validation error: Message at last index is not from user or assistant or system"
         );
     }
 }
