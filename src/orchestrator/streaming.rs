@@ -15,7 +15,7 @@
 
 */
 
-mod aggregator;
+pub mod aggregator;
 
 use std::{collections::HashMap, pin::Pin, sync::Arc, time::Duration};
 

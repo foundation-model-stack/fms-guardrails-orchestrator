@@ -1,6 +1,7 @@
 use hyper::Uri;
 use url::Url;
 
+pub mod json;
 pub mod tls;
 pub mod trace;
 

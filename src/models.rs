@@ -1111,6 +1111,34 @@ pub struct EvidenceObj {
     pub evidence: Option<Vec<Evidence>>,
 }
 
+/// Stream content detection stream request
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(Default))]
+pub struct StreamingContentDetectionRequest {
+    pub detectors: Option<HashMap<String, DetectorParams>>,
+    pub content: String,
+}
+
+impl StreamingContentDetectionRequest {
+    /// validates stream messages
+    pub fn validate(&self) -> Result<(), ValidationError> {
+        if self.content.is_empty() {
+            return Err(ValidationError::Invalid(
+                "`content` cannot be empty".to_string(),
+            ));
+        }
+        Ok(())
+    }
+}
+
+/// Stream content detection response
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StreamingContentDetectionResponse {
+    pub detections: Vec<ContentAnalysisResponse>,
+    pub processed_index: u32,
+    pub start_index: u32,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

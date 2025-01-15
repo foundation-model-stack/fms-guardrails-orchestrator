@@ -37,12 +37,15 @@ use axum::{
     Json, Router,
 };
 use axum_extra::extract::WithRejection;
-use futures::{stream, Stream, StreamExt};
+use futures::{
+    stream::{self, BoxStream},
+    Stream, StreamExt,
+};
 use hyper::body::Incoming;
 use hyper_util::rt::{TokioExecutor, TokioIo};
 use opentelemetry::trace::TraceContextExt;
 use rustls::{server::WebPkiClientVerifier, RootCertStore, ServerConfig};
-use tokio::{net::TcpListener, signal};
+use tokio::{net::TcpListener, signal, sync::mpsc};
 use tokio_rustls::TlsAcceptor;
 use tokio_stream::wrappers::ReceiverStream;
 use tower::Service;
@@ -53,11 +56,12 @@ use webpki::types::{CertificateDer, PrivateKeyDer};
 
 use crate::{
     clients::openai::{ChatCompletionsRequest, ChatCompletionsResponse},
-    models::{self, InfoParams, InfoResponse},
+    models::{self, InfoParams, InfoResponse, StreamingContentDetectionRequest},
     orchestrator::{
         self, ChatCompletionsDetectionTask, ChatDetectionTask, ClassificationWithGenTask,
         ContextDocsDetectionTask, DetectionOnGenerationTask, GenerationWithDetectionTask,
-        Orchestrator, StreamingClassificationWithGenTask, TextContentDetectionTask,
+        Orchestrator, StreamingClassificationWithGenTask, StreamingContentDetectionTask,
+        TextContentDetectionTask,
     },
     utils,
 };
@@ -166,6 +170,10 @@ pub async fn run(
         .route(
             &format!("{}/classification-with-text-generation", API_PREFIX),
             post(classification_with_gen),
+        )
+        .route(
+            &format!("{}/detection/stream-content", TEXT_API_PREFIX),
+            post(stream_content_detection),
         )
         .route(
             &format!(
@@ -422,6 +430,62 @@ async fn stream_classification_with_gen(
 }
 
 #[instrument(skip_all)]
+async fn stream_content_detection(
+    State(state): State<Arc<ServerState>>,
+    headers: HeaderMap,
+    request: Request,
+) -> Response {
+    let trace_id = Span::current().context().span().span_context().trace_id();
+    let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
+    info!(?trace_id, "handling content detection streaming request");
+
+    // Create input stream
+    let input_stream = request
+        .into_body()
+        .into_data_stream()
+        .map(|result| {
+            let message =
+                serde_json::from_slice::<StreamingContentDetectionRequest>(&result.unwrap())?;
+            message.validate()?;
+            Ok(message)
+        })
+        .boxed();
+    // Create task and submit to handler
+    let task = StreamingContentDetectionTask::new(trace_id, headers, input_stream);
+    let mut response_stream = state
+        .orchestrator
+        .handle_streaming_content_detection(task)
+        .await;
+
+    // Create output stream
+    // This stream returns ND-JSON formatted messages to the client
+    // StreamingContentDetectionResponse / server::Error
+    let (output_tx, output_rx) = mpsc::channel::<Result<String, Infallible>>(32);
+    let output_stream = ReceiverStream::new(output_rx);
+
+    // Spawn task to consume response stream (typed) and send to output stream (json)
+    tokio::spawn(async move {
+        while let Some(result) = response_stream.next().await {
+            match result {
+                Ok(msg) => {
+                    let msg = utils::json::to_nd_string(&msg).unwrap();
+                    let _ = output_tx.send(Ok(msg)).await;
+                }
+                Err(error) => {
+                    // Convert orchestrator::Error to server::Error
+                    let error: Error = error.into();
+                    // server::Error doesn't impl Serialize, so we use to_json()
+                    let error_msg = utils::json::to_nd_string(&error.to_json()).unwrap();
+                    let _ = output_tx.send(Ok(error_msg)).await;
+                }
+            }
+        }
+    });
+
+    Response::new(axum::body::Body::from_stream(output_stream))
+}
+
+#[instrument(skip_all)]
 async fn detection_content(
     State(state): State<Arc<ServerState>>,
     headers: HeaderMap,
@@ -505,6 +569,7 @@ async fn chat_completions_detection(
     headers: HeaderMap,
     WithRejection(Json(request), _): WithRejection<Json<ChatCompletionsRequest>, Error>,
 ) -> Result<impl IntoResponse, Error> {
+    use ChatCompletionsResponse::*;
     let trace_id = Span::current().context().span().span_context().trace_id();
     info!(?trace_id, "handling request");
     let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
@@ -515,10 +580,27 @@ async fn chat_completions_detection(
         .await
     {
         Ok(response) => match response {
-            ChatCompletionsResponse::Unary(response) => Ok(Json(response).into_response()),
-            ChatCompletionsResponse::Streaming(response_rx) => {
+            Unary(response) => Ok(Json(response).into_response()),
+            Streaming(response_rx) => {
                 let response_stream = ReceiverStream::new(response_rx);
-                let sse = Sse::new(response_stream).keep_alive(KeepAlive::default());
+                // Convert response stream to a stream of SSE events
+                let event_stream: BoxStream<Result<Event, Infallible>> = response_stream
+                    .map(|message| match message {
+                        Ok(Some(chunk)) => Ok(Event::default().json_data(chunk).unwrap()),
+                        Ok(None) => {
+                            // The stream completed, send [DONE] message
+                            Ok(Event::default().data("[DONE]"))
+                        }
+                        Err(error) => {
+                            let error: Error = orchestrator::Error::from(error).into();
+                            Ok(Event::default()
+                                .event("error")
+                                .json_data(error.to_json())
+                                .unwrap())
+                        }
+                    })
+                    .boxed();
+                let sse = Sse::new(event_stream).keep_alive(KeepAlive::default());
                 Ok(sse.into_response())
             }
         },
@@ -597,6 +679,8 @@ pub enum Error {
     Unexpected,
     #[error(transparent)]
     JsonExtractorRejection(#[from] JsonRejection),
+    #[error("{0}")]
+    JsonError(String),
 }
 
 impl From<orchestrator::Error> for Error {
@@ -616,6 +700,8 @@ impl From<orchestrator::Error> for Error {
                 StatusCode::SERVICE_UNAVAILABLE => Self::ServiceUnavailable(value.to_string()),
                 _ => Self::Unexpected,
             },
+            JsonError(message) => Self::JsonError(message),
+            Validation(message) => Self::Validation(message),
             _ => Self::Unexpected,
         }
     }
@@ -637,6 +723,7 @@ impl Error {
                 }
                 _ => (json_rejection.status(), json_rejection.body_text()),
             },
+            JsonError(_) => (StatusCode::UNPROCESSABLE_ENTITY, self.to_string()),
         };
         serde_json::json!({
             "code": code.as_u16(),
@@ -661,6 +748,7 @@ impl IntoResponse for Error {
                 }
                 _ => (json_rejection.status(), json_rejection.body_text()),
             },
+            JsonError(_) => (StatusCode::UNPROCESSABLE_ENTITY, self.to_string()),
         };
         let error = serde_json::json!({
             "code": code.as_u16(),
