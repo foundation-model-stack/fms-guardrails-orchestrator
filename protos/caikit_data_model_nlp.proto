@@ -89,9 +89,8 @@ message TokenClassificationResult {
   string word = 3;
   string entity = 4;
   string entity_group = 5;
-  string detector_id = 6;
-  double score = 7;
-  int64 token_count = 8;
+  double score = 6;
+  int64 token_count = 7;
 }
 
 message TokenClassificationResults {

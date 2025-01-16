@@ -805,15 +805,10 @@ pub async fn detect_for_generation(
             results
                 .into_iter()
                 .filter(|detection| detection.score > threshold)
-                .map(|detection| {
+                .map(|mut detection| {
                     //add detector_id
-                    DetectionResult {
-                        detection_type: detection.detection_type,
-                        detection: detection.detection,
-                        detector_id: Some(detector_id.clone()),
-                        score: detection.score,
-                        evidence: detection.evidence,
-                    }
+                    detection.detector_id = Some(detector_id.clone());
+                    detection
                 })
                 .collect()
         })
@@ -856,15 +851,10 @@ pub async fn detect_for_chat(
             results
                 .into_iter()
                 .filter(|detection| detection.score > threshold)
-                .map(|detection| {
+                .map(|mut detection| {
                     //add detector_id
-                    DetectionResult {
-                        detection_type: detection.detection_type,
-                        detection: detection.detection,
-                        detector_id: Some(detector_id.clone()),
-                        score: detection.score,
-                        evidence: detection.evidence,
-                    }
+                    detection.detector_id = Some(detector_id.clone());
+                    detection
                 })
                 .collect()
         })
@@ -921,15 +911,10 @@ pub async fn detect_for_context(
             results
                 .into_iter()
                 .filter(|detection| detection.score > threshold)
-                .map(|detection| {
+                .map(|mut detection| {
                     //add detector_id
-                    DetectionResult {
-                        detection_type: detection.detection_type,
-                        detection: detection.detection,
-                        detector_id: Some(detector_id.clone()),
-                        score: detection.score,
-                        evidence: detection.evidence,
-                    }
+                    detection.detector_id = Some(detector_id.clone());
+                    detection
                 })
                 .collect()
         })
