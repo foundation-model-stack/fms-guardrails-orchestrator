@@ -323,7 +323,7 @@ fn preprocess_chat_messages(
                 Ok((detector_id, value))
             },
         )
-        .collect::<Result<HashMap<String, Vec<ChatMessageInternal>>, Error>>()
+        .collect()
 }
 
 // Function to chunk Vec<ChatMessageInternal> based on the chunker id and return chunks in Vec<ChatMessageInternal> form
@@ -332,7 +332,7 @@ async fn detector_chunk_task(
     ctx: &Arc<Context>,
     detector_chat_messages: HashMap<String, Vec<ChatMessageInternal>>,
 ) -> Result<HashMap<String, Vec<(usize, Vec<Chunk>)>>, Error> {
-    let mut chunks = HashMap::<String, Vec<(usize, Vec<Chunk>)>>::new();
+    let mut chunks = HashMap::new();
 
     // TODO: Improve error handling for the code below
     for (detector_id, chat_messages) in detector_chat_messages.into_iter() {
