@@ -150,7 +150,7 @@ impl From<(String, ContentAnalysisResponse)> for crate::models::TokenClassificat
             word: response.text,
             entity: response.detection,
             entity_group: response.detection_type,
-            detector_id: detector_id,
+            detector_id,
             score: response.score,
             token_count: None,
         }
