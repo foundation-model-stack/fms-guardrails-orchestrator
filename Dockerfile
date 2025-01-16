@@ -1,6 +1,6 @@
 ARG UBI_MINIMAL_BASE_IMAGE=registry.access.redhat.com/ubi9/ubi-minimal
 ARG UBI_BASE_IMAGE_TAG=latest
-ARG PROTOC_VERSION=26.0
+ARG PROTOC_VERSION=29.3
 ARG CONFIG_FILE=config/config.yaml
 
 ## Rust builder ################################################################
