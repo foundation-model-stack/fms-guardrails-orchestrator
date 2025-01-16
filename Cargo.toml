@@ -16,15 +16,11 @@ path = "src/main.rs"
 [dependencies]
 anyhow = "1.0.86"
 async-trait = "0.1.81"
-async-stream = "0.3.5"
 axum = { version = "0.7.5", features = ["json"] }
 axum-extra = "0.9.3"
 clap = { version = "4.5.15", features = ["derive", "env"] }
-eventsource = "0.5.0"
 eventsource-stream = "0.2.3"
 futures = "0.3.30"
-futures-core = "0.3.30"
-futures-timer = "3.0.3"
 futures-util = { version = "0.3", default-features = false, features = [] }
 ginepro = "0.8.1"
 http = "1.2.0"
@@ -35,8 +31,6 @@ hyper = { version = "1.4.1", features = ["http1", "http2", "server"] }
 hyper-rustls = { version = "0.27.3", features = ["ring"]}
 hyper-timeout = "0.5.2"
 hyper-util = { version = "0.1.7", features = ["server-auto", "server-graceful", "tokio"] }
-mime = "0.3.17"
-mio = "1.0.2"
 opentelemetry = { version = "0.24.0", features = ["trace", "metrics"] }
 opentelemetry-http = { version = "0.13.0", features = ["reqwest"] }
 opentelemetry-otlp = { version = "0.17.0", features = ["http-proto"] }
@@ -61,7 +55,6 @@ tracing = "0.1.40"
 tracing-opentelemetry = "0.25.0"
 tracing-subscriber = { version = "0.3.18", features = ["json", "env-filter"] }
 url = "2.5.2"
-uuid = { version = "1.10.0", features = ["v4", "fast-rng"] }
 
 [build-dependencies]
 tonic-build = "0.12.1"
