@@ -26,8 +26,7 @@ use hyper_rustls::HttpsConnector;
 use hyper_timeout::TimeoutConnector;
 use hyper_util::client::legacy::connect::HttpConnector;
 use serde::{de::DeserializeOwned, Serialize};
-use tower::timeout::Timeout;
-use tower::Service;
+use tower::{timeout::Timeout, Service};
 use tower_http::{
     classify::{
         NeverClassifyEos, ServerErrorsAsFailures, ServerErrorsFailureClass, SharedClassifier,

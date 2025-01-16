@@ -27,9 +27,9 @@
 ///////////////////////////////////////////////////////////////////////////////////
 mod aggregator;
 
-use aggregator::Aggregator;
 use std::{collections::HashMap, pin::Pin, sync::Arc, time::Duration};
 
+use aggregator::Aggregator;
 use futures::{future::try_join_all, stream::Peekable, Stream, StreamExt, TryStreamExt};
 use hyper::HeaderMap;
 use tokio::sync::{broadcast, mpsc};
@@ -37,17 +37,19 @@ use tokio_stream::wrappers::{BroadcastStream, ReceiverStream};
 use tracing::{debug, error, info, instrument, warn};
 
 use super::{streaming::Detections, Context, Error, Orchestrator, StreamingContentDetectionTask};
-use crate::clients::{
-    chunker::{tokenize_whole_doc_stream, ChunkerClient, DEFAULT_CHUNKER_ID},
-    detector::ContentAnalysisRequest,
-    TextContentsDetectorClient,
+use crate::{
+    clients::{
+        chunker::{tokenize_whole_doc_stream, ChunkerClient, DEFAULT_CHUNKER_ID},
+        detector::ContentAnalysisRequest,
+        TextContentsDetectorClient,
+    },
+    models::{
+        DetectorParams, StreamingContentDetectionRequest, StreamingContentDetectionResponse,
+        TokenClassificationResult,
+    },
+    orchestrator::{get_chunker_ids, streaming::Chunk},
+    pb::caikit::runtime::chunkers,
 };
-use crate::models::{
-    DetectorParams, StreamingContentDetectionRequest, StreamingContentDetectionResponse,
-    TokenClassificationResult,
-};
-use crate::orchestrator::{get_chunker_ids, streaming::Chunk};
-use crate::pb::caikit::runtime::chunkers;
 
 type ContentInputStream =
     Pin<Box<dyn Stream<Item = Result<StreamingContentDetectionRequest, Error>> + Send>>;
