@@ -21,6 +21,7 @@ use std::{collections::HashMap, sync::Arc};
 use tracing::{debug, info, instrument};
 
 use super::{ChatCompletionsDetectionTask, Context, Error, Orchestrator};
+use crate::clients::openai::OrchestratorWarning;
 use crate::{
     clients::{
         detector::{ChatDetectionRequest, ContentAnalysisRequest},
@@ -30,11 +31,11 @@ use crate::{
         },
     },
     config::DetectorType,
-    models::{DetectorParams, GuardrailDetection},
+    models::{DetectorParams, GuardrailDetection, InputWarningReason},
     orchestrator::{
         detector_processing::content,
         unary::{chunk, detect_content},
-        Chunk,
+        Chunk, UNSUITABLE_INPUT_MESSAGE,
     },
 };
 use serde::{Deserialize, Serialize};
@@ -126,14 +127,11 @@ impl Orchestrator {
                 let input_detections = input_detections
                     .into_iter()
                     .map(|mut detection| {
-                        let last_idx = detection.results.clone().len();
+                        let last_idx = detection.results.len();
                         // sort detection by starting span, if span is not present then move to the end of the message
-                        detection.results.sort_by(|a, b| match (a, b) {
-                            (
-                                GuardrailDetection::ContentAnalysisResponse(content_a),
-                                GuardrailDetection::ContentAnalysisResponse(content_b),
-                            ) => content_a.start.cmp(&content_b.start),
-                            _ => last_idx.cmp(&last_idx),
+                        detection.results.sort_by_key(|r| match r {
+                            GuardrailDetection::ContentAnalysisResponse(value) => value.start,
+                            _ => last_idx,
                         });
                         detection
                     })
@@ -151,6 +149,10 @@ impl Orchestrator {
                         input: input_detections,
                         output: vec![],
                     }),
+                    warnings: vec![OrchestratorWarning::new(
+                        InputWarningReason::UnsuitableInput,
+                        UNSUITABLE_INPUT_MESSAGE,
+                    )],
                     ..Default::default()
                 })))
             } else {
@@ -312,12 +314,10 @@ fn preprocess_chat_messages(
                 let detector_type = &detector_config.r#type;
                 // Filter messages based on detector type
                 let value = match detector_type {
-                    DetectorType::TextContents => {
-                        match content::filter_chat_message(messages.clone()) {
-                            Ok(filtered_messages) => Ok(filtered_messages),
-                            Err(e) => Err(Error::Validation(e.to_string())),
-                        }
-                    }
+                    DetectorType::TextContents => match content::filter_chat_message(&messages) {
+                        Ok(filtered_messages) => Ok(filtered_messages),
+                        Err(e) => Err(Error::Validation(e.to_string())),
+                    },
                     _ => unimplemented!(),
                 }?;
                 Ok((detector_id, value))
@@ -335,18 +335,17 @@ async fn detector_chunk_task(
     let mut chunks = HashMap::<String, Vec<(usize, Vec<Chunk>)>>::new();
 
     // TODO: Improve error handling for the code below
-    for (detector_id, chat_messages) in detector_chat_messages.iter() {
+    for (detector_id, chat_messages) in detector_chat_messages.into_iter() {
         let chunk_tasks = chat_messages
-            .iter()
+            .into_iter()
             .map(|message| {
-                let text = match message.content.as_ref().unwrap() {
+                let text = match message.content.unwrap() {
                     Content::Text(value) => value,
                     _ => panic!("Only text content accepted"),
                 };
                 let offset: usize = 0;
                 let task = tokio::spawn({
                     let detector_id = detector_id.clone();
-                    let text = text.clone();
                     let ctx = ctx.clone();
                     async move {
                         let chunker_id = ctx.config.get_chunker_id(&detector_id).unwrap();

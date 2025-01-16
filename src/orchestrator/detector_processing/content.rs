@@ -21,9 +21,14 @@ use crate::{
 
 /// Function to get content analysis request from chat message by applying rules
 pub fn filter_chat_message(
-    messages: Vec<ChatMessageInternal>,
+    messages: &[ChatMessageInternal],
 ) -> Result<Vec<ChatMessageInternal>, ValidationError> {
     // Implement content processing logic here
+    // Make sure messages are not empty.
+    if messages.is_empty() {
+        return Err(ValidationError::Invalid("No messages provided".into()));
+    }
+
     // Rules:
     // Rule 1: Select last message from the list of messages
     let message = messages.last().unwrap();
@@ -77,7 +82,7 @@ mod tests {
             ..Default::default()
         }];
 
-        let filtered_messages = filter_chat_message(message.clone());
+        let filtered_messages = filter_chat_message(&message);
 
         // Assertions
         assert!(filtered_messages.is_ok());
@@ -101,7 +106,7 @@ mod tests {
             },
         ];
 
-        let filtered_messages = filter_chat_message(message.clone());
+        let filtered_messages = filter_chat_message(&message);
 
         // Assertions
         assert!(filtered_messages.is_ok());
@@ -117,7 +122,7 @@ mod tests {
             ..Default::default()
         }];
 
-        let filtered_messages = filter_chat_message(message.clone());
+        let filtered_messages = filter_chat_message(&message);
 
         // Assertions
         assert!(filtered_messages.is_err());
