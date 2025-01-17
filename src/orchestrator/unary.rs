@@ -696,10 +696,9 @@ pub async fn detect(
                 .into_iter()
                 .filter_map(|resp| {
                     let mut result: TokenClassificationResult = resp.into();
-                    result.detector_id = Some(detector_id.clone());
+                    result.detector_id = Some(detector_id.clone()); // attach detector_id to the result, as ContentAnalsyisResponse does not contain one at this point
                     result.start += chunk.offset as u32;
                     result.end += chunk.offset as u32;
-                    // result.detector_id = detector_id.clone();  attach detector_id to the result
                     (result.score >= threshold).then_some(result)
                 })
                 .collect::<Vec<_>>()
@@ -1149,7 +1148,7 @@ mod tests {
             word: second_sentence.clone(),
             entity: "has_HAP".to_string(),
             entity_group: "hap".to_string(),
-            detector_id: detector_id.to_string(),
+            detector_id: Some(detector_id.to_string()),
             score: 0.9,
             token_count: None,
         }];

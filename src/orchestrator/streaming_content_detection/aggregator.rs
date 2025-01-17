@@ -158,7 +158,7 @@ impl AggregationActor {
                             text: r.word,
                             detection: r.entity,
                             detection_type: r.entity_group,
-                            detector_id: Some(r.detector_id),
+                            detector_id: r.detector_id,
                             score: r.score,
                             evidence: None,
                         })
@@ -215,7 +215,7 @@ mod tests {
             word: text.to_string(),
             entity: detection.to_string(),
             entity_group: detection_type.to_string(),
-            detector_id: detector_id.to_string(),
+            detector_id: Some(detector_id.to_string()),
             score: 0.99,
             token_count: None,
         }

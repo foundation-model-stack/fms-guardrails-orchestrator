@@ -466,7 +466,7 @@ mod tests {
             word: text.to_string(),
             entity: detection.to_string(),
             entity_group: detection_type.to_string(),
-            detector_id: detector_id.to_string(),
+            detector_id: Some(detector_id.to_string()),
             score: 0.99,
             token_count: None,
         }
