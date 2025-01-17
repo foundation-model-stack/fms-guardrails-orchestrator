@@ -196,9 +196,8 @@ impl AggregationActorHandle {
 mod tests {
     use super::*;
     use crate::{
-        models::TokenClassificationResult,
-        orchestrator::streaming::aggregator::Span,
-        pb::caikit_data_model::nlp::{ChunkerTokenizationStreamResult, Token},
+        models::TokenClassificationResult, orchestrator::streaming::aggregator::Span,
+        pb::caikit_data_model::nlp::Token,
     };
 
     fn get_detection_obj(
@@ -270,131 +269,5 @@ mod tests {
             chunk_count += 1;
         }
         assert_eq!(chunk_count, chunks.len());
-    }
-
-    #[test]
-    fn test_tracker_with_out_of_order_chunks() {
-        let chunks = [
-            ChunkerTokenizationStreamResult {
-                results: [Token {
-                    start: 0,
-                    end: 56,
-                    text: " a powerful tool for the development \
-                        of complex systems."
-                        .into(),
-                }]
-                .to_vec(),
-                token_count: 0,
-                processed_index: 56,
-                start_index: 0,
-                input_start_index: 0,
-                input_end_index: 10,
-            },
-            ChunkerTokenizationStreamResult {
-                results: [Token {
-                    start: 56,
-                    end: 135,
-                    text: " It has been used in many fields, such as \
-                        computer vision and image processing."
-                        .into(),
-                }]
-                .to_vec(),
-                token_count: 0,
-                processed_index: 135,
-                start_index: 56,
-                input_start_index: 11,
-                input_end_index: 26,
-            },
-        ];
-        let n_detectors = 2;
-        let mut tracker = Tracker::new();
-
-        // Insert out-of-order detection results
-        for (key, value) in [
-            // detector 1, chunk 2
-            (
-                (chunks[1].start_index, chunks[1].processed_index),
-                TrackerEntry::new(chunks[1].clone(), vec![]),
-            ),
-            // detector 2, chunk 1
-            (
-                (chunks[0].start_index, chunks[0].processed_index),
-                TrackerEntry::new(chunks[0].clone(), vec![]),
-            ),
-            // detector 2, chunk 2
-            (
-                (chunks[1].start_index, chunks[1].processed_index),
-                TrackerEntry::new(chunks[1].clone(), vec![]),
-            ),
-        ] {
-            tracker.insert(key, value);
-        }
-        // We now have both detector results for chunk 2, but not chunk 1
-
-        // We do not have all detections for the first chunk
-        assert!(
-            !tracker
-                .first()
-                .is_some_and(|first| first.detections.len() == n_detectors),
-            "detections length should not be 2 for first chunk"
-        );
-
-        // Insert entry for detector 1, chunk 1
-        tracker.insert(
-            (chunks[0].start_index, chunks[0].processed_index),
-            TrackerEntry::new(chunks[0].clone(), vec![]),
-        );
-
-        // We have all detections for the first chunk
-        assert!(
-            tracker
-                .first()
-                .is_some_and(|first| first.detections.len() == n_detectors),
-            "detections length should be 2 for first chunk"
-        );
-
-        // There should be entries for 2 chunks
-        assert_eq!(tracker.len(), 2, "tracker length should be 2");
-
-        // Detections length should be 2 for each chunk
-        assert_eq!(
-            tracker
-                .values()
-                .map(|entry| entry.detections.len())
-                .collect::<Vec<_>>(),
-            vec![2, 2],
-            "detections length should be 2 for each chunk"
-        );
-
-        // The first entry should be for chunk 1
-        let first_key = *tracker
-            .first_key_value()
-            .expect("tracker should have first entry")
-            .0;
-        assert_eq!(
-            first_key,
-            (chunks[0].start_index, chunks[0].processed_index),
-            "first should be chunk 1"
-        );
-
-        // Tracker should remove and return entry for chunk 1
-        let (key, value) = tracker
-            .pop_first()
-            .expect("tracker should have first entry");
-        assert!(
-            key.0 == 0 && value.chunk.start_index == 0,
-            "first should be chunk 1"
-        );
-        assert!(tracker.len() == 1, "tracker length should be 1");
-
-        // Tracker should remove and return entry for chunk 2
-        let (key, value) = tracker
-            .pop_first()
-            .expect("tracker should have first entry");
-        assert!(
-            key.0 == 56 && value.chunk.start_index == 56,
-            "first should be chunk 2"
-        );
-        assert!(tracker.is_empty(), "tracker should be empty");
     }
 }

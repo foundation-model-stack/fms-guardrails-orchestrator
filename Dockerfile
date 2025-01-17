@@ -1,11 +1,11 @@
 ARG UBI_MINIMAL_BASE_IMAGE=registry.access.redhat.com/ubi9/ubi-minimal
 ARG UBI_BASE_IMAGE_TAG=latest
-ARG PROTOC_VERSION=26.0
+ARG PROTOC_VERSION=29.3
 ARG CONFIG_FILE=config/config.yaml
 
 ## Rust builder ################################################################
 # Specific debian version so that compatible glibc version is used
-FROM rust:1.80.1-bullseye as rust-builder
+FROM rust:1.84.0-bullseye as rust-builder
 ARG PROTOC_VERSION
 
 ENV CARGO_REGISTRIES_CRATES_IO_PROTOCOL=sparse
