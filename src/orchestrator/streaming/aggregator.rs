@@ -609,9 +609,9 @@ mod tests {
 
         // We do not have all detections for the first chunk
         assert!(
-            !tracker
+            tracker
                 .first()
-                .is_some_and(|first| first.detections.len() == n_detectors),
+                .is_none_or(|first| first.detections.len() != n_detectors),
             "detections length should not be 2 for first chunk"
         );
 
