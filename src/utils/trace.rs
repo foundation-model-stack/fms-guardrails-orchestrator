@@ -20,20 +20,16 @@ use std::time::Duration;
 use axum::{extract::Request, http::HeaderMap, response::Response};
 use opentelemetry::{
     global,
-    metrics::MetricsError,
     trace::{TraceContextExt, TraceError, TraceId, TracerProvider},
     KeyValue,
 };
 use opentelemetry_http::{HeaderExtractor, HeaderInjector};
-use opentelemetry_otlp::WithExportConfig;
+use opentelemetry_otlp::{MetricExporter, SpanExporter, WithExportConfig, WithHttpConfig};
 use opentelemetry_sdk::{
-    metrics::{
-        reader::{DefaultAggregationSelector, DefaultTemporalitySelector},
-        SdkMeterProvider,
-    },
+    metrics::{MetricError, PeriodicReader, SdkMeterProvider},
     propagation::TraceContextPropagator,
     runtime,
-    trace::{Config, Sampler},
+    trace::Sampler,
     Resource,
 };
 use tracing::{error, info, info_span, Span};
@@ -48,16 +44,14 @@ pub enum TracingError {
     #[error("Error from tracing provider: {0}")]
     TraceError(#[from] TraceError),
     #[error("Error from metrics provider: {0}")]
-    MetricsError(#[from] MetricsError),
+    MetricError(#[from] MetricError),
 }
 
-fn service_config(tracing_config: TracingConfig) -> Config {
-    Config::default()
-        .with_resource(Resource::new(vec![KeyValue::new(
-            "service.name",
-            tracing_config.service_name,
-        )]))
-        .with_sampler(Sampler::AlwaysOn)
+fn resource(tracing_config: TracingConfig) -> Resource {
+    Resource::new(vec![KeyValue::new(
+        "service.name",
+        tracing_config.service_name,
+    )])
 }
 
 /// Initializes an OpenTelemetry tracer provider with an OTLP export pipeline based on the
@@ -66,31 +60,32 @@ fn init_tracer_provider(
     tracing_config: TracingConfig,
 ) -> Result<Option<opentelemetry_sdk::trace::TracerProvider>, TracingError> {
     if let Some((protocol, endpoint)) = tracing_config.clone().traces {
+        let exporter = match protocol {
+            OtlpProtocol::Grpc => SpanExporter::builder()
+                .with_tonic()
+                .with_endpoint(endpoint)
+                .build()?,
+            OtlpProtocol::Http => SpanExporter::builder()
+                .with_http()
+                .with_http_client(reqwest::Client::new())
+                .with_endpoint(endpoint)
+                .with_timeout(Duration::from_secs(3))
+                .build()?,
+        };
         Ok(Some(
-            match protocol {
-                OtlpProtocol::Grpc => opentelemetry_otlp::new_pipeline().tracing().with_exporter(
-                    opentelemetry_otlp::new_exporter()
-                        .tonic()
-                        .with_endpoint(endpoint)
-                        .with_timeout(Duration::from_secs(3)),
-                ),
-                OtlpProtocol::Http => opentelemetry_otlp::new_pipeline().tracing().with_exporter(
-                    opentelemetry_otlp::new_exporter()
-                        .http()
-                        .with_http_client(reqwest::Client::new())
-                        .with_endpoint(endpoint)
-                        .with_timeout(Duration::from_secs(3)),
-                ),
-            }
-            .with_trace_config(service_config(tracing_config))
-            .install_batch(runtime::Tokio)?,
+            opentelemetry_sdk::trace::TracerProvider::builder()
+                .with_batch_exporter(exporter, runtime::Tokio)
+                .with_resource(resource(tracing_config))
+                .with_sampler(Sampler::AlwaysOn)
+                .build(),
         ))
     } else if !tracing_config.quiet {
         // We still need a tracing provider as long as we are logging in order to enable any
         // trace-sensitive logs, such as any mentions of a request's trace_id.
         Ok(Some(
             opentelemetry_sdk::trace::TracerProvider::builder()
-                .with_config(service_config(tracing_config))
+                .with_resource(resource(tracing_config))
+                .with_sampler(Sampler::AlwaysOn)
                 .build(),
         ))
     } else {
@@ -104,33 +99,31 @@ fn init_meter_provider(
     tracing_config: TracingConfig,
 ) -> Result<Option<SdkMeterProvider>, TracingError> {
     if let Some((protocol, endpoint)) = tracing_config.metrics {
+        // Note: DefaultAggregationSelector removed from OpenTelemetry SDK as of 0.26.0
+        // as custom aggregation should be available in Views. Cumulative temporality is default.
+        let timeout = Duration::from_secs(10);
+        let exporter = match protocol {
+            OtlpProtocol::Grpc => MetricExporter::builder()
+                .with_tonic()
+                .with_endpoint(endpoint)
+                .with_timeout(timeout)
+                .build()?,
+            OtlpProtocol::Http => MetricExporter::builder()
+                .with_http()
+                .with_http_client(reqwest::Client::new())
+                .with_endpoint(endpoint)
+                .with_timeout(timeout)
+                .build()?,
+        };
+        let reader = PeriodicReader::builder(exporter, runtime::Tokio).build();
         Ok(Some(
-            match protocol {
-                OtlpProtocol::Grpc => opentelemetry_otlp::new_pipeline()
-                    .metrics(runtime::Tokio)
-                    .with_exporter(
-                        opentelemetry_otlp::new_exporter()
-                            .tonic()
-                            .with_endpoint(endpoint),
-                    ),
-                OtlpProtocol::Http => opentelemetry_otlp::new_pipeline()
-                    .metrics(runtime::Tokio)
-                    .with_exporter(
-                        opentelemetry_otlp::new_exporter()
-                            .http()
-                            .with_http_client(reqwest::Client::new())
-                            .with_endpoint(endpoint),
-                    ),
-            }
-            .with_resource(Resource::new(vec![KeyValue::new(
-                "service.name",
-                tracing_config.service_name,
-            )]))
-            .with_timeout(Duration::from_secs(10))
-            .with_period(Duration::from_secs(3))
-            .with_aggregation_selector(DefaultAggregationSelector::new())
-            .with_temporality_selector(DefaultTemporalitySelector::new())
-            .build()?,
+            SdkMeterProvider::builder()
+                .with_resource(Resource::new(vec![KeyValue::new(
+                    "service.name",
+                    tracing_config.service_name,
+                )]))
+                .with_reader(reader)
+                .build(),
         ))
     } else {
         Ok(None)
@@ -227,7 +220,7 @@ pub fn init_tracing(
         if let Some(meter_provider) = meter_provider {
             meter_provider
                 .shutdown()
-                .map_err(TracingError::MetricsError)?;
+                .map_err(TracingError::MetricError)?;
         }
         Ok(())
     })
