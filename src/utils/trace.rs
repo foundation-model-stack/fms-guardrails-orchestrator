@@ -60,16 +60,18 @@ fn init_tracer_provider(
     tracing_config: TracingConfig,
 ) -> Result<Option<opentelemetry_sdk::trace::TracerProvider>, TracingError> {
     if let Some((protocol, endpoint)) = tracing_config.clone().traces {
+        let timeout = Duration::from_secs(3);
         let exporter = match protocol {
             OtlpProtocol::Grpc => SpanExporter::builder()
                 .with_tonic()
                 .with_endpoint(endpoint)
+                .with_timeout(timeout)
                 .build()?,
             OtlpProtocol::Http => SpanExporter::builder()
                 .with_http()
                 .with_http_client(reqwest::Client::new())
                 .with_endpoint(endpoint)
-                .with_timeout(Duration::from_secs(3))
+                .with_timeout(timeout)
                 .build()?,
         };
         Ok(Some(
