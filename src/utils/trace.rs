@@ -115,7 +115,9 @@ fn init_meter_provider(
                 .with_timeout(timeout)
                 .build()?,
         };
-        let reader = PeriodicReader::builder(exporter, runtime::Tokio).build();
+        let reader = PeriodicReader::builder(exporter, runtime::Tokio)
+            .with_interval(Duration::from_secs(3))
+            .build();
         Ok(Some(
             SdkMeterProvider::builder()
                 .with_resource(resource(tracing_config))
