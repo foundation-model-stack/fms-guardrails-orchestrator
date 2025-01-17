@@ -428,7 +428,8 @@ async fn detection_task(
                                             .flat_map(|r| {
                                                 r.into_iter().filter_map(|resp| {
                                                     let mut result: TokenClassificationResult = resp.into();
-                                                    result.detector_id = Some(detector_id.clone()); // attach detector_id to the result
+                                                    // add detector_id
+                                                    result.detector_id = Some(detector_id.clone());
                                                     (result.score >= threshold).then_some(result)
                                                 })
                                             })

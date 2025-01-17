@@ -696,7 +696,8 @@ pub async fn detect(
                 .into_iter()
                 .filter_map(|resp| {
                     let mut result: TokenClassificationResult = resp.into();
-                    result.detector_id = Some(detector_id.clone()); // attach detector_id to the result, as ContentAnalsyisResponse does not contain one at this point
+                    // add detector_id
+                    result.detector_id = Some(detector_id.clone());
                     result.start += chunk.offset as u32;
                     result.end += chunk.offset as u32;
                     (result.score >= threshold).then_some(result)
