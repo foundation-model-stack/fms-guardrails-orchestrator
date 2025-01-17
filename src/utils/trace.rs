@@ -98,7 +98,7 @@ fn init_tracer_provider(
 fn init_meter_provider(
     tracing_config: TracingConfig,
 ) -> Result<Option<SdkMeterProvider>, TracingError> {
-    if let Some((protocol, endpoint)) = tracing_config.metrics {
+    if let Some((protocol, endpoint)) = tracing_config.clone().metrics {
         // Note: DefaultAggregationSelector removed from OpenTelemetry SDK as of 0.26.0
         // as custom aggregation should be available in Views. Cumulative temporality is default.
         let timeout = Duration::from_secs(10);
@@ -118,10 +118,7 @@ fn init_meter_provider(
         let reader = PeriodicReader::builder(exporter, runtime::Tokio).build();
         Ok(Some(
             SdkMeterProvider::builder()
-                .with_resource(Resource::new(vec![KeyValue::new(
-                    "service.name",
-                    tracing_config.service_name,
-                )]))
+                .with_resource(resource(tracing_config))
                 .with_reader(reader)
                 .build(),
         ))
