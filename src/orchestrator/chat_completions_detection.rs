@@ -339,9 +339,8 @@ async fn detector_chunk_task(
         let chunk_tasks = chat_messages
             .into_iter()
             .map(|message| {
-                let text = match message.content.unwrap() {
-                    Content::Text(value) => value,
-                    _ => panic!("Only text content accepted"),
+                let Some(Content::Text(text)) = message.content else {
+                    panic!("Only text content accepted")
                 };
                 let offset: usize = 0;
                 let task = tokio::spawn({
