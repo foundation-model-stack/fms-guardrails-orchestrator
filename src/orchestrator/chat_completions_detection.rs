@@ -313,14 +313,11 @@ fn preprocess_chat_messages(
                     .unwrap_or_else(|| panic!("detector config not found for {}", detector_id));
                 let detector_type = &detector_config.r#type;
                 // Filter messages based on detector type
-                let value = match detector_type {
-                    DetectorType::TextContents => match content::filter_chat_message(&messages) {
-                        Ok(filtered_messages) => Ok(filtered_messages),
-                        Err(e) => Err(Error::Validation(e.to_string())),
-                    },
+                let messages = match detector_type {
+                    DetectorType::TextContents => content::filter_chat_message(&messages),
                     _ => unimplemented!(),
                 }?;
-                Ok((detector_id, value))
+                Ok((detector_id, messages))
             },
         )
         .collect()

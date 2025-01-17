@@ -23,47 +23,32 @@ use crate::{
 pub fn filter_chat_message(
     messages: &[ChatMessageInternal],
 ) -> Result<Vec<ChatMessageInternal>, ValidationError> {
-    // Implement content processing logic here
-    // Make sure messages are not empty.
+    // Get last message
     if messages.is_empty() {
         return Err(ValidationError::Invalid("No messages provided".into()));
     }
+    let message_index = messages.len() - 1;
+    let message = messages.last().unwrap().clone();
 
-    // Rules:
-    // Rule 1: Select last message from the list of messages
-    let message = messages.last().unwrap();
-
-    // Rule 2: Check if the message has content or not
-    if message.content.is_none() {
+    // Validate message:
+    // 1. Has text content
+    if !matches!(message.content, Some(Content::Text(_))) {
         return Err(ValidationError::Invalid(
-            "Message at last index does not have content".into(),
+            "Last message content must be text".into(),
+        ));
+    }
+    // 2. Role is user | assistant | system
+    if !matches!(message.role.as_str(), "user" | "assistant" | "system") {
+        return Err(ValidationError::Invalid(
+            "Last message role must be user, assistant, or system".into(),
         ));
     }
 
-    // 3. Select if message is from role `user` or `assistant` otherwise return Err
-    match message.role.as_str() {
-        "user" | "assistant" | "system" => (),
-        _ => {
-            return Err(ValidationError::Invalid(
-                "Message at last index is not from user or assistant or system".into(),
-            ))
-        }
-    }
-
-    let content = match message.content.clone().unwrap() {
-        Content::Text(text) => Content::Text(text),
-        _ => {
-            return Err(ValidationError::Invalid(
-                "Only text content support currently".into(),
-            ))
-        }
-    };
     Ok(vec![ChatMessageInternal {
-        // index of last message
-        message_index: messages.len() - 1,
-        role: message.role.clone(),
-        content: Some(content),
-        refusal: message.refusal.clone(),
+        message_index,
+        role: message.role,
+        content: message.content,
+        refusal: message.refusal,
     }])
 }
 
