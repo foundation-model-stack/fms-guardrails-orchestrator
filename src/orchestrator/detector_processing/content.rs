@@ -20,7 +20,7 @@ use crate::{
 };
 
 /// Function to get content analysis request from chat message by applying rules
-pub fn filter_chat_message(
+pub fn filter_chat_messages(
     messages: &[ChatMessageInternal],
 ) -> Result<Vec<ChatMessageInternal>, ValidationError> {
     // Get last message
@@ -67,7 +67,7 @@ mod tests {
             ..Default::default()
         }];
 
-        let filtered_messages = filter_chat_message(&message);
+        let filtered_messages = filter_chat_messages(&message);
 
         // Assertions
         assert!(filtered_messages.is_ok());
@@ -91,7 +91,7 @@ mod tests {
             },
         ];
 
-        let filtered_messages = filter_chat_message(&message);
+        let filtered_messages = filter_chat_messages(&message);
 
         // Assertions
         assert!(filtered_messages.is_ok());
@@ -107,13 +107,13 @@ mod tests {
             ..Default::default()
         }];
 
-        let filtered_messages = filter_chat_message(&message);
+        let filtered_messages = filter_chat_messages(&message);
 
         // Assertions
         assert!(filtered_messages.is_err());
         assert_eq!(
             filtered_messages.unwrap_err().to_string(),
-            "Message at last index is not from user or assistant or system"
+            "Last message role must be user, assistant, or system"
         );
     }
 }

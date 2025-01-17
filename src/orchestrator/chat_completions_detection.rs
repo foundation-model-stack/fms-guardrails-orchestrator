@@ -314,7 +314,7 @@ fn preprocess_chat_messages(
                 let detector_type = &detector_config.r#type;
                 // Filter messages based on detector type
                 let messages = match detector_type {
-                    DetectorType::TextContents => content::filter_chat_message(&messages),
+                    DetectorType::TextContents => content::filter_chat_messages(&messages),
                     _ => unimplemented!(),
                 }?;
                 Ok((detector_id, messages))
@@ -467,7 +467,7 @@ mod tests {
         assert_eq!(error.type_id(), TypeId::of::<Error>());
         assert_eq!(
             error.to_string(),
-            "validation error: Message at last index is not from user or assistant or system"
+            "validation error: Last message role must be user, assistant, or system"
         );
     }
 }
