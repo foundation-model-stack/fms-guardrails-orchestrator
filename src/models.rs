@@ -459,7 +459,7 @@ pub struct TokenClassificationResult {
     /// Aggregate label, if applicable
     pub entity_group: String,
 
-    /// id of detector (model) responsible for result(s)
+    /// Optional id of detector (model) responsible for result(s)
     pub detector_id: Option<String>,
 
     /// Confidence-like score of this classification prediction in [0, 1]
