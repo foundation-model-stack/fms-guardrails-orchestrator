@@ -807,7 +807,7 @@ pub async fn detect_for_generation(
                 .into_iter()
                 .filter(|detection| detection.score > threshold)
                 .map(|mut detection| {
-                    //add detector_id
+                    // add detector_id
                     detection.detector_id = Some(detector_id.clone());
                     detection
                 })
