@@ -758,7 +758,8 @@ pub async fn detect_content(
                 .filter_map(|mut resp| {
                     resp.start += chunk.offset;
                     resp.end += chunk.offset;
-                    resp.detector_id = Some(detector_id.clone()); // add detector_id
+                    // add detector_id
+                    resp.detector_id = Some(detector_id.clone());
                     (resp.score >= threshold).then_some(resp)
                 })
                 .collect::<Vec<_>>()
