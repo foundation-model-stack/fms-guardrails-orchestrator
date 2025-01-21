@@ -15,20 +15,22 @@
 
 */
 
-use crate::utils::trace::{current_trace_id, with_traceparent_header};
-use http::{Request, Response, StatusCode};
-use pin_project_lite::pin_project;
 use std::{
     error::Error,
     future::Future,
     pin::Pin,
     task::{Context, Poll},
 };
+
+use http::{Request, Response, StatusCode};
+use pin_project_lite::pin_project;
 use tokio::time::Instant;
 use tonic::client::GrpcService;
 use tower::Layer;
 use tracing::{error, info, info_span, Span};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
+
+use crate::utils::trace::{current_trace_id, with_traceparent_header};
 
 // Adapted from https://github.com/davidB/tracing-opentelemetry-instrumentation-sdk/tree/main/tonic-tracing-opentelemetry
 /// Layer for grpc (tonic client):

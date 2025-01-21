@@ -132,6 +132,8 @@ pub struct ContentAnalysisResponse {
     pub detection: String,
     /// Detection type or aggregate detection label
     pub detection_type: String,
+    /// Optional, ID of Detector
+    pub detector_id: Option<String>,
     /// Score of detection
     pub score: f64,
     /// Optional, any applicable evidence for detection
@@ -147,6 +149,7 @@ impl From<ContentAnalysisResponse> for crate::models::TokenClassificationResult 
             word: value.text,
             entity: value.detection,
             entity_group: value.detection_type,
+            detector_id: value.detector_id,
             score: value.score,
             token_count: None,
         }

@@ -1,3 +1,5 @@
+use std::{fs::File, io, path::PathBuf, sync::Arc};
+
 use http_serde::http::StatusCode;
 use hyper_rustls::ConfigBuilderExt;
 use rustls::{
@@ -6,7 +8,6 @@ use rustls::{
     ClientConfig, DigitallySignedStruct, SignatureScheme,
 };
 use serde::Deserialize;
-use std::{fs::File, io, path::PathBuf, sync::Arc};
 
 use crate::{clients, config::TlsConfig};
 

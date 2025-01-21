@@ -36,8 +36,10 @@ use tracing::{error, info, info_span, Span};
 use tracing_opentelemetry::{MetricsLayer, OpenTelemetrySpanExt};
 use tracing_subscriber::{layer::SubscriberExt, EnvFilter, Layer};
 
-use crate::args::{LogFormat, OtlpProtocol, TracingConfig};
-use crate::clients::http::TracedResponse;
+use crate::{
+    args::{LogFormat, OtlpProtocol, TracingConfig},
+    clients::http::TracedResponse,
+};
 
 #[derive(Debug, thiserror::Error)]
 pub enum TracingError {

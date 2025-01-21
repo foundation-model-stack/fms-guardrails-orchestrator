@@ -696,6 +696,8 @@ pub async fn detect(
                 .into_iter()
                 .filter_map(|resp| {
                     let mut result: TokenClassificationResult = resp.into();
+                    // add detector_id
+                    result.detector_id = Some(detector_id.clone());
                     result.start += chunk.offset as u32;
                     result.end += chunk.offset as u32;
                     (result.score >= threshold).then_some(result)
@@ -756,6 +758,8 @@ pub async fn detect_content(
                 .filter_map(|mut resp| {
                     resp.start += chunk.offset;
                     resp.end += chunk.offset;
+                    // add detector_id
+                    resp.detector_id = Some(detector_id.clone());
                     (resp.score >= threshold).then_some(resp)
                 })
                 .collect::<Vec<_>>()
@@ -803,6 +807,11 @@ pub async fn detect_for_generation(
             results
                 .into_iter()
                 .filter(|detection| detection.score > threshold)
+                .map(|mut detection| {
+                    // add detector_id
+                    detection.detector_id = Some(detector_id.clone());
+                    detection
+                })
                 .collect()
         })
         .map_err(|error| Error::DetectorRequestFailed {
@@ -844,6 +853,11 @@ pub async fn detect_for_chat(
             results
                 .into_iter()
                 .filter(|detection| detection.score > threshold)
+                .map(|mut detection| {
+                    //add detector_id
+                    detection.detector_id = Some(detector_id.clone());
+                    detection
+                })
                 .collect()
         })
         .map_err(|error| Error::DetectorRequestFailed {
@@ -899,6 +913,11 @@ pub async fn detect_for_context(
             results
                 .into_iter()
                 .filter(|detection| detection.score > threshold)
+                .map(|mut detection| {
+                    //add detector_id
+                    detection.detector_id = Some(detector_id.clone());
+                    detection
+                })
                 .collect()
         })
         .map_err(|error| Error::DetectorRequestFailed {
@@ -1131,6 +1150,7 @@ mod tests {
             word: second_sentence.clone(),
             entity: "has_HAP".to_string(),
             entity_group: "hap".to_string(),
+            detector_id: Some(detector_id.to_string()),
             score: 0.9,
             token_count: None,
         }];
@@ -1151,6 +1171,7 @@ mod tests {
                 text: first_sentence.clone(),
                 detection: "has_HAP".to_string(),
                 detection_type: "hap".to_string(),
+                detector_id: Some(detector_id.to_string()),
                 score: 0.1,
                 evidence: Some(vec![]),
             }],
@@ -1160,6 +1181,7 @@ mod tests {
                 text: second_sentence.clone(),
                 detection: "has_HAP".to_string(),
                 detection_type: "hap".to_string(),
+                detector_id: Some(detector_id.to_string()),
                 score: 0.9,
                 evidence: Some(vec![]),
             }],
@@ -1300,6 +1322,7 @@ mod tests {
         let expected_response: Vec<DetectionResult> = vec![DetectionResult {
             detection_type: "relevance".to_string(),
             detection: "is_relevant".to_string(),
+            detector_id: Some(detector_id.to_string()),
             score: 0.9,
             evidence: Some(
                 [EvidenceObj {
@@ -1325,6 +1348,7 @@ mod tests {
         .then_return(Ok(vec![DetectionResult {
             detection_type: "relevance".to_string(),
             detection: "is_relevant".to_string(),
+            detector_id: Some(detector_id.to_string()),
             score: 0.9,
             evidence: Some(
                 [EvidenceObj {
@@ -1393,6 +1417,7 @@ mod tests {
         .then_return(Ok(vec![DetectionResult {
             detection_type: "relevance".to_string(),
             detection: "is_relevant".to_string(),
+            detector_id: Some(detector_id.to_string()),
             score: 0.1,
             evidence: None,
         }]));
