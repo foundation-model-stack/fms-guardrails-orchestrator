@@ -63,17 +63,17 @@ pub enum DetectorRequest {
 }
 
 // Get Vec<ChatMessageInternal> from ChatCompletionsRequest
-impl From<ChatCompletionsRequest> for Vec<ChatMessageInternal> {
-    fn from(value: ChatCompletionsRequest) -> Self {
+impl From<&ChatCompletionsRequest> for Vec<ChatMessageInternal> {
+    fn from(value: &ChatCompletionsRequest) -> Self {
         value
             .messages
-            .into_iter()
+            .iter()
             .enumerate()
             .map(|(index, message)| ChatMessageInternal {
                 message_index: index,
-                role: message.role,
-                content: message.content,
-                refusal: message.refusal,
+                role: message.role.clone(),
+                content: message.content.clone(),
+                refusal: message.refusal.clone(),
             })
             .collect()
     }
@@ -102,18 +102,16 @@ impl Orchestrator {
     ) -> Result<ChatCompletionsResponse, Error> {
         info!("handling chat completions detection task");
         let ctx = self.ctx.clone();
-        let headers = task.headers.clone();
 
-        let request = task.request.clone();
         let task_handle = tokio::spawn(async move {
             // Convert the request into a format that can be used for processing
-            let chat_messages = Vec::<ChatMessageInternal>::from(request.clone());
-            let input_detectors = request.detectors.unwrap_or_default().input;
+            let chat_messages = Vec::<ChatMessageInternal>::from(&task.request);
+            let input_detectors = task.request.detectors.clone().unwrap_or_default().input;
 
             let input_detections = match input_detectors {
                 Some(detectors) if !detectors.is_empty() => {
                     // Call out to input detectors using chunk
-                    input_detection(&ctx, &detectors, chat_messages, headers.clone()).await?
+                    input_detection(&ctx, &detectors, chat_messages, &task.headers).await?
                 }
                 _ => None,
             };
@@ -139,7 +137,7 @@ impl Orchestrator {
 
                 Ok(ChatCompletionsResponse::Unary(Box::new(ChatCompletion {
                     id: Uuid::new_v4().simple().to_string(),
-                    model: request.model,
+                    model: task.request.model.clone(),
                     choices: vec![],
                     created: SystemTime::now()
                         .duration_since(UNIX_EPOCH)
@@ -197,7 +195,7 @@ pub async fn input_detection(
     ctx: &Arc<Context>,
     detectors: &HashMap<String, DetectorParams>,
     chat_messages: Vec<ChatMessageInternal>,
-    headers: HeaderMap,
+    headers: &HeaderMap,
 ) -> Result<Option<Vec<InputDetectionResult>>, Error> {
     debug!(?detectors, "starting input detection on chat completions");
 
