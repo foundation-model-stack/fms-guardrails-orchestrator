@@ -623,7 +623,7 @@ async fn detection_task(
 
 /// Handles chunk task.
 #[instrument(skip_all)]
-async fn chunk_task(
+pub async fn chunk_task(
     ctx: &Arc<Context>,
     chunker_ids: Vec<String>,
     text_with_offsets: Vec<(usize, String)>,

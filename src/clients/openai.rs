@@ -27,7 +27,11 @@ use tokio::sync::mpsc;
 use tracing::{info, instrument};
 
 use super::{create_http_client, http::HttpClientExt, Client, Error, HttpClient};
-use crate::{config::ServiceConfig, health::HealthCheckResult};
+use crate::{
+    config::ServiceConfig,
+    health::HealthCheckResult,
+    models::{DetectorParams, GuardrailDetection, InputWarningReason},
+};
 
 const DEFAULT_PORT: u16 = 8080;
 
@@ -157,13 +161,13 @@ impl HttpClientExt for OpenAiClient {
 
 #[derive(Debug)]
 pub enum ChatCompletionsResponse {
-    Unary(ChatCompletion),
+    Unary(Box<ChatCompletion>),
     Streaming(mpsc::Receiver<Result<Option<ChatCompletionChunk>, Error>>),
 }
 
 impl From<ChatCompletion> for ChatCompletionsResponse {
     fn from(value: ChatCompletion) -> Self {
-        Self::Unary(value)
+        Self::Unary(Box::new(value))
     }
 }
 
@@ -275,6 +279,23 @@ pub struct ChatCompletionsRequest {
     pub skip_special_tokens: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub spaces_between_special_tokens: Option<bool>,
+
+    // Detectors
+    // Note: We are making it optional, since this structure also gets used to
+    // form request for chat completions. And downstream server, might choose to
+    // reject extra parameters.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detectors: Option<DetectorConfig>,
+}
+
+/// Structure to contain parameters for detectors.
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DetectorConfig {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input: Option<HashMap<String, DetectorParams>>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output: Option<HashMap<String, DetectorParams>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -386,7 +407,7 @@ pub struct Message {
     pub tool_call_id: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(untagged)]
 pub enum Content {
     /// The text contents of the message.
@@ -430,7 +451,7 @@ impl From<Vec<String>> for Content {
     }
 }
 
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
 pub enum ContentType {
     #[serde(rename = "text")]
     #[default]
@@ -439,7 +460,7 @@ pub enum ContentType {
     ImageUrl,
 }
 
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ContentPart {
     /// The type of the content part.
     #[serde(rename = "type")]
@@ -455,7 +476,7 @@ pub struct ContentPart {
     pub refusal: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ImageUrl {
     /// Either a URL of the image or the base64 encoded image data.
     pub url: String,
@@ -485,7 +506,7 @@ pub struct Function {
 }
 
 /// Represents a chat completion response returned by model, based on the provided input.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct ChatCompletion {
     /// A unique identifier for the chat completion.
     pub id: String,
@@ -506,6 +527,12 @@ pub struct ChatCompletion {
     /// This field is only included if the `service_tier` parameter is specified in the request.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub service_tier: Option<String>,
+    /// Result of running different guardrail detectors
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detections: Option<ChatDetections>,
+    /// Optional warnings
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<OrchestratorWarning>,
 }
 
 /// A chat completion choice.
@@ -621,7 +648,7 @@ pub struct ChatCompletionDelta {
 }
 
 /// Usage statistics for a completion.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Usage {
     /// Number of tokens in the prompt.
     pub prompt_tokens: u32,
@@ -664,4 +691,45 @@ pub struct OpenAiError {
     pub r#type: Option<String>,
     pub param: Option<String>,
     pub code: u16,
+}
+
+/// Guardrails detection results.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatDetections {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub input: Vec<InputDetectionResult>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub output: Vec<OutputDetectionResult>,
+}
+
+/// Guardrails detection result for application on input.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InputDetectionResult {
+    pub message_index: usize,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub results: Vec<GuardrailDetection>,
+}
+
+/// Guardrails detection result for application output.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OutputDetectionResult {
+    choice_index: usize,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    results: Vec<GuardrailDetection>,
+}
+
+/// Warnings generated by guardrails.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OrchestratorWarning {
+    r#type: InputWarningReason,
+    message: String,
+}
+
+impl OrchestratorWarning {
+    pub fn new(warning_type: InputWarningReason, message: &str) -> Self {
+        Self {
+            r#type: warning_type,
+            message: message.to_string(),
+        }
+    }
 }

@@ -19,6 +19,7 @@ pub mod errors;
 pub use errors::Error;
 use futures::Stream;
 pub mod chat_completions_detection;
+pub mod detector_processing;
 pub mod streaming;
 pub mod streaming_content_detection;
 pub mod unary;
