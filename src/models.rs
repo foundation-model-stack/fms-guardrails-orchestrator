@@ -77,6 +77,7 @@ impl std::ops::DerefMut for DetectorParams {
 
 /// User request to orchestrator
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct GuardrailsHttpRequest {
     /// Text generation model ID
     pub model_id: String,
@@ -343,6 +344,7 @@ pub struct ClassifiedGeneratedTextResult {
 
 /// The request format expected in the /api/v2/text/detection/content endpoint.
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct TextContentDetectionHttpRequest {
     /// The content to run detectors on
     pub content: String,
@@ -836,6 +838,7 @@ impl From<pb::caikit_data_model::nlp::GeneratedTextResult> for ClassifiedGenerat
 
 /// The request format expected in the /api/v2/text/generation-detection endpoint.
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct GenerationWithDetectionHttpRequest {
     /// The model_id of the LLM to be invoked.
     pub model_id: String,
@@ -917,6 +920,7 @@ pub enum GuardrailDetection {
 
 /// The request format expected in the /api/v2/text/context endpoint.
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ContextDocsHttpRequest {
     /// The map of detectors to be used, along with their respective parameters, e.g. thresholds.
     pub detectors: HashMap<String, DetectorParams>,
@@ -958,8 +962,9 @@ pub struct ContextDocsResult {
     pub detections: Vec<DetectionResult>,
 }
 
-/// The request format expected in the /api/v2/text/detect/generated endpoint.
+/// The request format expected in the /api/v2/text/detect/chat endpoint.
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ChatDetectionHttpRequest {
     /// The map of detectors to be used, along with their respective parameters, e.g. thresholds.
     pub detectors: HashMap<String, DetectorParams>,
@@ -1033,6 +1038,7 @@ pub struct ChatDetectionResult {
 
 /// The request format expected in the /api/v2/text/detect/generated endpoint.
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct DetectionOnGeneratedHttpRequest {
     /// The prompt to be sent to the LLM.
     pub prompt: String,
@@ -1120,6 +1126,7 @@ pub struct EvidenceObj {
 
 /// Stream content detection stream request
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 #[cfg_attr(test, derive(Default))]
 pub struct StreamingContentDetectionRequest {
     pub detectors: Option<HashMap<String, DetectorParams>>,
