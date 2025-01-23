@@ -55,7 +55,6 @@ pub fn filter_chat_messages(
 #[cfg(test)]
 mod tests {
     use super::*;
-
     use crate::orchestrator::chat_completions_detection::ChatMessageInternal;
 
     #[tokio::test]

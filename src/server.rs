@@ -489,7 +489,10 @@ async fn stream_content_detection(
 async fn detection_content(
     State(state): State<Arc<ServerState>>,
     headers: HeaderMap,
-    Json(request): Json<models::TextContentDetectionHttpRequest>,
+    WithRejection(Json(request), _): WithRejection<
+        Json<models::TextContentDetectionHttpRequest>,
+        Error,
+    >,
 ) -> Result<impl IntoResponse, Error> {
     let trace_id = Span::current().context().span().span_context().trace_id();
     info!(?trace_id, "handling request");
