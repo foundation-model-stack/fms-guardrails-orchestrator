@@ -14,20 +14,25 @@
  limitations under the License.
 
 */
+use std::{
+    collections::HashMap,
+    sync::Arc,
+    time::{SystemTime, UNIX_EPOCH},
+};
+
 use axum::http::HeaderMap;
 use futures::future::{join_all, try_join_all};
-use std::time::{SystemTime, UNIX_EPOCH};
-use std::{collections::HashMap, sync::Arc};
+use serde::{Deserialize, Serialize};
 use tracing::{debug, info, instrument};
+use uuid::Uuid;
 
 use super::{ChatCompletionsDetectionTask, Context, Error, Orchestrator};
-use crate::clients::openai::OrchestratorWarning;
 use crate::{
     clients::{
         detector::{ChatDetectionRequest, ContentAnalysisRequest},
         openai::{
             ChatCompletion, ChatCompletionChoice, ChatCompletionsRequest, ChatCompletionsResponse,
-            ChatDetections, Content, InputDetectionResult, OpenAiClient,
+            ChatDetections, Content, InputDetectionResult, OpenAiClient, OrchestratorWarning,
         },
     },
     config::DetectorType,
@@ -38,8 +43,6 @@ use crate::{
         Chunk, UNSUITABLE_INPUT_MESSAGE,
     },
 };
-use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 /// Internal structure to capture chat messages (both request and response)
 /// and prepare it for processing
@@ -386,8 +389,10 @@ mod tests {
     use std::any::{Any, TypeId};
 
     use super::*;
-    use crate::config::DetectorConfig;
-    use crate::orchestrator::{ClientMap, OrchestratorConfig};
+    use crate::{
+        config::DetectorConfig,
+        orchestrator::{ClientMap, OrchestratorConfig},
+    };
 
     // Test to verify preprocess_chat_messages works correctly for multiple content type detectors
     // with single message in chat request
