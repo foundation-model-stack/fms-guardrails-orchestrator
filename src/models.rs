@@ -1213,6 +1213,32 @@ mod tests {
         let error = result.unwrap_err().to_string();
         assert!(error.contains("`model_id` is required"));
 
+        // Additional unknown field (guardrails_config, a typo of the accurate "guardrail_config")
+        let json_data = r#"
+        {
+            "inputs": "The cow jumped over the moon.",
+            "model_id": "model-id",
+            "guardrails_config": {
+                "input": {
+                    "models": {
+                        "hap_model": {}
+                    }
+                },
+                "output": {
+                    "models": {
+                        "hap_model": {}
+                    }
+                }
+            }
+        }
+        "#;
+        let result: Result<GuardrailsHttpRequest, _> = serde_json::from_str(json_data);
+        assert!(result.is_err());
+        let error = result.unwrap_err().to_string();
+        assert!(error
+            .to_string()
+            .contains("unknown field `guardrails_config`"));
+
         // No inputs
         let request = GuardrailsHttpRequest {
             model_id: "model".to_string(),
