@@ -18,6 +18,7 @@
 use std::fmt::Debug;
 
 use axum::http::HeaderMap;
+use http::header::CONTENT_TYPE;
 use hyper::StatusCode;
 use serde::Deserialize;
 use tracing::instrument;
@@ -39,6 +40,7 @@ pub use text_generation::*;
 
 const DEFAULT_PORT: u16 = 8080;
 pub const DETECTOR_ID_HEADER_NAME: &str = "detector-id";
+const MODEL_HEADER_NAME: &str = "x-model-name";
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct DetectorError {
@@ -87,7 +89,9 @@ impl<C: DetectorClient + HttpClientExt> DetectorClientExt for C {
     ) -> Result<U, Error> {
         let mut headers = headers;
         headers.append(DETECTOR_ID_HEADER_NAME, model_id.parse().unwrap());
-        headers.append("content-type", "application/json".parse().unwrap());
+        headers.append(CONTENT_TYPE, "application/json".parse().unwrap());
+        // Header used by a router component, if available
+        headers.append(MODEL_HEADER_NAME, model_id.parse().unwrap());
 
         let response = self.inner().post(url, headers, request).await?;
 
