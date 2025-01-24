@@ -19,8 +19,8 @@ Hint: In case you cannot run script due to permissions, try `chmod u+x scripts/c
 <!--
 Example output:
 
-rustc 1.78.0 (9b00956e5 2024-04-29)
-Commit hash: 1892295
+rustc 1.81.0 (eeb90cda1 2024-09-04)
+Orchestrator version: 1.0.0 (279934c)
 -->
 
 
