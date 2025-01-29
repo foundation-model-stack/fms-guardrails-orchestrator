@@ -645,7 +645,8 @@ pub struct ChatCompletionChunkChoice {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatCompletionDelta {
     /// The role of the author of this message.
-    pub role: Role,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub role: Option<Role>,
     /// The contents of the message.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content: Option<String>,
