@@ -32,7 +32,7 @@ use crate::{
         detector::{ChatDetectionRequest, ContentAnalysisRequest},
         openai::{
             ChatCompletion, ChatCompletionChoice, ChatCompletionsRequest, ChatCompletionsResponse,
-            ChatDetections, Content, InputDetectionResult, OpenAiClient, OrchestratorWarning,
+            ChatDetections, Content, InputDetectionResult, OpenAiClient, OrchestratorWarning, Role,
         },
     },
     config::DetectorType,
@@ -51,7 +51,7 @@ pub struct ChatMessageInternal {
     /// Index of the message
     pub message_index: usize,
     /// The role of the messages author.
-    pub role: String,
+    pub role: Role,
     /// The contents of the message.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content: Option<Content>,
@@ -425,7 +425,7 @@ mod tests {
         let messages = vec![ChatMessageInternal {
             message_index: 0,
             content: Some(Content::Text("hello".to_string())),
-            role: "assistant".to_string(),
+            role: Role::Assistant,
             ..Default::default()
         }];
         let processed_messages = preprocess_chat_messages(&ctx, &detectors, messages).unwrap();
@@ -458,7 +458,7 @@ mod tests {
             message_index: 0,
             content: Some(Content::Text("hello".to_string())),
             // Invalid role will return error used for testing
-            role: "foo".to_string(),
+            role: Role::Tool,
             ..Default::default()
         }];
 
