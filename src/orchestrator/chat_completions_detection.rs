@@ -20,23 +20,27 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
+// use anyhow::Ok;
 use axum::http::HeaderMap;
 use futures::future::{join_all, try_join_all};
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info, instrument};
 use uuid::Uuid;
 
-use super::{ChatCompletionsDetectionTask, Context, Error, Orchestrator};
+use super::{
+    ChatCompletionsDetectionTask, Context, Error, Orchestrator, UNSUITABLE_OUTPUT_MESSAGE,
+};
 use crate::{
     clients::{
         detector::{ChatDetectionRequest, ContentAnalysisRequest},
         openai::{
             ChatCompletion, ChatCompletionChoice, ChatCompletionsRequest, ChatCompletionsResponse,
-            ChatDetections, Content, InputDetectionResult, OpenAiClient, OrchestratorWarning,
+            ChatDetections, Content, DetectionResult, DetectionType, OpenAiClient,
+            OrchestratorWarning,
         },
     },
     config::DetectorType,
-    models::{DetectorParams, GuardrailDetection, InputWarningReason},
+    models::{DetectionWarningReason, DetectorParams, GuardrailDetection},
     orchestrator::{
         detector_processing::content,
         unary::{chunk, detect_content},
@@ -82,6 +86,24 @@ impl From<&ChatCompletionsRequest> for Vec<ChatMessageInternal> {
     }
 }
 
+impl From<&Box<ChatCompletion>> for Vec<ChatMessageInternal> {
+    fn from(value: &Box<ChatCompletion>) -> Self {
+        value
+            .choices
+            .iter()
+            .enumerate()
+            .map(|(index, choice)| ChatMessageInternal {
+                message_index: index,
+                role: choice.message.role.clone(),
+                content: Some(Content::Text(
+                    choice.message.content.clone().unwrap_or_default(),
+                )),
+                refusal: choice.message.refusal.clone(),
+            })
+            .collect()
+    }
+}
+
 // Get Vec<ChatMessageInternal> from ChatCompletionChoice
 impl From<ChatCompletionChoice> for Vec<ChatMessageInternal> {
     fn from(value: ChatCompletionChoice) -> Self {
@@ -109,69 +131,80 @@ impl Orchestrator {
         let task_handle = tokio::spawn(async move {
             // Convert the request into a format that can be used for processing
             let chat_messages = Vec::<ChatMessageInternal>::from(&task.request);
-            let input_detectors = task.request.detectors.clone().unwrap_or_default().input;
+            let detectors = task.request.detectors.clone().unwrap_or_default();
 
-            let input_detections = match input_detectors {
+            let input_detections = match detectors.input {
                 Some(detectors) if !detectors.is_empty() => {
                     // Call out to input detectors using chunk
-                    input_detection(&ctx, &detectors, chat_messages, &task.headers).await?
+                    message_detection(
+                        &ctx,
+                        &detectors,
+                        chat_messages,
+                        &task.headers,
+                        DetectionType::Input,
+                    )
+                    .await?
                 }
                 _ => None,
             };
 
             debug!(?input_detections);
 
-            if let Some(mut input_detections) = input_detections {
-                // Sort input detections by message_index
-                input_detections.sort_by_key(|value| value.message_index);
-
-                let input_detections = input_detections
-                    .into_iter()
-                    .map(|mut detection| {
-                        let last_idx = detection.results.len();
-                        // sort detection by starting span, if span is not present then move to the end of the message
-                        detection.results.sort_by_key(|r| match r {
-                            GuardrailDetection::ContentAnalysisResponse(value) => value.start,
-                            _ => last_idx,
-                        });
-                        detection
-                    })
-                    .collect::<Vec<_>>();
-
-                Ok(ChatCompletionsResponse::Unary(Box::new(ChatCompletion {
-                    id: Uuid::new_v4().simple().to_string(),
-                    model: task.request.model.clone(),
-                    choices: vec![],
-                    created: SystemTime::now()
-                        .duration_since(UNIX_EPOCH)
-                        .unwrap()
-                        .as_secs() as i64,
-                    detections: Some(ChatDetections {
-                        input: input_detections,
-                        output: vec![],
-                    }),
-                    warnings: vec![OrchestratorWarning::new(
-                        InputWarningReason::UnsuitableInput,
-                        UNSUITABLE_INPUT_MESSAGE,
-                    )],
-                    ..Default::default()
-                })))
+            if let Some(input_detections) = input_detections {
+                process_detections(
+                    input_detections,
+                    &task.request.model.clone(),
+                    DetectionType::Input,
+                )
             } else {
-                let model_id = task.request.model.clone();
                 let client = ctx
                     .clients
                     .get_as::<OpenAiClient>("chat_generation")
                     .expect("chat_generation client not found");
                 let mut chat_request = task.request;
+                let model_id = chat_request.model.clone();
                 // Remove detectors as chat completion server would reject extra parameter
                 chat_request.detectors = None;
-                client
-                    .chat_completions(chat_request, task.headers)
-                    .await
-                    .map_err(|error| Error::ChatGenerateRequestFailed {
-                        id: model_id,
-                        error,
-                    })
+                let c = task.headers.clone();
+                let chat_completions =
+                    client
+                        .chat_completions(chat_request, c)
+                        .await
+                        .map_err(|error| Error::ChatGenerateRequestFailed {
+                            id: model_id.clone(),
+                            error,
+                        })?;
+
+                if let ChatCompletionsResponse::Unary(ref chat_completion) = chat_completions {
+                    // remove index and update from method to have actual choices
+                    let choices = Vec::<ChatMessageInternal>::from(chat_completion);
+
+                    let output_detections = match detectors.output {
+                        Some(detectors) if !detectors.is_empty() => {
+                            message_detection(
+                                &ctx,
+                                &detectors,
+                                choices,
+                                &task.headers,
+                                DetectionType::Output,
+                            )
+                            .await?
+                        }
+                        _ => None,
+                    };
+
+                    debug!(?output_detections);
+
+                    if let Some(output_detections) = output_detections {
+                        return process_detections(
+                            output_detections,
+                            &model_id,
+                            DetectionType::Output,
+                        );
+                    }
+                }
+                Ok(chat_completions)
+                // let chat_messages = Vec::<Chat
             }
         });
 
@@ -194,12 +227,14 @@ impl Orchestrator {
 }
 
 #[instrument(skip_all)]
-pub async fn input_detection(
+// pub async fn input_detection(
+pub async fn message_detection(
     ctx: &Arc<Context>,
     detectors: &HashMap<String, DetectorParams>,
     chat_messages: Vec<ChatMessageInternal>,
     headers: &HeaderMap,
-) -> Result<Option<Vec<InputDetectionResult>>, Error> {
+    detection_type: DetectionType,
+) -> Result<Option<Vec<DetectionResult>>, Error> {
     debug!(?detectors, "starting input detection on chat completions");
 
     let ctx = ctx.clone();
@@ -238,23 +273,26 @@ pub async fn input_detection(
                             let detector_params = detector_params.clone();
                             let headers = headers.clone();
 
-                            tokio::spawn(async move {
-                                // Call content detector on the chunks of particular message
-                                // and return the index and detection results
-                                let result = detect_content(
-                                    ctx.clone(),
-                                    detector_id.clone(),
-                                    default_threshold,
-                                    detector_params.clone(),
-                                    chunks,
-                                    headers.clone(),
-                                )
-                                .await;
-                                match result {
-                                    Ok(value) => {
-                                        if !value.is_empty() {
-                                            let input_detection_result = InputDetectionResult {
-                                                message_index: idx,
+                            tokio::spawn({
+                                let d = detection_type.clone();
+                                async move {
+                                    // Call content detector on the chunks of particular message
+                                    // and return the index and detection results
+                                    let result = detect_content(
+                                        ctx.clone(),
+                                        detector_id.clone(),
+                                        default_threshold,
+                                        detector_params.clone(),
+                                        chunks,
+                                        headers.clone(),
+                                    )
+                                    .await;
+                                    match result {
+                                        Ok(value) => {
+                                            if !value.is_empty() {
+                                                let input_detection_result = DetectionResult {
+                                                index: idx,
+                                                detection_type: d,
                                                 results: value
                                                     .into_iter()
                                                     .map(|result| {
@@ -264,15 +302,17 @@ pub async fn input_detection(
                                                     })
                                                     .collect::<Vec<_>>(),
                                             };
-                                            Ok(input_detection_result)
-                                        } else {
-                                            Ok(InputDetectionResult {
-                                                message_index: idx,
-                                                results: vec![],
-                                            })
+                                                Ok(input_detection_result)
+                                            } else {
+                                                Ok(DetectionResult {
+                                                    detection_type: d,
+                                                    index: idx,
+                                                    results: vec![],
+                                                })
+                                            }
                                         }
+                                        Err(error) => Err(error),
                                     }
-                                    Err(error) => Err(error),
                                 }
                             })
                         })
@@ -289,7 +329,7 @@ pub async fn input_detection(
         .collect::<Result<Vec<_>, Error>>()?
         .into_iter()
         .filter(|detection| !detection.results.is_empty())
-        .collect::<Vec<InputDetectionResult>>();
+        .collect::<Vec<DetectionResult>>();
 
     Ok((!detections.is_empty()).then_some(detections))
 }
@@ -382,6 +422,67 @@ async fn detector_chunk_task(
     }
 
     Ok(chunks)
+}
+
+fn process_detections(
+    mut detections: Vec<DetectionResult>,
+    model_id: &str,
+    detection_type: DetectionType,
+) -> Result<ChatCompletionsResponse, Error> {
+    // Sort input detections by message_index
+    // input_detections.sort_by_key(|value| value.message_index);
+    detections.sort_by_key(|value| value.index);
+
+    let detections = detections
+        .into_iter()
+        .map(|mut detection| {
+            let last_idx = detection.results.len();
+            // sort detection by starting span, if span is not present then move to the end of the message
+            detection.results.sort_by_key(|r| match r {
+                GuardrailDetection::ContentAnalysisResponse(value) => value.start,
+                _ => last_idx,
+            });
+            detection
+        })
+        .collect::<Vec<_>>();
+
+    let det: Option<ChatDetections>;
+    let mut warnings: Vec<OrchestratorWarning> = vec![];
+    match detection_type {
+        DetectionType::Input => {
+            det = Some(ChatDetections {
+                input: detections,
+                output: vec![],
+            });
+            warnings.push(OrchestratorWarning::new(
+                DetectionWarningReason::UnsuitableInput,
+                UNSUITABLE_INPUT_MESSAGE,
+            ));
+        }
+        DetectionType::Output => {
+            det = Some(ChatDetections {
+                input: vec![],
+                output: detections,
+            });
+            warnings.push(OrchestratorWarning::new(
+                DetectionWarningReason::UnsuitableOutput,
+                UNSUITABLE_OUTPUT_MESSAGE,
+            ));
+        }
+    };
+
+    Ok(ChatCompletionsResponse::Unary(Box::new(ChatCompletion {
+        id: Uuid::new_v4().simple().to_string(),
+        model: model_id.to_string(),
+        choices: vec![],
+        created: SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64,
+        detections: det,
+        warnings,
+        ..Default::default()
+    })))
 }
 
 #[cfg(test)]

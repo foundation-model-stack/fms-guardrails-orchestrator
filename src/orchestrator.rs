@@ -56,6 +56,10 @@ const UNSUITABLE_INPUT_MESSAGE: &str = "Unsuitable input detected. \
     Please check the detected entities on your input and try again \
     with the unsuitable input removed.";
 
+const UNSUITABLE_OUTPUT_MESSAGE: &str = "Unsuitable output detected. \
+    Please check the detected entities on your output and try again \
+    with the unsuitable output removed.";
+
 #[cfg_attr(test, derive(Default))]
 pub struct Context {
     config: OrchestratorConfig,
