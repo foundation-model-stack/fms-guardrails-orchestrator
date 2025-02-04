@@ -15,7 +15,8 @@
 
 */
 use crate::{
-    clients::openai::Content, models::ValidationError,
+    clients::openai::{Content, Role},
+    models::ValidationError,
     orchestrator::chat_completions_detection::ChatMessageInternal,
 };
 
@@ -37,7 +38,7 @@ pub fn filter_chat_messages(
         ));
     }
     // 2. Role is user | assistant | system
-    if !matches!(message.role.as_str(), "user" | "assistant" | "system") {
+    if !matches!(message.role, Role::User | Role::Assistant | Role::System) {
         return Err(ValidationError::Invalid(
             "Last message role must be user, assistant, or system".into(),
         ));
@@ -61,7 +62,7 @@ mod tests {
         let message = vec![ChatMessageInternal {
             message_index: 0,
             content: Some(Content::Text("hello".to_string())),
-            role: "assistant".to_string(),
+            role: Role::Assistant,
             ..Default::default()
         }];
 
@@ -78,13 +79,13 @@ mod tests {
             ChatMessageInternal {
                 message_index: 0,
                 content: Some(Content::Text("hello".to_string())),
-                role: "assistant".to_string(),
+                role: Role::Assistant,
                 ..Default::default()
             },
             ChatMessageInternal {
                 message_index: 1,
                 content: Some(Content::Text("bot".to_string())),
-                role: "assistant".to_string(),
+                role: Role::Assistant,
                 ..Default::default()
             },
         ];
@@ -101,7 +102,7 @@ mod tests {
         let message = vec![ChatMessageInternal {
             message_index: 0,
             content: Some(Content::Text("hello".to_string())),
-            role: "invalid_role".to_string(),
+            role: Role::Tool,
             ..Default::default()
         }];
 
