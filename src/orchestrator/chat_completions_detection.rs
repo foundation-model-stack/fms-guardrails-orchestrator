@@ -487,17 +487,14 @@ mod tests {
                 "name": "string"
             }
             ],
-            "model": "/llama_3_storage/hf/8b_instruction_tuned",
+            "model": "my_model",
             "additional_field": "test",
             "n": 1,
             "temperature": 1,
             "top_p": 1,
             "user": "user-1234",
             "detectors": {
-                "input": {
-                "en_syntax_slate.38m.hap": {},
-                "en_syntax_rbr_pii": {}
-                }
+                "input": {}
             }
         }
         "#;
@@ -519,16 +516,13 @@ mod tests {
                 "additional_msg: "test"
             }
             ],
-            "model": "/llama_3_storage/hf/8b_instruction_tuned",
+            "model": "my_model",
             "n": 1,
             "temperature": 1,
             "top_p": 1,
             "user": "user-1234",
             "detectors": {
-                "input": {
-                "en_syntax_slate.38m.hap": {},
-                "en_syntax_rbr_pii": {}
-                }
+                "input": {}
             }
         }
         "#;
@@ -547,16 +541,13 @@ mod tests {
                  "name": "string"
              }
              ],
-             "model": "/llama_3_storage/hf/8b_instruction_tuned",
+             "model": "my_model",
              "n": 1,
              "temperature": 1,
              "top_p": 1,
              "user": "user-1234",
              "detectors": {
-                 "inputs": {
-                 "en_syntax_slate.38m.hap": {},
-                 "en_syntax_rbr_pii": {}
-                 }
+                 "inputs": {}
              }
          }
          "#;
