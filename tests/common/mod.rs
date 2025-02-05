@@ -9,6 +9,8 @@ use tokio::sync::OnceCell;
 /// Async lazy initialization of shared state using tokio::sync::OnceCell
 pub static ONCE: OnceCell<Arc<ServerState>> = OnceCell::const_new();
 
+pub const CONFIG_FILE_PATH: &str = "tests/test.config.yaml";
+
 /// The actual async function that initializes the shared state if not already initialized
 pub async fn shared_state() -> Arc<ServerState> {
     let config = OrchestratorConfig::load("tests/test.config.yaml")
