@@ -15,14 +15,16 @@
 
 */
 
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use axum_test::TestServer;
-use common::{ensure_global_rustls_state, shared_state, ONCE};
+use common::{ensure_global_rustls_state, CONFIG_FILE_PATH};
 use fms_guardrails_orchestr8::{
     clients::detector::{ContentAnalysisRequest, ContentAnalysisResponse},
+    config::OrchestratorConfig,
     models::{DetectorParams, TextContentDetectionHttpRequest, TextContentDetectionResult},
-    server::get_app,
+    orchestrator::Orchestrator,
+    server::{get_app, ServerState},
 };
 use hyper::StatusCode;
 use mocktail::mock::MockSet;
@@ -37,11 +39,9 @@ mod common;
 /// This test mocks a detector that detects the word "word" in a given input.
 #[traced_test]
 #[tokio::test]
-async fn test_single_detection() {
+async fn test_single_detection_whole_doc() {
     ensure_global_rustls_state();
-    let shared_state = ONCE.get_or_init(shared_state).await.clone();
-    let server = TestServer::new(get_app(shared_state)).unwrap();
-    let detector_name = "content_detector_whole_doc".to_string();
+    let detector_name = "content_detector_whole_doc";
 
     // Add detector mock
     let mut mocks = MockSet::new();
@@ -65,10 +65,25 @@ async fn test_single_detection() {
         ),
     );
 
-    let mock_detector_server =
-        HttpMockServer::new_with_port("content_detector", mocks, 8001).unwrap();
+    // Start mock server
+    let mock_detector_server = HttpMockServer::new(detector_name, mocks).unwrap();
     let _ = mock_detector_server.start().await;
 
+    let mut config = OrchestratorConfig::load(CONFIG_FILE_PATH).await.unwrap();
+
+    // assign mock server port to detector config
+    config
+        .detectors
+        .get_mut(detector_name)
+        .unwrap()
+        .service
+        .port = Some(mock_detector_server.addr().port());
+
+    let orchestrator = Orchestrator::new(config, false).await.unwrap();
+    let shared_state = Arc::new(ServerState::new(orchestrator));
+    let server = TestServer::new(get_app(shared_state)).unwrap();
+
+    // Make orchestrator call
     let response = server
         .post("/api/v2/text/detection/content")
         .json(&TextContentDetectionHttpRequest {
@@ -79,6 +94,7 @@ async fn test_single_detection() {
 
     debug!(?response);
 
+    // assertions
     response.assert_status(StatusCode::OK);
     response.assert_json(&TextContentDetectionResult {
         detections: vec![ContentAnalysisResponse {

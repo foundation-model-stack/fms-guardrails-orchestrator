@@ -21,6 +21,5 @@ detectors:
     type: text_contents
     service:
       hostname: localhost
-      port: 8001
     chunker_id: whole_doc_chunker
     default_threshold: 0.5
