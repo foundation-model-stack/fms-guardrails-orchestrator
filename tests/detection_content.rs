@@ -58,6 +58,7 @@ async fn test_single_detection() {
                 text: "word".to_string(),
                 detection: "word".to_string(),
                 detection_type: "word_detection".to_string(),
+                detector_id: Some(detector_name.to_string()),
                 score: 1.0,
                 evidence: None,
             }]]),
@@ -72,7 +73,7 @@ async fn test_single_detection() {
         .post("/api/v2/text/detection/content")
         .json(&TextContentDetectionHttpRequest {
             content: "This sentence has a detection on the last word.".to_string(),
-            detectors: HashMap::from([(detector_name, DetectorParams::new())]),
+            detectors: HashMap::from([(detector_name.to_string(), DetectorParams::new())]),
         })
         .await;
 
@@ -86,6 +87,7 @@ async fn test_single_detection() {
             text: "word".to_string(),
             detection: "word".to_string(),
             detection_type: "word_detection".to_string(),
+            detector_id: Some(detector_name.to_string()),
             score: 1.0,
             evidence: None,
         }],
