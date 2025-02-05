@@ -36,12 +36,12 @@ mod common;
 
 /// Asserts a scenario with a single detection works as expected (assumes a detector configured with whole_doc_chunker).
 ///
-/// This test mocks a detector that detects the word "word" in a given input.
+/// This test mocks a detector that detects text between <angle brackets>.
 #[traced_test]
 #[tokio::test]
 async fn test_single_detection_whole_doc() {
     ensure_global_rustls_state();
-    let detector_name = "content_detector_whole_doc";
+    let detector_name = "angle_brackets_detector_whole_doc";
 
     // Add detector mock
     let mut mocks = MockSet::new();
@@ -49,15 +49,15 @@ async fn test_single_detection_whole_doc() {
         MockPath::new(Method::POST, "/api/v1/text/contents"),
         Mock::new(
             MockRequest::json(ContentAnalysisRequest {
-                contents: vec!["This sentence has a detection on the last word.".to_string()],
+                contents: vec!["This sentence has <a detection here>.".to_string()],
                 detector_params: DetectorParams::new(),
             }),
             MockResponse::json(vec![vec![ContentAnalysisResponse {
-                start: 42,
-                end: 46,
-                text: "word".to_string(),
-                detection: "word".to_string(),
-                detection_type: "word_detection".to_string(),
+                start: 18,
+                end: 35,
+                text: "a detection here".to_string(),
+                detection: "has_angle_brackets".to_string(),
+                detection_type: "angle_brackets".to_string(),
                 detector_id: Some(detector_name.to_string()),
                 score: 1.0,
                 evidence: None,
@@ -87,7 +87,7 @@ async fn test_single_detection_whole_doc() {
     let response = server
         .post("/api/v2/text/detection/content")
         .json(&TextContentDetectionHttpRequest {
-            content: "This sentence has a detection on the last word.".to_string(),
+            content: "This sentence has <a detection here>.".to_string(),
             detectors: HashMap::from([(detector_name.to_string(), DetectorParams::new())]),
         })
         .await;
@@ -98,11 +98,11 @@ async fn test_single_detection_whole_doc() {
     response.assert_status(StatusCode::OK);
     response.assert_json(&TextContentDetectionResult {
         detections: vec![ContentAnalysisResponse {
-            start: 42,
-            end: 46,
-            text: "word".to_string(),
-            detection: "word".to_string(),
-            detection_type: "word_detection".to_string(),
+            start: 18,
+            end: 35,
+            text: "a detection here".to_string(),
+            detection: "has_angle_brackets".to_string(),
+            detection_type: "angle_brackets".to_string(),
             detector_id: Some(detector_name.to_string()),
             score: 1.0,
             evidence: None,
