@@ -172,6 +172,7 @@ impl From<ChatCompletion> for ChatCompletionsResponse {
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ChatCompletionsRequest {
     /// A list of messages comprising the conversation so far.
     pub messages: Vec<Message>,
@@ -290,6 +291,7 @@ pub struct ChatCompletionsRequest {
 
 /// Structure to contain parameters for detectors.
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct DetectorConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub input: Option<HashMap<String, DetectorParams>>,
@@ -398,6 +400,7 @@ pub enum Role {
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Message {
     /// The role of the author of this message.
     pub role: Role,
