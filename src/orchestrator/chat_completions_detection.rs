@@ -35,7 +35,7 @@ use crate::{
         openai::{
             ChatCompletion, ChatCompletionChoice, ChatCompletionsRequest, ChatCompletionsResponse,
             ChatDetections, Content, DetectionResult, InputDetectionResult, OpenAiClient,
-            OrchestratorWarning, OutputDetectionResult, Role
+            OrchestratorWarning, OutputDetectionResult, Role,
         },
     },
     config::DetectorType,
@@ -85,6 +85,7 @@ impl From<&ChatCompletionsRequest> for Vec<ChatMessageInternal> {
     }
 }
 
+// Get Vec<ChatMessageInternal> from ChatCompletion
 impl From<&Box<ChatCompletion>> for Vec<ChatMessageInternal> {
     fn from(value: &Box<ChatCompletion>) -> Self {
         value
@@ -190,20 +191,17 @@ impl Orchestrator {
                 let model_id = chat_request.model.clone();
                 // Remove detectors as chat completion server would reject extra parameter
                 chat_request.detectors = None;
-                let c = task.headers.clone();
-                let chat_completions =
-                    client
-                        .chat_completions(chat_request, c)
-                        .await
-                        .map_err(|error| Error::ChatGenerateRequestFailed {
-                            id: model_id.clone(),
-                            error,
-                        })?;
+                let headers = task.headers.clone();
+                let chat_completions = client
+                    .chat_completions(chat_request, headers)
+                    .await
+                    .map_err(|error| Error::ChatGenerateRequestFailed {
+                        id: model_id.clone(),
+                        error,
+                    })?;
 
                 if let ChatCompletionsResponse::Unary(ref chat_completion) = chat_completions {
-                    // remove index and update from method to have actual choices
                     let choices = Vec::<ChatMessageInternal>::from(chat_completion);
-                    println!("{:#?}", choices);
 
                     let output_detections = match detectors.output {
                         Some(detectors) if !detectors.is_empty() => {
@@ -268,12 +266,16 @@ impl Orchestrator {
 
                             return Ok(ChatCompletionsResponse::Unary(Box::new(ChatCompletion {
                                 id: Uuid::new_v4().simple().to_string(),
-                                model: model_id.to_string(),
-                                choices: chat_completion.choices.clone(),
+                                object: chat_completion.object.clone(),
                                 created: SystemTime::now()
                                     .duration_since(UNIX_EPOCH)
                                     .unwrap()
                                     .as_secs() as i64,
+                                model: model_id.to_string(),
+                                choices: chat_completion.choices.clone(),
+                                usage: chat_completion.usage.clone(),
+                                system_fingerprint: chat_completion.system_fingerprint.clone(),
+                                service_tier: chat_completion.service_tier.clone(),
                                 detections: Some(ChatDetections {
                                     input: vec![],
                                     output: detections
@@ -284,12 +286,10 @@ impl Orchestrator {
                                         })
                                         .collect(),
                                 }),
-                                usage: chat_completion.usage.clone(),
                                 warnings: vec![OrchestratorWarning::new(
                                     DetectionWarningReason::UnsuitableOutput,
                                     UNSUITABLE_OUTPUT_MESSAGE,
                                 )],
-                                ..Default::default()
                             })));
                         }
                         _ => {}
@@ -379,7 +379,7 @@ pub async fn message_detection(
                                     match result {
                                         Ok(value) => {
                                             if !value.is_empty() {
-                                                let input_detection_result = DetectionResult {
+                                                let detection_result = DetectionResult {
                                                 index: idx,
                                                 results: value
                                                     .into_iter()
@@ -390,7 +390,7 @@ pub async fn message_detection(
                                                     })
                                                     .collect::<Vec<_>>(),
                                             };
-                                                Ok(input_detection_result)
+                                                Ok(detection_result)
                                             } else {
                                                 Ok(DetectionResult {
                                                     index: idx,

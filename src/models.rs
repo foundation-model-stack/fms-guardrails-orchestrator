@@ -514,8 +514,11 @@ pub struct DetectionWarning {
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum DetectionWarningReason {
+    /// Unsuitable text detected on input
     #[serde(rename = "UNSUITABLE_INPUT")]
     UnsuitableInput,
+
+    /// Unsuitable text detected on output
     #[serde(rename = "UNSUITABLE_OUTPUT")]
     UnsuitableOutput,
 }

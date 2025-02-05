@@ -729,7 +729,7 @@ pub struct OutputDetectionResult {
     pub results: Vec<GuardrailDetection>,
 }
 
-/// Guardrails detection result for application output.
+/// Represents the input and output of detection results following processing.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DetectionResult {
     pub index: usize,
