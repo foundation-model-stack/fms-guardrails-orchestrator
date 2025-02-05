@@ -473,4 +473,96 @@ mod tests {
             "validation error: Last message role must be user, assistant, or system"
         );
     }
+    // validate chat completions request with invalid fields
+    // (nonexistant fields or typos)
+    #[tokio::test]
+    async fn test_validate() {
+        // Additional unknown field (additional_field)
+        let json_data = r#"
+        {
+           "messages": [
+            {
+                "content": "this is a nice sentence",
+                "role": "user",
+                "name": "string"
+            }
+            ],
+            "model": "/llama_3_storage/hf/8b_instruction_tuned",
+            "additional_field": "test",
+            "n": 1,
+            "temperature": 1,
+            "top_p": 1,
+            "user": "user-1234",
+            "detectors": {
+                "input": {
+                "en_syntax_slate.38m.hap": {},
+                "en_syntax_rbr_pii": {}
+                }
+            }
+        }
+        "#;
+        let result: Result<ChatCompletionsRequest, _> = serde_json::from_str(json_data);
+        assert!(result.is_err());
+        let error = result.unwrap_err().to_string();
+        assert!(error
+            .to_string()
+            .contains("unknown field `additional_field"));
+
+        // Additional unknown field (additional_message")
+        let json_data = r#"
+        {
+           "messages": [
+            {
+                "content": "this is a nice sentence",
+                "role": "user",
+                "name": "string",
+                "additional_msg: "test"
+            }
+            ],
+            "model": "/llama_3_storage/hf/8b_instruction_tuned",
+            "n": 1,
+            "temperature": 1,
+            "top_p": 1,
+            "user": "user-1234",
+            "detectors": {
+                "input": {
+                "en_syntax_slate.38m.hap": {},
+                "en_syntax_rbr_pii": {}
+                }
+            }
+        }
+        "#;
+        let result: Result<ChatCompletionsRequest, _> = serde_json::from_str(json_data);
+        assert!(result.is_err());
+        let error = result.unwrap_err().to_string();
+        assert!(error.to_string().contains("unknown field `additional_msg"));
+
+        // Additional unknown field (typo for input field in detectors)
+        let json_data = r#"
+         {
+            "messages": [
+             {
+                 "content": "this is a nice sentence",
+                 "role": "user",
+                 "name": "string"
+             }
+             ],
+             "model": "/llama_3_storage/hf/8b_instruction_tuned",
+             "n": 1,
+             "temperature": 1,
+             "top_p": 1,
+             "user": "user-1234",
+             "detectors": {
+                 "inputs": {
+                 "en_syntax_slate.38m.hap": {},
+                 "en_syntax_rbr_pii": {}
+                 }
+             }
+         }
+         "#;
+        let result: Result<ChatCompletionsRequest, _> = serde_json::from_str(json_data);
+        assert!(result.is_err());
+        let error = result.unwrap_err().to_string();
+        assert!(error.to_string().contains("unknown field `inputs"));
+    }
 }
