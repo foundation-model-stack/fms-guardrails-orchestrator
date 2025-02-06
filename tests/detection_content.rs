@@ -18,7 +18,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use axum_test::TestServer;
-use common::{ensure_global_rustls_state, CONFIG_FILE_PATH};
+use common::{ensure_global_rustls_state, MockChunkersServiceServer, CONFIG_FILE_PATH};
 use fms_guardrails_orchestr8::{
     clients::{
         chunker::MODEL_ID_HEADER_NAME as CHUNKER_MODEL_ID_HEADER_NAME,
@@ -34,17 +34,11 @@ use fms_guardrails_orchestr8::{
     server::{get_app, ServerState},
 };
 use hyper::StatusCode;
-use mocktail::mock::MockSet;
 use mocktail::prelude::*;
 use tracing::debug;
 use tracing_test::traced_test;
 
 mod common;
-
-generate_grpc_server!(
-    "caikit.runtime.Chunkers.ChunkersService",
-    MockChunkersServiceServer
-);
 
 // Constants
 const ENDPOINT_ORCHESTRATOR: &str = "/api/v2/text/detection/content";
