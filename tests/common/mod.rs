@@ -15,8 +15,14 @@
 
 */
 
+use std::sync::Arc;
+
+use fms_guardrails_orchestr8::config::OrchestratorConfig;
+use fms_guardrails_orchestr8::orchestrator::Orchestrator;
+use fms_guardrails_orchestr8::server::ServerState;
 use mocktail::generate_grpc_server;
 use mocktail::mock::MockSet;
+use mocktail::server::HttpMockServer;
 use rustls::crypto::ring;
 
 generate_grpc_server!(
@@ -24,8 +30,30 @@ generate_grpc_server!(
     MockChunkersServiceServer
 );
 
+/// Default orchestrator configuration file for integration tests.
 pub const CONFIG_FILE_PATH: &str = "tests/test.config.yaml";
 
+///
 pub fn ensure_global_rustls_state() {
     let _ = ring::default_provider().install_default();
+}
+
+/// Creates an orchestrator shared state based off from the default test configuration file and given detector mocks.
+pub async fn create_orchestrator_shared_state(detectors: Vec<HttpMockServer>) -> Arc<ServerState> {
+    let mut config = OrchestratorConfig::load(CONFIG_FILE_PATH).await.unwrap();
+
+    for detector_mock_server in detectors {
+        let _ = detector_mock_server.start().await;
+
+        // assign mock server port to detector config
+        config
+            .detectors
+            .get_mut(detector_mock_server.name())
+            .unwrap()
+            .service
+            .port = Some(detector_mock_server.addr().port());
+    }
+
+    let orchestrator = Orchestrator::new(config, false).await.unwrap();
+    Arc::new(ServerState::new(orchestrator))
 }
