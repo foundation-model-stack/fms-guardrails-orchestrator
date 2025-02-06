@@ -9,6 +9,10 @@ chunkers:
     service:
       hostname: localhost
       port: 8085
+  sentence_chunker:
+    service:
+      hostname: localhost
+    type: sentence
 detectors:
   test_detector:
     type: text_contents
@@ -17,7 +21,13 @@ detectors:
       port: 8000
     chunker_id: test_chunker
     default_threshold: 0.5
-  content_detector_whole_doc:
+  angle_brackets_detector_sentence:
+    type: text_contents
+    service:
+      hostname: localhost
+    chunker_id: sentence_chunker
+    default_threshold: 0.5
+  angle_brackets_detector_whole_doc:
     type: text_contents
     service:
       hostname: localhost
