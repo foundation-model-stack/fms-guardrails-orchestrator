@@ -15,6 +15,7 @@
 
 */
 
+use common::MockChunkersServiceServer;
 use fms_guardrails_orchestr8::{
     clients::chunker::{ChunkerClient, MODEL_ID_HEADER_NAME},
     config::ServiceConfig,
@@ -23,20 +24,14 @@ use fms_guardrails_orchestr8::{
         caikit_data_model::nlp::{Token, TokenizationResults},
     },
 };
-use mocktail::mock::MockSet;
 use mocktail::prelude::*;
 use tracing_test::traced_test;
 
 mod common;
 
-generate_grpc_server!(
-    "caikit.runtime.Chunkers.ChunkersService",
-    MockChunkersServiceServer
-);
-
 #[traced_test]
 #[tokio::test]
-async fn test_isolated_chunker_call() -> Result<(), anyhow::Error> {
+async fn test_isolated_chunker_unary_call() -> Result<(), anyhow::Error> {
     // Add detector mock
     let chunker_id = "sentence_chunker";
     let mut chunker_headers = HeaderMap::new();
