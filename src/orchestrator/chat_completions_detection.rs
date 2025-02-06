@@ -396,8 +396,8 @@ mod tests {
 
     // Test to verify preprocess_chat_messages works correctly for multiple content type detectors
     // with single message in chat request
-    #[tokio::test]
-    async fn pretest_process_chat_messages_multiple_content_detector() {
+    #[test]
+    fn pretest_process_chat_messages_multiple_content_detector() {
         // Test setup
         let clients = ClientMap::new();
         let detector_1_id = "detector1";
@@ -436,8 +436,8 @@ mod tests {
 
     // Test preprocess_chat_messages returns error correctly for multiple content type detectors
     // with incorrect message requirements
-    #[tokio::test]
-    async fn pretest_process_chat_messages_error_handling() {
+    #[test]
+    fn pretest_process_chat_messages_error_handling() {
         // Test setup
         let clients = ClientMap::new();
         let detector_1_id = "detector1";
@@ -475,8 +475,8 @@ mod tests {
     }
     // validate chat completions request with invalid fields
     // (nonexistant fields or typos)
-    #[tokio::test]
-    async fn test_validate() {
+    #[test]
+    fn test_validate() {
         // Additional unknown field (additional_field)
         let json_data = r#"
         {
