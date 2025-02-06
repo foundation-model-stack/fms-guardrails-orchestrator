@@ -20,10 +20,17 @@ use std::{collections::HashMap, sync::Arc};
 use axum_test::TestServer;
 use common::{ensure_global_rustls_state, CONFIG_FILE_PATH};
 use fms_guardrails_orchestr8::{
-    clients::detector::{ContentAnalysisRequest, ContentAnalysisResponse},
+    clients::{
+        chunker::MODEL_ID_HEADER_NAME as CHUNKER_MODEL_ID_HEADER_NAME,
+        detector::{ContentAnalysisRequest, ContentAnalysisResponse},
+    },
     config::OrchestratorConfig,
     models::{DetectorParams, TextContentDetectionHttpRequest, TextContentDetectionResult},
     orchestrator::Orchestrator,
+    pb::{
+        caikit::runtime::chunkers::ChunkerTokenizationTaskRequest,
+        caikit_data_model::nlp::{Token, TokenizationResults},
+    },
     server::{get_app, ServerState},
 };
 use hyper::StatusCode;
@@ -33,6 +40,13 @@ use tracing::debug;
 use tracing_test::traced_test;
 
 mod common;
+
+generate_grpc_server!(
+    "caikit.runtime.Chunkers.ChunkersService",
+    MockChunkersServiceServer
+);
+
+const ORCHESTRATOR_DETECTION_CONTENT_ENDPOINT: &str = "/api/v2/text/detection/content";
 
 /// Asserts a scenario with a single detection works as expected (assumes a detector configured with whole_doc_chunker).
 ///
@@ -85,7 +99,7 @@ async fn test_single_detection_whole_doc() {
 
     // Make orchestrator call
     let response = server
-        .post("/api/v2/text/detection/content")
+        .post(ORCHESTRATOR_DETECTION_CONTENT_ENDPOINT)
         .json(&TextContentDetectionHttpRequest {
             content: "This sentence has <a detection here>.".to_string(),
             detectors: HashMap::from([(detector_name.to_string(), DetectorParams::new())]),
@@ -101,6 +115,136 @@ async fn test_single_detection_whole_doc() {
             start: 18,
             end: 35,
             text: "a detection here".to_string(),
+            detection: "has_angle_brackets".to_string(),
+            detection_type: "angle_brackets".to_string(),
+            detector_id: Some(detector_name.to_string()),
+            score: 1.0,
+            evidence: None,
+        }],
+    });
+}
+
+/// Asserts a scenario with a single detection works as expected (with sentence chunker).
+///
+/// This test mocks a detector that detects text between <angle brackets>.
+#[traced_test]
+#[tokio::test]
+async fn test_single_detection_sentence_chunker() {
+    ensure_global_rustls_state();
+
+    // Add chunker mock
+    let chunker_id = "sentence_chunker";
+    let mut chunker_headers = HeaderMap::new();
+    chunker_headers.insert(CHUNKER_MODEL_ID_HEADER_NAME, chunker_id.parse().unwrap());
+
+    let expected_chunker_response = TokenizationResults {
+        results: vec![
+            Token {
+                start: 0,
+                end: 40,
+                text: "This sentence does not have a detection.".to_string(),
+            },
+            Token {
+                start: 41,
+                end: 61,
+                text: "But <this one does>.".to_string(),
+            },
+        ],
+        token_count: 0,
+    };
+    let mut mocks = MockSet::new();
+    mocks.insert(
+        MockPath::new(
+            Method::POST,
+            "/caikit.runtime.Chunkers.ChunkersService/ChunkerTokenizationTaskPredict",
+        ),
+        Mock::new(
+            MockRequest::pb(ChunkerTokenizationTaskRequest {
+                text: "This sentence does not have a detection. But <this one does>.".to_string(),
+            })
+            .with_headers(chunker_headers),
+            MockResponse::pb(expected_chunker_response.clone()),
+        ),
+    );
+
+    let mock_chunker_server = MockChunkersServiceServer::new(mocks).unwrap();
+    let _ = mock_chunker_server.start().await;
+
+    // Add detector mock
+    let detector_name = "angle_brackets_detector_sentence";
+    let mut mocks = MockSet::new();
+    mocks.insert(
+        MockPath::new(Method::POST, "/api/v1/text/contents"),
+        Mock::new(
+            MockRequest::json(ContentAnalysisRequest {
+                contents: vec![
+                    "This sentence does not have a detection.".to_string(),
+                    "But <this one does>.".to_string(),
+                ],
+                detector_params: DetectorParams::new(),
+            }),
+            MockResponse::json(vec![
+                vec![],
+                vec![ContentAnalysisResponse {
+                    start: 4,
+                    end: 18,
+                    text: "this one does".to_string(),
+                    detection: "has_angle_brackets".to_string(),
+                    detection_type: "angle_brackets".to_string(),
+                    detector_id: Some(detector_name.to_string()),
+                    score: 1.0,
+                    evidence: None,
+                }],
+            ]),
+        ),
+    );
+
+    // Start detector mock server
+    let mock_detector_server = HttpMockServer::new(detector_name, mocks).unwrap();
+    let _ = mock_detector_server.start().await;
+
+    let mut config = OrchestratorConfig::load(CONFIG_FILE_PATH).await.unwrap();
+
+    // assign mock server port to detector config
+    config
+        .detectors
+        .get_mut(detector_name)
+        .unwrap()
+        .service
+        .port = Some(mock_detector_server.addr().port());
+
+    // assign mock server port to chunker config
+    config
+        .chunkers
+        .as_mut()
+        .unwrap()
+        .get_mut(chunker_id)
+        .unwrap()
+        .service
+        .port = Some(mock_chunker_server.addr().port());
+
+    let orchestrator = Orchestrator::new(config, false).await.unwrap();
+    let shared_state = Arc::new(ServerState::new(orchestrator));
+    let server = TestServer::new(get_app(shared_state)).unwrap();
+
+    // Make orchestrator call
+    let response = server
+        .post(ORCHESTRATOR_DETECTION_CONTENT_ENDPOINT)
+        .json(&TextContentDetectionHttpRequest {
+            content: "This sentence does not have a detection. But <this one does>.".to_string(),
+            detectors: HashMap::from([(detector_name.to_string(), DetectorParams::new())]),
+        })
+        .await;
+
+    debug!(?response);
+
+    // assertions
+    response.assert_status(StatusCode::OK);
+    response.assert_json(&TextContentDetectionResult {
+        detections: vec![ContentAnalysisResponse {
+            start: 45,
+            end: 59,
+            text: "this one does".to_string(),
             detection: "has_angle_brackets".to_string(),
             detection_type: "angle_brackets".to_string(),
             detector_id: Some(detector_name.to_string()),
