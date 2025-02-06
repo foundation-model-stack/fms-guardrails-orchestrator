@@ -18,7 +18,10 @@
 use std::{collections::HashMap, sync::Arc};
 
 use axum_test::TestServer;
-use common::{ensure_global_rustls_state, MockChunkersServiceServer, CONFIG_FILE_PATH};
+use common::{
+    create_orchestrator_shared_state, ensure_global_rustls_state, MockChunkersServiceServer,
+    CONFIG_FILE_PATH,
+};
 use fms_guardrails_orchestr8::{
     clients::{
         chunker::MODEL_ID_HEADER_NAME as CHUNKER_MODEL_ID_HEADER_NAME,
@@ -80,22 +83,9 @@ async fn test_single_detection_whole_doc() {
         ),
     );
 
-    // Start mock server
     let mock_detector_server = HttpMockServer::new(detector_name, mocks).unwrap();
-    let _ = mock_detector_server.start().await;
 
-    let mut config = OrchestratorConfig::load(CONFIG_FILE_PATH).await.unwrap();
-
-    // assign mock server port to detector config
-    config
-        .detectors
-        .get_mut(detector_name)
-        .unwrap()
-        .service
-        .port = Some(mock_detector_server.addr().port());
-
-    let orchestrator = Orchestrator::new(config, false).await.unwrap();
-    let shared_state = Arc::new(ServerState::new(orchestrator));
+    let shared_state = create_orchestrator_shared_state(vec![mock_detector_server]).await;
     let server = TestServer::new(get_app(shared_state)).unwrap();
 
     // Make orchestrator call
