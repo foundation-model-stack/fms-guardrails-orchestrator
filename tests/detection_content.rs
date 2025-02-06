@@ -15,26 +15,23 @@
 
 */
 
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 
 use axum_test::TestServer;
 use common::{
     create_orchestrator_shared_state, ensure_global_rustls_state, MockChunkersServiceServer,
-    CONFIG_FILE_PATH,
 };
 use fms_guardrails_orchestr8::{
     clients::{
         chunker::MODEL_ID_HEADER_NAME as CHUNKER_MODEL_ID_HEADER_NAME,
         detector::{ContentAnalysisRequest, ContentAnalysisResponse},
     },
-    config::OrchestratorConfig,
     models::{DetectorParams, TextContentDetectionHttpRequest, TextContentDetectionResult},
-    orchestrator::Orchestrator,
     pb::{
         caikit::runtime::chunkers::ChunkerTokenizationTaskRequest,
         caikit_data_model::nlp::{Token, TokenizationResults},
     },
-    server::{get_app, ServerState},
+    server::get_app,
 };
 use hyper::StatusCode;
 use mocktail::prelude::*;
@@ -83,9 +80,9 @@ async fn test_single_detection_whole_doc() {
         ),
     );
 
+    // Setup orchestrator and detector servers
     let mock_detector_server = HttpMockServer::new(detector_name, mocks).unwrap();
-
-    let shared_state = create_orchestrator_shared_state(vec![mock_detector_server]).await;
+    let shared_state = create_orchestrator_shared_state(vec![mock_detector_server], vec![]).await;
     let server = TestServer::new(get_app(shared_state)).unwrap();
 
     // Make orchestrator call
@@ -128,23 +125,8 @@ async fn test_single_detection_sentence_chunker() {
     let mut chunker_headers = HeaderMap::new();
     chunker_headers.insert(CHUNKER_MODEL_ID_HEADER_NAME, chunker_id.parse().unwrap());
 
-    let expected_chunker_response = TokenizationResults {
-        results: vec![
-            Token {
-                start: 0,
-                end: 40,
-                text: "This sentence does not have a detection.".to_string(),
-            },
-            Token {
-                start: 41,
-                end: 61,
-                text: "But <this one does>.".to_string(),
-            },
-        ],
-        token_count: 0,
-    };
-    let mut mocks = MockSet::new();
-    mocks.insert(
+    let mut chunker_mocks = MockSet::new();
+    chunker_mocks.insert(
         MockPath::new(
             Method::POST,
             "/caikit.runtime.Chunkers.ChunkersService/ChunkerTokenizationTaskPredict",
@@ -154,12 +136,23 @@ async fn test_single_detection_sentence_chunker() {
                 text: "This sentence does not have a detection. But <this one does>.".to_string(),
             })
             .with_headers(chunker_headers),
-            MockResponse::pb(expected_chunker_response.clone()),
+            MockResponse::pb(TokenizationResults {
+                results: vec![
+                    Token {
+                        start: 0,
+                        end: 40,
+                        text: "This sentence does not have a detection.".to_string(),
+                    },
+                    Token {
+                        start: 41,
+                        end: 61,
+                        text: "But <this one does>.".to_string(),
+                    },
+                ],
+                token_count: 0,
+            }),
         ),
     );
-
-    let mock_chunker_server = MockChunkersServiceServer::new(mocks).unwrap();
-    let _ = mock_chunker_server.start().await;
 
     // Add detector mock
     let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE;
@@ -190,32 +183,14 @@ async fn test_single_detection_sentence_chunker() {
         ),
     );
 
-    // Start detector mock server
+    // Start orchestrator, chunker and detector servers.
+    let mock_chunker_server = MockChunkersServiceServer::new(chunker_mocks).unwrap();
     let mock_detector_server = HttpMockServer::new(detector_name, mocks).unwrap();
-    let _ = mock_detector_server.start().await;
-
-    let mut config = OrchestratorConfig::load(CONFIG_FILE_PATH).await.unwrap();
-
-    // assign mock server port to detector config
-    config
-        .detectors
-        .get_mut(detector_name)
-        .unwrap()
-        .service
-        .port = Some(mock_detector_server.addr().port());
-
-    // assign mock server port to chunker config
-    config
-        .chunkers
-        .as_mut()
-        .unwrap()
-        .get_mut(chunker_id)
-        .unwrap()
-        .service
-        .port = Some(mock_chunker_server.addr().port());
-
-    let orchestrator = Orchestrator::new(config, false).await.unwrap();
-    let shared_state = Arc::new(ServerState::new(orchestrator));
+    let shared_state = create_orchestrator_shared_state(
+        vec![mock_detector_server],
+        vec![(chunker_id, mock_chunker_server)],
+    )
+    .await;
     let server = TestServer::new(get_app(shared_state)).unwrap();
 
     // Make orchestrator call

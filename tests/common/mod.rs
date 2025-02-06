@@ -38,8 +38,11 @@ pub fn ensure_global_rustls_state() {
     let _ = ring::default_provider().install_default();
 }
 
-/// Creates an orchestrator shared state based off from the default test configuration file and given detector mocks.
-pub async fn create_orchestrator_shared_state(detectors: Vec<HttpMockServer>) -> Arc<ServerState> {
+/// Starts mock servers and adds them to orchestrator configuration.
+pub async fn create_orchestrator_shared_state(
+    detectors: Vec<HttpMockServer>,
+    chunkers: Vec<(&str, MockChunkersServiceServer)>,
+) -> Arc<ServerState> {
     let mut config = OrchestratorConfig::load(CONFIG_FILE_PATH).await.unwrap();
 
     for detector_mock_server in detectors {
@@ -52,6 +55,20 @@ pub async fn create_orchestrator_shared_state(detectors: Vec<HttpMockServer>) ->
             .unwrap()
             .service
             .port = Some(detector_mock_server.addr().port());
+    }
+
+    for (chunker_name, chunker_mock_server) in chunkers {
+        let _ = chunker_mock_server.start().await;
+
+        // assign mock server port to chunker config
+        config
+            .chunkers
+            .as_mut()
+            .unwrap()
+            .get_mut(chunker_name)
+            .unwrap()
+            .service
+            .port = Some(chunker_mock_server.addr().port());
     }
 
     let orchestrator = Orchestrator::new(config, false).await.unwrap();
