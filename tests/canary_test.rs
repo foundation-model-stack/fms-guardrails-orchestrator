@@ -1,12 +1,26 @@
 use axum_test::TestServer;
-use common::{ensure_global_rustls_state, shared_state, ONCE};
-use fms_guardrails_orchestr8::server::get_health_app;
+use common::{ensure_global_rustls_state, CONFIG_FILE_PATH};
+use fms_guardrails_orchestr8::server::{get_health_app, ServerState};
 use hyper::StatusCode;
 use serde_json::Value;
+use std::sync::Arc;
 use tracing::debug;
 use tracing_test::traced_test;
 
+use fms_guardrails_orchestr8::{config::OrchestratorConfig, orchestrator::Orchestrator};
+use tokio::sync::OnceCell;
+
 mod common;
+
+/// Async lazy initialization of shared state using tokio::sync::OnceCell
+pub static ONCE: OnceCell<Arc<ServerState>> = OnceCell::const_new();
+
+/// The actual async function that initializes the shared state if not already initialized
+pub async fn shared_state() -> Arc<ServerState> {
+    let config = OrchestratorConfig::load(CONFIG_FILE_PATH).await.unwrap();
+    let orchestrator = Orchestrator::new(config, false).await.unwrap();
+    Arc::new(ServerState::new(orchestrator))
+}
 
 /// Checks if the health endpoint is working
 /// NOTE: We do not currently mock client services yet, so this test is
