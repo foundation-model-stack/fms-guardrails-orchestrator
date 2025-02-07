@@ -1560,6 +1560,7 @@ dependencies = [
 [[package]]
 name = "mocktail"
 version = "0.1.0-alpha"
+source = "git+https://github.com/IBM/mocktail#f635426acdbfa42e58067319d76e489bec64f825"
 dependencies = [
  "bytes",
  "futures",
