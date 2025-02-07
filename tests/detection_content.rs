@@ -20,6 +20,7 @@ use std::collections::HashMap;
 use axum_test::TestServer;
 use common::{
     create_orchestrator_shared_state, ensure_global_rustls_state, MockChunkersServiceServer,
+    CHUNKER_UNARY_ENDPOINT,
 };
 use fms_guardrails_orchestr8::{
     clients::{
@@ -127,10 +128,7 @@ async fn test_single_detection_sentence_chunker() {
 
     let mut chunker_mocks = MockSet::new();
     chunker_mocks.insert(
-        MockPath::new(
-            Method::POST,
-            "/caikit.runtime.Chunkers.ChunkersService/ChunkerTokenizationTaskPredict",
-        ),
+        MockPath::new(Method::POST, CHUNKER_UNARY_ENDPOINT),
         Mock::new(
             MockRequest::pb(ChunkerTokenizationTaskRequest {
                 text: "This sentence does not have a detection. But <this one does>.".to_string(),
