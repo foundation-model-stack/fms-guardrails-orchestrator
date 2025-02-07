@@ -30,6 +30,9 @@ generate_grpc_server!(
     MockChunkersServiceServer
 );
 
+pub const CHUNKER_UNARY_ENDPOINT: &str =
+    "/caikit.runtime.Chunkers.ChunkersService/ChunkerTokenizationTaskPredict";
+
 /// Default orchestrator configuration file for integration tests.
 pub const CONFIG_FILE_PATH: &str = "tests/test.config.yaml";
 

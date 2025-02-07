@@ -15,7 +15,7 @@
 
 */
 
-use common::MockChunkersServiceServer;
+use common::{MockChunkersServiceServer, CHUNKER_UNARY_ENDPOINT};
 use fms_guardrails_orchestr8::{
     clients::chunker::{ChunkerClient, MODEL_ID_HEADER_NAME},
     config::ServiceConfig,
@@ -60,10 +60,7 @@ async fn test_isolated_chunker_unary_call() -> Result<(), anyhow::Error> {
 
     let mut mocks = MockSet::new();
     mocks.insert(
-        MockPath::new(
-            Method::POST,
-            "/caikit.runtime.Chunkers.ChunkersService/ChunkerTokenizationTaskPredict",
-        ),
+        MockPath::new(Method::POST, CHUNKER_UNARY_ENDPOINT),
         Mock::new(
             MockRequest::pb(ChunkerTokenizationTaskRequest {
                 text: "Hi there! how are you? I am great!".to_string(),
