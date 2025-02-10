@@ -55,7 +55,7 @@ const CHUNKER_NAME_SENTENCE: &str = "sentence_chunker";
 /// This test mocks a detector that detects text between <angle brackets>.
 #[traced_test]
 #[tokio::test]
-async fn test_single_detection_whole_doc() {
+async fn test_single_detection_whole_doc() -> Result<(), anyhow::Error> {
     ensure_global_rustls_state();
     let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC;
 
@@ -82,11 +82,9 @@ async fn test_single_detection_whole_doc() {
     );
 
     // Setup orchestrator and detector servers
-    let mock_detector_server = HttpMockServer::new(detector_name, mocks).unwrap();
-    let shared_state = create_orchestrator_shared_state(vec![mock_detector_server], vec![])
-        .await
-        .unwrap();
-    let server = TestServer::new(get_app(shared_state)).unwrap();
+    let mock_detector_server = HttpMockServer::new(detector_name, mocks)?;
+    let shared_state = create_orchestrator_shared_state(vec![mock_detector_server], vec![]).await?;
+    let server = TestServer::new(get_app(shared_state))?;
 
     // Make orchestrator call
     let response = server
@@ -113,6 +111,8 @@ async fn test_single_detection_whole_doc() {
             evidence: None,
         }],
     });
+
+    Ok(())
 }
 
 /// Asserts a scenario with a single detection works as expected (with sentence chunker).
@@ -120,13 +120,13 @@ async fn test_single_detection_whole_doc() {
 /// This test mocks a detector that detects text between <angle brackets>.
 #[traced_test]
 #[tokio::test]
-async fn test_single_detection_sentence_chunker() {
+async fn test_single_detection_sentence_chunker() -> Result<(), anyhow::Error> {
     ensure_global_rustls_state();
 
     // Add chunker mock
     let chunker_id = CHUNKER_NAME_SENTENCE;
     let mut chunker_headers = HeaderMap::new();
-    chunker_headers.insert(CHUNKER_MODEL_ID_HEADER_NAME, chunker_id.parse().unwrap());
+    chunker_headers.insert(CHUNKER_MODEL_ID_HEADER_NAME, chunker_id.parse()?);
 
     let mut chunker_mocks = MockSet::new();
     chunker_mocks.insert(
@@ -184,15 +184,14 @@ async fn test_single_detection_sentence_chunker() {
     );
 
     // Start orchestrator, chunker and detector servers.
-    let mock_chunker_server = MockChunkersServiceServer::new(chunker_mocks).unwrap();
-    let mock_detector_server = HttpMockServer::new(detector_name, mocks).unwrap();
+    let mock_chunker_server = MockChunkersServiceServer::new(chunker_mocks)?;
+    let mock_detector_server = HttpMockServer::new(detector_name, mocks)?;
     let shared_state = create_orchestrator_shared_state(
         vec![mock_detector_server],
         vec![(chunker_id, mock_chunker_server)],
     )
-    .await
-    .unwrap();
-    let server = TestServer::new(get_app(shared_state)).unwrap();
+    .await?;
+    let server = TestServer::new(get_app(shared_state))?;
 
     // Make orchestrator call
     let response = server
@@ -219,4 +218,6 @@ async fn test_single_detection_sentence_chunker() {
             evidence: None,
         }],
     });
+
+    Ok(())
 }
