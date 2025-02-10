@@ -45,11 +45,11 @@ pub fn ensure_global_rustls_state() {
 pub async fn create_orchestrator_shared_state(
     detectors: Vec<HttpMockServer>,
     chunkers: Vec<(&str, MockChunkersServiceServer)>,
-) -> Arc<ServerState> {
+) -> Result<Arc<ServerState>, mocktail::Error> {
     let mut config = OrchestratorConfig::load(CONFIG_FILE_PATH).await.unwrap();
 
     for detector_mock_server in detectors {
-        let _ = detector_mock_server.start().await;
+        let _ = detector_mock_server.start().await?;
 
         // assign mock server port to detector config
         config
@@ -61,7 +61,7 @@ pub async fn create_orchestrator_shared_state(
     }
 
     for (chunker_name, chunker_mock_server) in chunkers {
-        let _ = chunker_mock_server.start().await;
+        let _ = chunker_mock_server.start().await?;
 
         // assign mock server port to chunker config
         config
@@ -75,5 +75,5 @@ pub async fn create_orchestrator_shared_state(
     }
 
     let orchestrator = Orchestrator::new(config, false).await.unwrap();
-    Arc::new(ServerState::new(orchestrator))
+    Ok(Arc::new(ServerState::new(orchestrator)))
 }

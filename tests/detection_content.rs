@@ -83,7 +83,9 @@ async fn test_single_detection_whole_doc() {
 
     // Setup orchestrator and detector servers
     let mock_detector_server = HttpMockServer::new(detector_name, mocks).unwrap();
-    let shared_state = create_orchestrator_shared_state(vec![mock_detector_server], vec![]).await;
+    let shared_state = create_orchestrator_shared_state(vec![mock_detector_server], vec![])
+        .await
+        .unwrap();
     let server = TestServer::new(get_app(shared_state)).unwrap();
 
     // Make orchestrator call
@@ -188,7 +190,8 @@ async fn test_single_detection_sentence_chunker() {
         vec![mock_detector_server],
         vec![(chunker_id, mock_chunker_server)],
     )
-    .await;
+    .await
+    .unwrap();
     let server = TestServer::new(get_app(shared_state)).unwrap();
 
     // Make orchestrator call
