@@ -18,6 +18,7 @@
 // This is needed because integration test files are compiled as separate crates.
 // If any of the code in this file is not used by any of the test files, a warning about unused code is generated.
 // For more: https://github.com/rust-lang/rust/issues/46379
+
 #![allow(dead_code)]
 
 use std::sync::Arc;
