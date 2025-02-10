@@ -23,6 +23,7 @@ RUN rustup component add rustfmt
 
 ## Orchestrator builder #########################################################
 FROM rust-builder AS fms-guardrails-orchestr8-builder
+ARG CONFIG_FILE=config/config.yaml
 
 COPY build.rs *.toml LICENSE /app/
 COPY ${CONFIG_FILE} /app/config/config.yaml
@@ -49,6 +50,7 @@ RUN cargo fmt --check
 ## Release Image ################################################################
 
 FROM ${UBI_MINIMAL_BASE_IMAGE}:${UBI_BASE_IMAGE_TAG} AS fms-guardrails-orchestr8-release
+ARG CONFIG_FILE=config/config.yaml
 
 COPY --from=fms-guardrails-orchestr8-builder /app/bin/ /app/bin/
 COPY ${CONFIG_FILE} /app/config/config.yaml
