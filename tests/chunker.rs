@@ -70,7 +70,7 @@ async fn test_isolated_chunker_unary_call() -> Result<(), anyhow::Error> {
         ),
     );
 
-    let mock_chunker_server = MockChunkersServiceServer::new(mocks).unwrap();
+    let mock_chunker_server = MockChunkersServiceServer::new(mocks)?;
     let _ = mock_chunker_server.start().await;
 
     let client = ChunkerClient::new(&ServiceConfig {
@@ -93,7 +93,7 @@ async fn test_isolated_chunker_unary_call() -> Result<(), anyhow::Error> {
     dbg!(&response);
 
     assert!(response.is_ok());
-    assert!(response.unwrap() == expected_response);
+    assert!(response? == expected_response);
 
     Ok(())
 }
