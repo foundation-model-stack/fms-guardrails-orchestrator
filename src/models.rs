@@ -331,7 +331,7 @@ pub struct ClassifiedGeneratedTextResult {
 
     /// Vector of warnings on input detection
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub warnings: Option<Vec<InputWarning>>,
+    pub warnings: Option<Vec<DetectionWarning>>,
 
     /// Individual generated tokens and associated details, if requested
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -406,7 +406,7 @@ pub struct ClassifiedGeneratedTextStreamResult {
 
     /// Vector of warnings on input detection
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub warnings: Option<Vec<InputWarning>>,
+    pub warnings: Option<Vec<DetectionWarning>>,
 
     /// Individual generated tokens and associated details, if requested
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -498,10 +498,10 @@ pub enum FinishReason {
 
 /// Warning reason and message on input detection
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct InputWarning {
+pub struct DetectionWarning {
     /// Warning reason
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub id: Option<InputWarningReason>,
+    pub id: Option<DetectionWarningReason>,
 
     /// Warning message
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -513,10 +513,14 @@ pub struct InputWarning {
 /// which helps with FFI.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub enum InputWarningReason {
+pub enum DetectionWarningReason {
     /// Unsuitable text detected on input
     #[serde(rename = "UNSUITABLE_INPUT")]
     UnsuitableInput,
+
+    /// Unsuitable text detected on output
+    #[serde(rename = "UNSUITABLE_OUTPUT")]
+    UnsuitableOutput,
 }
 
 /// Generated token information

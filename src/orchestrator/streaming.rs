@@ -34,8 +34,8 @@ use crate::{
         GenerationClient, TextContentsDetectorClient,
     },
     models::{
-        ClassifiedGeneratedTextStreamResult, DetectorParams, GuardrailsTextGenerationParameters,
-        InputWarning, InputWarningReason, TextGenTokenClassificationResults,
+        ClassifiedGeneratedTextStreamResult, DetectionWarning, DetectionWarningReason,
+        DetectorParams, GuardrailsTextGenerationParameters, TextGenTokenClassificationResults,
         TokenClassificationResult,
     },
     orchestrator::{
@@ -120,8 +120,8 @@ impl Orchestrator {
                             input: Some(input_detections),
                             output: None,
                         },
-                        warnings: Some(vec![InputWarning {
-                            id: Some(InputWarningReason::UnsuitableInput),
+                        warnings: Some(vec![DetectionWarning {
+                            id: Some(DetectionWarningReason::UnsuitableInput),
                             message: Some(UNSUITABLE_INPUT_MESSAGE.to_string()),
                         }]),
                         ..Default::default()

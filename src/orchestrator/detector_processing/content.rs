@@ -28,7 +28,6 @@ pub fn filter_chat_messages(
     if messages.is_empty() {
         return Err(ValidationError::Invalid("No messages provided".into()));
     }
-    let message_index = messages.len() - 1;
     let message = messages.last().unwrap().clone();
 
     // Validate message:
@@ -46,7 +45,7 @@ pub fn filter_chat_messages(
     }
 
     Ok(vec![ChatMessageInternal {
-        message_index,
+        message_index: message.message_index,
         role: message.role,
         content: message.content,
         refusal: message.refusal,

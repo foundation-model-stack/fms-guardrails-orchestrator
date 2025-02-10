@@ -43,10 +43,9 @@ use crate::{
     },
     models::{
         ChatDetectionResult, ClassifiedGeneratedTextResult, ContextDocsResult,
-        DetectionOnGenerationResult, DetectionResult, DetectorParams,
-        GenerationWithDetectionResult, GuardrailsTextGenerationParameters, InputWarning,
-        InputWarningReason, TextContentDetectionResult, TextGenTokenClassificationResults,
-        TokenClassificationResult,
+        DetectionOnGenerationResult, DetectionResult, DetectionWarning, DetectionWarningReason,
+        DetectorParams, GenerationWithDetectionResult, GuardrailsTextGenerationParameters,
+        TextContentDetectionResult, TextGenTokenClassificationResults, TokenClassificationResult,
     },
     orchestrator::UNSUITABLE_INPUT_MESSAGE,
     pb::caikit::runtime::chunkers,
@@ -103,8 +102,8 @@ impl Orchestrator {
                             input: Some(input_detections),
                             output: None,
                         },
-                        warnings: Some(vec![InputWarning {
-                            id: Some(InputWarningReason::UnsuitableInput),
+                        warnings: Some(vec![DetectionWarning {
+                            id: Some(DetectionWarningReason::UnsuitableInput),
                             message: Some(UNSUITABLE_INPUT_MESSAGE.to_string()),
                         }]),
                         ..Default::default()
