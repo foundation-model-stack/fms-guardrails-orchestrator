@@ -1,23 +1,28 @@
+use std::sync::Arc;
+
 use axum_test::TestServer;
-use common::{ensure_global_rustls_state, CONFIG_FILE_PATH};
-use fms_guardrails_orchestr8::server::{get_health_app, ServerState};
+use common::ensure_global_rustls_state;
+use fms_guardrails_orchestr8::{
+    config::OrchestratorConfig,
+    orchestrator::Orchestrator,
+    server::{get_health_app, ServerState},
+};
 use hyper::StatusCode;
 use serde_json::Value;
-use std::sync::Arc;
+use tokio::sync::OnceCell;
 use tracing::debug;
 use tracing_test::traced_test;
-
-use fms_guardrails_orchestr8::{config::OrchestratorConfig, orchestrator::Orchestrator};
-use tokio::sync::OnceCell;
 
 mod common;
 
 /// Async lazy initialization of shared state using tokio::sync::OnceCell
-pub static ONCE: OnceCell<Arc<ServerState>> = OnceCell::const_new();
+static ONCE: OnceCell<Arc<ServerState>> = OnceCell::const_new();
 
 /// The actual async function that initializes the shared state if not already initialized
-pub async fn shared_state() -> Arc<ServerState> {
-    let config = OrchestratorConfig::load(CONFIG_FILE_PATH).await.unwrap();
+async fn shared_state() -> Arc<ServerState> {
+    let config = OrchestratorConfig::load("tests/test.config.yaml")
+        .await
+        .unwrap();
     let orchestrator = Orchestrator::new(config, false).await.unwrap();
     Arc::new(ServerState::new(orchestrator))
 }
