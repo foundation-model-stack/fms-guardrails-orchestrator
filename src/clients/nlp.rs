@@ -44,7 +44,7 @@ use crate::{
 };
 
 const DEFAULT_PORT: u16 = 8085;
-const MODEL_ID_HEADER_NAME: &str = "mm-model-id";
+pub const MODEL_ID_HEADER_NAME: &str = "mm-model-id";
 
 #[cfg_attr(test, faux::create)]
 #[derive(Clone)]

@@ -34,8 +34,13 @@ generate_grpc_server!(
     MockChunkersServiceServer
 );
 
+generate_grpc_server!("caikit.runtime.Nlp.NlpService", MockNlpServiceServer);
+
 pub const CHUNKER_UNARY_ENDPOINT: &str =
     "/caikit.runtime.Chunkers.ChunkersService/ChunkerTokenizationTaskPredict";
+
+pub const GENERATION_NLP_STREAMING_ENDPOINT: &str =
+    "/caikit.runtime.Nlp.NlpService/ServerStreamingTextGenerationTaskPredict";
 
 /// Default orchestrator configuration file for integration tests.
 pub const CONFIG_FILE_PATH: &str = "tests/test.config.yaml";
