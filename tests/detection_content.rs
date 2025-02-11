@@ -39,7 +39,7 @@ use mocktail::prelude::*;
 use tracing::debug;
 use tracing_test::traced_test;
 
-mod common;
+pub mod common;
 
 // Constants
 const ENDPOINT_ORCHESTRATOR: &str = "/api/v2/text/detection/content";

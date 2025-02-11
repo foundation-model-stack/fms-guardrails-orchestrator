@@ -27,7 +27,7 @@ use fms_guardrails_orchestr8::{
 use mocktail::prelude::*;
 use tracing_test::traced_test;
 
-mod common;
+pub mod common;
 
 #[traced_test]
 #[tokio::test]

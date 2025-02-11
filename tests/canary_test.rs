@@ -34,7 +34,7 @@ use tokio::sync::OnceCell;
 use tracing::debug;
 use tracing_test::traced_test;
 
-mod common;
+pub mod common;
 
 /// Async lazy initialization of shared state using tokio::sync::OnceCell
 static ONCE: OnceCell<Arc<ServerState>> = OnceCell::const_new();
