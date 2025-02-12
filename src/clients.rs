@@ -69,6 +69,7 @@ pub mod openai;
 
 const DEFAULT_CONNECT_TIMEOUT_SEC: u64 = 60;
 const DEFAULT_REQUEST_TIMEOUT_SEC: u64 = 600;
+const DEFAULT_GRPC_PROBE_INTERVAL_SEC: u64 = 10;
 
 pub type BoxStream<T> = Pin<Box<dyn Stream<Item = T> + Send>>;
 
@@ -270,13 +271,19 @@ pub async fn create_grpc_client<C: Debug + Clone>(
     let mut base_url = Url::parse(&format!("{}://{}", protocol, &service_config.hostname)).unwrap();
     base_url.set_port(Some(port)).unwrap();
     debug!(%base_url, "creating gRPC client");
-    let connect_timeout = Duration::from_secs(DEFAULT_REQUEST_TIMEOUT_SEC);
+    let connect_timeout = Duration::from_secs(DEFAULT_CONNECT_TIMEOUT_SEC);
     let request_timeout = Duration::from_secs(
         service_config
             .request_timeout
             .unwrap_or(DEFAULT_REQUEST_TIMEOUT_SEC),
     );
+    let grpc_dns_probe_interval = Duration::from_secs(
+        service_config
+            .grpc_dns_probe_interval
+            .unwrap_or(DEFAULT_GRPC_PROBE_INTERVAL_SEC),
+    );
     let mut builder = LoadBalancedChannel::builder((service_config.hostname.clone(), port))
+        .dns_probe_interval(grpc_dns_probe_interval)
         .connect_timeout(connect_timeout)
         .timeout(request_timeout);
 
