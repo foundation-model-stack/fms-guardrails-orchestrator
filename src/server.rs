@@ -16,14 +16,8 @@
 */
 
 use std::{
-    collections::{HashMap, HashSet},
-    convert::Infallible,
-    error::Error as _,
-    fs::File,
-    io::BufReader,
-    net::SocketAddr,
-    path::PathBuf,
-    sync::Arc,
+    collections::HashMap, convert::Infallible, error::Error as _, fs::File, io::BufReader,
+    net::SocketAddr, path::PathBuf, sync::Arc,
 };
 
 use axum::{
@@ -58,10 +52,15 @@ use crate::{
     clients::openai::{ChatCompletionsRequest, ChatCompletionsResponse},
     models::{self, InfoParams, InfoResponse, StreamingContentDetectionRequest},
     orchestrator::{
-        self, ChatCompletionsDetectionTask, ChatDetectionTask, ClassificationWithGenTask,
-        ContextDocsDetectionTask, DetectionOnGenerationTask, GenerationWithDetectionTask,
-        Orchestrator, StreamingClassificationWithGenTask, StreamingContentDetectionTask,
-        TextContentDetectionTask,
+        self,
+        common::utils::filter_headers,
+        handlers::{
+            detection_on_generation::DetectionOnGenerationTask, ChatCompletionsDetectionTask,
+            ChatDetectionTask, ClassificationWithGenTask, ContextDocsDetectionTask,
+            GenerationWithDetectionTask, Handle, StreamingClassificationWithGenTask,
+            StreamingContentDetectionTask, TextContentDetectionTask,
+        },
+        Orchestrator,
     },
     utils,
 };
@@ -351,11 +350,7 @@ async fn classification_with_gen(
     request.validate()?;
     let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
     let task = ClassificationWithGenTask::new(trace_id, request, headers);
-    match state
-        .orchestrator
-        .handle_classification_with_gen(task)
-        .await
-    {
+    match state.orchestrator.handle(task).await {
         Ok(response) => Ok(Json(response).into_response()),
         Err(error) => Err(error.into()),
     }
@@ -375,11 +370,7 @@ async fn generation_with_detection(
     request.validate()?;
     let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
     let task = GenerationWithDetectionTask::new(trace_id, request, headers);
-    match state
-        .orchestrator
-        .handle_generation_with_detection(task)
-        .await
-    {
+    match state.orchestrator.handle(task).await {
         Ok(response) => Ok(Json(response).into_response()),
         Err(error) => Err(error.into()),
     }
@@ -406,10 +397,7 @@ async fn stream_classification_with_gen(
     }
     let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
     let task = StreamingClassificationWithGenTask::new(trace_id, request, headers);
-    let response_stream = state
-        .orchestrator
-        .handle_streaming_classification_with_gen(task)
-        .await;
+    let response_stream = state.orchestrator.handle(task).await.unwrap();
     // Convert response stream to a stream of SSE events
     let event_stream = response_stream
         .map(|message| match message {
@@ -452,10 +440,7 @@ async fn stream_content_detection(
         .boxed();
     // Create task and submit to handler
     let task = StreamingContentDetectionTask::new(trace_id, headers, input_stream);
-    let mut response_stream = state
-        .orchestrator
-        .handle_streaming_content_detection(task)
-        .await;
+    let mut response_stream = state.orchestrator.handle(task).await.unwrap();
 
     // Create output stream
     // This stream returns ND-JSON formatted messages to the client
@@ -499,7 +484,7 @@ async fn detection_content(
     request.validate()?;
     let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
     let task = TextContentDetectionTask::new(trace_id, request, headers);
-    match state.orchestrator.handle_text_content_detection(task).await {
+    match state.orchestrator.handle(task).await {
         Ok(response) => Ok(Json(response).into_response()),
         Err(error) => Err(error.into()),
     }
@@ -516,11 +501,7 @@ async fn detect_context_documents(
     request.validate()?;
     let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
     let task = ContextDocsDetectionTask::new(trace_id, request, headers);
-    match state
-        .orchestrator
-        .handle_context_documents_detection(task)
-        .await
-    {
+    match state.orchestrator.handle(task).await {
         Ok(response) => Ok(Json(response).into_response()),
         Err(error) => Err(error.into()),
     }
@@ -536,7 +517,7 @@ async fn detect_chat(
     request.validate_for_text()?;
     let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
     let task = ChatDetectionTask::new(trace_id, request, headers);
-    match state.orchestrator.handle_chat_detection(task).await {
+    match state.orchestrator.handle(task).await {
         Ok(response) => Ok(Json(response).into_response()),
         Err(error) => Err(error.into()),
     }
@@ -556,11 +537,7 @@ async fn detect_generated(
     request.validate()?;
     let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
     let task = DetectionOnGenerationTask::new(trace_id, request, headers);
-    match state
-        .orchestrator
-        .handle_generated_text_detection(task)
-        .await
-    {
+    match state.orchestrator.handle(task).await {
         Ok(response) => Ok(Json(response).into_response()),
         Err(error) => Err(error.into()),
     }
@@ -577,11 +554,7 @@ async fn chat_completions_detection(
     info!(?trace_id, "handling request");
     let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
     let task = ChatCompletionsDetectionTask::new(trace_id, request, headers);
-    match state
-        .orchestrator
-        .handle_chat_completions_detection(task)
-        .await
-    {
+    match state.orchestrator.handle(task).await {
         Ok(response) => match response {
             Unary(response) => Ok(Json(response).into_response()),
             Streaming(response_rx) => {
@@ -765,12 +738,4 @@ impl From<models::ValidationError> for Error {
     fn from(value: models::ValidationError) -> Self {
         Self::Validation(value.to_string())
     }
-}
-
-fn filter_headers(passthrough_headers: &HashSet<String>, headers: HeaderMap) -> HeaderMap {
-    headers
-        .iter()
-        .filter(|(name, _)| passthrough_headers.contains(&name.as_str().to_lowercase()))
-        .map(|(name, value)| (name.clone(), value.clone()))
-        .collect()
 }
