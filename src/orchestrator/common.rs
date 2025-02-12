@@ -94,7 +94,7 @@ pub async fn text_chat_detections(
     ctx: Arc<Context>,
     detectors: Vec<(String, DetectorParams)>,
     messages: Vec<openai::Message>,
-) -> Result<Vec<(String, Detections)>, Error> {
+) -> Result<Vec<(DetectorId, Detections)>, Error> {
     todo!()
 }
 
@@ -102,11 +102,11 @@ pub async fn text_chat_detections(
 /// Returns a vec of detections.
 pub async fn text_context_detections(
     ctx: Arc<Context>,
-    detectors: Vec<(String, DetectorParams)>,
+    detectors: Vec<(DetectorId, DetectorParams)>,
     text: String,
     context_type: ContextType,
     context: Vec<String>,
-) -> Result<Vec<(String, Detections)>, Error> {
+) -> Result<Vec<(DetectorId, Detections)>, Error> {
     todo!()
 }
 
@@ -115,7 +115,7 @@ pub async fn text_context_detections(
 /// Sends request to chunker client.
 pub async fn chunk(
     ctx: Arc<Context>,
-    chunker_id: String,
+    chunker_id: ChunkerId,
     offset: usize,
     text: String,
 ) -> Result<Chunks, Error> {
@@ -125,42 +125,42 @@ pub async fn chunk(
 /// Sends request to text contents detector client.
 pub async fn detect_text_contents(
     ctx: Arc<Context>,
-    detector_id: String,
+    detector_id: DetectorId,
     params: DetectorParams,
-    chunks: Vec<Chunk>,
-) -> Result<(String, Vec<Detection>), Error> {
+    chunks: Chunks,
+) -> Result<Detections, Error> {
     todo!()
 }
 
 /// Sends request to text generation detector client.
 pub async fn detect_text_generation(
     ctx: Arc<Context>,
-    detector_id: String,
+    detector_id: DetectorId,
     params: DetectorParams,
     prompt: String,
     generated_text: String,
-) -> Result<(String, Vec<Detection>), Error> {
+) -> Result<Detections, Error> {
     todo!()
 }
 
 /// Sends request to text chat detector client.
 pub async fn detect_text_chat(
     ctx: Arc<Context>,
-    detector_id: String,
+    detector_id: DetectorId,
     params: DetectorParams,
     messages: Vec<openai::Message>,
-) -> Result<(String, Vec<Detection>), Error> {
+) -> Result<Detections, Error> {
     todo!()
 }
 
 /// Sends request to text context detector client.
 pub async fn detect_text_context(
     ctx: Arc<Context>,
-    detector_id: String,
+    detector_id: DetectorId,
     params: DetectorParams,
     context_type: String,
     context: String,
-) -> Result<(String, Vec<Detection>), Error> {
+) -> Result<Detections, Error> {
     todo!()
 }
 
