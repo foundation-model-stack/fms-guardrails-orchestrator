@@ -277,13 +277,13 @@ pub async fn create_grpc_client<C: Debug + Clone>(
             .request_timeout
             .unwrap_or(DEFAULT_REQUEST_TIMEOUT_SEC),
     );
-    let grpc_dns_probe_interval_sec = Duration::from_secs(
+    let grpc_dns_probe_interval = Duration::from_secs(
         service_config
-            .grpc_dns_probe_interval_secs
+            .grpc_dns_probe_interval
             .unwrap_or(DEFAULT_GRPC_PROBE_INTERVAL_SEC),
     );
     let mut builder = LoadBalancedChannel::builder((service_config.hostname.clone(), port))
-        .dns_probe_interval(grpc_dns_probe_interval_sec)
+        .dns_probe_interval(grpc_dns_probe_interval)
         .connect_timeout(connect_timeout)
         .timeout(request_timeout);
 

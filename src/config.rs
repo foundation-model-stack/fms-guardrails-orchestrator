@@ -66,7 +66,7 @@ pub struct ServiceConfig {
     /// TLS provider info
     pub tls: Option<Tls>,
     /// gRPC probe interval in seconds
-    pub grpc_dns_probe_interval_secs: Option<u64>,
+    pub grpc_dns_probe_interval: Option<u64>,
 }
 
 impl ServiceConfig {
@@ -76,7 +76,7 @@ impl ServiceConfig {
             port: Some(port),
             request_timeout: None,
             tls: None,
-            grpc_dns_probe_interval_secs: None,
+            grpc_dns_probe_interval: None,
         }
     }
 }
