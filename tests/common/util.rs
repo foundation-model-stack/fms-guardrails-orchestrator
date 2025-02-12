@@ -23,7 +23,7 @@ use fms_guardrails_orchestr8::{
 use mocktail::server::HttpMockServer;
 use rustls::crypto::ring;
 
-use super::chunker::MockChunkersServiceServer;
+use super::{chunker::MockChunkersServiceServer, generation::MockNlpServiceServer};
 
 /// Default orchestrator configuration file for integration tests.
 pub const CONFIG_FILE_PATH: &str = "tests/test.config.yaml";
@@ -34,13 +34,19 @@ pub fn ensure_global_rustls_state() {
 
 /// Starts mock servers and adds them to orchestrator configuration.
 pub async fn create_orchestrator_shared_state(
+    generation_server: Option<&MockNlpServiceServer>,
     detectors: Vec<HttpMockServer>,
     chunkers: Vec<(&str, MockChunkersServiceServer)>,
 ) -> Result<Arc<ServerState>, mocktail::Error> {
     let mut config = OrchestratorConfig::load(CONFIG_FILE_PATH).await.unwrap();
 
+    if let Some(generation_server) = generation_server {
+        generation_server.start().await?;
+        config.generation.as_mut().unwrap().service.port = Some(generation_server.addr().port());
+    }
+
     for detector_mock_server in detectors {
-        let _ = detector_mock_server.start().await?;
+        detector_mock_server.start().await?;
 
         // assign mock server port to detector config
         config
@@ -52,7 +58,7 @@ pub async fn create_orchestrator_shared_state(
     }
 
     for (chunker_name, chunker_mock_server) in chunkers {
-        let _ = chunker_mock_server.start().await?;
+        chunker_mock_server.start().await?;
 
         // assign mock server port to chunker config
         config
