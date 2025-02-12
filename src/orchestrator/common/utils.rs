@@ -1,5 +1,27 @@
 use std::collections::HashSet;
 
+use futures::StreamExt;
+use tokio::sync::broadcast;
+
+use crate::orchestrator::types::BoxStream;
+
+/// Consumes an input stream and forwards messages to a broadcast channel.
+pub fn broadcast_stream<T>(mut input_stream: BoxStream<T>) -> broadcast::Sender<T>
+where
+    T: Clone + Send + 'static,
+{
+    let (broadcast_tx, _) = broadcast::channel(32);
+    tokio::spawn({
+        let broadcast_tx = broadcast_tx.clone();
+        async move {
+            while let Some(msg) = input_stream.next().await {
+                let _ = broadcast_tx.send(msg);
+            }
+        }
+    });
+    broadcast_tx
+}
+
 /// Slices chars between start and end indices.
 pub fn slice_codepoints(text: &str, start: usize, end: usize) -> String {
     let len = end - start;
