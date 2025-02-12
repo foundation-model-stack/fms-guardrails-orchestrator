@@ -16,7 +16,7 @@
 */
 use std::{
     collections::HashMap,
-    sync::Arc,
+    sync::{Arc, Mutex},
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -237,6 +237,10 @@ pub async fn message_detection(
     // Call out to the chunker to get chunks of messages based on detector type
     let chunks = detector_chunk_task(&ctx, processed_chat_messages).await?;
 
+    // Create a shared thread-safe map to store DetectionResults from multiple tasks
+    // Using Arc allows sharing the map across tasks, while Mutex ensures only one task at a time can update it
+    let results_map = Arc::new(Mutex::new(HashMap::new()));
+
     // We run over each detector and take out messages that are appropriate for that detector.
     let tasks = detectors
         .iter()
@@ -266,6 +270,7 @@ pub async fn message_detection(
                             let headers = headers.clone();
 
                             tokio::spawn({
+                                let results_map = results_map.clone();
                                 async move {
                                     // Call content detector on the chunks of particular message
                                     // and return the index and detection results
@@ -281,23 +286,29 @@ pub async fn message_detection(
                                     match result {
                                         Ok(value) => {
                                             if !value.is_empty() {
-                                                let detection_result = DetectionResult {
-                                                index: idx,
-                                                results: value
-                                                    .into_iter()
-                                                    .map(|result| {
+                                                // Lock the results_map to safely modify it, then check if there's an existing result for this index ('idx')
+                                                // If so, update the map; otherwise, insert a new 'DetectionResult'
+                                                let mut results_map = results_map.lock().unwrap();
+                                                let entry =
+                                                    results_map.entry(idx).or_insert_with(|| {
+                                                        DetectionResult {
+                                                            index: idx,
+                                                            results: Vec::new(),
+                                                        }
+                                                    });
+
+                                                // Add the new detection results to the existing entry
+                                                entry.results.extend(value.into_iter().map(
+                                                    |result| {
                                                         GuardrailDetection::ContentAnalysisResponse(
                                                             result,
                                                         )
-                                                    })
-                                                    .collect::<Vec<_>>(),
-                                            };
-                                                Ok(detection_result)
+                                                    },
+                                                ));
+
+                                                Ok(())
                                             } else {
-                                                Ok(DetectionResult {
-                                                    index: idx,
-                                                    results: vec![],
-                                                })
+                                                Ok(()) // No results, so no need to update
                                             }
                                         }
                                         Err(error) => Err(error),
@@ -312,15 +323,20 @@ pub async fn message_detection(
         })
         .collect::<Vec<_>>();
 
-    let detections = try_join_all(tasks)
-        .await?
-        .into_iter()
-        .collect::<Result<Vec<_>, Error>>()?
-        .into_iter()
-        .filter(|detection| !detection.results.is_empty())
-        .collect::<Vec<DetectionResult>>();
+    // Wait for all tasks to complete
+    let _ = try_join_all(tasks).await?;
 
-    Ok((!detections.is_empty()).then_some(detections))
+    // Lock the results_map to access the map and iterate through it
+    let results_map = results_map.lock().unwrap();
+
+    // Convert the 'results_map' into a Vec of DetectionResults, and filter out empty results
+    let final_detections = results_map
+        .iter()
+        .map(|(_, v)| v.clone())
+        .filter(|detection| !detection.results.is_empty())
+        .collect::<Vec<_>>();
+
+    Ok((!final_detections.is_empty()).then_some(final_detections))
 }
 
 /// Function to filter messages based on individual detectors
