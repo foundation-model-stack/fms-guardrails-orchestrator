@@ -689,6 +689,7 @@ dependencies = [
  "axum-extra",
  "axum-test",
  "clap",
+ "either",
  "eventsource-stream",
  "faux",
  "futures",
