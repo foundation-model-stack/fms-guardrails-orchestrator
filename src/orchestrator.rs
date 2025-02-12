@@ -14,7 +14,7 @@
  limitations under the License.
 
 */
-
+#![allow(dead_code, unused_variables)] // TEMP
 pub mod errors;
 pub use errors::Error;
 pub mod common;
