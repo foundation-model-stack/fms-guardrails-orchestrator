@@ -16,7 +16,7 @@
 */
 use std::{
     collections::HashMap,
-    sync::Arc,
+    sync::{Arc, Mutex},
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -237,8 +237,9 @@ pub async fn message_detection(
     // Call out to the chunker to get chunks of messages based on detector type
     let chunks = detector_chunk_task(&ctx, processed_chat_messages).await?;
 
-    // Create a HashMap to accumpulate results for each index ('idx), where the key is 'idx' and the value is a 'DetectionResult for that index.
-    let results_map: HashMap<usize, DetectionResult> = HashMap::new();
+    // Create a shared thread-safe map to store DetectionResults from multiple tasks
+    // Using Arc allows sharing the map across tasks, while Mutex ensures only one task at a time can update it
+    let results_map = Arc::new(Mutex::new(HashMap::new()));
 
     // We run over each detector and take out messages that are appropriate for that detector.
     let tasks = detectors
@@ -269,7 +270,7 @@ pub async fn message_detection(
                             let headers = headers.clone();
 
                             tokio::spawn({
-                                let mut results_map = results_map.clone();
+                                let results_map = results_map.clone();
                                 async move {
                                     // Call content detector on the chunks of particular message
                                     // and return the index and detection results
@@ -285,8 +286,9 @@ pub async fn message_detection(
                                     match result {
                                         Ok(value) => {
                                             if !value.is_empty() {
-                                                // If there already exists a result for this index ('idx'), accumulate it
-                                                // Otherwise, insert a new 'DetectionResult'
+                                                // Lock the results_map to safely modify it, then check if there's there already exists a result for this index ('idx')
+                                                // If so, update the map; otherwise, insert a new 'DetectionResult'
+                                                let mut results_map = results_map.lock().unwrap();
                                                 let entry =
                                                     results_map.entry(idx).or_insert_with(|| {
                                                         DetectionResult {
@@ -321,12 +323,16 @@ pub async fn message_detection(
         })
         .collect::<Vec<_>>();
 
+    // Wait for all tasks to complete
     let _ = try_join_all(tasks).await?;
 
-    // Convert the 'result_map' into a Vec of DetectionResults, and filter out empty results
+    // Lock the results_map to access the map and iteratore through it
+    let results_map = results_map.lock().unwrap();
+
+    // Convert the 'results_map' into a Vec of DetectionResults, and filter out empty results
     let final_detections = results_map
-        .into_iter()
-        .map(|(_, v)| v)
+        .iter()
+        .map(|(_, v)| v.clone())
         .filter(|detection| !detection.results.is_empty())
         .collect::<Vec<_>>();
 
