@@ -286,7 +286,7 @@ pub async fn message_detection(
                                     match result {
                                         Ok(value) => {
                                             if !value.is_empty() {
-                                                // Lock the results_map to safely modify it, then check if there's there already exists a result for this index ('idx')
+                                                // Lock the results_map to safely modify it, then check if there's an existing result for this index ('idx')
                                                 // If so, update the map; otherwise, insert a new 'DetectionResult'
                                                 let mut results_map = results_map.lock().unwrap();
                                                 let entry =
@@ -326,7 +326,7 @@ pub async fn message_detection(
     // Wait for all tasks to complete
     let _ = try_join_all(tasks).await?;
 
-    // Lock the results_map to access the map and iteratore through it
+    // Lock the results_map to access the map and iterate through it
     let results_map = results_map.lock().unwrap();
 
     // Convert the 'results_map' into a Vec of DetectionResults, and filter out empty results
