@@ -223,9 +223,3 @@ async fn create_clients(config: &OrchestratorConfig) -> Result<ClientMap, Error>
     }
     Ok(clients)
 }
-
-#[derive(Debug, Clone)]
-pub struct Chunk {
-    pub offset: usize,
-    pub text: String,
-}
