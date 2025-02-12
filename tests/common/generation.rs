@@ -14,6 +14,10 @@
  limitations under the License.
 
 */
-pub mod chunker;
-pub mod generation;
-pub mod util;
+use mocktail::generate_grpc_server;
+use mocktail::mock::MockSet;
+
+generate_grpc_server!("caikit.runtime.Nlp.NlpService", MockNlpServiceServer);
+
+pub const GENERATION_NLP_STREAMING_ENDPOINT: &str =
+    "/caikit.runtime.Nlp.NlpService/ServerStreamingTextGenerationTaskPredict";

@@ -22,7 +22,7 @@
 use std::sync::Arc;
 
 use axum_test::TestServer;
-use common::ensure_global_rustls_state;
+use common::util::ensure_global_rustls_state;
 use fms_guardrails_orchestr8::{
     config::OrchestratorConfig,
     orchestrator::Orchestrator,

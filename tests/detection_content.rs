@@ -19,8 +19,8 @@ use std::collections::HashMap;
 
 use axum_test::TestServer;
 use common::{
-    create_orchestrator_shared_state, ensure_global_rustls_state, MockChunkersServiceServer,
-    CHUNKER_UNARY_ENDPOINT,
+    chunker::{MockChunkersServiceServer, CHUNKER_UNARY_ENDPOINT},
+    util::{create_orchestrator_shared_state, ensure_global_rustls_state},
 };
 use fms_guardrails_orchestr8::{
     clients::{

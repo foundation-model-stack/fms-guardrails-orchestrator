@@ -15,7 +15,7 @@
 
 */
 
-use common::{MockChunkersServiceServer, CHUNKER_UNARY_ENDPOINT};
+use common::chunker::{MockChunkersServiceServer, CHUNKER_UNARY_ENDPOINT};
 use fms_guardrails_orchestr8::{
     clients::chunker::{ChunkerClient, MODEL_ID_HEADER_NAME},
     config::ServiceConfig,

@@ -14,6 +14,13 @@
  limitations under the License.
 
 */
-pub mod chunker;
-pub mod generation;
-pub mod util;
+use mocktail::generate_grpc_server;
+use mocktail::mock::MockSet;
+
+generate_grpc_server!(
+    "caikit.runtime.Chunkers.ChunkersService",
+    MockChunkersServiceServer
+);
+
+pub const CHUNKER_UNARY_ENDPOINT: &str =
+    "/caikit.runtime.Chunkers.ChunkersService/ChunkerTokenizationTaskPredict";
