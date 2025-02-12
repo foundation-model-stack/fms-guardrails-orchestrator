@@ -709,6 +709,7 @@ dependencies = [
  "opentelemetry_sdk",
  "pin-project-lite",
  "prost",
+ "pumps",
  "reqwest",
  "rustls",
  "rustls-pemfile",
@@ -1930,6 +1931,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4759aa0d3a6232fb8dbdb97b61de2c20047c68aca932c7ed76da9d788508d670"
 dependencies = [
  "prost",
+]
+
+[[package]]
+name = "pumps"
+version = "0.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3f6a3b38c98c390b6b543e242b6765421d6339cee7a9a4ee2211622c56f516ed"
+dependencies = [
+ "futures",
+ "tokio",
 ]
 
 [[package]]

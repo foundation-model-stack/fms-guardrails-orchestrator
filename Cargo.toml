@@ -38,6 +38,7 @@ opentelemetry-otlp = { version = "0.27.0", features = ["grpc-tonic", "http-proto
 opentelemetry_sdk = { version = "0.27.1", features = ["rt-tokio", "metrics"] }
 pin-project-lite = "0.2.16"
 prost = "0.13.4"
+pumps = "0.0.4"
 reqwest = { version = "0.12.12", features = ["blocking", "rustls-tls", "json"] }
 rustls = {version = "0.23.21", default-features = false, features = ["ring", "std"]}
 rustls-pemfile = "2.2.0"
