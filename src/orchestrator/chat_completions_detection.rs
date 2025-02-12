@@ -237,6 +237,9 @@ pub async fn message_detection(
     // Call out to the chunker to get chunks of messages based on detector type
     let chunks = detector_chunk_task(&ctx, processed_chat_messages).await?;
 
+    // Create a HashMap to accumpulate results for each index ('idx), where the key is 'idx' and the value is a 'DetectionResult for that index.
+    let results_map: HashMap<usize, DetectionResult> = HashMap::new();
+
     // We run over each detector and take out messages that are appropriate for that detector.
     let tasks = detectors
         .iter()
@@ -266,6 +269,7 @@ pub async fn message_detection(
                             let headers = headers.clone();
 
                             tokio::spawn({
+                                let mut results_map = results_map.clone();
                                 async move {
                                     // Call content detector on the chunks of particular message
                                     // and return the index and detection results
@@ -281,23 +285,28 @@ pub async fn message_detection(
                                     match result {
                                         Ok(value) => {
                                             if !value.is_empty() {
-                                                let detection_result = DetectionResult {
-                                                index: idx,
-                                                results: value
-                                                    .into_iter()
-                                                    .map(|result| {
+                                                // If there already exists a result for this index ('idx'), accumulate it
+                                                // Otherwise, insert a new 'DetectionResult'
+                                                let entry =
+                                                    results_map.entry(idx).or_insert_with(|| {
+                                                        DetectionResult {
+                                                            index: idx,
+                                                            results: Vec::new(),
+                                                        }
+                                                    });
+
+                                                // Add the new detection results to the existing entry
+                                                entry.results.extend(value.into_iter().map(
+                                                    |result| {
                                                         GuardrailDetection::ContentAnalysisResponse(
                                                             result,
                                                         )
-                                                    })
-                                                    .collect::<Vec<_>>(),
-                                            };
-                                                Ok(detection_result)
+                                                    },
+                                                ));
+
+                                                Ok(())
                                             } else {
-                                                Ok(DetectionResult {
-                                                    index: idx,
-                                                    results: vec![],
-                                                })
+                                                Ok(()) // No results, so no need to update
                                             }
                                         }
                                         Err(error) => Err(error),
@@ -312,15 +321,16 @@ pub async fn message_detection(
         })
         .collect::<Vec<_>>();
 
-    let detections = try_join_all(tasks)
-        .await?
-        .into_iter()
-        .collect::<Result<Vec<_>, Error>>()?
-        .into_iter()
-        .filter(|detection| !detection.results.is_empty())
-        .collect::<Vec<DetectionResult>>();
+    let _ = try_join_all(tasks).await?;
 
-    Ok((!detections.is_empty()).then_some(detections))
+    // Convert the 'result_map' into a Vec of DetectionResults, and filter out empty results
+    let final_detections = results_map
+        .into_iter()
+        .map(|(_, v)| v)
+        .filter(|detection| !detection.results.is_empty())
+        .collect::<Vec<_>>();
+
+    Ok((!final_detections.is_empty()).then_some(final_detections))
 }
 
 /// Function to filter messages based on individual detectors
