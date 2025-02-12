@@ -1,6 +1,8 @@
-use std::pin::Pin;
+use std::{pin::Pin, task::Poll};
 
-use futures::Stream;
+use futures::{stream, Stream, StreamExt};
+use tokio::sync::mpsc;
+use tokio_stream::wrappers::ReceiverStream;
 
 use super::Error;
 use crate::clients::openai;
@@ -88,5 +90,55 @@ impl ChatMessageIterator for openai::ChatCompletionChunk {
             role: choice.delta.role.as_ref(),
             text: choice.delta.content.as_deref(),
         })
+    }
+}
+
+pub struct DetectionTracker {}
+
+pub struct BatchDetectionStream<T> {
+    inner: ReceiverStream<Result<(T, Detections), Error>>, // TODO: update
+}
+
+impl<T: Send + 'static> BatchDetectionStream<T> {
+    pub fn new(streams: Vec<DetectionStream<T>>) -> Self {
+        let _n = streams.len();
+        let (_batch_tx, batch_rx) = mpsc::channel(32);
+        let (batcher_tx, mut batcher_rx) = mpsc::channel(32);
+
+        // Spawn batcher task
+        tokio::spawn(async move {
+            // let mut tracker = DetectionTracker::new(n);
+            while let Some(_result) = batcher_rx.recv().await {
+                // tracker.push(value);
+                // if let Some(batch) = tracker.pop() {
+                //     let _ = batch_tx.send(batch).await;
+                // }
+                todo!()
+            }
+        });
+
+        // Spawn detection consumer task
+        let mut stream_set = stream::select_all(streams);
+        tokio::spawn(async move {
+            while let Some(result) = stream_set.next().await {
+                // Send to batcher task
+                let _ = batcher_tx.send(result).await;
+            }
+        });
+
+        Self {
+            inner: ReceiverStream::new(batch_rx),
+        }
+    }
+}
+
+impl<T> Stream for BatchDetectionStream<T> {
+    type Item = Result<(T, Detections), Error>;
+
+    fn poll_next(
+        mut self: Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Self::Item>> {
+        self.inner.poll_next_unpin(cx)
     }
 }
