@@ -15,7 +15,7 @@
 
 */
 
-use common::{MockNlpServiceServer, GENERATION_NLP_STREAMING_ENDPOINT};
+use common::generation::{MockNlpServiceServer, GENERATION_NLP_STREAMING_ENDPOINT};
 use fms_guardrails_orchestr8::{
     clients::{nlp::MODEL_ID_HEADER_NAME, NlpClient},
     config::ServiceConfig,
@@ -58,7 +58,7 @@ async fn test_nlp_streaming_call() -> Result<(), anyhow::Error> {
         MockPath::new(Method::POST, GENERATION_NLP_STREAMING_ENDPOINT),
         Mock::new(
             MockRequest::pb(ServerStreamingTextGenerationTaskRequest {
-                text: "Hi there! how are you?".to_string(),
+                text: "Hi there! How are you?".to_string(),
                 ..Default::default()
             })
             .with_headers(headers.clone()),
@@ -67,7 +67,7 @@ async fn test_nlp_streaming_call() -> Result<(), anyhow::Error> {
     );
 
     let generation_nlp_server = MockNlpServiceServer::new(mocks)?;
-    let _ = generation_nlp_server.start().await;
+    generation_nlp_server.start().await?;
 
     let client = NlpClient::new(&ServiceConfig {
         hostname: "localhost".to_string(),
@@ -77,7 +77,7 @@ async fn test_nlp_streaming_call() -> Result<(), anyhow::Error> {
     })
     .await;
 
-    let mut response = client
+    let response = client
         .server_streaming_text_generation_task_predict(
             model_id,
             ServerStreamingTextGenerationTaskRequest {
@@ -88,14 +88,10 @@ async fn test_nlp_streaming_call() -> Result<(), anyhow::Error> {
         )
         .await?;
 
-    // assert!(response.is_ok());
-    // assert!(response == expected_response);
+    // Collect stream results as array for assertion
+    let result = response.map(Result::unwrap).collect::<Vec<_>>().await;
 
-    // let stream = response.into_stream().into_inner();
-
-    while let Some(Ok(message)) = response.next().await {
-        tracing::debug!("recv: {message:?}");
-    }
+    assert!(result == expected_response);
 
     Ok(())
 }
