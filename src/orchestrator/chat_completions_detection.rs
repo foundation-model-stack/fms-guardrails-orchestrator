@@ -287,7 +287,7 @@ pub async fn message_detection(
                                         Ok(value) => {
                                             if !value.is_empty() {
                                                 // Lock the results_map to safely modify it, then check if there's an existing result for this index ('idx')
-                                                // If so, update the map; otherwise, insert a new 'DetectionResult'
+                                                // If so, update the map; otherwise, create a new 'DetectionResult'
                                                 let mut results_map = results_map.lock().unwrap();
                                                 let entry =
                                                     results_map.entry(idx).or_insert_with(|| {
@@ -297,7 +297,7 @@ pub async fn message_detection(
                                                         }
                                                     });
 
-                                                // Add the new detection results to the existing entry
+                                                // Add the results to the new or existing entry 
                                                 entry.results.extend(value.into_iter().map(
                                                     |result| {
                                                         GuardrailDetection::ContentAnalysisResponse(
