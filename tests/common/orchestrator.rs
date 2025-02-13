@@ -37,7 +37,7 @@ use url::Url;
 use super::{chunker::MockChunkersServiceServer, generation::MockNlpServiceServer};
 
 /// Default orchestrator configuration file for integration tests.
-pub const CONFIG_FILE_PATH: &str = "tests/test.config.yaml";
+pub const ORCHESTRATOR_CONFIG_FILE_PATH: &str = "tests/test.config.yaml";
 
 pub const CONTENT_DETECTION_ORCHESTRATOR_ENDPOINT: &str = "/api/v2/text/detection/content";
 

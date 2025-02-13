@@ -20,12 +20,15 @@ use std::collections::HashMap;
 use common::{
     detectors::{DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC, TEXT_CONTENTS_DETECTOR_ENDPOINT},
     generation::{MockNlpServiceServer, GENERATION_NLP_STREAMING_ENDPOINT},
-    orchestrator::{ensure_global_rustls_state, SseStream, TestOrchestratorServer},
+    orchestrator::{
+        ensure_global_rustls_state, SseStream, TestOrchestratorServer,
+        ORCHESTRATOR_CONFIG_FILE_PATH,
+    },
 };
 use fms_guardrails_orchestr8::{
     clients::{
         detector::{ContentAnalysisRequest, ContentAnalysisResponse},
-        nlp::MODEL_ID_HEADER_NAME,
+        nlp::MODEL_ID_HEADER_NAME as NLP_MODEL_ID_HEADER_NAME,
     },
     models::{
         ClassifiedGeneratedTextStreamResult, DetectorParams, GuardrailsConfig,
@@ -37,7 +40,7 @@ use fms_guardrails_orchestr8::{
     },
 };
 use futures::StreamExt;
-use mocktail::prelude::*;
+use mocktail::{prelude::*, utils::find_available_port};
 use tracing_test::traced_test;
 
 pub mod common;
@@ -53,19 +56,19 @@ async fn test_no_detectors() -> Result<(), anyhow::Error> {
     // Add generation mock
     let model_id = "my-super-model-8B";
     let mut headers = HeaderMap::new();
-    headers.insert(MODEL_ID_HEADER_NAME, model_id.parse().unwrap());
+    headers.insert(NLP_MODEL_ID_HEADER_NAME, model_id.parse().unwrap());
 
     let expected_response = vec![
         GeneratedTextStreamResult {
-            generated_text: "I".to_string(),
+            generated_text: "I".into(),
             ..Default::default()
         },
         GeneratedTextStreamResult {
-            generated_text: " am".to_string(),
+            generated_text: " am".into(),
             ..Default::default()
         },
         GeneratedTextStreamResult {
-            generated_text: " great!".to_string(),
+            generated_text: " great!".into(),
             ..Default::default()
         },
     ];
@@ -75,7 +78,7 @@ async fn test_no_detectors() -> Result<(), anyhow::Error> {
         MockPath::new(Method::POST, GENERATION_NLP_STREAMING_ENDPOINT),
         Mock::new(
             MockRequest::pb(ServerStreamingTextGenerationTaskRequest {
-                text: "Hi there! How are you?".to_string(),
+                text: "Hi there! How are you?".into(),
                 ..Default::default()
             })
             .with_headers(headers.clone()),
@@ -88,9 +91,9 @@ async fn test_no_detectors() -> Result<(), anyhow::Error> {
 
     // Run test orchestrator server
     let orchestrator_server = TestOrchestratorServer::run(
-        "tests/test.config.yaml",
-        8080,
-        8081,
+        ORCHESTRATOR_CONFIG_FILE_PATH,
+        find_available_port().unwrap(),
+        find_available_port().unwrap(),
         Some(generation_server),
         None,
         None,
@@ -102,8 +105,8 @@ async fn test_no_detectors() -> Result<(), anyhow::Error> {
     let response = orchestrator_server
         .post(STREAMING_CLASSIFICATION_WITH_GEN_ENDPOINT)
         .json(&GuardrailsHttpRequest {
-            model_id: model_id.to_string(),
-            inputs: "Hi there! How are you?".to_string(),
+            model_id: model_id.into(),
+            inputs: "Hi there! How are you?".into(),
             guardrail_config: None,
             text_gen_parameters: None,
         })
@@ -160,7 +163,7 @@ async fn test_input_detector_whole_doc_no_detections() -> Result<(), anyhow::Err
         MockPath::new(Method::POST, TEXT_CONTENTS_DETECTOR_ENDPOINT),
         Mock::new(
             MockRequest::json(ContentAnalysisRequest {
-                contents: vec!["Hi there! How are you?".to_string()],
+                contents: vec!["Hi there! How are you?".into()],
                 detector_params: DetectorParams::new(),
             }),
             MockResponse::json([Vec::<ContentAnalysisResponse>::new()]),
@@ -170,19 +173,19 @@ async fn test_input_detector_whole_doc_no_detections() -> Result<(), anyhow::Err
     // Add generation mock
     let model_id = "my-super-model-8B";
     let mut headers = HeaderMap::new();
-    headers.insert(MODEL_ID_HEADER_NAME, model_id.parse().unwrap());
+    headers.insert(NLP_MODEL_ID_HEADER_NAME, model_id.parse().unwrap());
 
     let expected_response = vec![
         GeneratedTextStreamResult {
-            generated_text: "I".to_string(),
+            generated_text: "I".into(),
             ..Default::default()
         },
         GeneratedTextStreamResult {
-            generated_text: " am".to_string(),
+            generated_text: " am".into(),
             ..Default::default()
         },
         GeneratedTextStreamResult {
-            generated_text: " great!".to_string(),
+            generated_text: " great!".into(),
             ..Default::default()
         },
     ];
@@ -192,7 +195,7 @@ async fn test_input_detector_whole_doc_no_detections() -> Result<(), anyhow::Err
         MockPath::new(Method::POST, GENERATION_NLP_STREAMING_ENDPOINT),
         Mock::new(
             MockRequest::pb(ServerStreamingTextGenerationTaskRequest {
-                text: "Hi there! How are you?".to_string(),
+                text: "Hi there! How are you?".into(),
                 ..Default::default()
             })
             .with_headers(headers.clone()),
@@ -204,9 +207,9 @@ async fn test_input_detector_whole_doc_no_detections() -> Result<(), anyhow::Err
     let mock_detector_server = HttpMockServer::new(detector_name, detection_mocks)?;
     let generation_server = MockNlpServiceServer::new(generation_mocks)?;
     let orchestrator_server = TestOrchestratorServer::run(
-        "tests/test.config.yaml",
-        8080,
-        8081,
+        ORCHESTRATOR_CONFIG_FILE_PATH,
+        find_available_port().unwrap(),
+        find_available_port().unwrap(),
         Some(generation_server),
         None,
         Some(vec![mock_detector_server]),
@@ -218,8 +221,8 @@ async fn test_input_detector_whole_doc_no_detections() -> Result<(), anyhow::Err
     let response = orchestrator_server
         .post(STREAMING_CLASSIFICATION_WITH_GEN_ENDPOINT)
         .json(&GuardrailsHttpRequest {
-            model_id: model_id.to_string(),
-            inputs: "Hi there! How are you?".to_string(),
+            model_id: model_id.into(),
+            inputs: "Hi there! How are you?".into(),
             guardrail_config: Some(GuardrailsConfig {
                 input: Some(GuardrailsConfigInput {
                     models: HashMap::from([(detector_name.into(), DetectorParams::new())]),

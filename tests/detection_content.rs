@@ -18,14 +18,14 @@
 use std::collections::HashMap;
 
 use common::{
-    chunker::{MockChunkersServiceServer, CHUNKER_UNARY_ENDPOINT},
+    chunker::{MockChunkersServiceServer, CHUNKER_NAME_SENTENCE, CHUNKER_UNARY_ENDPOINT},
     detectors::{
         DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE, DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC,
         TEXT_CONTENTS_DETECTOR_ENDPOINT,
     },
     orchestrator::{
-        ensure_global_rustls_state, TestOrchestratorServer, CONFIG_FILE_PATH,
-        CONTENT_DETECTION_ORCHESTRATOR_ENDPOINT,
+        ensure_global_rustls_state, TestOrchestratorServer,
+        CONTENT_DETECTION_ORCHESTRATOR_ENDPOINT, ORCHESTRATOR_CONFIG_FILE_PATH,
     },
 };
 use fms_guardrails_orchestr8::{
@@ -40,14 +40,13 @@ use fms_guardrails_orchestr8::{
     },
 };
 use hyper::StatusCode;
-use mocktail::prelude::*;
+use mocktail::{prelude::*, utils::find_available_port};
 use tracing::debug;
 use tracing_test::traced_test;
 
 pub mod common;
 
 // Constants
-const CHUNKER_NAME_SENTENCE: &str = "sentence_chunker";
 
 /// Asserts a scenario with a single detection works as expected (assumes a detector configured with whole_doc_chunker).
 ///
@@ -64,16 +63,16 @@ async fn test_single_detection_whole_doc() -> Result<(), anyhow::Error> {
         MockPath::new(Method::POST, TEXT_CONTENTS_DETECTOR_ENDPOINT),
         Mock::new(
             MockRequest::json(ContentAnalysisRequest {
-                contents: vec!["This sentence has <a detection here>.".to_string()],
+                contents: vec!["This sentence has <a detection here>.".into()],
                 detector_params: DetectorParams::new(),
             }),
             MockResponse::json(vec![vec![ContentAnalysisResponse {
                 start: 18,
                 end: 35,
-                text: "a detection here".to_string(),
-                detection: "has_angle_brackets".to_string(),
-                detection_type: "angle_brackets".to_string(),
-                detector_id: Some(detector_name.to_string()),
+                text: "a detection here".into(),
+                detection: "has_angle_brackets".into(),
+                detection_type: "angle_brackets".into(),
+                detector_id: Some(detector_name.into()),
                 score: 1.0,
                 evidence: None,
             }]]),
@@ -83,9 +82,9 @@ async fn test_single_detection_whole_doc() -> Result<(), anyhow::Error> {
     // Start orchestrator server and its dependencies
     let mock_detector_server = HttpMockServer::new(detector_name, mocks)?;
     let orchestrator_server = TestOrchestratorServer::run(
-        CONFIG_FILE_PATH,
-        8080,
-        8081,
+        ORCHESTRATOR_CONFIG_FILE_PATH,
+        find_available_port().unwrap(),
+        find_available_port().unwrap(),
         None,
         None,
         Some(vec![mock_detector_server]),
@@ -97,8 +96,8 @@ async fn test_single_detection_whole_doc() -> Result<(), anyhow::Error> {
     let response = orchestrator_server
         .post(CONTENT_DETECTION_ORCHESTRATOR_ENDPOINT)
         .json(&TextContentDetectionHttpRequest {
-            content: "This sentence has <a detection here>.".to_string(),
-            detectors: HashMap::from([(detector_name.to_string(), DetectorParams::new())]),
+            content: "This sentence has <a detection here>.".into(),
+            detectors: HashMap::from([(detector_name.into(), DetectorParams::new())]),
         })
         .send()
         .await?;
@@ -113,10 +112,10 @@ async fn test_single_detection_whole_doc() -> Result<(), anyhow::Error> {
                 detections: vec![ContentAnalysisResponse {
                     start: 18,
                     end: 35,
-                    text: "a detection here".to_string(),
-                    detection: "has_angle_brackets".to_string(),
-                    detection_type: "angle_brackets".to_string(),
-                    detector_id: Some(detector_name.to_string()),
+                    text: "a detection here".into(),
+                    detection: "has_angle_brackets".into(),
+                    detection_type: "angle_brackets".into(),
+                    detector_id: Some(detector_name.into()),
                     score: 1.0,
                     evidence: None,
                 }],
@@ -144,7 +143,7 @@ async fn test_single_detection_sentence_chunker() -> Result<(), anyhow::Error> {
         MockPath::new(Method::POST, CHUNKER_UNARY_ENDPOINT),
         Mock::new(
             MockRequest::pb(ChunkerTokenizationTaskRequest {
-                text: "This sentence does not have a detection. But <this one does>.".to_string(),
+                text: "This sentence does not have a detection. But <this one does>.".into(),
             })
             .with_headers(chunker_headers),
             MockResponse::pb(TokenizationResults {
@@ -152,12 +151,12 @@ async fn test_single_detection_sentence_chunker() -> Result<(), anyhow::Error> {
                     Token {
                         start: 0,
                         end: 40,
-                        text: "This sentence does not have a detection.".to_string(),
+                        text: "This sentence does not have a detection.".into(),
                     },
                     Token {
                         start: 41,
                         end: 61,
-                        text: "But <this one does>.".to_string(),
+                        text: "But <this one does>.".into(),
                     },
                 ],
                 token_count: 0,
@@ -173,8 +172,8 @@ async fn test_single_detection_sentence_chunker() -> Result<(), anyhow::Error> {
         Mock::new(
             MockRequest::json(ContentAnalysisRequest {
                 contents: vec![
-                    "This sentence does not have a detection.".to_string(),
-                    "But <this one does>.".to_string(),
+                    "This sentence does not have a detection.".into(),
+                    "But <this one does>.".into(),
                 ],
                 detector_params: DetectorParams::new(),
             }),
@@ -183,10 +182,10 @@ async fn test_single_detection_sentence_chunker() -> Result<(), anyhow::Error> {
                 vec![ContentAnalysisResponse {
                     start: 4,
                     end: 18,
-                    text: "this one does".to_string(),
-                    detection: "has_angle_brackets".to_string(),
-                    detection_type: "angle_brackets".to_string(),
-                    detector_id: Some(detector_name.to_string()),
+                    text: "this one does".into(),
+                    detection: "has_angle_brackets".into(),
+                    detection_type: "angle_brackets".into(),
+                    detector_id: Some(detector_name.into()),
                     score: 1.0,
                     evidence: None,
                 }],
@@ -198,9 +197,9 @@ async fn test_single_detection_sentence_chunker() -> Result<(), anyhow::Error> {
     let mock_chunker_server = MockChunkersServiceServer::new(chunker_mocks)?;
     let mock_detector_server = HttpMockServer::new(detector_name, mocks)?;
     let orchestrator_server = TestOrchestratorServer::run(
-        CONFIG_FILE_PATH,
-        8080,
-        8081,
+        ORCHESTRATOR_CONFIG_FILE_PATH,
+        find_available_port().unwrap(),
+        find_available_port().unwrap(),
         None,
         None,
         Some(vec![mock_detector_server]),
@@ -212,8 +211,8 @@ async fn test_single_detection_sentence_chunker() -> Result<(), anyhow::Error> {
     let response = orchestrator_server
         .post(CONTENT_DETECTION_ORCHESTRATOR_ENDPOINT)
         .json(&TextContentDetectionHttpRequest {
-            content: "This sentence does not have a detection. But <this one does>.".to_string(),
-            detectors: HashMap::from([(detector_name.to_string(), DetectorParams::new())]),
+            content: "This sentence does not have a detection. But <this one does>.".into(),
+            detectors: HashMap::from([(detector_name.into(), DetectorParams::new())]),
         })
         .send()
         .await?;
@@ -228,10 +227,10 @@ async fn test_single_detection_sentence_chunker() -> Result<(), anyhow::Error> {
                 detections: vec![ContentAnalysisResponse {
                     start: 45,
                     end: 59,
-                    text: "this one does".to_string(),
-                    detection: "has_angle_brackets".to_string(),
-                    detection_type: "angle_brackets".to_string(),
-                    detector_id: Some(detector_name.to_string()),
+                    text: "this one does".into(),
+                    detection: "has_angle_brackets".into(),
+                    detection_type: "angle_brackets".into(),
+                    detector_id: Some(detector_name.into()),
                     score: 1.0,
                     evidence: None,
                 }],

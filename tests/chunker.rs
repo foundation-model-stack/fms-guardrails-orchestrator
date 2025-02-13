@@ -42,17 +42,17 @@ async fn test_isolated_chunker_unary_call() -> Result<(), anyhow::Error> {
             Token {
                 start: 0,
                 end: 9,
-                text: "Hi there!".to_string(),
+                text: "Hi there!".into(),
             },
             Token {
                 start: 0,
                 end: 9,
-                text: "how are you?".to_string(),
+                text: "how are you?".into(),
             },
             Token {
                 start: 0,
                 end: 9,
-                text: "I am great!".to_string(),
+                text: "I am great!".into(),
             },
         ],
         token_count: 0,
@@ -63,7 +63,7 @@ async fn test_isolated_chunker_unary_call() -> Result<(), anyhow::Error> {
         MockPath::new(Method::POST, CHUNKER_UNARY_ENDPOINT),
         Mock::new(
             MockRequest::pb(ChunkerTokenizationTaskRequest {
-                text: "Hi there! how are you? I am great!".to_string(),
+                text: "Hi there! how are you? I am great!".into(),
             })
             .with_headers(chunker_headers),
             MockResponse::pb(expected_response.clone()),
@@ -74,7 +74,7 @@ async fn test_isolated_chunker_unary_call() -> Result<(), anyhow::Error> {
     let _ = mock_chunker_server.start().await;
 
     let client = ChunkerClient::new(&ServiceConfig {
-        hostname: "localhost".to_string(),
+        hostname: "localhost".into(),
         port: Some(mock_chunker_server.addr().port()),
         request_timeout: None,
         tls: None,
@@ -85,7 +85,7 @@ async fn test_isolated_chunker_unary_call() -> Result<(), anyhow::Error> {
         .tokenization_task_predict(
             chunker_id,
             ChunkerTokenizationTaskRequest {
-                text: "Hi there! how are you? I am great!".to_string(),
+                text: "Hi there! how are you? I am great!".into(),
             },
         )
         .await;

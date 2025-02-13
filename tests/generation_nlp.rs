@@ -40,15 +40,15 @@ async fn test_nlp_streaming_call() -> Result<(), anyhow::Error> {
 
     let expected_response = vec![
         GeneratedTextStreamResult {
-            generated_text: "I".to_string(),
+            generated_text: "I".into(),
             ..Default::default()
         },
         GeneratedTextStreamResult {
-            generated_text: " am".to_string(),
+            generated_text: " am".into(),
             ..Default::default()
         },
         GeneratedTextStreamResult {
-            generated_text: " great!".to_string(),
+            generated_text: " great!".into(),
             ..Default::default()
         },
     ];
@@ -58,7 +58,7 @@ async fn test_nlp_streaming_call() -> Result<(), anyhow::Error> {
         MockPath::new(Method::POST, GENERATION_NLP_STREAMING_ENDPOINT),
         Mock::new(
             MockRequest::pb(ServerStreamingTextGenerationTaskRequest {
-                text: "Hi there! How are you?".to_string(),
+                text: "Hi there! How are you?".into(),
                 ..Default::default()
             })
             .with_headers(headers.clone()),
@@ -70,7 +70,7 @@ async fn test_nlp_streaming_call() -> Result<(), anyhow::Error> {
     generation_nlp_server.start().await?;
 
     let client = NlpClient::new(&ServiceConfig {
-        hostname: "localhost".to_string(),
+        hostname: "localhost".into(),
         port: Some(generation_nlp_server.addr().port()),
         request_timeout: None,
         tls: None,
@@ -81,7 +81,7 @@ async fn test_nlp_streaming_call() -> Result<(), anyhow::Error> {
         .server_streaming_text_generation_task_predict(
             model_id,
             ServerStreamingTextGenerationTaskRequest {
-                text: "Hi there! How are you?".to_string(),
+                text: "Hi there! How are you?".into(),
                 ..Default::default()
             },
             headers,
