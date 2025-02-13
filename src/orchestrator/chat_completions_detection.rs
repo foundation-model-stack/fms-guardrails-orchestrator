@@ -287,7 +287,7 @@ pub async fn message_detection(
                                         Ok(value) => {
                                             if !value.is_empty() {
                                                 // Lock the results_map to safely modify it, then check if there's an existing entry for this index ('idx')
-                                                // If so, update the map with the additional results ; otherwise, create a new 'DetectionResult' and add the results
+                                                // If so, update the map with the additional results ; otherwise, create a new 'DetectionResult'
                                                 let mut results_map = results_map.lock().unwrap();
                                                 let entry =
                                                     results_map.entry(idx).or_insert_with(|| {
