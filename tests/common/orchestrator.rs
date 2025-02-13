@@ -65,15 +65,99 @@ impl TestOrchestratorServer {
         let mut config = OrchestratorConfig::load(config_path).await?;
 
         // Start & configure mock servers
-        initialize_generation_server(generation_server, &mut config).await?;
-        initialize_chat_generation_server(chat_generation_server, &mut config).await?;
-        initialize_detectors(detector_servers, &mut config).await?;
-        initialize_chunkers(chunker_servers, &mut config).await?;
+        Self::initialize_generation_server(generation_server, &mut config).await?;
+        Self::initialize_chat_generation_server(chat_generation_server, &mut config).await?;
+        Self::initialize_detectors(detector_servers, &mut config).await?;
+        Self::initialize_chunkers(chunker_servers, &mut config).await?;
 
-        // Run orchestrator server
-        let (_handle, base_url, health_url, client) =
-            initialize_orchestrator_server(port, health_port, config).await?;
+        // Run orchestrator server and returns it
+        Self::initialize_orchestrator_server(port, health_port, config).await
+    }
 
+    async fn initialize_generation_server(
+        generation_server: Option<MockNlpServiceServer>,
+        config: &mut OrchestratorConfig,
+    ) -> Result<(), anyhow::Error> {
+        Ok(if let Some(generation_server) = generation_server {
+            generation_server.start().await?;
+            config.generation.as_mut().unwrap().service.port =
+                Some(generation_server.addr().port());
+        })
+    }
+
+    async fn initialize_chat_generation_server(
+        chat_generation_server: Option<HttpMockServer>,
+        config: &mut OrchestratorConfig,
+    ) -> Result<(), anyhow::Error> {
+        Ok(
+            if let Some(chat_generation_server) = chat_generation_server {
+                chat_generation_server.start().await?;
+                config.chat_generation.as_mut().unwrap().service.port =
+                    Some(chat_generation_server.addr().port());
+            },
+        )
+    }
+
+    async fn initialize_detectors(
+        detector_servers: Option<Vec<HttpMockServer>>,
+        config: &mut OrchestratorConfig,
+    ) -> Result<(), anyhow::Error> {
+        Ok(if let Some(detector_servers) = detector_servers {
+            for detector_server in detector_servers {
+                detector_server.start().await?;
+                config
+                    .detectors
+                    .get_mut(detector_server.name())
+                    .unwrap()
+                    .service
+                    .port = Some(detector_server.addr().port());
+            }
+        })
+    }
+
+    async fn initialize_chunkers(
+        chunker_servers: Option<Vec<(String, MockChunkersServiceServer)>>,
+        config: &mut OrchestratorConfig,
+    ) -> Result<(), anyhow::Error> {
+        Ok(if let Some(chunker_servers) = chunker_servers {
+            for (name, chunker_server) in chunker_servers {
+                chunker_server.start().await?;
+                config
+                    .chunkers
+                    .as_mut()
+                    .unwrap()
+                    .get_mut(&name)
+                    .unwrap()
+                    .service
+                    .port = Some(chunker_server.addr().port());
+            }
+        })
+    }
+
+    async fn initialize_orchestrator_server(
+        port: u16,
+        health_port: u16,
+        config: OrchestratorConfig,
+    ) -> Result<Self, anyhow::Error> {
+        let orchestrator = Orchestrator::new(config, false).await?;
+        let http_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), port);
+        let health_http_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), health_port);
+        let _handle = tokio::spawn(async move {
+            fms_guardrails_orchestr8::server::run(
+                http_addr,
+                health_http_addr,
+                None,
+                None,
+                None,
+                orchestrator,
+            )
+            .await?;
+            Ok::<(), anyhow::Error>(())
+        });
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        let base_url = Url::parse(&format!("http://0.0.0.0:{port}")).unwrap();
+        let health_url = Url::parse(&format!("http://0.0.0.0:{health_port}/health")).unwrap();
+        let client = reqwest::Client::builder().build().unwrap();
         Ok(Self {
             base_url,
             health_url,
@@ -99,100 +183,6 @@ impl TestOrchestratorServer {
         let url = self.server_url(path);
         self.client.post(url)
     }
-}
-
-async fn initialize_orchestrator_server(
-    port: u16,
-    health_port: u16,
-    config: OrchestratorConfig,
-) -> Result<
-    (
-        JoinHandle<Result<(), anyhow::Error>>,
-        Url,
-        Url,
-        reqwest::Client,
-    ),
-    anyhow::Error,
-> {
-    let orchestrator = Orchestrator::new(config, false).await?;
-    let http_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), port);
-    let health_http_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), health_port);
-    let _handle = tokio::spawn(async move {
-        fms_guardrails_orchestr8::server::run(
-            http_addr,
-            health_http_addr,
-            None,
-            None,
-            None,
-            orchestrator,
-        )
-        .await?;
-        Ok::<(), anyhow::Error>(())
-    });
-    tokio::time::sleep(Duration::from_millis(10)).await;
-    let base_url = Url::parse(&format!("http://0.0.0.0:{port}")).unwrap();
-    let health_url = Url::parse(&format!("http://0.0.0.0:{health_port}/health")).unwrap();
-    let client = reqwest::Client::builder().build().unwrap();
-    Ok((_handle, base_url, health_url, client))
-}
-
-async fn initialize_generation_server(
-    generation_server: Option<MockNlpServiceServer>,
-    config: &mut OrchestratorConfig,
-) -> Result<(), anyhow::Error> {
-    Ok(if let Some(generation_server) = generation_server {
-        generation_server.start().await?;
-        config.generation.as_mut().unwrap().service.port = Some(generation_server.addr().port());
-    })
-}
-
-async fn initialize_chat_generation_server(
-    chat_generation_server: Option<HttpMockServer>,
-    config: &mut OrchestratorConfig,
-) -> Result<(), anyhow::Error> {
-    Ok(
-        if let Some(chat_generation_server) = chat_generation_server {
-            chat_generation_server.start().await?;
-            config.chat_generation.as_mut().unwrap().service.port =
-                Some(chat_generation_server.addr().port());
-        },
-    )
-}
-
-async fn initialize_detectors(
-    detector_servers: Option<Vec<HttpMockServer>>,
-    config: &mut OrchestratorConfig,
-) -> Result<(), anyhow::Error> {
-    Ok(if let Some(detector_servers) = detector_servers {
-        for detector_server in detector_servers {
-            detector_server.start().await?;
-            config
-                .detectors
-                .get_mut(detector_server.name())
-                .unwrap()
-                .service
-                .port = Some(detector_server.addr().port());
-        }
-    })
-}
-
-async fn initialize_chunkers(
-    chunker_servers: Option<Vec<(String, MockChunkersServiceServer)>>,
-    config: &mut OrchestratorConfig,
-) -> Result<(), anyhow::Error> {
-    Ok(if let Some(chunker_servers) = chunker_servers {
-        for (name, chunker_server) in chunker_servers {
-            chunker_server.start().await?;
-            config
-                .chunkers
-                .as_mut()
-                .unwrap()
-                .get_mut(&name)
-                .unwrap()
-                .service
-                .port = Some(chunker_server.addr().port());
-        }
-    })
 }
 
 pub struct SseStream<'a, T> {
