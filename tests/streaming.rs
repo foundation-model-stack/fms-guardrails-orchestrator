@@ -17,7 +17,7 @@
 
 use common::{
     generation::{MockNlpServiceServer, GENERATION_NLP_STREAMING_ENDPOINT},
-    util::{ensure_global_rustls_state, SseStream, TestOrchestratorServer},
+    orchestrator::{ensure_global_rustls_state, SseStream, TestOrchestratorServer},
 };
 use fms_guardrails_orchestr8::{
     clients::nlp::MODEL_ID_HEADER_NAME,

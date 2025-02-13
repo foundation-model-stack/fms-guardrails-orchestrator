@@ -20,7 +20,7 @@ use std::collections::HashMap;
 use axum_test::TestServer;
 use common::{
     chunker::{MockChunkersServiceServer, CHUNKER_UNARY_ENDPOINT},
-    util::{create_orchestrator_shared_state, ensure_global_rustls_state},
+    orchestrator::{create_orchestrator_shared_state, ensure_global_rustls_state},
 };
 use fms_guardrails_orchestr8::{
     clients::{
