@@ -19,7 +19,14 @@ use std::collections::HashMap;
 
 use common::{
     chunker::{MockChunkersServiceServer, CHUNKER_UNARY_ENDPOINT},
-    orchestrator::{ensure_global_rustls_state, TestOrchestratorServer, CONFIG_FILE_PATH},
+    detectors::{
+        DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE, DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC,
+        TEXT_CONTENTS_DETECTOR_ENDPOINT,
+    },
+    orchestrator::{
+        ensure_global_rustls_state, TestOrchestratorServer, CONFIG_FILE_PATH,
+        CONTENT_DETECTION_ORCHESTRATOR_ENDPOINT,
+    },
 };
 use fms_guardrails_orchestr8::{
     clients::{
@@ -40,12 +47,6 @@ use tracing_test::traced_test;
 pub mod common;
 
 // Constants
-const ENDPOINT_ORCHESTRATOR: &str = "/api/v2/text/detection/content";
-const ENDPOINT_DETECTOR: &str = "/api/v1/text/contents";
-
-const DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC: &str = "angle_brackets_detector_whole_doc";
-const DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE: &str = "angle_brackets_detector_sentence";
-
 const CHUNKER_NAME_SENTENCE: &str = "sentence_chunker";
 
 /// Asserts a scenario with a single detection works as expected (assumes a detector configured with whole_doc_chunker).
@@ -60,7 +61,7 @@ async fn test_single_detection_whole_doc() -> Result<(), anyhow::Error> {
     // Add detector mock
     let mut mocks = MockSet::new();
     mocks.insert(
-        MockPath::new(Method::POST, ENDPOINT_DETECTOR),
+        MockPath::new(Method::POST, TEXT_CONTENTS_DETECTOR_ENDPOINT),
         Mock::new(
             MockRequest::json(ContentAnalysisRequest {
                 contents: vec!["This sentence has <a detection here>.".to_string()],
@@ -94,7 +95,7 @@ async fn test_single_detection_whole_doc() -> Result<(), anyhow::Error> {
 
     // Make orchestrator call
     let response = orchestrator_server
-        .post(ENDPOINT_ORCHESTRATOR)
+        .post(CONTENT_DETECTION_ORCHESTRATOR_ENDPOINT)
         .json(&TextContentDetectionHttpRequest {
             content: "This sentence has <a detection here>.".to_string(),
             detectors: HashMap::from([(detector_name.to_string(), DetectorParams::new())]),
@@ -168,7 +169,7 @@ async fn test_single_detection_sentence_chunker() -> Result<(), anyhow::Error> {
     let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE;
     let mut mocks = MockSet::new();
     mocks.insert(
-        MockPath::new(Method::POST, ENDPOINT_DETECTOR),
+        MockPath::new(Method::POST, TEXT_CONTENTS_DETECTOR_ENDPOINT),
         Mock::new(
             MockRequest::json(ContentAnalysisRequest {
                 contents: vec![
@@ -209,7 +210,7 @@ async fn test_single_detection_sentence_chunker() -> Result<(), anyhow::Error> {
 
     // Make orchestrator call
     let response = orchestrator_server
-        .post(ENDPOINT_ORCHESTRATOR)
+        .post(CONTENT_DETECTION_ORCHESTRATOR_ENDPOINT)
         .json(&TextContentDetectionHttpRequest {
             content: "This sentence does not have a detection. But <this one does>.".to_string(),
             detectors: HashMap::from([(detector_name.to_string(), DetectorParams::new())]),

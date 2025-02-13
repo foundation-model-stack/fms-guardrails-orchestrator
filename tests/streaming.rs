@@ -16,12 +16,16 @@
 */
 
 use common::{
+    detectors::{DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC, TEXT_CONTENTS_DETECTOR_ENDPOINT},
     generation::{MockNlpServiceServer, GENERATION_NLP_STREAMING_ENDPOINT},
     orchestrator::{ensure_global_rustls_state, SseStream, TestOrchestratorServer},
 };
 use fms_guardrails_orchestr8::{
-    clients::nlp::MODEL_ID_HEADER_NAME,
-    models::{ClassifiedGeneratedTextStreamResult, GuardrailsHttpRequest},
+    clients::{
+        detector::{ContentAnalysisRequest, ContentAnalysisResponse},
+        nlp::MODEL_ID_HEADER_NAME,
+    },
+    models::{ClassifiedGeneratedTextStreamResult, DetectorParams, GuardrailsHttpRequest},
     pb::{
         caikit::runtime::nlp::ServerStreamingTextGenerationTaskRequest,
         caikit_data_model::nlp::GeneratedTextStreamResult,
