@@ -703,6 +703,7 @@ dependencies = [
  "axum 0.8.1",
  "axum-extra",
  "axum-test",
+ "bytes",
  "clap",
  "eventsource-stream",
  "faux",

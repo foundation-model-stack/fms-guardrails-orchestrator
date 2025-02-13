@@ -15,10 +15,9 @@
 
 */
 
-use axum_test::TestServer;
 use common::{
     generation::{MockNlpServiceServer, GENERATION_NLP_STREAMING_ENDPOINT},
-    util::{create_orchestrator_shared_state, ensure_global_rustls_state},
+    util::{ensure_global_rustls_state, SseStream, TestOrchestratorServer},
 };
 use fms_guardrails_orchestr8::{
     clients::nlp::MODEL_ID_HEADER_NAME,
@@ -27,15 +26,14 @@ use fms_guardrails_orchestr8::{
         caikit::runtime::nlp::ServerStreamingTextGenerationTaskRequest,
         caikit_data_model::nlp::GeneratedTextStreamResult,
     },
-    server::get_app,
 };
+use futures::StreamExt;
 use mocktail::prelude::*;
-use tracing::debug;
 use tracing_test::traced_test;
 
 pub mod common;
 
-const ENDPOINT_ORCHESTRATOR: &str =
+const STREAMING_CLASSIFICATION_WITH_GEN_ENDPOINT: &str =
     "/api/v1/task/server-streaming-classification-with-text-generation";
 
 #[traced_test]
@@ -76,41 +74,67 @@ async fn test_no_detectors() -> Result<(), anyhow::Error> {
         ),
     );
 
-    // Setup servers
-    let generation_nlp_server = MockNlpServiceServer::new(mocks)?;
-    let shared_state =
-        create_orchestrator_shared_state(Some(&generation_nlp_server), vec![], vec![]).await?;
-    let server = TestServer::new(get_app(shared_state))?;
+    // Configure mock servers
+    let generation_server = MockNlpServiceServer::new(mocks)?;
 
-    // Make orchestrator call
-    let response = server
-        .post(ENDPOINT_ORCHESTRATOR)
+    // Run test orchestrator server
+    let orchestrator_server = TestOrchestratorServer::run(
+        "tests/test.config.yaml",
+        8080,
+        8081,
+        Some(generation_server),
+        None,
+        None,
+        None,
+    )
+    .await?;
+
+    // Example orchestrator request with streaming response
+    let response = orchestrator_server
+        .post(STREAMING_CLASSIFICATION_WITH_GEN_ENDPOINT)
         .json(&GuardrailsHttpRequest {
             model_id: model_id.to_string(),
             inputs: "Hi there! How are you?".to_string(),
             guardrail_config: None,
             text_gen_parameters: None,
         })
-        .await;
+        .send()
+        .await?;
 
-    // convert SSE events back into Rust structs
-    let text = response.text();
-    let results: Vec<_> = text
-        .split("\n\n")
-        .filter(|line| !line.is_empty())
-        .map(|line| {
-            serde_json::from_str::<ClassifiedGeneratedTextStreamResult>(&line.replace("data: ", ""))
-                .unwrap()
-        })
-        .collect();
+    // Example showing how to create an event stream from a bytes stream.
+    // let mut events = Vec::new();
+    // let mut event_stream = response.bytes_stream().eventsource();
+    // while let Some(event) = event_stream.next().await {
+    //     match event {
+    //         Ok(event) => {
+    //             if event.data == "[DONE]" {
+    //                 break;
+    //             }
+    //             println!("recv: {event:?}");
+    //             events.push(event.data);
+    //         }
+    //         Err(_) => {
+    //             panic!("received error from event stream");
+    //         }
+    //     }
+    // }
+    // println!("{events:?}");
+
+    // Test custom SseStream wrapper
+    let sse_stream: SseStream<ClassifiedGeneratedTextStreamResult> =
+        SseStream::new(response.bytes_stream());
+    let messages = sse_stream
+        .collect::<Vec<_>>()
+        .await
+        .into_iter()
+        .collect::<Result<Vec<_>, anyhow::Error>>()?;
+    println!("{messages:?}");
 
     // assertions
-    assert!(results.len() == 3);
-    assert!(results[0].generated_text == Some("I".into()));
-    assert!(results[1].generated_text == Some(" am".into()));
-    assert!(results[2].generated_text == Some(" great!".into()));
-
-    debug!("{:#?}", results);
+    assert!(messages.len() == 3);
+    assert!(messages[0].generated_text == Some("I".into()));
+    assert!(messages[1].generated_text == Some(" am".into()));
+    assert!(messages[2].generated_text == Some(" great!".into()));
 
     Ok(())
 }
