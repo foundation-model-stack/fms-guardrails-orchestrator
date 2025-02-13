@@ -29,28 +29,48 @@ http-body = "1.0"
 http-body-util = "0.1.2"
 http-serde = "2.1.1"
 hyper = { version = "1.5.2", features = ["http1", "http2", "server"] }
-hyper-rustls = { version = "0.27.5", features = ["ring"]}
+hyper-rustls = { version = "0.27.5", features = ["ring"] }
 hyper-timeout = "0.5.2"
-hyper-util = { version = "0.1.10", features = ["server-auto", "server-graceful", "tokio"] }
+hyper-util = { version = "0.1.10", features = [
+    "server-auto",
+    "server-graceful",
+    "tokio",
+] }
 opentelemetry = { version = "0.27.1", features = ["metrics", "trace"] }
 opentelemetry-http = { version = "0.27.0", features = ["reqwest"] }
-opentelemetry-otlp = { version = "0.27.0", features = ["grpc-tonic", "http-proto"] }
+opentelemetry-otlp = { version = "0.27.0", features = [
+    "grpc-tonic",
+    "http-proto",
+] }
 opentelemetry_sdk = { version = "0.27.1", features = ["rt-tokio", "metrics"] }
 pin-project-lite = "0.2.16"
 prost = "0.13.4"
-pumps = "0.0.4"
 reqwest = { version = "0.12.12", features = ["blocking", "rustls-tls", "json"] }
-rustls = {version = "0.23.21", default-features = false, features = ["ring", "std"]}
+rustls = { version = "0.23.21", default-features = false, features = [
+    "ring",
+    "std",
+] }
 rustls-pemfile = "2.2.0"
 rustls-webpki = "0.102.8"
 serde = { version = "1.0.217", features = ["derive"] }
 serde_json = "1.0.135"
 serde_yml = "0.0.12"
 thiserror = "2.0.11"
-tokio = { version = "1.43.0", features = ["rt", "rt-multi-thread", "parking_lot", "signal", "sync", "fs"] }
-tokio-rustls = { version = "0.26.1", features = ["ring"]}
+tokio = { version = "1.43.0", features = [
+    "rt",
+    "rt-multi-thread",
+    "parking_lot",
+    "signal",
+    "sync",
+    "fs",
+] }
+tokio-rustls = { version = "0.26.1", features = ["ring"] }
 tokio-stream = { version = "0.1.17", features = ["sync"] }
-tonic = { version = "0.12.3", features = ["tls", "tls-roots", "tls-webpki-roots"] }
+tonic = { version = "0.12.3", features = [
+    "tls",
+    "tls-roots",
+    "tls-webpki-roots",
+] }
 tower = { version = "0.5.2", features = ["timeout"] }
 tower-http = { version = "0.6.2", features = ["trace"] }
 tracing = "0.1.41"

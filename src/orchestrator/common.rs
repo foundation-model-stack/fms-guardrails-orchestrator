@@ -4,9 +4,8 @@ use std::{
 };
 
 use either::Either;
-use futures::future::BoxFuture;
-use pumps::{Concurrency, Pipeline};
-use tokio::sync::{broadcast, mpsc};
+use futures::{stream, StreamExt, TryStreamExt};
+use tokio::sync::broadcast;
 
 use super::{types::*, Context, Error};
 use crate::{
@@ -47,12 +46,28 @@ where
             .collect::<Vec<_>>(),
     };
     let capacity = chunkers.len() * inputs.len();
-    let (mut chunk_rx, _handle) = chunk_pipeline(ctx.clone(), chunkers, inputs).await;
+
+    let mut chunk_inputs = Vec::with_capacity(capacity);
+    for chunker_id in &chunkers {
+        for (input, offset, text) in &inputs {
+            chunk_inputs.push((chunker_id.clone(), input.clone(), *offset, text.clone()));
+        }
+    }
+    let results = stream::iter(chunk_inputs)
+        .map(|(chunker_id, input, offset, text)| {
+            let ctx = ctx.clone();
+            async move {
+                let chunks = chunk(ctx, chunker_id.clone(), offset, text).await?;
+                Ok::<_, Error>((chunker_id, input, chunks))
+            }
+        })
+        .buffered(8)
+        .try_collect::<Vec<_>>()
+        .await?;
 
     // Build chunk map
     let mut chunk_map: ChunkMap<T> = HashMap::with_capacity(capacity);
-    while let Some(result) = chunk_rx.recv().await {
-        let (chunker_id, input, chunks) = result?;
+    for (chunker_id, input, chunks) in results {
         match chunk_map.entry(chunker_id) {
             hash_map::Entry::Occupied(mut entry) => {
                 entry.get_mut().push((input, chunks));
@@ -63,37 +78,6 @@ where
         }
     }
     Ok(chunk_map)
-}
-
-async fn chunk_pipeline<T>(
-    ctx: Arc<Context>,
-    chunkers: Vec<ChunkerId>,
-    inputs: Vec<(T, usize, String)>, // (input, offset, text)
-) -> (
-    mpsc::Receiver<Result<(ChunkerId, T, Chunks), Error>>,
-    BoxFuture<'static, Result<(), tokio::task::JoinError>>,
-)
-where
-    T: Clone + Send + 'static,
-{
-    let mut chunk_inputs = Vec::with_capacity(chunkers.len() * inputs.len());
-    for chunker_id in &chunkers {
-        for (input, offset, text) in &inputs {
-            chunk_inputs.push((chunker_id.clone(), input.clone(), *offset, text.clone()));
-        }
-    }
-    Pipeline::from_iter(chunk_inputs)
-        .map(
-            move |(chunker_id, input, offset, text)| {
-                let ctx = ctx.clone();
-                async move {
-                    let chunks = chunk(ctx, chunker_id.clone(), offset, text).await?;
-                    Ok::<_, Error>((chunker_id, input, chunks))
-                }
-            },
-            Concurrency::concurrent_unordered(8),
-        )
-        .build()
 }
 
 /// Spawns chunk streaming tasks.
@@ -119,7 +103,38 @@ pub async fn text_contents_detections<T>(
 where
     T: ToString + Clone + Send + 'static,
 {
-    todo!()
+    let detect_inputs = detectors
+        .iter()
+        .map(|(detector_id, params)| {
+            let config = ctx
+                .config
+                .detectors
+                .get(detector_id)
+                .ok_or_else(|| Error::DetectorNotFound(detector_id.clone()))?;
+            // TODO: review further
+            let chunks = chunks
+                .get(&config.chunker_id)
+                .unwrap()
+                .iter()
+                .flat_map(|(_input, chunks)| chunks.clone())
+                .collect::<Vec<_>>();
+            Ok::<_, Error>((detector_id.clone(), params.clone(), chunks))
+        })
+        .collect::<Result<Vec<_>, Error>>()?;
+
+    let results = stream::iter(detect_inputs)
+        .map(|(detector_id, params, chunks)| {
+            let ctx = ctx.clone();
+            async move {
+                let detections =
+                    detect_text_contents(ctx, detector_id.clone(), params, chunks).await?;
+                Ok::<_, Error>((detector_id, detections))
+            }
+        })
+        .buffered(8)
+        .try_collect::<Vec<_>>()
+        .await?;
+    Ok(results)
 }
 
 /// Spawns text contents detection stream tasks.
@@ -266,5 +281,10 @@ mod tests {
     #[tokio::test]
     async fn test_chunks() -> Result<(), Error> {
         Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_text_contents_detections() -> Result<(), Error> {
+        todo!()
     }
 }
