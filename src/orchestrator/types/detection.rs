@@ -1,3 +1,4 @@
+/// Internal representation of a single detection.
 #[derive(Default, Debug, Clone, PartialEq)]
 pub struct Detection {
     pub start: Option<usize>,
@@ -16,3 +17,22 @@ pub struct DetectionEvidence {
     pub value: Option<String>,
     pub score: Option<f64>,
 }
+
+#[derive(Debug, Clone)]
+pub struct Detections(Vec<Detection>);
+
+impl Detections {
+    pub fn new(values: Vec<Detection>) -> Self {
+        Self(values)
+    }
+}
+
+impl std::ops::Deref for Detections {
+    type Target = Vec<Detection>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+// Conversions
