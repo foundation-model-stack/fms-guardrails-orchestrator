@@ -1,14 +1,5 @@
-use std::collections::HashMap;
-
-use http::HeaderMap;
-use opentelemetry::trace::TraceId;
-
-use super::Handle;
-use crate::{
-    clients::openai,
-    models::{ChatDetectionHttpRequest, ChatDetectionResult, DetectorParams},
-    orchestrator::{Error, Orchestrator},
-};
+use super::prelude::*;
+use crate::clients::openai;
 
 impl Handle<ChatDetectionTask> for Orchestrator {
     type Response = ChatDetectionResult;

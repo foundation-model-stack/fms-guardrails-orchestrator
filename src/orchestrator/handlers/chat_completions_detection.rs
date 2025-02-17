@@ -1,20 +1,26 @@
-use http::HeaderMap;
-use opentelemetry::trace::TraceId;
-
-use super::Handle;
-use crate::{
-    clients::openai::{ChatCompletionsRequest, ChatCompletionsResponse},
-    orchestrator::{Error, Orchestrator},
-};
+use super::prelude::*;
+use crate::clients::openai::{ChatCompletionsRequest, ChatCompletionsResponse};
 
 impl Handle<ChatCompletionsDetectionTask> for Orchestrator {
     type Response = ChatCompletionsResponse;
 
     async fn handle(&self, _task: ChatCompletionsDetectionTask) -> Result<Self::Response, Error> {
-        // for streaming, build new ChatCompletionChunk from ChatCompletionDetectionBatch
-        // and a cache of original ChatCompletionChunks
         todo!()
     }
+}
+
+async fn handle_unary(
+    _ctx: Arc<Context>,
+    _task: ChatCompletionsDetectionTask,
+) -> Result<ChatCompletionsResponse, Error> {
+    todo!()
+}
+
+async fn handle_streaming(
+    _ctx: Arc<Context>,
+    _task: ChatCompletionsDetectionTask,
+) -> Result<ChatCompletionsResponse, Error> {
+    todo!()
 }
 
 #[derive(Debug)]

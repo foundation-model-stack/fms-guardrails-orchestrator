@@ -1,14 +1,4 @@
-use std::collections::HashMap;
-
-use http::HeaderMap;
-use opentelemetry::trace::TraceId;
-use tokio_stream::wrappers::ReceiverStream;
-
-use super::Handle;
-use crate::{
-    models::{DetectorParams, StreamingContentDetectionRequest, StreamingContentDetectionResponse},
-    orchestrator::{types::BoxStream, Error, Orchestrator},
-};
+use super::prelude::*;
 
 impl Handle<StreamingContentDetectionTask> for Orchestrator {
     type Response = ReceiverStream<Result<StreamingContentDetectionResponse, Error>>;

@@ -1,9 +1,16 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use futures::StreamExt;
 use tokio::sync::broadcast;
 
-use crate::orchestrator::types::BoxStream;
+use crate::{
+    config::{DetectorType, OrchestratorConfig},
+    models::DetectorParams,
+    orchestrator::{
+        types::{BoxStream, ChunkerId, DetectorId},
+        Error,
+    },
+};
 
 /// Consumes an input stream and forwards messages to a broadcast channel.
 pub fn broadcast_stream<T>(mut input_stream: BoxStream<T>) -> broadcast::Sender<T>
@@ -51,9 +58,45 @@ pub fn filter_headers(keys: &HashSet<String>, headers: http::HeaderMap) -> http:
         .collect()
 }
 
+/// Looks up chunker ids for detectors.
+pub fn get_chunker_ids(
+    config: &OrchestratorConfig,
+    detectors: &HashMap<String, DetectorParams>,
+) -> Result<Vec<ChunkerId>, Error> {
+    detectors
+        .keys()
+        .map(|detector_id| {
+            let chunker_id = config
+                .get_chunker_id(detector_id)
+                .ok_or_else(|| Error::DetectorNotFound(detector_id.clone()))?;
+            Ok::<_, Error>(chunker_id)
+        })
+        .collect::<Result<Vec<_>, Error>>()
+}
+
+/// Validates requested detectors exist and are supported types.
+pub fn validate_detectors(
+    config: &OrchestratorConfig,
+    detector_ids: &[DetectorId],
+    supported_types: &[DetectorType],
+) -> Result<(), Error> {
+    for detector_id in detector_ids {
+        let config = config
+            .detector(detector_id)
+            .ok_or_else(|| Error::DetectorNotFound(detector_id.clone()))?;
+        if !supported_types.contains(&config.r#type) {
+            return Err(Error::DetectorNotSupported(detector_id.clone()));
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use super::*;
+    use crate::config::DetectorConfig;
 
     #[test]
     fn test_apply_masks() {
@@ -73,5 +116,48 @@ mod tests {
         assert_eq!(slice_codepoints(s, 0, 5), "Hello");
         let s = "哈囉世界";
         assert_eq!(slice_codepoints(s, 3, 4), "界");
+    }
+
+    #[test]
+    fn test_validate_detectors() -> Result<(), Error> {
+        let mut config = OrchestratorConfig::default();
+        let d1 = (
+            "d1".to_string(),
+            DetectorConfig {
+                r#type: DetectorType::TextContents,
+                ..Default::default()
+            },
+        );
+        let d2 = (
+            "d2".to_string(),
+            DetectorConfig {
+                r#type: DetectorType::TextChat,
+                ..Default::default()
+            },
+        );
+        config.detectors = HashMap::from_iter([d1, d2]);
+
+        assert_eq!(
+            validate_detectors(
+                &config,
+                &["d1".to_string(), "d2".to_string()],
+                &[DetectorType::TextContents],
+            ),
+            Err(Error::DetectorNotSupported("d2".to_string()))
+        );
+
+        assert!(validate_detectors(
+            &config,
+            &["d1".to_string(), "d2".to_string()],
+            &[DetectorType::TextContents, DetectorType::TextChat],
+        )
+        .is_ok());
+
+        assert_eq!(
+            validate_detectors(&config, &["d3".to_string()], &[DetectorType::TextContents],),
+            Err(Error::DetectorNotFound("d3".to_string()))
+        );
+
+        Ok(())
     }
 }

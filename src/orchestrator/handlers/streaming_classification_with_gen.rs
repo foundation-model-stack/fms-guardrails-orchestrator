@@ -1,24 +1,50 @@
-use http::HeaderMap;
-use opentelemetry::trace::TraceId;
-use tokio_stream::wrappers::ReceiverStream;
-
-use super::Handle;
-use crate::{
-    models::{
-        ClassifiedGeneratedTextStreamResult, GuardrailsConfig, GuardrailsHttpRequest,
-        GuardrailsTextGenerationParameters,
-    },
-    orchestrator::{Error, Orchestrator},
-};
+use super::prelude::*;
 
 impl Handle<StreamingClassificationWithGenTask> for Orchestrator {
     type Response = ReceiverStream<Result<ClassifiedGeneratedTextStreamResult, Error>>;
 
     async fn handle(
         &self,
-        _task: StreamingClassificationWithGenTask,
+        task: StreamingClassificationWithGenTask,
     ) -> Result<Self::Response, Error> {
-        todo!()
+        let ctx = self.ctx.clone();
+        let headers = task.headers;
+        let guardrails = task.guardrails_config;
+        let input_detectors = guardrails.input_detectors();
+        let output_detectors = guardrails.output_detectors();
+        let input_text = task.inputs;
+
+        let (response_tx, response_rx) =
+            mpsc::channel::<Result<ClassifiedGeneratedTextStreamResult, Error>>(32);
+
+        // Validate guardrails config
+        // validate_guardrails(&ctx, &guardrails)?;
+
+        // Process input detections (unary)
+        let input_detections = input_detectors
+            .async_map(|detectors| async {
+                let inputs = common::apply_masks(input_text.clone(), guardrails.input_masks());
+                let detections = common::text_contents_detections(
+                    ctx.clone(),
+                    headers.clone(),
+                    detectors,
+                    inputs,
+                )
+                .await?;
+                Ok::<_, Error>(detections)
+            })
+            .await;
+
+        // if let Some(input_detections) = input_detections {
+        //     // Get token count
+        //     // Send response with input detections
+        //     todo!()
+        // } else {
+        //     // Process output detections (streaming)
+        //     todo!()
+        // }
+
+        Ok(ReceiverStream::new(response_rx))
     }
 }
 

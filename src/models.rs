@@ -496,6 +496,12 @@ pub enum FinishReason {
     Error,
 }
 
+pub const UNSUITABLE_INPUT_MESSAGE: &str = "Unsuitable input detected. \
+    Please check the detected entities on your input and try again \
+    with the unsuitable input removed.";
+
+pub const UNSUITABLE_OUTPUT_MESSAGE: &str = "Unsuitable output detected.";
+
 /// Warning reason and message on input detection
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DetectionWarning {
@@ -506,6 +512,22 @@ pub struct DetectionWarning {
     /// Warning message
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message: Option<String>,
+}
+
+impl DetectionWarning {
+    pub fn unsuitable_input() -> Self {
+        DetectionWarning {
+            id: Some(DetectionWarningReason::UnsuitableInput),
+            message: Some(UNSUITABLE_INPUT_MESSAGE.to_string()),
+        }
+    }
+
+    pub fn unsuitable_output() -> Self {
+        DetectionWarning {
+            id: Some(DetectionWarningReason::UnsuitableOutput),
+            message: Some(UNSUITABLE_OUTPUT_MESSAGE.to_string()),
+        }
+    }
 }
 
 /// Enumeration of warning reasons on input detection

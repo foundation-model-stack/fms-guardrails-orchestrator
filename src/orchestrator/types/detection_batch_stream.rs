@@ -1,4 +1,4 @@
-use std::collections::{btree_map, BTreeMap};
+use std::collections::{btree_map, BTreeMap, VecDeque};
 
 use futures::{stream, Stream, StreamExt};
 use tokio::sync::mpsc;
@@ -126,6 +126,35 @@ impl DetectionBatcher for SimpleBatcher {
         } else {
             None
         }
+    }
+}
+
+/// A batcher implementation that doesn't actually batch.
+struct FakeBatcher {
+    detectors: Vec<DetectorId>,
+    state: VecDeque<(Chunk, Detections)>,
+}
+
+impl FakeBatcher {
+    pub fn new(detectors: Vec<DetectorId>) -> Self {
+        Self {
+            detectors,
+            state: VecDeque::default(),
+        }
+    }
+}
+
+impl DetectionBatcher for FakeBatcher {
+    type Batch = DetectionBatch;
+
+    fn push(&mut self, _detector_id: DetectorId, chunk: Chunk, detections: Detections) {
+        self.state.push_back((chunk, detections));
+    }
+
+    fn pop_batch(&mut self) -> Option<Self::Batch> {
+        self.state
+            .pop_front()
+            .map(|(chunk, detections)| DetectionBatch { chunk, detections })
     }
 }
 

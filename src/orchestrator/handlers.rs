@@ -24,3 +24,22 @@ pub trait Handle<Task> {
 
     async fn handle(&self, task: Task) -> Result<Self::Response, Error>;
 }
+
+mod prelude {
+    pub use std::{collections::HashMap, sync::Arc};
+
+    pub use http::HeaderMap;
+    pub use opentelemetry::trace::TraceId;
+    pub use tokio::sync::mpsc;
+    pub use tokio_stream::wrappers::ReceiverStream;
+
+    pub use super::*;
+    pub use crate::{
+        models::*,
+        orchestrator::{
+            common::{self, ext::*},
+            types::*,
+            Context, Error, Orchestrator,
+        },
+    };
+}

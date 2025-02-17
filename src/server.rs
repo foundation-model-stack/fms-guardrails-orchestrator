@@ -676,6 +676,7 @@ impl From<orchestrator::Error> for Error {
                 StatusCode::SERVICE_UNAVAILABLE => Self::ServiceUnavailable(value.to_string()),
                 _ => Self::Unexpected,
             },
+            DetectorNotSupported(_) => Self::Validation(value.to_string()),
             JsonError(message) => Self::JsonError(message),
             Validation(message) => Self::Validation(message),
             _ => Self::Unexpected,

@@ -1,16 +1,4 @@
-use std::collections::HashMap;
-
-use http::HeaderMap;
-use opentelemetry::trace::TraceId;
-
-use super::Handle;
-use crate::{
-    models::{
-        DetectorParams, GenerationWithDetectionHttpRequest, GenerationWithDetectionResult,
-        GuardrailsTextGenerationParameters,
-    },
-    orchestrator::{Error, Orchestrator},
-};
+use super::prelude::*;
 
 impl Handle<GenerationWithDetectionTask> for Orchestrator {
     type Response = GenerationWithDetectionResult;

@@ -1,14 +1,5 @@
-use std::collections::HashMap;
-
-use http::HeaderMap;
-use opentelemetry::trace::TraceId;
-
-use super::Handle;
-use crate::{
-    clients::detector::ContextType,
-    models::{ContextDocsHttpRequest, ContextDocsResult, DetectorParams},
-    orchestrator::{Error, Orchestrator},
-};
+use super::prelude::*;
+use crate::clients::detector::ContextType;
 
 impl Handle<ContextDocsDetectionTask> for Orchestrator {
     type Response = ContextDocsResult;

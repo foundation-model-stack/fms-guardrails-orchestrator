@@ -4,7 +4,7 @@ use crate::pb::caikit_data_model::nlp::{ChunkerTokenizationStreamResult, Tokeniz
 #[derive(Default, Debug, Clone, PartialEq)]
 pub struct Chunk {
     pub index: usize,
-    pub offset: usize,
+    //pub offset: usize,
     pub start: usize,
     pub end: usize,
     pub text: String,
@@ -68,7 +68,7 @@ impl From<(usize, ChunkerTokenizationStreamResult)> for Chunks {
             .into_iter()
             .map(|token| Chunk {
                 index,
-                offset: 0, // TODO
+                //offset: 0, // TODO
                 start: token.start as usize,
                 end: token.end as usize,
                 text: token.text,
@@ -85,7 +85,7 @@ impl From<(usize, TokenizationResults)> for Chunks {
             .into_iter()
             .map(|token| Chunk {
                 index,
-                offset: 0, // TODO
+                //offset: 0, // TODO
                 start: token.start as usize,
                 end: token.end as usize,
                 text: token.text,

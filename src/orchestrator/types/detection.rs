@@ -1,3 +1,5 @@
+use crate::{clients::detector, models};
+
 /// Internal representation of a single detection.
 #[derive(Default, Debug, Clone, PartialEq)]
 pub struct Detection {
@@ -66,3 +68,87 @@ impl From<Vec<Detection>> for Detections {
 }
 
 // Conversions
+
+impl From<detector::ContentAnalysisResponse> for Detection {
+    fn from(value: detector::ContentAnalysisResponse) -> Self {
+        Self {
+            start: Some(value.start),
+            end: Some(value.end),
+            text: Some(value.text),
+            detection_type: value.detection_type,
+            detection: value.detection,
+            score: value.score,
+            evidence: value
+                .evidence
+                .map(|vs| vs.into_iter().map(Into::into).collect())
+                .unwrap_or_default(),
+        }
+    }
+}
+
+impl From<Vec<Vec<detector::ContentAnalysisResponse>>> for Detections {
+    fn from(value: Vec<Vec<detector::ContentAnalysisResponse>>) -> Self {
+        value
+            .into_iter()
+            .flatten()
+            .map(|detection| detection.into())
+            .collect::<Detections>()
+    }
+}
+
+impl From<detector::EvidenceObj> for DetectionEvidence {
+    fn from(value: detector::EvidenceObj) -> Self {
+        Self {
+            name: value.name,
+            value: value.value,
+            score: value.score,
+            // TODO: evidence
+        }
+    }
+}
+
+impl From<models::EvidenceObj> for DetectionEvidence {
+    fn from(value: models::EvidenceObj) -> Self {
+        Self {
+            name: value.name,
+            value: value.value,
+            score: value.score,
+            // TODO: evidence
+        }
+    }
+}
+
+impl From<models::DetectionResult> for Detection {
+    fn from(value: models::DetectionResult) -> Self {
+        Self {
+            start: None,
+            end: None,
+            text: None,
+            detection_type: value.detection_type,
+            detection: value.detection,
+            score: value.score,
+            evidence: value
+                .evidence
+                .map(|vs| vs.into_iter().map(Into::into).collect())
+                .unwrap_or_default(),
+        }
+    }
+}
+
+impl From<Vec<models::DetectionResult>> for Detections {
+    fn from(value: Vec<models::DetectionResult>) -> Self {
+        value.into_iter().map(Into::into).collect()
+    }
+}
+
+impl From<Detection> for models::TokenClassificationResult {
+    fn from(value: Detection) -> Self {
+        todo!()
+    }
+}
+
+impl From<Detections> for Vec<models::TokenClassificationResult> {
+    fn from(value: Detections) -> Self {
+        todo!()
+    }
+}
