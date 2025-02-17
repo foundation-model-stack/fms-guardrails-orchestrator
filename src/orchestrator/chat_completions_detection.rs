@@ -15,7 +15,7 @@
 
 */
 use std::{
-    collections::HashMap,
+    collections::{btree_map, BTreeMap, HashMap},
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -31,7 +31,7 @@ use super::{
 };
 use crate::{
     clients::{
-        detector::{ChatDetectionRequest, ContentAnalysisRequest},
+        detector::{ChatDetectionRequest, ContentAnalysisRequest, ContentAnalysisResponse},
         openai::{
             ChatCompletion, ChatCompletionChoice, ChatCompletionsRequest, ChatCompletionsResponse,
             ChatDetections, Content, DetectionResult, InputDetectionResult, OpenAiClient,
@@ -39,7 +39,7 @@ use crate::{
         },
     },
     config::DetectorType,
-    models::{DetectionWarningReason, DetectorParams, GuardrailDetection},
+    models::{DetectionWarningReason, DetectorParams},
     orchestrator::{
         detector_processing::content,
         unary::{chunk, detect_content},
@@ -259,7 +259,7 @@ pub async fn message_detection(
                     // spawn parallel processes for each message index and run detection on them.
                     messages
                         .into_iter()
-                        .map(|(idx, chunks)| {
+                        .map(|(index, chunks)| {
                             let ctx = ctx.clone();
                             let detector_id = detector_id.clone();
                             let detector_params = detector_params.clone();
@@ -269,7 +269,7 @@ pub async fn message_detection(
                                 async move {
                                     // Call content detector on the chunks of particular message
                                     // and return the index and detection results
-                                    let result = detect_content(
+                                    let detections = detect_content(
                                         ctx.clone(),
                                         detector_id.clone(),
                                         default_threshold,
@@ -277,31 +277,8 @@ pub async fn message_detection(
                                         chunks,
                                         headers.clone(),
                                     )
-                                    .await;
-                                    match result {
-                                        Ok(value) => {
-                                            if !value.is_empty() {
-                                                let detection_result = DetectionResult {
-                                                index: idx,
-                                                results: value
-                                                    .into_iter()
-                                                    .map(|result| {
-                                                        GuardrailDetection::ContentAnalysisResponse(
-                                                            result,
-                                                        )
-                                                    })
-                                                    .collect::<Vec<_>>(),
-                                            };
-                                                Ok(detection_result)
-                                            } else {
-                                                Ok(DetectionResult {
-                                                    index: idx,
-                                                    results: vec![],
-                                                })
-                                            }
-                                        }
-                                        Err(error) => Err(error),
-                                    }
+                                    .await?;
+                                    Ok((index, detections))
                                 }
                             })
                         })
@@ -312,13 +289,33 @@ pub async fn message_detection(
         })
         .collect::<Vec<_>>();
 
+    // Await detections
     let detections = try_join_all(tasks)
         .await?
         .into_iter()
-        .collect::<Result<Vec<_>, Error>>()?
+        .collect::<Result<Vec<_>, Error>>()?;
+
+    // Build detection map
+    let mut detection_map: BTreeMap<usize, Vec<ContentAnalysisResponse>> = BTreeMap::new();
+    for (index, detections) in detections {
+        if !detections.is_empty() {
+            match detection_map.entry(index) {
+                btree_map::Entry::Occupied(mut entry) => {
+                    entry.get_mut().extend_from_slice(&detections);
+                }
+                btree_map::Entry::Vacant(entry) => {
+                    entry.insert(detections);
+                }
+            }
+        }
+    }
+
+    // Build vec of DetectionResult
+    // NOTE: seems unnecessary, could we just use the BTreeMap instead?
+    let detections = detection_map
         .into_iter()
-        .filter(|detection| !detection.results.is_empty())
-        .collect::<Vec<DetectionResult>>();
+        .map(|(index, results)| DetectionResult { index, results })
+        .collect::<Vec<_>>();
 
     Ok((!detections.is_empty()).then_some(detections))
 }
@@ -420,12 +417,8 @@ fn sort_detections(mut detections: Vec<DetectionResult>) -> Vec<DetectionResult>
     detections
         .into_iter()
         .map(|mut detection| {
-            let last_idx = detection.results.len();
-            // sort detection by starting span, if span is not present then move to the end of the message
-            detection.results.sort_by_key(|r| match r {
-                GuardrailDetection::ContentAnalysisResponse(value) => value.start,
-                _ => last_idx,
-            });
+            // sort detection by starting span
+            detection.results.sort_by_key(|value| value.start);
             detection
         })
         .collect::<Vec<_>>()
