@@ -11,6 +11,8 @@ impl Handle<ChatCompletionsDetectionTask> for Orchestrator {
     type Response = ChatCompletionsResponse;
 
     async fn handle(&self, _task: ChatCompletionsDetectionTask) -> Result<Self::Response, Error> {
+        // for streaming, build new ChatCompletionChunk from ChatCompletionDetectionBatch
+        // and a cache of original ChatCompletionChunks
         todo!()
     }
 }

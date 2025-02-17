@@ -18,4 +18,4 @@ pub type DetectorId = String;
 
 pub type BoxStream<T> = Pin<Box<dyn Stream<Item = T> + Send>>;
 pub type ChunkStream = BoxStream<Result<Chunk, Error>>;
-pub type DetectionStream = BoxStream<Result<(Chunk, Detections), Error>>;
+pub type DetectionStream = BoxStream<Result<(DetectorId, Chunk, Detections), Error>>;

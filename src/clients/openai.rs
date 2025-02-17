@@ -541,10 +541,10 @@ pub struct ChatCompletion {
     /// This field is only included if the `service_tier` parameter is specified in the request.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub service_tier: Option<String>,
-    /// Result of running different guardrail detectors
+    /// Detections
     #[serde(skip_serializing_if = "Option::is_none")]
     pub detections: Option<ChatDetections>,
-    /// Optional warnings
+    /// Warnings
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub warnings: Vec<OrchestratorWarning>,
 }
@@ -630,6 +630,12 @@ pub struct ChatCompletionChunk {
     pub service_tier: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub usage: Option<Usage>,
+    /// Detections
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detections: Option<ChatDetections>,
+    /// Warnings
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<OrchestratorWarning>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

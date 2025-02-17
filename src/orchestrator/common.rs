@@ -58,7 +58,7 @@ where
 pub async fn chunk_streams<T>(
     ctx: Arc<Context>,
     chunkers: Vec<ChunkerId>,
-    input_broadcast_tx: broadcast::Sender<(usize, T)>,
+    input_broadcast_tx: broadcast::Sender<(usize, T)>, // (index, input)
 ) -> Result<HashMap<ChunkerId, ChunkStream>, Error>
 where
     T: ToString + Clone + Send + 'static,
