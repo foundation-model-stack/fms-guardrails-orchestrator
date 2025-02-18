@@ -79,7 +79,7 @@ pub trait DetectionBatcher: Send + 'static {
 
 /// A batcher implementation based on the original tracker.
 /// Does not support detections with different chunkers applied.
-struct SimpleBatcher {
+pub struct SimpleBatcher {
     detectors: Vec<DetectorId>,
     state: BTreeMap<Span, (Chunk, Vec<Detections>)>,
 }
@@ -130,7 +130,7 @@ impl DetectionBatcher for SimpleBatcher {
 }
 
 /// A batcher implementation that doesn't actually batch.
-struct FakeBatcher {
+pub struct FakeBatcher {
     detectors: Vec<DetectorId>,
     state: VecDeque<(Chunk, Detections)>,
 }
@@ -165,7 +165,7 @@ pub struct DetectionBatch {
 }
 
 /// A batcher implementation for chat completion detections.
-struct ChatCompletionBatcher {
+pub struct ChatCompletionBatcher {
     detectors: Vec<DetectorId>,
     //state
 }

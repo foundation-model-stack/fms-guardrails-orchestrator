@@ -18,8 +18,7 @@ use crate::{
         GenerationClient, TextContentsDetectorClient,
     },
     models::{
-        ClassifiedGeneratedTextResult as GenerateResponse,
-        ClassifiedGeneratedTextStreamResult as GenerateStreamResponse, DetectorParams,
+        ClassifiedGeneratedTextResult as GenerateResponse, DetectorParams,
         GuardrailsTextGenerationParameters as GenerateParams,
     },
     pb::caikit::runtime::chunkers::ChunkerTokenizationTaskRequest,
@@ -76,7 +75,7 @@ where
 pub async fn chunk_streams<T>(
     ctx: Arc<Context>,
     chunkers: Vec<ChunkerId>,
-    input_broadcast_tx: broadcast::Sender<(usize, T)>, // (index, input)
+    input_broadcast_tx: broadcast::Sender<Result<(usize, T), Error>>,
 ) -> Result<HashMap<ChunkerId, ChunkStream>, Error>
 where
     T: ToString + Clone + Send,
@@ -115,12 +114,13 @@ where
             let headers = headers.clone();
             let threshold = params.pop_threshold().unwrap_or_default();
             async move {
-                let detections =
+                let mut detections =
                     detect_text_contents(ctx, headers, detector_id.clone(), params, chunks)
                         .await?
                         .into_iter()
                         .filter(|detection| detection.score >= threshold)
-                        .collect();
+                        .collect::<Detections>();
+                detections.sort_by_key(|detection| detection.start);
                 Ok::<_, Error>((detector_id, detections))
             }
         })
@@ -133,12 +133,17 @@ where
 /// Spawns text contents detection stream tasks.
 /// Returns a vec of detection streams.
 #[instrument(skip_all)]
-pub async fn text_contents_detection_streams(
+pub async fn text_contents_detection_streams<T>(
     ctx: Arc<Context>,
     headers: HeaderMap,
     detectors: &HashMap<DetectorId, DetectorParams>,
-    chunk_streams: HashMap<ChunkerId, ChunkStream>,
-) -> Result<Vec<(DetectorId, DetectionStream)>, Error> {
+    input_broadcast_tx: broadcast::Sender<Result<(usize, T), Error>>,
+) -> Result<Vec<(DetectorId, DetectionStream)>, Error>
+where
+    T: ToString + Clone + Send,
+{
+    let chunkers = get_chunker_ids(&ctx.config, detectors)?;
+    let chunk_streams = chunk_streams(ctx.clone(), chunkers, input_broadcast_tx).await?;
     todo!()
 }
 
@@ -408,7 +413,7 @@ pub async fn generate_stream(
     model_id: String,
     text: String,
     params: Option<GenerateParams>,
-) -> Result<BoxStream<Result<GenerateStreamResponse, Error>>, Error> {
+) -> Result<GenerationStream, Error> {
     debug!("sending generate stream request");
     todo!()
 }
