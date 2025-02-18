@@ -16,6 +16,7 @@
 */
 
 use std::collections::HashMap;
+use test_log::test;
 
 use common::{
     chunker::{MockChunkersServiceServer, CHUNKER_NAME_SENTENCE, CHUNKER_UNARY_ENDPOINT},
@@ -42,7 +43,6 @@ use fms_guardrails_orchestr8::{
 use hyper::StatusCode;
 use mocktail::{prelude::*, utils::find_available_port};
 use tracing::debug;
-use tracing_test::traced_test;
 
 pub mod common;
 
@@ -51,8 +51,7 @@ pub mod common;
 /// Asserts a scenario with a single detection works as expected (assumes a detector configured with whole_doc_chunker).
 ///
 /// This test mocks a detector that detects text between <angle brackets>.
-#[traced_test]
-#[tokio::test]
+#[test(tokio::test)]
 async fn test_single_detection_whole_doc() -> Result<(), anyhow::Error> {
     ensure_global_rustls_state();
     let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC;
@@ -128,8 +127,7 @@ async fn test_single_detection_whole_doc() -> Result<(), anyhow::Error> {
 /// Asserts a scenario with a single detection works as expected (with sentence chunker).
 ///
 /// This test mocks a detector that detects text between <angle brackets>.
-#[traced_test]
-#[tokio::test]
+#[test(tokio::test)]
 async fn test_single_detection_sentence_chunker() -> Result<(), anyhow::Error> {
     ensure_global_rustls_state();
 

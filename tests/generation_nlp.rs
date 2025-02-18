@@ -26,12 +26,11 @@ use fms_guardrails_orchestr8::{
 };
 use futures::StreamExt;
 use mocktail::prelude::*;
-use tracing_test::traced_test;
+use test_log::test;
 
 pub mod common;
 
-#[traced_test]
-#[tokio::test]
+#[test(tokio::test)]
 async fn test_nlp_streaming_call() -> Result<(), anyhow::Error> {
     // Add detector mock
     let model_id = "my-super-model-8B";

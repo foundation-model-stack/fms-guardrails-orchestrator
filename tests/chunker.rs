@@ -25,12 +25,11 @@ use fms_guardrails_orchestr8::{
     },
 };
 use mocktail::prelude::*;
-use tracing_test::traced_test;
+use test_log::test;
 
 pub mod common;
 
-#[traced_test]
-#[tokio::test]
+#[test(tokio::test)]
 async fn test_isolated_chunker_unary_call() -> Result<(), anyhow::Error> {
     // Add detector mock
     let chunker_id = "sentence_chunker";

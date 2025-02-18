@@ -20,6 +20,7 @@
 // For more: https://github.com/rust-lang/rust/issues/46379
 
 use std::sync::Arc;
+use test_log::test;
 
 use axum_test::TestServer;
 use common::orchestrator::ensure_global_rustls_state;
@@ -32,7 +33,6 @@ use hyper::StatusCode;
 use serde_json::Value;
 use tokio::sync::OnceCell;
 use tracing::debug;
-use tracing_test::traced_test;
 
 pub mod common;
 
@@ -53,8 +53,7 @@ async fn shared_state() -> Arc<ServerState> {
 /// superficially testing the client health endpoints on the orchestrator is accessible
 /// and when the orchestrator is running (healthy) all the health endpoints return 200 OK.
 /// This will happen even if the client services or their health endpoints are not found.
-#[traced_test]
-#[tokio::test]
+#[test(tokio::test)]
 async fn test_health() {
     ensure_global_rustls_state();
     let shared_state = ONCE.get_or_init(shared_state).await.clone();

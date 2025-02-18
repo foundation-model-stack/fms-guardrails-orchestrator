@@ -16,6 +16,7 @@
 */
 
 use std::collections::HashMap;
+use test_log::test;
 
 use common::{
     detectors::{DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC, TEXT_CONTENTS_DETECTOR_ENDPOINT},
@@ -41,15 +42,14 @@ use fms_guardrails_orchestr8::{
 };
 use futures::StreamExt;
 use mocktail::{prelude::*, utils::find_available_port};
-use tracing_test::traced_test;
+use tracing::debug;
 
 pub mod common;
 
 const STREAMING_CLASSIFICATION_WITH_GEN_ENDPOINT: &str =
     "/api/v1/task/server-streaming-classification-with-text-generation";
 
-#[traced_test]
-#[tokio::test]
+#[test(tokio::test)]
 async fn test_no_detectors() -> Result<(), anyhow::Error> {
     ensure_global_rustls_state();
 
@@ -140,7 +140,7 @@ async fn test_no_detectors() -> Result<(), anyhow::Error> {
         .await
         .into_iter()
         .collect::<Result<Vec<_>, anyhow::Error>>()?;
-    println!("{messages:?}");
+    debug!(?messages);
 
     // assertions
     assert!(messages.len() == 3);
@@ -151,8 +151,7 @@ async fn test_no_detectors() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
-#[traced_test]
-#[tokio::test]
+#[test(tokio::test)]
 async fn test_input_detector_whole_doc_no_detections() -> Result<(), anyhow::Error> {
     ensure_global_rustls_state();
     let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC;
@@ -243,7 +242,7 @@ async fn test_input_detector_whole_doc_no_detections() -> Result<(), anyhow::Err
         .await
         .into_iter()
         .collect::<Result<Vec<_>, anyhow::Error>>()?;
-    println!("{messages:?}");
+    println!("{messages:#?}");
 
     // assertions
     assert!(messages.len() == 3);
