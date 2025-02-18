@@ -24,6 +24,7 @@ use common::{
         DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE, DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC,
         TEXT_CONTENTS_DETECTOR_ENDPOINT,
     },
+    errors::{DetectorError, OrchestratorError},
     generation::{MockNlpServiceServer, GENERATION_NLP_STREAMING_ENDPOINT},
     orchestrator::{
         ensure_global_rustls_state, SseStream, TestOrchestratorServer,
@@ -249,7 +250,7 @@ async fn test_input_detector_whole_doc_no_detections() -> Result<(), anyhow::Err
         .await
         .into_iter()
         .collect::<Result<Vec<_>, anyhow::Error>>()?;
-    println!("{messages:#?}");
+    debug!("{messages:#?}");
 
     // assertions
     assert!(messages.len() == 3);
@@ -378,7 +379,7 @@ async fn test_input_detector_sentence_chunker_no_detections() -> Result<(), anyh
         .send()
         .await?;
 
-    println!("{response:#?}");
+    debug!("{response:#?}");
 
     // Test custom SseStream wrapper
     let sse_stream: SseStream<ClassifiedGeneratedTextStreamResult> =
@@ -388,13 +389,92 @@ async fn test_input_detector_sentence_chunker_no_detections() -> Result<(), anyh
         .await
         .into_iter()
         .collect::<Result<Vec<_>, anyhow::Error>>()?;
-    println!("{messages:#?}");
+    debug!("{messages:#?}");
 
     // assertions
     assert!(messages.len() == 3);
     assert!(messages[0].generated_text == Some("I".into()));
     assert!(messages[1].generated_text == Some(" am".into()));
     assert!(messages[2].generated_text == Some(" great!".into()));
+
+    Ok(())
+}
+
+#[test(tokio::test)]
+async fn test_input_detector_returns_404() -> Result<(), anyhow::Error> {
+    ensure_global_rustls_state();
+    let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC;
+    let model_id = "my-super-model-8B";
+    let expected_detector_error = DetectorError {
+        code: 404,
+        message: "Not found.".into(),
+    };
+
+    // Add input detection mock
+    let mut detection_mocks = MockSet::new();
+    detection_mocks.insert(
+        MockPath::new(Method::POST, TEXT_CONTENTS_DETECTOR_ENDPOINT),
+        Mock::new(
+            MockRequest::json(ContentAnalysisRequest {
+                contents: vec!["This should return a 404".into()],
+                detector_params: DetectorParams::new(),
+            }),
+            MockResponse::json(&expected_detector_error).with_code(StatusCode::NOT_FOUND),
+        ),
+    );
+
+    // Start orchestrator server and its dependencies
+    let mock_detector_server = HttpMockServer::new(detector_name, detection_mocks)?;
+    let orchestrator_server = TestOrchestratorServer::run(
+        ORCHESTRATOR_CONFIG_FILE_PATH,
+        find_available_port().unwrap(),
+        find_available_port().unwrap(),
+        None,
+        None,
+        Some(vec![mock_detector_server]),
+        None,
+    )
+    .await?;
+
+    // Example orchestrator request with streaming response
+    let response = orchestrator_server
+        .post(STREAMING_CLASSIFICATION_WITH_GEN_ENDPOINT)
+        .json(&GuardrailsHttpRequest {
+            model_id: model_id.into(),
+            inputs: "This should return a 404".into(),
+            guardrail_config: Some(GuardrailsConfig {
+                input: Some(GuardrailsConfigInput {
+                    models: HashMap::from([(detector_name.into(), DetectorParams::new())]),
+                    masks: None,
+                }),
+                output: None,
+            }),
+            text_gen_parameters: None,
+        })
+        .send()
+        .await?;
+
+    debug!(?response, "RESPONSE RECEIVED FROM ORCHESTRATOR");
+
+    // Test custom SseStream wrapper
+    let sse_stream: SseStream<OrchestratorError> = SseStream::new(response.bytes_stream());
+    let messages = sse_stream
+        .collect::<Vec<_>>()
+        .await
+        .into_iter()
+        .collect::<Result<Vec<_>, anyhow::Error>>()?;
+    debug!("{messages:#?}");
+
+    // assertions
+    assert!(messages.len() == 1);
+    assert!(messages[0].code == 404);
+    assert!(
+        messages[0].details
+            == format!(
+                "detector request failed for `{}`: {}",
+                detector_name, expected_detector_error.message
+            )
+    );
 
     Ok(())
 }

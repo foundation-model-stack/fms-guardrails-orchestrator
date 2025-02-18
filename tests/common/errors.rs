@@ -14,8 +14,16 @@
  limitations under the License.
 
 */
-pub mod chunker;
-pub mod detectors;
-pub mod errors;
-pub mod generation;
-pub mod orchestrator;
+use serde::{Deserialize, Serialize};
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct DetectorError {
+    pub code: u16,
+    pub message: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct OrchestratorError {
+    pub code: u16,
+    pub details: String,
+}
