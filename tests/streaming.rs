@@ -25,7 +25,10 @@ use common::{
         TEXT_CONTENTS_DETECTOR_ENDPOINT,
     },
     errors::{DetectorError, OrchestratorError},
-    generation::{MockNlpServiceServer, GENERATION_NLP_STREAMING_ENDPOINT},
+    generation::{
+        MockNlpServiceServer, GENERATION_NLP_STREAMING_ENDPOINT,
+        GENERATION_NLP_TOKENIZATION_ENDPOINT,
+    },
     orchestrator::{SseStream, TestOrchestratorServer, ORCHESTRATOR_CONFIG_FILE_PATH},
 };
 use fms_guardrails_orchestr8::{
@@ -35,12 +38,14 @@ use fms_guardrails_orchestr8::{
         nlp::MODEL_ID_HEADER_NAME as NLP_MODEL_ID_HEADER_NAME,
     },
     models::{
-        ClassifiedGeneratedTextStreamResult, DetectorParams, GuardrailsConfig,
-        GuardrailsConfigInput, GuardrailsHttpRequest,
+        ClassifiedGeneratedTextStreamResult, DetectionWarning, DetectorParams, GuardrailsConfig,
+        GuardrailsConfigInput, GuardrailsHttpRequest, TextGenTokenClassificationResults,
+        TokenClassificationResult,
     },
     pb::{
         caikit::runtime::{
-            chunkers::ChunkerTokenizationTaskRequest, nlp::ServerStreamingTextGenerationTaskRequest,
+            chunkers::ChunkerTokenizationTaskRequest,
+            nlp::{ServerStreamingTextGenerationTaskRequest, TokenizationTaskRequest},
         },
         caikit_data_model::nlp::{GeneratedTextStreamResult, Token, TokenizationResults},
     },
@@ -116,7 +121,7 @@ async fn test_no_detectors() -> Result<(), anyhow::Error> {
         .send()
         .await?;
 
-    // Example showing how to create an event stream from a bytes stream.
+    // // Example showing how to create an event stream from a bytes stream.
     // let mut events = Vec::new();
     // let mut event_stream = response.bytes_stream().eventsource();
     // while let Some(event) = event_stream.next().await {
@@ -251,6 +256,123 @@ async fn test_input_detector_whole_doc_no_detections() -> Result<(), anyhow::Err
     assert!(messages[0].generated_text == Some("I".into()));
     assert!(messages[1].generated_text == Some(" am".into()));
     assert!(messages[2].generated_text == Some(" great!".into()));
+
+    Ok(())
+}
+
+#[test(tokio::test)]
+async fn test_input_detector_whole_doc_with_detections() -> Result<(), anyhow::Error> {
+    let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC;
+    let mock_detection_response = ContentAnalysisResponse {
+        start: 46,
+        end: 59,
+        text: "this one does".into(),
+        detection: "has_angle_brackets".into(),
+        detection_type: "angle_brackets".into(),
+        detector_id: Some(detector_name.into()),
+        score: 1.0,
+        evidence: None,
+    };
+
+    // Add input detection mock
+    let mut detection_mocks = MockSet::new();
+    detection_mocks.insert(
+        MockPath::new(Method::POST, TEXT_CONTENTS_DETECTOR_ENDPOINT),
+        Mock::new(
+            MockRequest::json(ContentAnalysisRequest {
+                contents: vec![
+                    "This sentence does not have a detection. But <this one does>.".into(),
+                ],
+                detector_params: DetectorParams::new(),
+            }),
+            MockResponse::json([vec![mock_detection_response.clone()]]),
+        ),
+    );
+
+    // Add generation mock for input token count
+    let model_id = "my-super-model-8B";
+    let mock_tokenization_response = TokenizationResults {
+        results: Vec::new(),
+        token_count: 61,
+    };
+    let mut headers = HeaderMap::new();
+    headers.insert(NLP_MODEL_ID_HEADER_NAME, model_id.parse().unwrap());
+    let mut generation_mocks = MockSet::new();
+    generation_mocks.insert(
+        MockPath::new(Method::POST, GENERATION_NLP_TOKENIZATION_ENDPOINT),
+        Mock::new(
+            MockRequest::pb(TokenizationTaskRequest {
+                text: "This sentence does not have a detection. But <this one does>.".into(),
+                ..Default::default()
+            })
+            .with_headers(headers.clone()),
+            MockResponse::pb(mock_tokenization_response.clone()),
+        ),
+    );
+
+    // Start orchestrator server and its dependencies
+    let mock_detector_server = HttpMockServer::new(detector_name, detection_mocks)?;
+    let generation_server = MockNlpServiceServer::new(generation_mocks)?;
+    let orchestrator_server = TestOrchestratorServer::run(
+        ORCHESTRATOR_CONFIG_FILE_PATH,
+        find_available_port().unwrap(),
+        find_available_port().unwrap(),
+        Some(generation_server),
+        None,
+        Some(vec![mock_detector_server]),
+        None,
+    )
+    .await?;
+
+    // Example orchestrator request with streaming response
+    let response = orchestrator_server
+        .post(STREAMING_CLASSIFICATION_WITH_GEN_ENDPOINT)
+        .json(&GuardrailsHttpRequest {
+            model_id: model_id.into(),
+            inputs: "This sentence does not have a detection. But <this one does>.".into(),
+            guardrail_config: Some(GuardrailsConfig {
+                input: Some(GuardrailsConfigInput {
+                    models: HashMap::from([(detector_name.into(), DetectorParams::new())]),
+                    masks: None,
+                }),
+                output: None,
+            }),
+            text_gen_parameters: None,
+        })
+        .send()
+        .await?;
+
+    // Test custom SseStream wrapper
+    let sse_stream: SseStream<ClassifiedGeneratedTextStreamResult> =
+        SseStream::new(response.bytes_stream());
+    let messages = sse_stream
+        .collect::<Vec<_>>()
+        .await
+        .into_iter()
+        .collect::<Result<Vec<_>, anyhow::Error>>()?;
+    debug!("{messages:#?}");
+
+    // assertions
+    assert!(messages.len() == 1);
+    assert!(messages[0].generated_text == None);
+    assert!(
+        messages[0].token_classification_results
+            == TextGenTokenClassificationResults {
+                input: Some(vec![TokenClassificationResult {
+                    start: mock_detection_response.start as u32,
+                    end: mock_detection_response.end as u32,
+                    word: mock_detection_response.text,
+                    entity: mock_detection_response.detection,
+                    entity_group: mock_detection_response.detection_type,
+                    detector_id: mock_detection_response.detector_id,
+                    score: mock_detection_response.score,
+                    token_count: None
+                }]),
+                output: None
+            }
+    );
+    assert!(messages[0].input_token_count == mock_tokenization_response.token_count as u32);
+    assert!(messages[0].warnings == Some(vec![DetectionWarning{ id: Some(fms_guardrails_orchestr8::models::DetectionWarningReason::UnsuitableInput), message: Some("Unsuitable input detected. Please check the detected entities on your input and try again with the unsuitable input removed.".into()) }]));
 
     Ok(())
 }
