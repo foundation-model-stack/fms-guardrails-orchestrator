@@ -557,3 +557,150 @@ async fn test_input_detector_returns_404() -> Result<(), anyhow::Error> {
 
     Ok(())
 }
+
+#[test(tokio::test)]
+async fn test_input_detector_returns_500() -> Result<(), anyhow::Error> {
+    ensure_global_rustls_state();
+    let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC;
+    let model_id = "my-super-model-8B";
+    let expected_detector_error = DetectorError {
+        code: 500,
+        message: "Internal detector error.".into(),
+    };
+
+    // Add input detection mock
+    let mut detection_mocks = MockSet::new();
+    detection_mocks.insert(
+        MockPath::new(Method::POST, TEXT_CONTENTS_DETECTOR_ENDPOINT),
+        Mock::new(
+            MockRequest::json(ContentAnalysisRequest {
+                contents: vec!["This should return a 500".into()],
+                detector_params: DetectorParams::new(),
+            }),
+            MockResponse::json(&expected_detector_error).with_code(StatusCode::NOT_FOUND),
+        ),
+    );
+
+    // Start orchestrator server and its dependencies
+    let mock_detector_server = HttpMockServer::new(detector_name, detection_mocks)?;
+    let orchestrator_server = TestOrchestratorServer::run(
+        ORCHESTRATOR_CONFIG_FILE_PATH,
+        find_available_port().unwrap(),
+        find_available_port().unwrap(),
+        None,
+        None,
+        Some(vec![mock_detector_server]),
+        None,
+    )
+    .await?;
+
+    // Example orchestrator request with streaming response
+    let response = orchestrator_server
+        .post(STREAMING_CLASSIFICATION_WITH_GEN_ENDPOINT)
+        .json(&GuardrailsHttpRequest {
+            model_id: model_id.into(),
+            inputs: "This should return a 500".into(),
+            guardrail_config: Some(GuardrailsConfig {
+                input: Some(GuardrailsConfigInput {
+                    models: HashMap::from([(detector_name.into(), DetectorParams::new())]),
+                    masks: None,
+                }),
+                output: None,
+            }),
+            text_gen_parameters: None,
+        })
+        .send()
+        .await?;
+
+    debug!(?response, "RESPONSE RECEIVED FROM ORCHESTRATOR");
+
+    // Test custom SseStream wrapper
+    let sse_stream: SseStream<OrchestratorError> = SseStream::new(response.bytes_stream());
+    let messages = sse_stream
+        .collect::<Vec<_>>()
+        .await
+        .into_iter()
+        .collect::<Result<Vec<_>, anyhow::Error>>()?;
+    debug!("{messages:#?}");
+
+    // assertions
+    assert!(messages.len() == 1);
+    assert!(messages[0].code == 500);
+    assert!(messages[0].details == "unexpected error occurred while processing request");
+
+    Ok(())
+}
+
+#[test(tokio::test)]
+async fn test_input_detector_returns_non_compliant_message() -> Result<(), anyhow::Error> {
+    ensure_global_rustls_state();
+    let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC;
+    let model_id = "my-super-model-8B";
+    let non_compliant_detector_response = serde_json::json!({
+        "detections": true,
+    });
+
+    // Add input detection mock
+    let mut detection_mocks = MockSet::new();
+    detection_mocks.insert(
+        MockPath::new(Method::POST, TEXT_CONTENTS_DETECTOR_ENDPOINT),
+        Mock::new(
+            MockRequest::json(ContentAnalysisRequest {
+                contents: vec![
+                    "The detector will return a message non compliant with the API".into(),
+                ],
+                detector_params: DetectorParams::new(),
+            }),
+            MockResponse::json(&non_compliant_detector_response).with_code(StatusCode::OK),
+        ),
+    );
+
+    // Start orchestrator server and its dependencies
+    let mock_detector_server = HttpMockServer::new(detector_name, detection_mocks)?;
+    let orchestrator_server = TestOrchestratorServer::run(
+        ORCHESTRATOR_CONFIG_FILE_PATH,
+        find_available_port().unwrap(),
+        find_available_port().unwrap(),
+        None,
+        None,
+        Some(vec![mock_detector_server]),
+        None,
+    )
+    .await?;
+
+    // Example orchestrator request with streaming response
+    let response = orchestrator_server
+        .post(STREAMING_CLASSIFICATION_WITH_GEN_ENDPOINT)
+        .json(&GuardrailsHttpRequest {
+            model_id: model_id.into(),
+            inputs: "The detector will return a message non compliant with the API".into(),
+            guardrail_config: Some(GuardrailsConfig {
+                input: Some(GuardrailsConfigInput {
+                    models: HashMap::from([(detector_name.into(), DetectorParams::new())]),
+                    masks: None,
+                }),
+                output: None,
+            }),
+            text_gen_parameters: None,
+        })
+        .send()
+        .await?;
+
+    debug!(?response, "RESPONSE RECEIVED FROM ORCHESTRATOR");
+
+    // Test custom SseStream wrapper
+    let sse_stream: SseStream<OrchestratorError> = SseStream::new(response.bytes_stream());
+    let messages = sse_stream
+        .collect::<Vec<_>>()
+        .await
+        .into_iter()
+        .collect::<Result<Vec<_>, anyhow::Error>>()?;
+    debug!("{messages:#?}");
+
+    // assertions
+    assert!(messages.len() == 1);
+    assert!(messages[0].code == 500);
+    assert!(messages[0].details == "unexpected error occurred while processing request");
+
+    Ok(())
+}
