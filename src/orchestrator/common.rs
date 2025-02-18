@@ -36,7 +36,7 @@ pub use utils::*;
 pub async fn chunks<T>(
     ctx: Arc<Context>,
     chunkers: Vec<ChunkerId>,
-    inputs: Vec<(usize, T)>,
+    inputs: Vec<(usize, T)>, // (offset, input)
 ) -> Result<HashMap<ChunkerId, Chunks>, Error>
 where
     T: ToString + Clone + Send,
@@ -46,22 +46,28 @@ where
         .flat_map(|chunker_id| {
             inputs
                 .iter()
-                .map(|(index, input)| (chunker_id.clone(), *index, input.to_string()))
+                .map(|(offset, input)| (chunker_id.clone(), *offset, input.to_string()))
         })
         .collect::<Vec<_>>();
-
     let results = stream::iter(inputs)
-        .map(|(chunker_id, index, text)| {
+        .map(|(chunker_id, offset, text)| {
             let ctx = ctx.clone();
             async move {
-                let chunks = chunk(ctx, chunker_id.clone(), index, text).await?;
+                let chunks = chunk(ctx, chunker_id.clone(), text)
+                    .await?
+                    .into_iter()
+                    .map(|mut chunk| {
+                        chunk.start += offset;
+                        chunk.end += offset;
+                        chunk
+                    })
+                    .collect();
                 Ok::<_, Error>((chunker_id, chunks))
             }
         })
         .buffer_unordered(8)
         .try_collect::<HashMap<_, _>>()
         .await?;
-
     Ok(results)
 }
 
@@ -92,7 +98,6 @@ where
 {
     let chunkers = get_chunker_ids(&ctx.config, detectors)?;
     let chunks = chunks(ctx.clone(), chunkers, inputs).await?;
-
     let inputs = detectors
         .iter()
         .map(|(detector_id, params)| {
@@ -104,7 +109,6 @@ where
             Ok::<_, Error>((detector_id.clone(), params.clone(), chunks))
         })
         .collect::<Result<Vec<_>, Error>>()?;
-
     let results = stream::iter(inputs)
         .map(|(detector_id, mut params, chunks)| {
             let ctx = ctx.clone();
@@ -123,7 +127,6 @@ where
         .buffer_unordered(8)
         .try_collect::<Vec<_>>()
         .await?;
-
     Ok(results)
 }
 
@@ -185,12 +188,12 @@ pub async fn text_context_detections(
 pub async fn chunk(
     ctx: Arc<Context>,
     chunker_id: ChunkerId,
-    index: usize,
     text: String,
 ) -> Result<Chunks, Error> {
     if chunker_id == "whole_doc_chunker" {
         return Ok(vec![Chunk {
-            index,
+            input_start_index: 0,
+            input_end_index: 0,
             start: 0,
             end: text.chars().count(),
             text,
@@ -208,7 +211,7 @@ pub async fn chunk(
             error,
         })?;
     debug!(?response, "received chunker response");
-    Ok((index, response).into())
+    Ok(response.into())
 }
 
 /// Sends request to text contents detector client.

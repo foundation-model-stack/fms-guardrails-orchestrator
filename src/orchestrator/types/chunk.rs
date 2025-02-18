@@ -3,10 +3,15 @@ use crate::pb::caikit_data_model::nlp::{ChunkerTokenizationStreamResult, Tokeniz
 /// Internal representation of a single chunk.
 #[derive(Default, Debug, Clone, PartialEq)]
 pub struct Chunk {
-    pub index: usize,
-    //pub offset: usize,
+    /// Input message index where this chunk begins (streaming)
+    pub input_start_index: usize,
+    /// Input message index where this chunk ends (streaming)
+    pub input_end_index: usize,
+    /// Char index where this chunk begins
     pub start: usize,
+    /// Char index where this chunk ends
     pub end: usize,
+    /// Text
     pub text: String,
 }
 
@@ -60,32 +65,31 @@ impl From<Vec<Chunk>> for Chunks {
 
 // Conversions
 
-impl From<(usize, ChunkerTokenizationStreamResult)> for Chunks {
-    fn from(value: (usize, ChunkerTokenizationStreamResult)) -> Self {
-        let (index, value) = value;
-        value
+impl From<ChunkerTokenizationStreamResult> for Chunk {
+    fn from(value: ChunkerTokenizationStreamResult) -> Self {
+        let text = value
             .results
             .into_iter()
-            .map(|token| Chunk {
-                index,
-                //offset: 0, // TODO
-                start: token.start as usize,
-                end: token.end as usize,
-                text: token.text,
-            })
-            .collect()
+            .map(|token| token.text)
+            .collect::<String>();
+        Chunk {
+            input_start_index: value.input_start_index as usize,
+            input_end_index: value.input_end_index as usize,
+            start: value.start_index as usize,
+            end: value.processed_index as usize,
+            text,
+        }
     }
 }
 
-impl From<(usize, TokenizationResults)> for Chunks {
-    fn from(value: (usize, TokenizationResults)) -> Self {
-        let (index, value) = value;
+impl From<TokenizationResults> for Chunks {
+    fn from(value: TokenizationResults) -> Self {
         value
             .results
             .into_iter()
             .map(|token| Chunk {
-                index,
-                //offset: 0, // TODO
+                input_start_index: 0,
+                input_end_index: 0,
                 start: token.start as usize,
                 end: token.end as usize,
                 text: token.text,
