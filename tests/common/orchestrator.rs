@@ -63,6 +63,9 @@ impl TestOrchestratorServer {
         detector_servers: Option<Vec<HttpMockServer>>,
         chunker_servers: Option<Vec<(String, MockChunkersServiceServer)>>,
     ) -> Result<Self, anyhow::Error> {
+        // Set default crypto provider
+        ensure_global_rustls_state();
+
         // Load orchestrator config
         let mut config = OrchestratorConfig::load(config_path).await?;
 

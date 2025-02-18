@@ -25,8 +25,8 @@ use common::{
         TEXT_CONTENTS_DETECTOR_ENDPOINT,
     },
     orchestrator::{
-        ensure_global_rustls_state, TestOrchestratorServer,
-        CONTENT_DETECTION_ORCHESTRATOR_ENDPOINT, ORCHESTRATOR_CONFIG_FILE_PATH,
+        TestOrchestratorServer, CONTENT_DETECTION_ORCHESTRATOR_ENDPOINT,
+        ORCHESTRATOR_CONFIG_FILE_PATH,
     },
 };
 use fms_guardrails_orchestr8::{
@@ -53,7 +53,6 @@ pub mod common;
 /// This test mocks a detector that detects text between <angle brackets>.
 #[test(tokio::test)]
 async fn test_single_detection_whole_doc() -> Result<(), anyhow::Error> {
-    ensure_global_rustls_state();
     let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC;
 
     // Add detector mock
@@ -129,8 +128,6 @@ async fn test_single_detection_whole_doc() -> Result<(), anyhow::Error> {
 /// This test mocks a detector that detects text between <angle brackets>.
 #[test(tokio::test)]
 async fn test_single_detection_sentence_chunker() -> Result<(), anyhow::Error> {
-    ensure_global_rustls_state();
-
     // Add chunker mock
     let chunker_id = CHUNKER_NAME_SENTENCE;
     let mut chunker_headers = HeaderMap::new();

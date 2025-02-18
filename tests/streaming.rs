@@ -26,10 +26,7 @@ use common::{
     },
     errors::{DetectorError, OrchestratorError},
     generation::{MockNlpServiceServer, GENERATION_NLP_STREAMING_ENDPOINT},
-    orchestrator::{
-        ensure_global_rustls_state, SseStream, TestOrchestratorServer,
-        ORCHESTRATOR_CONFIG_FILE_PATH,
-    },
+    orchestrator::{SseStream, TestOrchestratorServer, ORCHESTRATOR_CONFIG_FILE_PATH},
 };
 use fms_guardrails_orchestr8::{
     clients::{
@@ -59,8 +56,6 @@ const STREAMING_CLASSIFICATION_WITH_GEN_ENDPOINT: &str =
 
 #[test(tokio::test)]
 async fn test_no_detectors() -> Result<(), anyhow::Error> {
-    ensure_global_rustls_state();
-
     // Add generation mock
     let model_id = "my-super-model-8B";
     let mut headers = HeaderMap::new();
@@ -161,7 +156,6 @@ async fn test_no_detectors() -> Result<(), anyhow::Error> {
 
 #[test(tokio::test)]
 async fn test_input_detector_whole_doc_no_detections() -> Result<(), anyhow::Error> {
-    ensure_global_rustls_state();
     let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC;
 
     // Add input detection mock
@@ -263,7 +257,6 @@ async fn test_input_detector_whole_doc_no_detections() -> Result<(), anyhow::Err
 
 #[test(tokio::test)]
 async fn test_input_detector_sentence_chunker_no_detections() -> Result<(), anyhow::Error> {
-    ensure_global_rustls_state();
     let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE;
 
     // Add input chunker mock
@@ -402,7 +395,6 @@ async fn test_input_detector_sentence_chunker_no_detections() -> Result<(), anyh
 
 #[test(tokio::test)]
 async fn test_input_detector_returns_503() -> Result<(), anyhow::Error> {
-    ensure_global_rustls_state();
     let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC;
     let model_id = "my-super-model-8B";
     let expected_detector_error = DetectorError {
@@ -481,7 +473,6 @@ async fn test_input_detector_returns_503() -> Result<(), anyhow::Error> {
 
 #[test(tokio::test)]
 async fn test_input_detector_returns_404() -> Result<(), anyhow::Error> {
-    ensure_global_rustls_state();
     let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC;
     let model_id = "my-super-model-8B";
     let expected_detector_error = DetectorError {
@@ -560,7 +551,6 @@ async fn test_input_detector_returns_404() -> Result<(), anyhow::Error> {
 
 #[test(tokio::test)]
 async fn test_input_detector_returns_500() -> Result<(), anyhow::Error> {
-    ensure_global_rustls_state();
     let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC;
     let model_id = "my-super-model-8B";
     let expected_detector_error = DetectorError {
@@ -633,7 +623,7 @@ async fn test_input_detector_returns_500() -> Result<(), anyhow::Error> {
 
 #[test(tokio::test)]
 async fn test_input_detector_returns_non_compliant_message() -> Result<(), anyhow::Error> {
-    ensure_global_rustls_state();
+    // ensure_global_rustls_state();
     let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC;
     let model_id = "my-super-model-8B";
     let non_compliant_detector_response = serde_json::json!({
