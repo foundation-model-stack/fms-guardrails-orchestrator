@@ -36,13 +36,17 @@ use url::Url;
 
 use super::{chunker::MockChunkersServiceServer, generation::MockNlpServiceServer};
 
-/// Default orchestrator configuration file for integration tests.
+// Default orchestrator configuration file for integration tests.
 pub const ORCHESTRATOR_CONFIG_FILE_PATH: &str = "tests/test.config.yaml";
 
 // Endpoints
 pub const ORCHESTRATOR_STREAMING_ENDPOINT: &str =
     "/api/v1/task/server-streaming-classification-with-text-generation";
 pub const ORCHESTRATOR_CONTENT_DETECTION_ENDPOINT: &str = "/api/v2/text/detection/content";
+
+// Messages
+pub const ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE: &str =
+    "unexpected error occurred while processing request";
 
 pub fn ensure_global_rustls_state() {
     let _ = ring::default_provider().install_default();

@@ -31,7 +31,7 @@ use common::{
     },
     orchestrator::{
         SseStream, TestOrchestratorServer, ORCHESTRATOR_CONFIG_FILE_PATH,
-        ORCHESTRATOR_STREAMING_ENDPOINT,
+        ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE, ORCHESTRATOR_STREAMING_ENDPOINT,
     },
 };
 use fms_guardrails_orchestr8::{
@@ -887,7 +887,7 @@ async fn test_input_detector_returns_500() -> Result<(), anyhow::Error> {
     // assertions
     assert!(messages.len() == 1);
     assert!(messages[0].code == 500);
-    assert!(messages[0].details == "unexpected error occurred while processing request");
+    assert!(messages[0].details == ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE);
 
     Ok(())
 }
@@ -961,7 +961,79 @@ async fn test_input_detector_returns_non_compliant_message() -> Result<(), anyho
     // assertions
     assert!(messages.len() == 1);
     assert!(messages[0].code == 500);
-    assert!(messages[0].details == "unexpected error occurred while processing request");
+    assert!(messages[0].details == ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE);
+
+    Ok(())
+}
+
+#[test(tokio::test)]
+async fn test_input_chunker_returns_an_error() -> Result<(), anyhow::Error> {
+    let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE;
+    let model_id = "my-super-model-8B";
+
+    // Add input chunker mock
+    let chunker_id = CHUNKER_NAME_SENTENCE;
+    let mut chunker_headers = HeaderMap::new();
+    chunker_headers.insert(CHUNKER_MODEL_ID_HEADER_NAME, chunker_id.parse()?);
+
+    let mut chunker_mocks = MockSet::new();
+    chunker_mocks.insert(
+        MockPath::new(Method::POST, CHUNKER_UNARY_ENDPOINT),
+        Mock::new(
+            MockRequest::pb(ChunkerTokenizationTaskRequest {
+                text: "Hi there! How are you?".into(),
+            })
+            .with_headers(chunker_headers),
+            MockResponse::empty().with_code(StatusCode::INTERNAL_SERVER_ERROR),
+        ),
+    );
+
+    // Start orchestrator server and its dependencies
+    let mock_chunker_server = MockChunkersServiceServer::new(chunker_mocks)?;
+    let orchestrator_server = TestOrchestratorServer::run(
+        ORCHESTRATOR_CONFIG_FILE_PATH,
+        find_available_port().unwrap(),
+        find_available_port().unwrap(),
+        None,
+        None,
+        None,
+        Some(vec![(chunker_id.into(), mock_chunker_server)]),
+    )
+    .await?;
+
+    // Example orchestrator request with streaming response
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_STREAMING_ENDPOINT)
+        .json(&GuardrailsHttpRequest {
+            model_id: model_id.into(),
+            inputs: "Hi there! How are you?".into(),
+            guardrail_config: Some(GuardrailsConfig {
+                input: Some(GuardrailsConfigInput {
+                    models: HashMap::from([(detector_name.into(), DetectorParams::new())]),
+                    masks: None,
+                }),
+                output: None,
+            }),
+            text_gen_parameters: None,
+        })
+        .send()
+        .await?;
+
+    debug!("{response:#?}");
+
+    // Test custom SseStream wrapper
+    let sse_stream: SseStream<OrchestratorError> = SseStream::new(response.bytes_stream());
+    let messages = sse_stream
+        .collect::<Vec<_>>()
+        .await
+        .into_iter()
+        .collect::<Result<Vec<_>, anyhow::Error>>()?;
+    debug!("{messages:#?}");
+
+    // assertions
+    assert!(messages.len() == 1);
+    assert!(messages[0].code == StatusCode::INTERNAL_SERVER_ERROR);
+    assert!(messages[0].details == ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE);
 
     Ok(())
 }
