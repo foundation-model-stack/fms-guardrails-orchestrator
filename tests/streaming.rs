@@ -1037,3 +1037,87 @@ async fn test_input_chunker_returns_an_error() -> Result<(), anyhow::Error> {
 
     Ok(())
 }
+
+#[test(tokio::test)]
+async fn test_generation_server_returns_an_error() -> Result<(), anyhow::Error> {
+    let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC;
+
+    // Add input detection mock
+    let mut detection_mocks = MockSet::new();
+    detection_mocks.insert(
+        MockPath::new(Method::POST, TEXT_CONTENTS_DETECTOR_ENDPOINT),
+        Mock::new(
+            MockRequest::json(ContentAnalysisRequest {
+                contents: vec!["Hi there! How are you?".into()],
+                detector_params: DetectorParams::new(),
+            }),
+            MockResponse::json([Vec::<ContentAnalysisResponse>::new()]),
+        ),
+    );
+
+    // Add generation mock
+    let model_id = "my-super-model-8B";
+    let mut headers = HeaderMap::new();
+    headers.insert(NLP_MODEL_ID_HEADER_NAME, model_id.parse().unwrap());
+
+    let mut generation_mocks = MockSet::new();
+    generation_mocks.insert(
+        MockPath::new(Method::POST, GENERATION_NLP_STREAMING_ENDPOINT),
+        Mock::new(
+            MockRequest::pb(ServerStreamingTextGenerationTaskRequest {
+                text: "Hi there! How are you?".into(),
+                ..Default::default()
+            })
+            .with_headers(headers.clone()),
+            MockResponse::empty().with_code(StatusCode::INTERNAL_SERVER_ERROR),
+        ),
+    );
+
+    // Start orchestrator server and its dependencies
+    let mock_detector_server = HttpMockServer::new(detector_name, detection_mocks)?;
+    let generation_server = MockNlpServiceServer::new(generation_mocks)?;
+    let orchestrator_server = TestOrchestratorServer::run(
+        ORCHESTRATOR_CONFIG_FILE_PATH,
+        find_available_port().unwrap(),
+        find_available_port().unwrap(),
+        Some(generation_server),
+        None,
+        Some(vec![mock_detector_server]),
+        None,
+    )
+    .await?;
+
+    // Example orchestrator request with streaming response
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_STREAMING_ENDPOINT)
+        .json(&GuardrailsHttpRequest {
+            model_id: model_id.into(),
+            inputs: "Hi there! How are you?".into(),
+            guardrail_config: Some(GuardrailsConfig {
+                input: Some(GuardrailsConfigInput {
+                    models: HashMap::from([(detector_name.into(), DetectorParams::new())]),
+                    masks: None,
+                }),
+                output: None,
+            }),
+            text_gen_parameters: None,
+        })
+        .send()
+        .await?;
+
+    // Test custom SseStream wrapper
+    let sse_stream: SseStream<OrchestratorError> = SseStream::new(response.bytes_stream());
+    let messages = sse_stream
+        .collect::<Vec<_>>()
+        .await
+        .into_iter()
+        .collect::<Result<Vec<_>, anyhow::Error>>()?;
+    debug!("{messages:#?}");
+
+    // assertions
+    assert!(messages.len() == 1);
+    assert!(messages[0].code == StatusCode::INTERNAL_SERVER_ERROR);
+    assert!(messages[0].details == ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE);
+
+    Ok(())
+}
