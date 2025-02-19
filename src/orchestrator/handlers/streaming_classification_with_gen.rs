@@ -1,7 +1,9 @@
+use std::sync::RwLock;
+
 use futures::StreamExt;
 
 use super::prelude::*;
-use crate::orchestrator::types::detection_batch_stream::SimpleBatcher;
+use crate::orchestrator::types::detection_batch_stream::{DetectionBatch, SimpleBatcher};
 
 impl Handle<StreamingClassificationWithGenTask> for Orchestrator {
     type Response = ReceiverStream<Result<ClassifiedGeneratedTextStreamResult, Error>>;
@@ -116,7 +118,21 @@ impl Handle<StreamingClassificationWithGenTask> for Orchestrator {
 
                     // Create generation broadcast channel
                     let generation_broadcast_tx = common::broadcast_stream(generation_stream);
-                    // let generation_broadcast_rx = generation_broadcast_tx.subscribe();
+
+                    // Create shared generations
+                    let generations: Arc<RwLock<Vec<ClassifiedGeneratedTextStreamResult>>> =
+                        Arc::new(RwLock::new(Vec::new()));
+
+                    // Spawn task to consume generations and update shared generations
+                    tokio::spawn({
+                        let generations = generations.clone();
+                        let mut generation_rx = generation_broadcast_tx.subscribe();
+                        async move {
+                            while let Ok(Ok((_index, message))) = generation_rx.recv().await {
+                                generations.write().unwrap().push(message);
+                            }
+                        }
+                    });
 
                     // Create detection streams
                     match common::text_contents_detection_streams(
@@ -138,13 +154,14 @@ impl Handle<StreamingClassificationWithGenTask> for Orchestrator {
                             while let Some(result) = detection_batch_stream.next().await {
                                 match result {
                                     Ok(batch) => {
-                                        // Build response message for this batch with output detections
+                                        // Create response for this batch with output detections
+                                        let response =
+                                            detection_batch_response(&generations, batch).unwrap();
                                         // Send message to response channel
-                                        // if response_tx.send(Ok(response)).await.is_err() {
-                                        //     warn!(%trace_id, "response channel closed (client disconnect), terminating task");
-                                        //     return;
-                                        // }
-                                        todo!()
+                                        if response_tx.send(Ok(response)).await.is_err() {
+                                            warn!(%trace_id, "response channel closed (client disconnect), terminating task");
+                                            return;
+                                        }
                                     }
                                     Err(error) => {
                                         error!(%trace_id, %error, "task failed: error received from detection batch stream");
@@ -189,6 +206,48 @@ impl Handle<StreamingClassificationWithGenTask> for Orchestrator {
 
         Ok(ReceiverStream::new(response_rx))
     }
+}
+
+/// Creates a response message for a batch of output detections.
+fn detection_batch_response(
+    generations: &Arc<RwLock<Vec<ClassifiedGeneratedTextStreamResult>>>,
+    batch: DetectionBatch,
+) -> Result<ClassifiedGeneratedTextStreamResult, Error> {
+    let DetectionBatch { chunk, detections } = batch;
+    // Get subset of generations relevant for this chunk
+    let generations_slice = generations
+        .read()
+        .unwrap()
+        .get(chunk.input_start_index..=chunk.input_end_index)
+        .unwrap_or_default()
+        .to_vec();
+    let last = generations_slice.last().cloned().unwrap_or_default();
+    let tokens = generations_slice
+        .iter()
+        .flat_map(|generation| generation.tokens.clone().unwrap_or_default())
+        .collect::<Vec<_>>();
+    let mut response = ClassifiedGeneratedTextStreamResult {
+        generated_text: Some(chunk.text),
+        start_index: Some(chunk.start as u32),
+        processed_index: Some(chunk.end as u32),
+        tokens: Some(tokens),
+        // Populate fields from last response or default
+        ..generations_slice.last().cloned().unwrap_or_default()
+    };
+    // response.token_classification_results.output = Some(detections); // TODO
+    if chunk.input_start_index == 0 {
+        // Get input_token_count and seed from first generation message
+        let first = generations_slice.first().unwrap();
+        response.input_token_count = first.input_token_count;
+        response.seed = first.seed;
+        // Get input_tokens from second generation message (if specified)
+        response.input_tokens = if let Some(second) = generations_slice.get(1) {
+            second.input_tokens.clone()
+        } else {
+            Some(Vec::default())
+        };
+    }
+    Ok(response)
 }
 
 #[derive(Debug)]
