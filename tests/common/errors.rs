@@ -16,12 +16,14 @@
 */
 use serde::{Deserialize, Serialize};
 
+/// Errors returned by detector endpoints.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct DetectorError {
     pub code: u16,
     pub message: String,
 }
 
+/// Errors returned by orchestrator endpoints.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct OrchestratorError {
     pub code: u16,

@@ -19,8 +19,8 @@ use mocktail::mock::MockSet;
 
 generate_grpc_server!("caikit.runtime.Nlp.NlpService", MockNlpServiceServer);
 
+// NLP generation server endpoints
 pub const GENERATION_NLP_STREAMING_ENDPOINT: &str =
     "/caikit.runtime.Nlp.NlpService/ServerStreamingTextGenerationTaskPredict";
-
 pub const GENERATION_NLP_TOKENIZATION_ENDPOINT: &str =
     "/caikit.runtime.Nlp.NlpService/TokenizationTaskPredict";

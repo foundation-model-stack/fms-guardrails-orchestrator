@@ -22,7 +22,9 @@ generate_grpc_server!(
     MockChunkersServiceServer
 );
 
+// Chunker names
 pub const CHUNKER_NAME_SENTENCE: &str = "sentence_chunker";
 
+// Chunker endpoints
 pub const CHUNKER_UNARY_ENDPOINT: &str =
     "/caikit.runtime.Chunkers.ChunkersService/ChunkerTokenizationTaskPredict";

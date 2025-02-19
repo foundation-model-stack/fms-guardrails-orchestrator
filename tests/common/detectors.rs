@@ -14,7 +14,10 @@
  limitations under the License.
 
 */
-pub const TEXT_CONTENTS_DETECTOR_ENDPOINT: &str = "/api/v1/text/contents";
 
+// Detector names
 pub const DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC: &str = "angle_brackets_detector_whole_doc";
 pub const DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE: &str = "angle_brackets_detector_sentence";
+
+// Detector endpoints
+pub const TEXT_CONTENTS_DETECTOR_ENDPOINT: &str = "/api/v1/text/contents";

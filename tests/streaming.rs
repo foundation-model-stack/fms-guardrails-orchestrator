@@ -29,7 +29,10 @@ use common::{
         MockNlpServiceServer, GENERATION_NLP_STREAMING_ENDPOINT,
         GENERATION_NLP_TOKENIZATION_ENDPOINT,
     },
-    orchestrator::{SseStream, TestOrchestratorServer, ORCHESTRATOR_CONFIG_FILE_PATH},
+    orchestrator::{
+        SseStream, TestOrchestratorServer, ORCHESTRATOR_CONFIG_FILE_PATH,
+        ORCHESTRATOR_STREAMING_ENDPOINT,
+    },
 };
 use fms_guardrails_orchestr8::{
     clients::{
@@ -55,9 +58,6 @@ use mocktail::{prelude::*, utils::find_available_port};
 use tracing::debug;
 
 pub mod common;
-
-const STREAMING_CLASSIFICATION_WITH_GEN_ENDPOINT: &str =
-    "/api/v1/task/server-streaming-classification-with-text-generation";
 
 #[test(tokio::test)]
 async fn test_no_detectors() -> Result<(), anyhow::Error> {
@@ -111,7 +111,7 @@ async fn test_no_detectors() -> Result<(), anyhow::Error> {
 
     // Example orchestrator request with streaming response
     let response = orchestrator_server
-        .post(STREAMING_CLASSIFICATION_WITH_GEN_ENDPOINT)
+        .post(ORCHESTRATOR_STREAMING_ENDPOINT)
         .json(&GuardrailsHttpRequest {
             model_id: model_id.into(),
             inputs: "Hi there! How are you?".into(),
@@ -225,7 +225,7 @@ async fn test_input_detector_whole_doc_no_detections() -> Result<(), anyhow::Err
 
     // Example orchestrator request with streaming response
     let response = orchestrator_server
-        .post(STREAMING_CLASSIFICATION_WITH_GEN_ENDPOINT)
+        .post(ORCHESTRATOR_STREAMING_ENDPOINT)
         .json(&GuardrailsHttpRequest {
             model_id: model_id.into(),
             inputs: "Hi there! How are you?".into(),
@@ -361,7 +361,7 @@ async fn test_input_detector_sentence_chunker_no_detections() -> Result<(), anyh
 
     // Example orchestrator request with streaming response
     let response = orchestrator_server
-        .post(STREAMING_CLASSIFICATION_WITH_GEN_ENDPOINT)
+        .post(ORCHESTRATOR_STREAMING_ENDPOINT)
         .json(&GuardrailsHttpRequest {
             model_id: model_id.into(),
             inputs: "Hi there! How are you?".into(),
@@ -464,7 +464,7 @@ async fn test_input_detector_whole_doc_with_detections() -> Result<(), anyhow::E
 
     // Example orchestrator request with streaming response
     let response = orchestrator_server
-        .post(STREAMING_CLASSIFICATION_WITH_GEN_ENDPOINT)
+        .post(ORCHESTRATOR_STREAMING_ENDPOINT)
         .json(&GuardrailsHttpRequest {
             model_id: model_id.into(),
             inputs: "This sentence does not have a detection. But <this one does>.".into(),
@@ -613,7 +613,7 @@ async fn test_input_detector_sentence_chunker_with_detections() -> Result<(), an
 
     // Example orchestrator request with streaming response
     let response = orchestrator_server
-        .post(STREAMING_CLASSIFICATION_WITH_GEN_ENDPOINT)
+        .post(ORCHESTRATOR_STREAMING_ENDPOINT)
         .json(&GuardrailsHttpRequest {
             model_id: model_id.into(),
             inputs: "This sentence does not have a detection. But <this one does>.".into(),
@@ -701,7 +701,7 @@ async fn test_input_detector_returns_503() -> Result<(), anyhow::Error> {
 
     // Example orchestrator request with streaming response
     let response = orchestrator_server
-        .post(STREAMING_CLASSIFICATION_WITH_GEN_ENDPOINT)
+        .post(ORCHESTRATOR_STREAMING_ENDPOINT)
         .json(&GuardrailsHttpRequest {
             model_id: model_id.into(),
             inputs: "This should return a 503".into(),
@@ -779,7 +779,7 @@ async fn test_input_detector_returns_404() -> Result<(), anyhow::Error> {
 
     // Example orchestrator request with streaming response
     let response = orchestrator_server
-        .post(STREAMING_CLASSIFICATION_WITH_GEN_ENDPOINT)
+        .post(ORCHESTRATOR_STREAMING_ENDPOINT)
         .json(&GuardrailsHttpRequest {
             model_id: model_id.into(),
             inputs: "This should return a 404".into(),
@@ -857,7 +857,7 @@ async fn test_input_detector_returns_500() -> Result<(), anyhow::Error> {
 
     // Example orchestrator request with streaming response
     let response = orchestrator_server
-        .post(STREAMING_CLASSIFICATION_WITH_GEN_ENDPOINT)
+        .post(ORCHESTRATOR_STREAMING_ENDPOINT)
         .json(&GuardrailsHttpRequest {
             model_id: model_id.into(),
             inputs: "This should return a 500".into(),
@@ -931,7 +931,7 @@ async fn test_input_detector_returns_non_compliant_message() -> Result<(), anyho
 
     // Example orchestrator request with streaming response
     let response = orchestrator_server
-        .post(STREAMING_CLASSIFICATION_WITH_GEN_ENDPOINT)
+        .post(ORCHESTRATOR_STREAMING_ENDPOINT)
         .json(&GuardrailsHttpRequest {
             model_id: model_id.into(),
             inputs: "The detector will return a message non compliant with the API".into(),

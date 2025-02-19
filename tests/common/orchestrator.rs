@@ -39,7 +39,10 @@ use super::{chunker::MockChunkersServiceServer, generation::MockNlpServiceServer
 /// Default orchestrator configuration file for integration tests.
 pub const ORCHESTRATOR_CONFIG_FILE_PATH: &str = "tests/test.config.yaml";
 
-pub const CONTENT_DETECTION_ORCHESTRATOR_ENDPOINT: &str = "/api/v2/text/detection/content";
+// Endpoints
+pub const ORCHESTRATOR_STREAMING_ENDPOINT: &str =
+    "/api/v1/task/server-streaming-classification-with-text-generation";
+pub const ORCHESTRATOR_CONTENT_DETECTION_ENDPOINT: &str = "/api/v2/text/detection/content";
 
 pub fn ensure_global_rustls_state() {
     let _ = ring::default_provider().install_default();

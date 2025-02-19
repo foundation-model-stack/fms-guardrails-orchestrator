@@ -25,8 +25,8 @@ use common::{
         TEXT_CONTENTS_DETECTOR_ENDPOINT,
     },
     orchestrator::{
-        TestOrchestratorServer, CONTENT_DETECTION_ORCHESTRATOR_ENDPOINT,
-        ORCHESTRATOR_CONFIG_FILE_PATH,
+        TestOrchestratorServer, ORCHESTRATOR_CONFIG_FILE_PATH,
+        ORCHESTRATOR_CONTENT_DETECTION_ENDPOINT,
     },
 };
 use fms_guardrails_orchestr8::{
@@ -45,8 +45,6 @@ use mocktail::{prelude::*, utils::find_available_port};
 use tracing::debug;
 
 pub mod common;
-
-// Constants
 
 /// Asserts a scenario with a single detection works as expected (assumes a detector configured with whole_doc_chunker).
 ///
@@ -92,7 +90,7 @@ async fn test_single_detection_whole_doc() -> Result<(), anyhow::Error> {
 
     // Make orchestrator call
     let response = orchestrator_server
-        .post(CONTENT_DETECTION_ORCHESTRATOR_ENDPOINT)
+        .post(ORCHESTRATOR_CONTENT_DETECTION_ENDPOINT)
         .json(&TextContentDetectionHttpRequest {
             content: "This sentence has <a detection here>.".into(),
             detectors: HashMap::from([(detector_name.into(), DetectorParams::new())]),
@@ -204,7 +202,7 @@ async fn test_single_detection_sentence_chunker() -> Result<(), anyhow::Error> {
 
     // Make orchestrator call
     let response = orchestrator_server
-        .post(CONTENT_DETECTION_ORCHESTRATOR_ENDPOINT)
+        .post(ORCHESTRATOR_CONTENT_DETECTION_ENDPOINT)
         .json(&TextContentDetectionHttpRequest {
             content: "This sentence does not have a detection. But <this one does>.".into(),
             detectors: HashMap::from([(detector_name.into(), DetectorParams::new())]),
