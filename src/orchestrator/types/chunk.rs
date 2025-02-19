@@ -1,7 +1,7 @@
 use crate::pb::caikit_data_model::nlp::{ChunkerTokenizationStreamResult, TokenizationResults};
 
 /// Internal representation of a single chunk.
-#[derive(Default, Debug, Clone, PartialEq)]
+#[derive(Default, Debug, Clone)]
 pub struct Chunk {
     /// Input message index where this chunk begins (streaming)
     pub input_start_index: usize,
@@ -13,6 +13,56 @@ pub struct Chunk {
     pub end: usize,
     /// Text
     pub text: String,
+}
+
+impl PartialOrd for Chunk {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Chunk {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        (
+            self.input_start_index,
+            self.input_end_index,
+            self.start,
+            self.end,
+        )
+            .cmp(&(
+                other.input_start_index,
+                other.input_end_index,
+                other.start,
+                other.end,
+            ))
+    }
+}
+
+impl PartialEq for Chunk {
+    fn eq(&self, other: &Self) -> bool {
+        (
+            self.input_start_index,
+            self.input_end_index,
+            self.start,
+            self.end,
+        ) == (
+            other.input_start_index,
+            other.input_end_index,
+            other.start,
+            other.end,
+        )
+    }
+}
+
+impl Eq for Chunk {}
+
+impl std::hash::Hash for Chunk {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.input_start_index.hash(state);
+        self.input_end_index.hash(state);
+        self.start.hash(state);
+        self.end.hash(state);
+    }
 }
 
 #[derive(Default, Debug, Clone)]

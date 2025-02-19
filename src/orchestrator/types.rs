@@ -9,7 +9,9 @@ pub mod detection;
 pub use chunk::{Chunk, Chunks};
 pub use detection::{Detection, Detections};
 pub mod detection_batch_stream;
-pub use detection_batch_stream::DetectionBatchStream;
+pub use detection_batch_stream::{
+    ChatCompletionBatcher, CompletedChunkBatcher, DetectionBatchStream, FakeBatcher,
+};
 
 use super::Error;
 use crate::models;

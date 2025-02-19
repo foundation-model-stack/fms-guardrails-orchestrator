@@ -12,7 +12,7 @@ use crate::{
     },
 };
 
-/// Consumes an input stream and forwards messages to a broadcast channel.
+/// Fans-out messages from an input stream to a broadcast channel.
 pub fn broadcast_stream<T>(mut input_stream: BoxStream<T>) -> broadcast::Sender<T>
 where
     T: Clone + Send + 'static,

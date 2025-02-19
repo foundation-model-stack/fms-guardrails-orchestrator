@@ -119,6 +119,10 @@ where
                         .await?
                         .into_iter()
                         .filter(|detection| detection.score >= threshold)
+                        .map(|mut detection| {
+                            detection.detector_id = Some(detector_id.clone());
+                            detection
+                        })
                         .collect::<Detections>();
                 detections.sort_by_key(|detection| detection.start);
                 Ok::<_, Error>((detector_id, detections))
@@ -138,7 +142,7 @@ pub async fn text_contents_detection_streams<T>(
     headers: HeaderMap,
     detectors: &HashMap<DetectorId, DetectorParams>,
     input_broadcast_tx: broadcast::Sender<Result<(usize, T), Error>>,
-) -> Result<Vec<(DetectorId, DetectionStream)>, Error>
+) -> Result<Vec<DetectionStream>, Error>
 where
     T: ToString + Clone + Send,
 {

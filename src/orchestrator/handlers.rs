@@ -32,7 +32,7 @@ mod prelude {
     pub use opentelemetry::trace::TraceId;
     pub use tokio::sync::mpsc;
     pub use tokio_stream::wrappers::ReceiverStream;
-    pub use tracing::{debug, error, info, instrument, warn};
+    pub use tracing::{error, info};
 
     pub use super::*;
     pub use crate::{

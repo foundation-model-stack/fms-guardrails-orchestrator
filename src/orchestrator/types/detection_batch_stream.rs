@@ -7,6 +7,15 @@ use tokio_stream::wrappers::ReceiverStream;
 use super::{BoxStream, Chunk, Chunks, DetectionStream, Detections};
 use crate::orchestrator::{types::DetectorId, Error};
 
+/// A detection batcher.
+pub trait DetectionBatcher: Send + 'static {
+    type Batch: Send + 'static;
+
+    fn push(&mut self, detector_id: DetectorId, chunk: Chunk, detections: Detections);
+    fn pop_batch(&mut self) -> Option<Self::Batch>;
+}
+
+/// Wraps detection streams and returns a stream of batches using pluggable batchers.
 pub struct DetectionBatchStream<B: DetectionBatcher> {
     inner: BoxStream<Result<B::Batch, Error>>,
 }
@@ -15,8 +24,7 @@ impl<B> DetectionBatchStream<B>
 where
     B: DetectionBatcher,
 {
-    pub fn new(mut batcher: B, streams: Vec<(DetectorId, DetectionStream)>) -> Self {
-        let (detectors, streams): (Vec<_>, Vec<_>) = streams.into_iter().unzip();
+    pub fn new(mut batcher: B, streams: Vec<DetectionStream>) -> Self {
         let (batch_tx, batch_rx) = mpsc::channel(32);
         let (batcher_tx, mut batcher_rx) =
             mpsc::channel::<Result<(DetectorId, Chunk, Detections), Error>>(32);
@@ -70,42 +78,34 @@ impl<T: DetectionBatcher> Stream for DetectionBatchStream<T> {
     }
 }
 
-pub trait DetectionBatcher: Send + 'static {
-    type Batch: Send + 'static;
-
-    fn push(&mut self, detector_id: DetectorId, chunk: Chunk, detections: Detections);
-    fn pop_batch(&mut self) -> Option<Self::Batch>;
-}
-
-/// A batcher implementation based on the original tracker.
+/// A simple batcher implementation based on the original tracker.
 /// Does not support detections with different chunkers applied.
-pub struct SimpleBatcher {
-    detectors: Vec<DetectorId>,
-    state: BTreeMap<Span, (Chunk, Vec<Detections>)>,
+pub struct CompletedChunkBatcher {
+    detector_count: usize,
+    state: BTreeMap<Chunk, Vec<Detections>>,
 }
 
-impl SimpleBatcher {
-    pub fn new(detectors: Vec<DetectorId>) -> Self {
+impl CompletedChunkBatcher {
+    pub fn new(detector_count: usize) -> Self {
         Self {
-            detectors,
+            detector_count,
             state: BTreeMap::default(),
         }
     }
 }
 
-impl DetectionBatcher for SimpleBatcher {
-    type Batch = DetectionBatch;
+impl DetectionBatcher for CompletedChunkBatcher {
+    type Batch = (Chunk, Detections);
 
     fn push(&mut self, _detector_id: DetectorId, chunk: Chunk, detections: Detections) {
-        let span = Span::new(chunk.start, chunk.end);
-        match self.state.entry(span) {
+        match self.state.entry(chunk) {
             btree_map::Entry::Vacant(entry) => {
                 // New span, insert entry with chunk and detections
-                entry.insert((chunk, vec![detections]));
+                entry.insert(vec![detections]);
             }
             btree_map::Entry::Occupied(mut entry) => {
                 // Existing span, push detections
-                entry.get_mut().1.push(detections);
+                entry.get_mut().push(detections);
             }
         }
     }
@@ -115,11 +115,11 @@ impl DetectionBatcher for SimpleBatcher {
         if self
             .state
             .first_key_value()
-            .is_some_and(|(_, (chunk, detections))| detections.len() == self.detectors.len())
+            .is_some_and(|(_, detections)| detections.len() == self.detector_count)
         {
-            if let Some((span, (chunk, detections))) = self.state.pop_first() {
+            if let Some((chunk, detections)) = self.state.pop_first() {
                 let detections = detections.into_iter().flatten().collect();
-                Some(DetectionBatch { chunk, detections })
+                Some((chunk, detections))
             } else {
                 None
             }
@@ -145,23 +145,15 @@ impl FakeBatcher {
 }
 
 impl DetectionBatcher for FakeBatcher {
-    type Batch = DetectionBatch;
+    type Batch = (Chunk, Detections);
 
     fn push(&mut self, _detector_id: DetectorId, chunk: Chunk, detections: Detections) {
         self.state.push_back((chunk, detections));
     }
 
     fn pop_batch(&mut self) -> Option<Self::Batch> {
-        self.state
-            .pop_front()
-            .map(|(chunk, detections)| DetectionBatch { chunk, detections })
+        self.state.pop_front()
     }
-}
-
-#[derive(Debug, Clone)]
-pub struct DetectionBatch {
-    pub chunk: Chunk,
-    pub detections: Detections,
 }
 
 /// A batcher implementation for chat completion detections.
@@ -217,7 +209,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_detection_batch_stream() -> Result<(), Error> {
-        let batcher = SimpleBatcher::new(vec!["d1".to_string(), "d2".to_string()]);
+        let batcher = CompletedChunkBatcher::new(2);
         let d1_stream = stream::iter(vec![
             Ok(("d1".to_string(), Chunk::default(), Detections::default())),
             Ok(("d1".to_string(), Chunk::default(), Detections::default())),
@@ -230,7 +222,7 @@ mod tests {
             Ok(("d2".to_string(), Chunk::default(), Detections::default())),
         ])
         .boxed();
-        let streams = vec![("d1".to_string(), d1_stream), ("d2".to_string(), d2_stream)];
+        let streams = vec![d1_stream, d2_stream];
         let batch_stream = DetectionBatchStream::new(batcher, streams);
 
         Ok(())

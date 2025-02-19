@@ -3,7 +3,6 @@ use std::sync::RwLock;
 use futures::StreamExt;
 
 use super::prelude::*;
-use crate::orchestrator::types::detection_batch_stream::{DetectionBatch, SimpleBatcher};
 
 impl Handle<StreamingClassificationWithGenTask> for Orchestrator {
     type Response = ReceiverStream<Result<ClassifiedGeneratedTextStreamResult, Error>>;
@@ -13,194 +12,71 @@ impl Handle<StreamingClassificationWithGenTask> for Orchestrator {
         task: StreamingClassificationWithGenTask,
     ) -> Result<Self::Response, Error> {
         let ctx = self.ctx.clone();
-        let headers = task.headers;
-        let trace_id = task.trace_id;
-        let input_text = task.inputs;
-        let model_id = task.model_id;
-        let generate_params = task.text_gen_parameters;
 
+        // Create response channel
         let (response_tx, response_rx) =
             mpsc::channel::<Result<ClassifiedGeneratedTextStreamResult, Error>>(32);
 
-        // Validate guardrails config
-        // Return error for unsupported detectors or whole doc chunker
-        // validate_guardrails(&ctx, &guardrails)?;
-
         tokio::spawn(async move {
-            let guardrails = task.guardrails_config;
+            let trace_id = &task.trace_id;
+            let guardrails = &task.guardrails_config;
             let input_detectors = guardrails.input_detectors();
             let output_detectors = guardrails.output_detectors();
+            info!(%trace_id, "task started");
 
-            // Process input detections (unary)
-            let input_detections = if let Some(detectors) = input_detectors {
-                let inputs = common::apply_masks(input_text.clone(), guardrails.input_masks());
-                match common::text_contents_detections(
-                    ctx.clone(),
-                    headers.clone(),
-                    detectors,
-                    inputs,
-                )
-                .await
-                {
-                    Ok(detections) => {
-                        let detections = detections
-                            .into_iter()
-                            .map(|(_detector_id, detections)| detections)
-                            .collect::<Vec<_>>();
-                        (!detections.is_empty()).then_some(detections)
+            // TODO: validate guardrails
+
+            if let Some(detectors) = input_detectors {
+                // Handle input detection
+                match handle_input_detection(ctx.clone(), &task, detectors).await {
+                    Ok(Some(response)) => {
+                        info!(%trace_id, "task completed: returning response with input detections");
+                        // Send message with input detections to response channel and terminate
+                        let _ = response_tx.send(Ok(response)).await;
+                        return;
                     }
+                    Ok(None) => (), // No input detections
                     Err(error) => {
-                        error!(%trace_id, %error, "task failed: error processing input detections");
+                        // Input detections failed
                         // Send error to response channel and terminate
                         let _ = response_tx.send(Err(error)).await;
                         return;
                     }
                 }
-            } else {
-                None
+            }
+
+            // Create generation stream
+            let generation_stream = match common::generate_stream(
+                ctx.clone(),
+                task.headers.clone(),
+                task.model_id.clone(),
+                task.inputs.clone(),
+                task.text_gen_parameters.clone(),
+            )
+            .await
+            {
+                Ok(stream) => stream,
+                Err(error) => {
+                    error!(%trace_id, %error, "task failed: error creating generation stream");
+                    // Send error to response channel and terminate
+                    let _ = response_tx.send(Err(error)).await;
+                    return;
+                }
             };
 
-            if let Some(detections) = input_detections {
-                // Build response message with input detections
-                // Get token count
-                let input_token_count = match common::tokenize(
+            if let Some(detectors) = output_detectors {
+                // Handle output detection
+                handle_output_detection(
                     ctx.clone(),
-                    headers.clone(),
-                    model_id.clone(),
-                    input_text.clone(),
+                    &task,
+                    detectors,
+                    generation_stream,
+                    response_tx,
                 )
-                .await
-                {
-                    Ok((token_count, _tokens)) => token_count,
-                    Err(error) => {
-                        error!(%trace_id, %error, "task failed: error tokenizing input text");
-                        // Send error to response channel and terminate
-                        let _ = response_tx.send(Err(error)).await;
-                        return;
-                    }
-                };
-                let response = ClassifiedGeneratedTextStreamResult {
-                    input_token_count,
-                    token_classification_results: TextGenTokenClassificationResults {
-                        // input: Some(detections.into()), // TODO: convert Vec<Detection> into Vec<TokenClassificationResult>
-                        input: None,
-                        output: None,
-                    },
-                    warnings: Some(vec![DetectionWarning::unsuitable_input()]),
-                    ..Default::default()
-                };
-                // Send message with input detections to response channel
-                let _ = response_tx.send(Ok(response)).await;
+                .await;
             } else {
-                // No input detections
-
-                // Create generation stream
-                let mut generation_stream = match common::generate_stream(
-                    ctx.clone(),
-                    headers.clone(),
-                    model_id.clone(),
-                    input_text.clone(),
-                    generate_params.clone(),
-                )
-                .await
-                {
-                    Ok(stream) => stream,
-                    Err(error) => {
-                        error!(%trace_id, %error, "task failed: error creating generation stream");
-                        // Send error to response channel and terminate
-                        let _ = response_tx.send(Err(error)).await;
-                        return;
-                    }
-                };
-
-                if let Some(detectors) = output_detectors {
-                    // Process output detections (streaming)
-
-                    // Create generation broadcast channel
-                    let generation_broadcast_tx = common::broadcast_stream(generation_stream);
-
-                    // Create shared generations
-                    let generations: Arc<RwLock<Vec<ClassifiedGeneratedTextStreamResult>>> =
-                        Arc::new(RwLock::new(Vec::new()));
-
-                    // Spawn task to consume generations and update shared generations
-                    tokio::spawn({
-                        let generations = generations.clone();
-                        let mut generation_rx = generation_broadcast_tx.subscribe();
-                        async move {
-                            while let Ok(Ok((_index, message))) = generation_rx.recv().await {
-                                generations.write().unwrap().push(message);
-                            }
-                        }
-                    });
-
-                    // Create detection streams
-                    match common::text_contents_detection_streams(
-                        ctx.clone(),
-                        headers.clone(),
-                        detectors,
-                        generation_broadcast_tx,
-                    )
-                    .await
-                    {
-                        Ok(detection_streams) => {
-                            // Create detection batch stream
-                            let detectors = detectors.keys().cloned().collect::<Vec<_>>();
-                            let mut detection_batch_stream = DetectionBatchStream::new(
-                                SimpleBatcher::new(detectors),
-                                detection_streams,
-                            );
-                            // Consume detection batch stream
-                            while let Some(result) = detection_batch_stream.next().await {
-                                match result {
-                                    Ok(batch) => {
-                                        // Create response for this batch with output detections
-                                        let response =
-                                            detection_batch_response(&generations, batch).unwrap();
-                                        // Send message to response channel
-                                        if response_tx.send(Ok(response)).await.is_err() {
-                                            warn!(%trace_id, "response channel closed (client disconnect), terminating task");
-                                            return;
-                                        }
-                                    }
-                                    Err(error) => {
-                                        error!(%trace_id, %error, "task failed: error received from detection batch stream");
-                                        // Send error to response channel and terminate
-                                        let _ = response_tx.send(Err(error)).await;
-                                        return;
-                                    }
-                                }
-                            }
-                            debug!(%trace_id, "task completed: detection batch stream closed");
-                        }
-                        Err(error) => {
-                            error!(%trace_id, %error, "task failed: error creating detection streams");
-                            // Send error to response channel and terminate
-                            let _ = response_tx.send(Err(error)).await;
-                        }
-                    }
-                } else {
-                    // No output detectors
-                    // Consume generation stream
-                    while let Some(result) = generation_stream.next().await {
-                        match result {
-                            Ok((_index, response)) => {
-                                // Send message to response channel
-                                if response_tx.send(Ok(response)).await.is_err() {
-                                    warn!(%trace_id, "response channel closed (client disconnect), terminating task");
-                                    return;
-                                }
-                            }
-                            Err(error) => {
-                                error!(%trace_id, %error, "task failed: error received from generation stream");
-                                // Send error to response channel and terminate
-                                let _ = response_tx.send(Err(error)).await;
-                                return;
-                            }
-                        }
-                    }
-                    debug!(%trace_id, "task completed: generation stream closed");
-                }
+                // No output detectors, process generation stream
+                process_generation_stream(trace_id, generation_stream, response_tx).await;
             }
         });
 
@@ -208,12 +84,219 @@ impl Handle<StreamingClassificationWithGenTask> for Orchestrator {
     }
 }
 
-/// Creates a response message for a batch of output detections.
-fn detection_batch_response(
+async fn handle_input_detection(
+    ctx: Arc<Context>,
+    task: &StreamingClassificationWithGenTask,
+    detectors: &HashMap<String, DetectorParams>,
+) -> Result<Option<ClassifiedGeneratedTextStreamResult>, Error> {
+    let trace_id = &task.trace_id;
+    let headers = &task.headers;
+    let guardrails = &task.guardrails_config;
+    let model_id = task.model_id.clone();
+    let input_text = task.inputs.clone();
+
+    let inputs = common::apply_masks(input_text.clone(), guardrails.input_masks());
+    let detections =
+        match common::text_contents_detections(ctx.clone(), headers.clone(), detectors, inputs)
+            .await
+        {
+            Ok(detections) => detections
+                .into_iter()
+                .flat_map(|(_detector_id, detections)| detections)
+                .collect::<Detections>(),
+            Err(error) => {
+                error!(%trace_id, %error, "task failed: error processing input detections");
+                return Err(error);
+            }
+        };
+    if !detections.is_empty() {
+        // Get token count
+        let input_token_count =
+            match common::tokenize(ctx.clone(), headers.clone(), model_id, input_text).await {
+                Ok((token_count, _tokens)) => token_count,
+                Err(error) => {
+                    error!(%trace_id, %error, "task failed: error tokenizing input text");
+                    return Err(error);
+                }
+            };
+        // Build response with input detections
+        let response = input_detection_response(input_token_count, detections);
+        Ok(Some(response))
+    } else {
+        // No input detections
+        Ok(None)
+    }
+}
+
+async fn handle_output_detection(
+    ctx: Arc<Context>,
+    task: &StreamingClassificationWithGenTask,
+    detectors: &HashMap<String, DetectorParams>,
+    generation_stream: GenerationStream,
+    response_tx: mpsc::Sender<Result<ClassifiedGeneratedTextStreamResult, Error>>,
+) {
+    let trace_id = &task.trace_id;
+
+    // Create generation broadcast channel
+    let generation_broadcast_tx = common::broadcast_stream(generation_stream);
+
+    // Create shared generations
+    let generations: Arc<RwLock<Vec<ClassifiedGeneratedTextStreamResult>>> =
+        Arc::new(RwLock::new(Vec::new()));
+
+    // Spawn task to consume generations and update shared generations
+    tokio::spawn({
+        let generations = generations.clone();
+        let mut generation_rx = generation_broadcast_tx.subscribe();
+        async move {
+            while let Ok(Ok((_index, message))) = generation_rx.recv().await {
+                generations.write().unwrap().push(message);
+            }
+        }
+    });
+
+    // Create detection streams
+    match common::text_contents_detection_streams(
+        ctx,
+        task.headers.clone(),
+        detectors,
+        generation_broadcast_tx,
+    )
+    .await
+    {
+        Ok(mut detection_streams) if detection_streams.len() == 1 => {
+            // Process single detection stream, batching not applicable
+            let detection_stream = detection_streams.swap_remove(1);
+            process_detection_stream(trace_id, generations, detection_stream, response_tx).await;
+        }
+        Ok(detection_streams) => {
+            // Create detection batch stream
+            let detection_batch_stream = DetectionBatchStream::new(
+                CompletedChunkBatcher::new(detectors.len()),
+                detection_streams,
+            );
+            process_detection_batch_stream(
+                trace_id,
+                generations,
+                detection_batch_stream,
+                response_tx,
+            )
+            .await;
+        }
+        Err(error) => {
+            error!(%trace_id, %error, "task failed: error creating detection streams");
+            // Send error to response channel and terminate
+            let _ = response_tx.send(Err(error)).await;
+        }
+    }
+}
+
+/// Consumes a generation stream, forwarding messages to a response channel.
+async fn process_generation_stream(
+    trace_id: &TraceId,
+    mut generation_stream: GenerationStream,
+    response_tx: mpsc::Sender<Result<ClassifiedGeneratedTextStreamResult, Error>>,
+) {
+    while let Some(result) = generation_stream.next().await {
+        match result {
+            Ok((_index, response)) => {
+                // Send message to response channel
+                if response_tx.send(Ok(response)).await.is_err() {
+                    info!(%trace_id, "task completed: client disconnected");
+                    return;
+                }
+            }
+            Err(error) => {
+                error!(%trace_id, %error, "task failed: error received from generation stream");
+                // Send error to response channel and terminate
+                let _ = response_tx.send(Err(error)).await;
+                return;
+            }
+        }
+    }
+    info!(%trace_id, "task completed: generation stream closed");
+}
+
+/// Consumes a detection stream, builds responses, and sends them to a response channel.
+async fn process_detection_stream(
+    trace_id: &TraceId,
+    generations: Arc<RwLock<Vec<ClassifiedGeneratedTextStreamResult>>>,
+    mut detection_stream: DetectionStream,
+    response_tx: mpsc::Sender<Result<ClassifiedGeneratedTextStreamResult, Error>>,
+) {
+    while let Some(result) = detection_stream.next().await {
+        match result {
+            Ok((_, chunk, detections)) => {
+                // Create response for this batch with output detections
+                let response = output_detection_response(&generations, chunk, detections).unwrap();
+                // Send message to response channel
+                if response_tx.send(Ok(response)).await.is_err() {
+                    info!(%trace_id, "task completed: client disconnected");
+                    return;
+                }
+            }
+            Err(error) => {
+                error!(%trace_id, %error, "task failed: error received from detection stream");
+                // Send error to response channel and terminate
+                let _ = response_tx.send(Err(error)).await;
+                return;
+            }
+        }
+    }
+    info!(%trace_id, "task completed: detection stream closed");
+}
+
+/// Consumes a detection batch stream, builds responses, and sends them to a response channel.
+async fn process_detection_batch_stream(
+    trace_id: &TraceId,
+    generations: Arc<RwLock<Vec<ClassifiedGeneratedTextStreamResult>>>,
+    mut detection_batch_stream: DetectionBatchStream<CompletedChunkBatcher>,
+    response_tx: mpsc::Sender<Result<ClassifiedGeneratedTextStreamResult, Error>>,
+) {
+    while let Some(result) = detection_batch_stream.next().await {
+        match result {
+            Ok((chunk, detections)) => {
+                // Create response for this batch with output detections
+                let response = output_detection_response(&generations, chunk, detections).unwrap();
+                // Send message to response channel
+                if response_tx.send(Ok(response)).await.is_err() {
+                    info!(%trace_id, "task completed: client disconnected");
+                    return;
+                }
+            }
+            Err(error) => {
+                error!(%trace_id, %error, "task failed: error received from detection batch stream");
+                // Send error to response channel and terminate
+                let _ = response_tx.send(Err(error)).await;
+                return;
+            }
+        }
+    }
+    info!(%trace_id, "task completed: detection batch stream closed");
+}
+
+/// Builds a response with input detections.
+fn input_detection_response(
+    input_token_count: u32,
+    detections: Detections,
+) -> ClassifiedGeneratedTextStreamResult {
+    ClassifiedGeneratedTextStreamResult {
+        input_token_count,
+        token_classification_results: TextGenTokenClassificationResults {
+            input: Some(detections.into()),
+            output: None,
+        },
+        warnings: Some(vec![DetectionWarning::unsuitable_input()]),
+        ..Default::default()
+    }
+}
+
+/// Builds a response with output detections.
+fn output_detection_response(
     generations: &Arc<RwLock<Vec<ClassifiedGeneratedTextStreamResult>>>,
-    batch: DetectionBatch,
+    chunk: Chunk,
+    detections: Detections,
 ) -> Result<ClassifiedGeneratedTextStreamResult, Error> {
-    let DetectionBatch { chunk, detections } = batch;
     // Get subset of generations relevant for this chunk
     let generations_slice = generations
         .read()
@@ -231,10 +314,9 @@ fn detection_batch_response(
         start_index: Some(chunk.start as u32),
         processed_index: Some(chunk.end as u32),
         tokens: Some(tokens),
-        // Populate fields from last response or default
-        ..generations_slice.last().cloned().unwrap_or_default()
+        ..last
     };
-    // response.token_classification_results.output = Some(detections); // TODO
+    response.token_classification_results.output = Some(detections.into());
     if chunk.input_start_index == 0 {
         // Get input_token_count and seed from first generation message
         let first = generations_slice.first().unwrap();

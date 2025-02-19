@@ -6,6 +6,7 @@ pub struct Detection {
     pub start: Option<usize>,
     pub end: Option<usize>,
     pub text: Option<String>,
+    pub detector_id: Option<String>,
     pub detection_type: String,
     pub detection: String,
     pub score: f64,
@@ -75,6 +76,7 @@ impl From<detector::ContentAnalysisResponse> for Detection {
             start: Some(value.start),
             end: Some(value.end),
             text: Some(value.text),
+            detector_id: value.detector_id,
             detection_type: value.detection_type,
             detection: value.detection,
             score: value.score,
@@ -124,6 +126,7 @@ impl From<models::DetectionResult> for Detection {
             start: None,
             end: None,
             text: None,
+            detector_id: value.detector_id,
             detection_type: value.detection_type,
             detection: value.detection,
             score: value.score,
@@ -143,12 +146,21 @@ impl From<Vec<models::DetectionResult>> for Detections {
 
 impl From<Detection> for models::TokenClassificationResult {
     fn from(value: Detection) -> Self {
-        todo!()
+        Self {
+            start: value.start.map(|v| v as u32).unwrap(),
+            end: value.end.map(|v| v as u32).unwrap(),
+            word: value.text.unwrap_or_default(),
+            entity: value.detection,
+            entity_group: value.detection_type,
+            detector_id: value.detector_id,
+            score: value.score,
+            token_count: None,
+        }
     }
 }
 
 impl From<Detections> for Vec<models::TokenClassificationResult> {
     fn from(value: Detections) -> Self {
-        todo!()
+        value.into_iter().map(Into::into).collect()
     }
 }
