@@ -516,10 +516,8 @@ async fn test_input_detector_whole_doc_with_detections() -> Result<(), anyhow::E
 }
 
 #[test(tokio::test)]
-async fn test_input_detector_sentence_chunker_no_detections() -> Result<(), anyhow::Error> {
-    let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE;
-
-    // Add input chunker mock
+async fn test_input_detector_sentence_chunker_with_detections() -> Result<(), anyhow::Error> {
+    // Add chunker mock
     let chunker_id = CHUNKER_NAME_SENTENCE;
     let mut chunker_headers = HeaderMap::new();
     chunker_headers.insert(CHUNKER_MODEL_ID_HEADER_NAME, chunker_id.parse()?);
@@ -529,20 +527,20 @@ async fn test_input_detector_sentence_chunker_no_detections() -> Result<(), anyh
         MockPath::new(Method::POST, CHUNKER_UNARY_ENDPOINT),
         Mock::new(
             MockRequest::pb(ChunkerTokenizationTaskRequest {
-                text: "Hi there! How are you?".into(),
+                text: "This sentence does not have a detection. But <this one does>.".into(),
             })
             .with_headers(chunker_headers),
             MockResponse::pb(TokenizationResults {
                 results: vec![
                     Token {
                         start: 0,
-                        end: 9,
-                        text: "Hi there!".into(),
+                        end: 40,
+                        text: "This sentence does not have a detection.".into(),
                     },
                     Token {
-                        start: 10,
-                        end: 22,
-                        text: " How are you?".into(),
+                        start: 41,
+                        end: 61,
+                        text: "But <this one does>.".into(),
                     },
                 ],
                 token_count: 0,
@@ -551,51 +549,50 @@ async fn test_input_detector_sentence_chunker_no_detections() -> Result<(), anyh
     );
 
     // Add input detection mock
+    let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE;
+    let mock_detection_response = ContentAnalysisResponse {
+        start: 5,
+        end: 18,
+        text: "this one does".into(),
+        detection: "has_angle_brackets".into(),
+        detection_type: "angle_brackets".into(),
+        detector_id: Some(detector_name.into()),
+        score: 1.0,
+        evidence: None,
+    };
     let mut detection_mocks = MockSet::new();
     detection_mocks.insert(
         MockPath::new(Method::POST, TEXT_CONTENTS_DETECTOR_ENDPOINT),
         Mock::new(
             MockRequest::json(ContentAnalysisRequest {
-                contents: vec!["Hi there!".into(), " How are you?".into()],
+                contents: vec![
+                    "This sentence does not have a detection.".into(),
+                    "But <this one does>.".into(),
+                ],
                 detector_params: DetectorParams::new(),
             }),
-            MockResponse::json([
-                Vec::<ContentAnalysisResponse>::new(),
-                Vec::<ContentAnalysisResponse>::new(),
-            ]),
+            MockResponse::json(vec![vec![], vec![mock_detection_response.clone()]]),
         ),
     );
 
-    // Add generation mock
+    // Add generation mock for input token count
     let model_id = "my-super-model-8B";
+    let mock_tokenization_response = TokenizationResults {
+        results: Vec::new(),
+        token_count: 61,
+    };
     let mut headers = HeaderMap::new();
     headers.insert(NLP_MODEL_ID_HEADER_NAME, model_id.parse().unwrap());
-
-    let expected_response = vec![
-        GeneratedTextStreamResult {
-            generated_text: "I".into(),
-            ..Default::default()
-        },
-        GeneratedTextStreamResult {
-            generated_text: " am".into(),
-            ..Default::default()
-        },
-        GeneratedTextStreamResult {
-            generated_text: " great!".into(),
-            ..Default::default()
-        },
-    ];
-
     let mut generation_mocks = MockSet::new();
     generation_mocks.insert(
-        MockPath::new(Method::POST, GENERATION_NLP_STREAMING_ENDPOINT),
+        MockPath::new(Method::POST, GENERATION_NLP_TOKENIZATION_ENDPOINT),
         Mock::new(
-            MockRequest::pb(ServerStreamingTextGenerationTaskRequest {
-                text: "Hi there! How are you?".into(),
+            MockRequest::pb(TokenizationTaskRequest {
+                text: "This sentence does not have a detection. But <this one does>.".into(),
                 ..Default::default()
             })
             .with_headers(headers.clone()),
-            MockResponse::pb_stream(expected_response.clone()),
+            MockResponse::pb(mock_tokenization_response.clone()),
         ),
     );
 
@@ -619,7 +616,7 @@ async fn test_input_detector_sentence_chunker_no_detections() -> Result<(), anyh
         .post(STREAMING_CLASSIFICATION_WITH_GEN_ENDPOINT)
         .json(&GuardrailsHttpRequest {
             model_id: model_id.into(),
-            inputs: "Hi there! How are you?".into(),
+            inputs: "This sentence does not have a detection. But <this one does>.".into(),
             guardrail_config: Some(GuardrailsConfig {
                 input: Some(GuardrailsConfigInput {
                     models: HashMap::from([(detector_name.into(), DetectorParams::new())]),
@@ -632,8 +629,6 @@ async fn test_input_detector_sentence_chunker_no_detections() -> Result<(), anyh
         .send()
         .await?;
 
-    debug!("{response:#?}");
-
     // Test custom SseStream wrapper
     let sse_stream: SseStream<ClassifiedGeneratedTextStreamResult> =
         SseStream::new(response.bytes_stream());
@@ -645,10 +640,26 @@ async fn test_input_detector_sentence_chunker_no_detections() -> Result<(), anyh
     debug!("{messages:#?}");
 
     // assertions
-    assert!(messages.len() == 3);
-    assert!(messages[0].generated_text == Some("I".into()));
-    assert!(messages[1].generated_text == Some(" am".into()));
-    assert!(messages[2].generated_text == Some(" great!".into()));
+    assert!(messages.len() == 1);
+    assert!(messages[0].generated_text == None);
+    assert!(
+        messages[0].token_classification_results
+            == TextGenTokenClassificationResults {
+                input: Some(vec![TokenClassificationResult {
+                    start: 46 as u32, // index of first token of detected text, relative to the `inputs` string sent in the orchestrator request.
+                    end: 59 as u32, // index of last token (+1) of detected text, relative to the `inputs` string sent in the orchestrator request.
+                    word: mock_detection_response.text,
+                    entity: mock_detection_response.detection,
+                    entity_group: mock_detection_response.detection_type,
+                    detector_id: mock_detection_response.detector_id,
+                    score: mock_detection_response.score,
+                    token_count: None
+                }]),
+                output: None
+            }
+    );
+    assert!(messages[0].input_token_count == mock_tokenization_response.token_count as u32);
+    assert!(messages[0].warnings == Some(vec![DetectionWarning{ id: Some(fms_guardrails_orchestr8::models::DetectionWarningReason::UnsuitableInput), message: Some("Unsuitable input detected. Please check the detected entities on your input and try again with the unsuitable input removed.".into()) }]));
 
     Ok(())
 }
