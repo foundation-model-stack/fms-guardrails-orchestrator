@@ -1121,3 +1121,48 @@ async fn test_generation_server_returns_an_error() -> Result<(), anyhow::Error> 
 
     Ok(())
 }
+
+#[test(tokio::test)]
+async fn test_orchestrator_receives_a_non_compliant_request() -> Result<(), anyhow::Error> {
+    let model_id = "my-super-model-8B";
+
+    // Run test orchestrator server
+    let orchestrator_server = TestOrchestratorServer::run(
+        ORCHESTRATOR_CONFIG_FILE_PATH,
+        find_available_port().unwrap(),
+        find_available_port().unwrap(),
+        None,
+        None,
+        None,
+        None,
+    )
+    .await?;
+
+    // Example orchestrator request with streaming response
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_STREAMING_ENDPOINT)
+        .json(&serde_json::json!({
+            "model_id": model_id,
+            "inputs": "This request does not comply with the orchestrator API",
+            "guardrail_config": {
+                "inputs": {},
+                "outputs": {}
+            },
+            "non_existing_field": "random value"
+        }))
+        .send()
+        .await?;
+
+    debug!(?response);
+
+    // assertions
+    assert!(response.status() == StatusCode::UNPROCESSABLE_ENTITY);
+
+    let response_body = response.json::<OrchestratorError>().await?;
+    assert!(response_body.code == StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(response_body
+        .details
+        .starts_with("non_existing_field: unknown field `non_existing_field`"));
+
+    Ok(())
+}
