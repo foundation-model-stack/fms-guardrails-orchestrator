@@ -24,6 +24,7 @@ use common::{
         DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE, DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC,
         TEXT_CONTENTS_DETECTOR_ENDPOINT,
     },
+    errors::{DetectorError, OrchestratorError},
     orchestrator::{
         TestOrchestratorServer, ORCHESTRATOR_CONFIG_FILE_PATH,
         ORCHESTRATOR_CONTENT_DETECTION_ENDPOINT,
@@ -368,6 +369,68 @@ async fn test_single_detection_sentence_chunker() -> Result<(), anyhow::Error> {
                     evidence: None,
                 }],
             }
+    );
+
+    Ok(())
+}
+
+#[test(tokio::test)]
+async fn test_detector_returns_503() -> Result<(), anyhow::Error> {
+    let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC;
+    let expected_detector_error = DetectorError {
+        code: 503,
+        message: "The detector service is overloaded.".into(),
+    };
+
+    // Add input detection mock
+    let mut detection_mocks = MockSet::new();
+    detection_mocks.insert(
+        MockPath::new(Method::POST, TEXT_CONTENTS_DETECTOR_ENDPOINT),
+        Mock::new(
+            MockRequest::json(ContentAnalysisRequest {
+                contents: vec!["This should return a 503".into()],
+                detector_params: DetectorParams::new(),
+            }),
+            MockResponse::json(&expected_detector_error).with_code(StatusCode::SERVICE_UNAVAILABLE),
+        ),
+    );
+
+    // Start orchestrator server and its dependencies
+    let mock_detector_server = HttpMockServer::new(detector_name, detection_mocks)?;
+    let orchestrator_server = TestOrchestratorServer::run(
+        ORCHESTRATOR_CONFIG_FILE_PATH,
+        find_available_port().unwrap(),
+        find_available_port().unwrap(),
+        None,
+        None,
+        Some(vec![mock_detector_server]),
+        None,
+    )
+    .await?;
+
+    // Example orchestrator request with streaming response
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_CONTENT_DETECTION_ENDPOINT)
+        .json(&TextContentDetectionHttpRequest {
+            content: "This should return a 503".into(),
+            detectors: HashMap::from([(detector_name.into(), DetectorParams::new())]),
+        })
+        .send()
+        .await?;
+
+    debug!(?response, "RESPONSE RECEIVED FROM ORCHESTRATOR");
+
+    // assertions
+    assert!(response.status() == StatusCode::SERVICE_UNAVAILABLE);
+
+    let response: OrchestratorError = response.json().await?;
+    assert!(response.code == 503);
+    assert!(
+        response.details
+            == format!(
+                "detector request failed for `{}`: {}",
+                detector_name, expected_detector_error.message
+            )
     );
 
     Ok(())
