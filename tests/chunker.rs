@@ -77,6 +77,7 @@ async fn test_isolated_chunker_unary_call() -> Result<(), anyhow::Error> {
         port: Some(mock_chunker_server.addr().port()),
         request_timeout: None,
         tls: None,
+        grpc_dns_probe_interval: None,
     })
     .await;
 

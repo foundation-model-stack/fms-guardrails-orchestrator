@@ -73,6 +73,7 @@ async fn test_nlp_streaming_call() -> Result<(), anyhow::Error> {
         port: Some(generation_nlp_server.addr().port()),
         request_timeout: None,
         tls: None,
+        grpc_dns_probe_interval: None,
     })
     .await;
 
