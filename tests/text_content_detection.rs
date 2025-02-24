@@ -435,3 +435,65 @@ async fn test_detector_returns_503() -> Result<(), anyhow::Error> {
 
     Ok(())
 }
+
+#[test(tokio::test)]
+async fn test_detector_returns_404() -> Result<(), anyhow::Error> {
+    let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC;
+    let expected_detector_error = DetectorError {
+        code: 404,
+        message: "The detector service was not found.".into(),
+    };
+
+    // Add input detection mock
+    let mut detection_mocks = MockSet::new();
+    detection_mocks.insert(
+        MockPath::new(Method::POST, TEXT_CONTENTS_DETECTOR_ENDPOINT),
+        Mock::new(
+            MockRequest::json(ContentAnalysisRequest {
+                contents: vec!["This should return a 404".into()],
+                detector_params: DetectorParams::new(),
+            }),
+            MockResponse::json(&expected_detector_error).with_code(StatusCode::NOT_FOUND),
+        ),
+    );
+
+    // Start orchestrator server and its dependencies
+    let mock_detector_server = HttpMockServer::new(detector_name, detection_mocks)?;
+    let orchestrator_server = TestOrchestratorServer::run(
+        ORCHESTRATOR_CONFIG_FILE_PATH,
+        find_available_port().unwrap(),
+        find_available_port().unwrap(),
+        None,
+        None,
+        Some(vec![mock_detector_server]),
+        None,
+    )
+    .await?;
+
+    // Example orchestrator request with streaming response
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_CONTENT_DETECTION_ENDPOINT)
+        .json(&TextContentDetectionHttpRequest {
+            content: "This should return a 404".into(),
+            detectors: HashMap::from([(detector_name.into(), DetectorParams::new())]),
+        })
+        .send()
+        .await?;
+
+    debug!(?response, "RESPONSE RECEIVED FROM ORCHESTRATOR");
+
+    // assertions
+    assert!(response.status() == StatusCode::NOT_FOUND);
+
+    let response: OrchestratorError = response.json().await?;
+    assert!(response.code == 404);
+    assert!(
+        response.details
+            == format!(
+                "detector request failed for `{}`: {}",
+                detector_name, expected_detector_error.message
+            )
+    );
+
+    Ok(())
+}
