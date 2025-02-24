@@ -46,6 +46,58 @@ use tracing::debug;
 
 pub mod common;
 
+#[test(tokio::test)]
+async fn test_no_detection_whole_doc() -> Result<(), anyhow::Error> {
+    let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC;
+
+    // Add detector mock
+    let mut mocks = MockSet::new();
+    mocks.insert(
+        MockPath::new(Method::POST, TEXT_CONTENTS_DETECTOR_ENDPOINT),
+        Mock::new(
+            MockRequest::json(ContentAnalysisRequest {
+                contents: vec!["This sentence has no detections.".into()],
+                detector_params: DetectorParams::new(),
+            }),
+            MockResponse::json(vec![Vec::<ContentAnalysisResponse>::new()]),
+        ),
+    );
+
+    // Start orchestrator server and its dependencies
+    let mock_detector_server = HttpMockServer::new(detector_name, mocks)?;
+    let orchestrator_server = TestOrchestratorServer::run(
+        ORCHESTRATOR_CONFIG_FILE_PATH,
+        find_available_port().unwrap(),
+        find_available_port().unwrap(),
+        None,
+        None,
+        Some(vec![mock_detector_server]),
+        None,
+    )
+    .await?;
+
+    // Make orchestrator call
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_CONTENT_DETECTION_ENDPOINT)
+        .json(&TextContentDetectionHttpRequest {
+            content: "This sentence has no detections.".into(),
+            detectors: HashMap::from([(detector_name.into(), DetectorParams::new())]),
+        })
+        .send()
+        .await?;
+
+    debug!(?response);
+
+    // assertions
+    assert!(response.status() == StatusCode::OK);
+    assert!(
+        response.json::<TextContentDetectionResult>().await?
+            == TextContentDetectionResult::default()
+    );
+
+    Ok(())
+}
+
 /// Asserts a scenario with a single detection works as expected (assumes a detector configured with whole_doc_chunker).
 ///
 /// This test mocks a detector that detects text between <angle brackets>.
