@@ -609,3 +609,58 @@ async fn test_detector_returns_non_compliant_message() -> Result<(), anyhow::Err
 
     Ok(())
 }
+
+#[test(tokio::test)]
+async fn test_chunker_returns_an_error() -> Result<(), anyhow::Error> {
+    let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE;
+
+    // Add input chunker mock
+    let chunker_id = CHUNKER_NAME_SENTENCE;
+    let mut chunker_headers = HeaderMap::new();
+    chunker_headers.insert(CHUNKER_MODEL_ID_HEADER_NAME, chunker_id.parse()?);
+
+    let mut chunker_mocks = MockSet::new();
+    chunker_mocks.insert(
+        MockPath::new(Method::POST, CHUNKER_UNARY_ENDPOINT),
+        Mock::new(
+            MockRequest::pb(ChunkerTokenizationTaskRequest {
+                text: "This should return a 500".into(),
+            })
+            .with_headers(chunker_headers),
+            MockResponse::empty().with_code(StatusCode::INTERNAL_SERVER_ERROR),
+        ),
+    );
+
+    // Start orchestrator server and its dependencies
+    let mock_chunker_server = MockChunkersServiceServer::new(chunker_mocks)?;
+    let orchestrator_server = TestOrchestratorServer::run(
+        ORCHESTRATOR_CONFIG_FILE_PATH,
+        find_available_port().unwrap(),
+        find_available_port().unwrap(),
+        None,
+        None,
+        None,
+        Some(vec![(chunker_id.into(), mock_chunker_server)]),
+    )
+    .await?;
+
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_CONTENT_DETECTION_ENDPOINT)
+        .json(&TextContentDetectionHttpRequest {
+            content: "This should return a 500".into(),
+            detectors: HashMap::from([(detector_name.into(), DetectorParams::new())]),
+        })
+        .send()
+        .await?;
+
+    debug!(?response, "RESPONSE RECEIVED FROM ORCHESTRATOR");
+
+    // assertions
+    assert!(response.status() == StatusCode::INTERNAL_SERVER_ERROR);
+
+    let response: OrchestratorError = response.json().await?;
+    assert!(response.code == 500);
+    assert!(response.details == ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE);
+
+    Ok(())
+}
