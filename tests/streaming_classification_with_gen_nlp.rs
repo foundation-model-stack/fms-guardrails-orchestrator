@@ -19,15 +19,18 @@ use std::collections::HashMap;
 use test_log::test;
 
 use common::{
-    chunker::{MockChunkersServiceServer, CHUNKER_NAME_SENTENCE, CHUNKER_UNARY_ENDPOINT},
+    chunker::{
+        MockChunkersServiceServer, CHUNKER_MODEL_ID_HEADER_NAME, CHUNKER_NAME_SENTENCE,
+        CHUNKER_UNARY_ENDPOINT,
+    },
     detectors::{
         DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE, DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC,
         TEXT_CONTENTS_DETECTOR_ENDPOINT,
     },
     errors::{DetectorError, OrchestratorError},
     generation::{
-        MockNlpServiceServer, GENERATION_NLP_STREAMING_ENDPOINT,
-        GENERATION_NLP_TOKENIZATION_ENDPOINT,
+        MockNlpServiceServer, GENERATION_NLP_MODEL_ID_HEADER_NAME,
+        GENERATION_NLP_STREAMING_ENDPOINT, GENERATION_NLP_TOKENIZATION_ENDPOINT,
     },
     orchestrator::{
         SseStream, TestOrchestratorServer, ORCHESTRATOR_CONFIG_FILE_PATH,
@@ -35,11 +38,7 @@ use common::{
     },
 };
 use fms_guardrails_orchestr8::{
-    clients::{
-        chunker::MODEL_ID_HEADER_NAME as CHUNKER_MODEL_ID_HEADER_NAME,
-        detector::{ContentAnalysisRequest, ContentAnalysisResponse},
-        nlp::MODEL_ID_HEADER_NAME as NLP_MODEL_ID_HEADER_NAME,
-    },
+    clients::detector::{ContentAnalysisRequest, ContentAnalysisResponse},
     models::{
         ClassifiedGeneratedTextStreamResult, DetectionWarning, DetectorParams, GuardrailsConfig,
         GuardrailsConfigInput, GuardrailsHttpRequest, TextGenTokenClassificationResults,
@@ -64,7 +63,10 @@ async fn test_no_detectors() -> Result<(), anyhow::Error> {
     // Add generation mock
     let model_id = "my-super-model-8B";
     let mut headers = HeaderMap::new();
-    headers.insert(NLP_MODEL_ID_HEADER_NAME, model_id.parse().unwrap());
+    headers.insert(
+        GENERATION_NLP_MODEL_ID_HEADER_NAME,
+        model_id.parse().unwrap(),
+    );
 
     let expected_response = vec![
         GeneratedTextStreamResult {
@@ -179,7 +181,10 @@ async fn test_input_detector_whole_doc_no_detections() -> Result<(), anyhow::Err
     // Add generation mock
     let model_id = "my-super-model-8B";
     let mut headers = HeaderMap::new();
-    headers.insert(NLP_MODEL_ID_HEADER_NAME, model_id.parse().unwrap());
+    headers.insert(
+        GENERATION_NLP_MODEL_ID_HEADER_NAME,
+        model_id.parse().unwrap(),
+    );
 
     let expected_response = vec![
         GeneratedTextStreamResult {
@@ -314,7 +319,10 @@ async fn test_input_detector_sentence_chunker_no_detections() -> Result<(), anyh
     // Add generation mock
     let model_id = "my-super-model-8B";
     let mut headers = HeaderMap::new();
-    headers.insert(NLP_MODEL_ID_HEADER_NAME, model_id.parse().unwrap());
+    headers.insert(
+        GENERATION_NLP_MODEL_ID_HEADER_NAME,
+        model_id.parse().unwrap(),
+    );
 
     let expected_response = vec![
         GeneratedTextStreamResult {
@@ -434,7 +442,10 @@ async fn test_input_detector_whole_doc_with_detections() -> Result<(), anyhow::E
         token_count: 61,
     };
     let mut headers = HeaderMap::new();
-    headers.insert(NLP_MODEL_ID_HEADER_NAME, model_id.parse().unwrap());
+    headers.insert(
+        GENERATION_NLP_MODEL_ID_HEADER_NAME,
+        model_id.parse().unwrap(),
+    );
     let mut generation_mocks = MockSet::new();
     generation_mocks.insert(
         MockPath::new(Method::POST, GENERATION_NLP_TOKENIZATION_ENDPOINT),
@@ -582,7 +593,10 @@ async fn test_input_detector_sentence_chunker_with_detections() -> Result<(), an
         token_count: 61,
     };
     let mut headers = HeaderMap::new();
-    headers.insert(NLP_MODEL_ID_HEADER_NAME, model_id.parse().unwrap());
+    headers.insert(
+        GENERATION_NLP_MODEL_ID_HEADER_NAME,
+        model_id.parse().unwrap(),
+    );
     let mut generation_mocks = MockSet::new();
     generation_mocks.insert(
         MockPath::new(Method::POST, GENERATION_NLP_TOKENIZATION_ENDPOINT),
@@ -1058,7 +1072,10 @@ async fn test_generation_server_returns_an_error() -> Result<(), anyhow::Error> 
     // Add generation mock
     let model_id = "my-super-model-8B";
     let mut headers = HeaderMap::new();
-    headers.insert(NLP_MODEL_ID_HEADER_NAME, model_id.parse().unwrap());
+    headers.insert(
+        GENERATION_NLP_MODEL_ID_HEADER_NAME,
+        model_id.parse().unwrap(),
+    );
 
     let mut generation_mocks = MockSet::new();
     generation_mocks.insert(

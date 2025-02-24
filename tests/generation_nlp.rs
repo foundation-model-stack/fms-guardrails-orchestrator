@@ -15,9 +15,11 @@
 
 */
 
-use common::generation::{MockNlpServiceServer, GENERATION_NLP_STREAMING_ENDPOINT};
+use common::generation::{
+    MockNlpServiceServer, GENERATION_NLP_MODEL_ID_HEADER_NAME, GENERATION_NLP_STREAMING_ENDPOINT,
+};
 use fms_guardrails_orchestr8::{
-    clients::{nlp::MODEL_ID_HEADER_NAME, NlpClient},
+    clients::NlpClient,
     config::ServiceConfig,
     pb::{
         caikit::runtime::nlp::ServerStreamingTextGenerationTaskRequest,
@@ -35,7 +37,10 @@ async fn test_nlp_streaming_call() -> Result<(), anyhow::Error> {
     // Add detector mock
     let model_id = "my-super-model-8B";
     let mut headers = HeaderMap::new();
-    headers.insert(MODEL_ID_HEADER_NAME, model_id.parse().unwrap());
+    headers.insert(
+        GENERATION_NLP_MODEL_ID_HEADER_NAME,
+        model_id.parse().unwrap(),
+    );
 
     let expected_response = vec![
         GeneratedTextStreamResult {
