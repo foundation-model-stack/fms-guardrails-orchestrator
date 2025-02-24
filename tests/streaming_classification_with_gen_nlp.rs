@@ -696,7 +696,7 @@ async fn test_input_detector_returns_503() -> Result<(), anyhow::Error> {
                 contents: vec!["This should return a 503".into()],
                 detector_params: DetectorParams::new(),
             }),
-            MockResponse::json(&expected_detector_error).with_code(StatusCode::NOT_FOUND),
+            MockResponse::json(&expected_detector_error).with_code(StatusCode::SERVICE_UNAVAILABLE),
         ),
     );
 
