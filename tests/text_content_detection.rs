@@ -98,6 +98,94 @@ async fn test_no_detection_whole_doc() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
+#[test(tokio::test)]
+async fn test_no_detection_sentence_chunker() -> Result<(), anyhow::Error> {
+    // Add chunker mock
+    let chunker_id = CHUNKER_NAME_SENTENCE;
+    let mut chunker_headers = HeaderMap::new();
+    chunker_headers.insert(CHUNKER_MODEL_ID_HEADER_NAME, chunker_id.parse()?);
+
+    let mut chunker_mocks = MockSet::new();
+    chunker_mocks.insert(
+        MockPath::new(Method::POST, CHUNKER_UNARY_ENDPOINT),
+        Mock::new(
+            MockRequest::pb(ChunkerTokenizationTaskRequest {
+                text: "This sentence does not have a detection. Neither does this one.".into(),
+            })
+            .with_headers(chunker_headers),
+            MockResponse::pb(TokenizationResults {
+                results: vec![
+                    Token {
+                        start: 0,
+                        end: 40,
+                        text: "This sentence does not have a detection.".into(),
+                    },
+                    Token {
+                        start: 41,
+                        end: 64,
+                        text: "Neither does this one.".into(),
+                    },
+                ],
+                token_count: 0,
+            }),
+        ),
+    );
+
+    // Add detector mock
+    let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE;
+    let mut mocks = MockSet::new();
+    mocks.insert(
+        MockPath::new(Method::POST, TEXT_CONTENTS_DETECTOR_ENDPOINT),
+        Mock::new(
+            MockRequest::json(ContentAnalysisRequest {
+                contents: vec![
+                    "This sentence does not have a detection.".into(),
+                    "Neither does this one.".into(),
+                ],
+                detector_params: DetectorParams::new(),
+            }),
+            MockResponse::json(vec![
+                Vec::<ContentAnalysisResponse>::new(),
+                Vec::<ContentAnalysisResponse>::new(),
+            ]),
+        ),
+    );
+
+    // Start orchestrator server and its dependencies
+    let mock_chunker_server = MockChunkersServiceServer::new(chunker_mocks)?;
+    let mock_detector_server = HttpMockServer::new(detector_name, mocks)?;
+    let orchestrator_server = TestOrchestratorServer::run(
+        ORCHESTRATOR_CONFIG_FILE_PATH,
+        find_available_port().unwrap(),
+        find_available_port().unwrap(),
+        None,
+        None,
+        Some(vec![mock_detector_server]),
+        Some(vec![(chunker_id.into(), mock_chunker_server)]),
+    )
+    .await?;
+
+    // Make orchestrator call
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_CONTENT_DETECTION_ENDPOINT)
+        .json(&TextContentDetectionHttpRequest {
+            content: "This sentence does not have a detection. Neither does this one.".into(),
+            detectors: HashMap::from([(detector_name.into(), DetectorParams::new())]),
+        })
+        .send()
+        .await?;
+
+    debug!(?response);
+
+    assert!(response.status() == StatusCode::OK);
+    assert!(
+        response.json::<TextContentDetectionResult>().await?
+            == TextContentDetectionResult::default()
+    );
+
+    Ok(())
+}
+
 /// Asserts a scenario with a single detection works as expected (assumes a detector configured with whole_doc_chunker).
 ///
 /// This test mocks a detector that detects text between <angle brackets>.
