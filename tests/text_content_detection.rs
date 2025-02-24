@@ -15,6 +15,7 @@
 
 */
 
+use serde_json::json;
 use std::collections::HashMap;
 use test_log::test;
 
@@ -538,6 +539,60 @@ async fn test_detector_returns_500() -> Result<(), anyhow::Error> {
         .post(ORCHESTRATOR_CONTENT_DETECTION_ENDPOINT)
         .json(&TextContentDetectionHttpRequest {
             content: "This should return a 500".into(),
+            detectors: HashMap::from([(detector_name.into(), DetectorParams::new())]),
+        })
+        .send()
+        .await?;
+
+    debug!(?response, "RESPONSE RECEIVED FROM ORCHESTRATOR");
+
+    // assertions
+    assert!(response.status() == StatusCode::INTERNAL_SERVER_ERROR);
+
+    let response: OrchestratorError = response.json().await?;
+    assert!(response.code == 500);
+    assert!(response.details == ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE);
+
+    Ok(())
+}
+
+#[test(tokio::test)]
+async fn test_detector_returns_non_compliant_message() -> Result<(), anyhow::Error> {
+    let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC;
+
+    // Add input detection mock
+    let mut detection_mocks = MockSet::new();
+    detection_mocks.insert(
+        MockPath::new(Method::POST, TEXT_CONTENTS_DETECTOR_ENDPOINT),
+        Mock::new(
+            MockRequest::json(ContentAnalysisRequest {
+                contents: vec!["This should return a non-compliant message".into()],
+                detector_params: DetectorParams::new(),
+            }),
+            MockResponse::json(&json!({
+                "my_detection": "This message does not comply with the expected API"
+            })),
+        ),
+    );
+
+    // Start orchestrator server and its dependencies
+    let mock_detector_server = HttpMockServer::new(detector_name, detection_mocks)?;
+    let orchestrator_server = TestOrchestratorServer::run(
+        ORCHESTRATOR_CONFIG_FILE_PATH,
+        find_available_port().unwrap(),
+        find_available_port().unwrap(),
+        None,
+        None,
+        Some(vec![mock_detector_server]),
+        None,
+    )
+    .await?;
+
+    // Example orchestrator request with streaming response
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_CONTENT_DETECTION_ENDPOINT)
+        .json(&TextContentDetectionHttpRequest {
+            content: "This should return a non-compliant message".into(),
             detectors: HashMap::from([(detector_name.into(), DetectorParams::new())]),
         })
         .send()
