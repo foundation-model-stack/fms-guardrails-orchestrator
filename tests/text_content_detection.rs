@@ -780,3 +780,41 @@ async fn test_request_missing_content_field_returns_422() -> Result<(), anyhow::
 
     Ok(())
 }
+
+#[test(tokio::test)]
+async fn test_request_with_empty_detectors_field_returns_422() -> Result<(), anyhow::Error> {
+    // Start orchestrator server and its dependencies
+    let orchestrator_server = TestOrchestratorServer::run(
+        ORCHESTRATOR_CONFIG_FILE_PATH,
+        find_available_port().unwrap(),
+        find_available_port().unwrap(),
+        None,
+        None,
+        None,
+        None,
+    )
+    .await?;
+
+    // Make orchestrator call
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_CONTENT_DETECTION_ENDPOINT)
+        .json(&json!({
+            "content": "This sentence has no detections.",
+            "detectors": {},
+        }))
+        .send()
+        .await?;
+
+    debug!("{response:#?}");
+
+    // assertions
+    assert!(response.status() == StatusCode::UNPROCESSABLE_ENTITY);
+
+    let response: OrchestratorError = response.json().await?;
+    debug!("orchestrator json response body:\n{response:#?}");
+
+    assert!(response.code == 422);
+    assert!(response.details == "`detectors` is required");
+
+    Ok(())
+}
