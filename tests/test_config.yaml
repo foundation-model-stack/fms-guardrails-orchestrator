@@ -33,3 +33,9 @@ detectors:
       hostname: localhost
     chunker_id: whole_doc_chunker
     default_threshold: 0.5
+  answer_relevance_detector:
+    type: text_generation
+    service:
+      hostname: localhost
+    chunker_id: whole_doc_chunker
+    default_threshold: 0.5
