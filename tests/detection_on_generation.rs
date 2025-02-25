@@ -503,3 +503,43 @@ async fn test_request_missing_prompt_returns_422() -> Result<(), anyhow::Error> 
 
     Ok(())
 }
+
+#[test(tokio::test)]
+async fn test_request_missing_generated_text_returns_422() -> Result<(), anyhow::Error> {
+    let detector_name = ANSWER_RELEVANCE_DETECTOR;
+    let prompt = "In 2014, what was the average height of men who were born in 1996?";
+
+    // Start orchestrator server and its dependencies
+    let mock_detector_server = HttpMockServer::new(detector_name, MockSet::new())?;
+    let orchestrator_server = TestOrchestratorServer::run(
+        ORCHESTRATOR_CONFIG_FILE_PATH,
+        find_available_port().unwrap(),
+        find_available_port().unwrap(),
+        None,
+        None,
+        Some(vec![mock_detector_server]),
+        None,
+    )
+    .await?;
+
+    // Make orchestrator call
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_DETECTION_ON_GENERATION_ENDPOINT)
+        .json(&json!({
+            "prompt": prompt,
+            "detectors": {detector_name: {}},
+        }))
+        .send()
+        .await?;
+
+    debug!("{response:#?}");
+
+    // assertions
+    assert!(response.status() == StatusCode::UNPROCESSABLE_ENTITY);
+    let response = response.json::<OrchestratorError>().await?;
+    debug!("{response:#?}");
+    assert!(response.code == 422);
+    assert!(response.details.contains("missing field `generated_text`"));
+
+    Ok(())
+}
