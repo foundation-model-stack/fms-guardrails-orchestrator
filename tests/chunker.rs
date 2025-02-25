@@ -33,6 +33,7 @@ pub mod common;
 async fn test_isolated_chunker_unary_call() -> Result<(), anyhow::Error> {
     // Add detector mock
     let chunker_id = "sentence_chunker";
+    let input_test = "Hi there! how are you? I am great!";
     let mut chunker_headers = HeaderMap::new();
     chunker_headers.insert(MODEL_ID_HEADER_NAME, chunker_id.parse().unwrap());
 
@@ -62,7 +63,7 @@ async fn test_isolated_chunker_unary_call() -> Result<(), anyhow::Error> {
         MockPath::new(Method::POST, CHUNKER_UNARY_ENDPOINT),
         Mock::new(
             MockRequest::pb(ChunkerTokenizationTaskRequest {
-                text: "Hi there! how are you? I am great!".into(),
+                text: input_test.into(),
             })
             .with_headers(chunker_headers),
             MockResponse::pb(expected_response.clone()),
@@ -85,7 +86,7 @@ async fn test_isolated_chunker_unary_call() -> Result<(), anyhow::Error> {
         .tokenization_task_predict(
             chunker_id,
             ChunkerTokenizationTaskRequest {
-                text: "Hi there! how are you? I am great!".into(),
+                text: input_test.into(),
             },
         )
         .await;
