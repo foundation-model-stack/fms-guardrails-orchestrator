@@ -233,3 +233,69 @@ async fn test_detector_returns_503() -> Result<(), anyhow::Error> {
 
     Ok(())
 }
+
+#[test(tokio::test)]
+async fn test_detector_returns_404() -> Result<(), anyhow::Error> {
+    let detector_name = ANSWER_RELEVANCE_DETECTOR;
+    let prompt = "In 2014, what was the average height of men who were born in 1996?";
+    let generated_text =
+        "The average height of men who were born in 1996 was 171cm (or 5'7.5'') in 2014.";
+    let detector_error = DetectorError {
+        code: 404,
+        message: "The detector is overloaded.".into(),
+    };
+
+    // Add detector mock
+    let mut mocks = MockSet::new();
+    mocks.insert(
+        MockPath::new(Method::POST, DETECTION_ON_GENERATION_DETECTOR_ENDPOINT),
+        Mock::new(
+            MockRequest::json(GenerationDetectionRequest {
+                prompt: prompt.into(),
+                generated_text: generated_text.into(),
+                detector_params: DetectorParams::new(),
+            }),
+            MockResponse::json(&detector_error).with_code(StatusCode::NOT_FOUND),
+        ),
+    );
+
+    // Start orchestrator server and its dependencies
+    let mock_detector_server = HttpMockServer::new(detector_name, mocks)?;
+    let orchestrator_server = TestOrchestratorServer::run(
+        ORCHESTRATOR_CONFIG_FILE_PATH,
+        find_available_port().unwrap(),
+        find_available_port().unwrap(),
+        None,
+        None,
+        Some(vec![mock_detector_server]),
+        None,
+    )
+    .await?;
+
+    // Make orchestrator call
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_DETECTION_ON_GENERATION_ENDPOINT)
+        .json(&DetectionOnGeneratedHttpRequest {
+            prompt: prompt.into(),
+            generated_text: generated_text.into(),
+            detectors: HashMap::from([(detector_name.into(), DetectorParams::new())]),
+        })
+        .send()
+        .await?;
+
+    debug!(?response);
+
+    // assertions
+    assert!(response.status() == StatusCode::NOT_FOUND);
+    let response = response.json::<OrchestratorError>().await?;
+    assert!(response.code == detector_error.code);
+    assert!(
+        response.details
+            == format!(
+                "detector request failed for `{}`: {}",
+                detector_name, detector_error.message
+            )
+    );
+
+    Ok(())
+}
