@@ -91,7 +91,7 @@ async fn test_detection_below_default_threshold_is_not_returned() -> Result<(), 
         .send()
         .await?;
 
-    debug!(?response);
+    debug!("{response:#?}");
 
     // assertions
     assert!(response.status() == StatusCode::OK);
@@ -155,7 +155,7 @@ async fn test_detection_above_default_threshold_is_returned() -> Result<(), anyh
         .send()
         .await?;
 
-    debug!(?response);
+    debug!("{response:#?}");
 
     // assertions
     assert!(response.status() == StatusCode::OK);
@@ -218,7 +218,7 @@ async fn test_detector_returns_503() -> Result<(), anyhow::Error> {
         .send()
         .await?;
 
-    debug!(?response);
+    debug!("{response:#?}");
 
     // assertions
     assert!(response.status() == StatusCode::SERVICE_UNAVAILABLE);
@@ -284,7 +284,7 @@ async fn test_detector_returns_404() -> Result<(), anyhow::Error> {
         .send()
         .await?;
 
-    debug!(?response);
+    debug!("{response:#?}");
 
     // assertions
     assert!(response.status() == StatusCode::NOT_FOUND);
@@ -350,7 +350,7 @@ async fn test_detector_returns_500() -> Result<(), anyhow::Error> {
         .send()
         .await?;
 
-    debug!(?response);
+    debug!("{response:#?}");
 
     // assertions
     assert!(response.status() == StatusCode::INTERNAL_SERVER_ERROR);
@@ -408,7 +408,7 @@ async fn test_detector_returns_non_compliant_message() -> Result<(), anyhow::Err
         .send()
         .await?;
 
-    debug!(?response);
+    debug!("{response:#?}");
 
     // assertions
     assert!(response.status() == StatusCode::INTERNAL_SERVER_ERROR);
