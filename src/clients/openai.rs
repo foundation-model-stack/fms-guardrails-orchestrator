@@ -26,7 +26,10 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 use tracing::{info, instrument};
 
-use super::{create_http_client, http::HttpClientExt, Client, Error, HttpClient};
+use super::{
+    create_http_client, detector::ContentAnalysisResponse, http::HttpClientExt, Client, Error,
+    HttpClient,
+};
 use crate::{
     config::ServiceConfig,
     health::HealthCheckResult,
@@ -73,9 +76,8 @@ impl OpenAiClient {
         headers: HeaderMap,
     ) -> Result<ChatCompletionsResponse, Error> {
         let url = self.inner().endpoint(CHAT_COMPLETIONS_ENDPOINT);
-        let stream = request.stream.unwrap_or_default();
         info!("sending Open AI chat completion request to {}", url);
-        if stream {
+        if request.stream {
             let (tx, rx) = mpsc::channel(32);
             let mut event_stream = self
                 .inner()
@@ -227,8 +229,8 @@ pub struct ChatCompletionsRequest {
     /// If set, partial message deltas will be sent, like in ChatGPT.
     /// Tokens will be sent as data-only server-sent events as they become available,
     /// with the stream terminated by a data: [DONE] message.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub stream: Option<bool>,
+    #[serde(default)]
+    pub stream: bool,
     /// Options for streaming response. Only set this when you set stream: true.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stream_options: Option<StreamOptions>,
@@ -609,7 +611,7 @@ pub struct ChatCompletionTopLogprob {
 }
 
 /// Represents a streamed chunk of a chat completion response returned by model, based on the provided input.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct ChatCompletionChunk {
     /// A unique identifier for the chat completion. Each chunk has the same ID.
     pub id: String,
@@ -727,7 +729,7 @@ pub struct ChatDetections {
 pub struct InputDetectionResult {
     pub message_index: usize,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub results: Vec<GuardrailDetection>,
+    pub results: Vec<ContentAnalysisResponse>,
 }
 
 /// Guardrails detection result for application output.
@@ -735,7 +737,7 @@ pub struct InputDetectionResult {
 pub struct OutputDetectionResult {
     pub choice_index: usize,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub results: Vec<GuardrailDetection>,
+    pub results: Vec<ContentAnalysisResponse>,
 }
 
 /// Represents the input and output of detection results following processing.

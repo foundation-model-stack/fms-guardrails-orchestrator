@@ -1,17 +1,23 @@
-use std::collections::{btree_map, BTreeMap, VecDeque};
+use std::collections::{BTreeMap, VecDeque, btree_map};
 
-use futures::{stream, Stream, StreamExt};
+use futures::{Stream, StreamExt, stream};
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 
-use super::{BoxStream, Chunk, Chunks, DetectionStream, Detections};
-use crate::orchestrator::{types::DetectorId, Error};
+use super::{BoxStream, Chunk, Chunks, DetectionStream, Detections, DetectorId, InputId};
+use crate::orchestrator::Error;
 
 /// A detection batcher.
 pub trait DetectionBatcher: Send + 'static {
     type Batch: Send + 'static;
 
-    fn push(&mut self, detector_id: DetectorId, chunk: Chunk, detections: Detections);
+    fn push(
+        &mut self,
+        input_id: InputId,
+        detector_id: DetectorId,
+        chunk: Chunk,
+        detections: Detections,
+    );
     fn pop_batch(&mut self) -> Option<Self::Batch>;
 }
 
@@ -27,7 +33,7 @@ where
     pub fn new(mut batcher: B, streams: Vec<DetectionStream>) -> Self {
         let (batch_tx, batch_rx) = mpsc::channel(32);
         let (batcher_tx, mut batcher_rx) =
-            mpsc::channel::<Result<(DetectorId, Chunk, Detections), Error>>(32);
+            mpsc::channel::<Result<(InputId, DetectorId, Chunk, Detections), Error>>(32);
 
         // Spawn batcher task
         tokio::spawn(async move {
@@ -35,8 +41,8 @@ where
                 tokio::select! {
                     result = batcher_rx.recv() => {
                         match result {
-                            Some(Ok((detector_id, chunk, detections))) => {
-                                batcher.push(detector_id, chunk, detections);
+                            Some(Ok((input_id, detector_id, chunk, detections))) => {
+                                batcher.push(input_id, detector_id, chunk, detections);
                                 if let Some(batch) = batcher.pop_batch() {
                                     let _ = batch_tx.send(Ok(batch)).await;
                                 }
@@ -97,7 +103,13 @@ impl CompletedChunkBatcher {
 impl DetectionBatcher for CompletedChunkBatcher {
     type Batch = (Chunk, Detections);
 
-    fn push(&mut self, _detector_id: DetectorId, chunk: Chunk, detections: Detections) {
+    fn push(
+        &mut self,
+        _input_id: InputId,
+        _detector_id: DetectorId,
+        chunk: Chunk,
+        detections: Detections,
+    ) {
         match self.state.entry(chunk) {
             btree_map::Entry::Vacant(entry) => {
                 // New span, insert entry with chunk and detections
@@ -147,7 +159,13 @@ impl FakeBatcher {
 impl DetectionBatcher for FakeBatcher {
     type Batch = (Chunk, Detections);
 
-    fn push(&mut self, _detector_id: DetectorId, chunk: Chunk, detections: Detections) {
+    fn push(
+        &mut self,
+        _input_id: InputId,
+        _detector_id: DetectorId,
+        chunk: Chunk,
+        detections: Detections,
+    ) {
         self.state.push_back((chunk, detections));
     }
 
@@ -174,8 +192,13 @@ impl ChatCompletionBatcher {
 impl DetectionBatcher for ChatCompletionBatcher {
     type Batch = ChatCompletionDetectionBatch;
 
-    fn push(&mut self, detector_id: DetectorId, chunk: Chunk, detections: Detections) {
-        // let choice_index = chunk.index;
+    fn push(
+        &mut self,
+        input_id: InputId, // choice_index
+        detector_id: DetectorId,
+        chunk: Chunk,
+        detections: Detections,
+    ) {
         todo!()
     }
 
@@ -211,15 +234,15 @@ mod tests {
     async fn test_detection_batch_stream() -> Result<(), Error> {
         let batcher = CompletedChunkBatcher::new(2);
         let d1_stream = stream::iter(vec![
-            Ok(("d1".to_string(), Chunk::default(), Detections::default())),
-            Ok(("d1".to_string(), Chunk::default(), Detections::default())),
-            Ok(("d1".to_string(), Chunk::default(), Detections::default())),
+            Ok((0, "d1".to_string(), Chunk::default(), Detections::default())),
+            Ok((0, "d1".to_string(), Chunk::default(), Detections::default())),
+            Ok((0, "d1".to_string(), Chunk::default(), Detections::default())),
         ])
         .boxed();
         let d2_stream = stream::iter(vec![
-            Ok(("d2".to_string(), Chunk::default(), Detections::default())),
-            Ok(("d2".to_string(), Chunk::default(), Detections::default())),
-            Ok(("d2".to_string(), Chunk::default(), Detections::default())),
+            Ok((0, "d2".to_string(), Chunk::default(), Detections::default())),
+            Ok((0, "d2".to_string(), Chunk::default(), Detections::default())),
+            Ok((0, "d2".to_string(), Chunk::default(), Detections::default())),
         ])
         .boxed();
         let streams = vec![d1_stream, d2_stream];

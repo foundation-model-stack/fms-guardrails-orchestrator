@@ -1,6 +1,9 @@
 use super::prelude::*;
 use crate::clients::openai::{ChatCompletionsRequest, ChatCompletionsResponse};
 
+pub mod streaming;
+pub mod unary;
+
 impl Handle<ChatCompletionsDetectionTask> for Orchestrator {
     type Response = ChatCompletionsResponse;
 

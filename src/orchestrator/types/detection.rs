@@ -164,3 +164,24 @@ impl From<Detections> for Vec<models::TokenClassificationResult> {
         value.into_iter().map(Into::into).collect()
     }
 }
+
+impl From<Detection> for detector::ContentAnalysisResponse {
+    fn from(value: Detection) -> Self {
+        Self {
+            start: value.start.unwrap(),
+            end: value.end.unwrap(),
+            text: value.text.unwrap(),
+            detection: value.detection,
+            detection_type: value.detection_type,
+            detector_id: value.detector_id,
+            score: value.score,
+            evidence: None, //value.evidence, // TODO
+        }
+    }
+}
+
+impl From<Detections> for Vec<detector::ContentAnalysisResponse> {
+    fn from(value: Detections) -> Self {
+        value.into_iter().map(Into::into).collect()
+    }
+}
