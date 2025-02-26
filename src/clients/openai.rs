@@ -27,8 +27,8 @@ use tokio::sync::mpsc;
 use tracing::{info, instrument};
 
 use super::{
-    create_http_client, detector::ContentAnalysisResponse, http::HttpClientExt, Client, Error,
-    HttpClient,
+    Client, Error, HttpClient, create_http_client, detector::ContentAnalysisResponse,
+    http::HttpClientExt,
 };
 use crate::{
     config::ServiceConfig,
@@ -105,7 +105,7 @@ impl OpenAiClient {
                                     code: StatusCode::INTERNAL_SERVER_ERROR,
                                     message: format!("deserialization error: {e}"),
                                 };
-                                let _ = tx.send(Err(error)).await;
+                                let _ = tx.send(Err(error.into())).await;
                             }
                         },
                         Err(error) => {
@@ -114,7 +114,7 @@ impl OpenAiClient {
                                 code: StatusCode::INTERNAL_SERVER_ERROR,
                                 message: error.to_string(),
                             };
-                            let _ = tx.send(Err(error)).await;
+                            let _ = tx.send(Err(error.into())).await;
                         }
                     }
                 }
@@ -164,7 +164,7 @@ impl HttpClientExt for OpenAiClient {
 #[derive(Debug)]
 pub enum ChatCompletionsResponse {
     Unary(Box<ChatCompletion>),
-    Streaming(mpsc::Receiver<Result<Option<ChatCompletionChunk>, Error>>),
+    Streaming(mpsc::Receiver<Result<Option<ChatCompletionChunk>, crate::orchestrator::Error>>),
 }
 
 impl From<ChatCompletion> for ChatCompletionsResponse {

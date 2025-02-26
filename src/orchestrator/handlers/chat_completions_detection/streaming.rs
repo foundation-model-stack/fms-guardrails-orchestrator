@@ -11,7 +11,8 @@ pub async fn handle_streaming(
     task: ChatCompletionsDetectionTask,
 ) -> Result<ChatCompletionsResponse, Error> {
     // Create response channel
-    let (response_tx, response_rx) = mpsc::channel::<Result<ChatCompletionChunk, Error>>(32);
+    let (response_tx, response_rx) =
+        mpsc::channel::<Result<Option<ChatCompletionChunk>, Error>>(32);
 
     tokio::spawn(async move {
         let trace_id = &task.trace_id;
@@ -33,7 +34,7 @@ pub async fn handle_streaming(
                 Ok(Some(completion_chunk)) => {
                     info!(%trace_id, "task completed: returning response with input detections");
                     // Send message with input detections to response channel and terminate
-                    let _ = response_tx.send(Ok(completion_chunk)).await;
+                    let _ = response_tx.send(Ok(Some(completion_chunk))).await;
                     return;
                 }
                 Ok(None) => (), // No input detections
@@ -85,8 +86,7 @@ pub async fn handle_streaming(
         todo!()
     });
 
-    // Ok(ChatCompletionsResponse::Streaming(response_rx))
-    todo!()
+    Ok(ChatCompletionsResponse::Streaming(response_rx))
 }
 
 async fn handle_output_detection(
@@ -94,7 +94,7 @@ async fn handle_output_detection(
     task: &ChatCompletionsDetectionTask,
     detectors: &HashMap<String, DetectorParams>,
     chat_completion_stream: ChatCompletionStream,
-    response_tx: mpsc::Sender<Result<ChatCompletionChunk, Error>>,
+    response_tx: mpsc::Sender<Result<Option<ChatCompletionChunk>, Error>>,
 ) {
     let trace_id = &task.trace_id;
     let request = task.request.clone();
@@ -167,13 +167,13 @@ async fn handle_output_detection(
 async fn forward_chat_completion_stream(
     trace_id: &TraceId,
     mut chat_completion_stream: ChatCompletionStream,
-    response_tx: mpsc::Sender<Result<ChatCompletionChunk, Error>>,
+    response_tx: mpsc::Sender<Result<Option<ChatCompletionChunk>, Error>>,
 ) {
     while let Some(result) = chat_completion_stream.next().await {
         match result {
             Ok((_index, response)) => {
                 // Send message to response channel
-                if response_tx.send(Ok(response)).await.is_err() {
+                if response_tx.send(Ok(Some(response))).await.is_err() {
                     info!(%trace_id, "task completed: client disconnected");
                     return;
                 }
@@ -194,7 +194,7 @@ async fn process_detection_stream(
     trace_id: &TraceId,
     chat_completions: Arc<RwLock<Vec<ChatCompletionChunk>>>,
     mut detection_stream: DetectionStream,
-    response_tx: mpsc::Sender<Result<ChatCompletionChunk, Error>>,
+    response_tx: mpsc::Sender<Result<Option<ChatCompletionChunk>, Error>>,
 ) {
     while let Some(result) = detection_stream.next().await {
         match result {
@@ -217,7 +217,7 @@ async fn process_detection_batch_stream(
     trace_id: &TraceId,
     chat_completions: Arc<RwLock<Vec<ChatCompletionChunk>>>,
     mut detection_batch_stream: DetectionBatchStream<ChatCompletionBatcher>,
-    response_tx: mpsc::Sender<Result<ChatCompletionChunk, Error>>,
+    response_tx: mpsc::Sender<Result<Option<ChatCompletionChunk>, Error>>,
 ) {
     while let Some(result) = detection_batch_stream.next().await {
         match result {
