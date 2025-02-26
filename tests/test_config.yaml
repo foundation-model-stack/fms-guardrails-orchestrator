@@ -39,3 +39,9 @@ detectors:
       hostname: localhost
     chunker_id: whole_doc_chunker
     default_threshold: 0.5
+  fact_checking_detector:
+    type: text_context_doc
+    service:
+      hostname: localhost
+    chunker_id: whole_doc_chunker
+    default_threshold: 0.5
