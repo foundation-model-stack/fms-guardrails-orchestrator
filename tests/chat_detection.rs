@@ -1,0 +1,107 @@
+/*
+ Copyright FMS Guardrails Orchestrator Authors
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+
+*/
+use std::collections::HashMap;
+use test_log::test;
+
+use common::{
+    detectors::{CHAT_DETECTOR_ENDPOINT, PII_DETECTOR},
+    orchestrator::{
+        TestOrchestratorServer, ORCHESTRATOR_CHAT_DETECTION_ENDPOINT, ORCHESTRATOR_CONFIG_FILE_PATH,
+    },
+};
+use fms_guardrails_orchestr8::{
+    clients::{
+        detector::ChatDetectionRequest,
+        openai::{Content, Message, Role},
+    },
+    models::{ChatDetectionHttpRequest, ChatDetectionResult, DetectionResult, DetectorParams},
+};
+use hyper::StatusCode;
+use mocktail::{prelude::*, utils::find_available_port};
+use tracing::debug;
+
+pub mod common;
+
+#[test(tokio::test)]
+async fn test_detection_below_default_threshold_is_not_returned() -> Result<(), anyhow::Error> {
+    let detector_name = PII_DETECTOR;
+    let messages = vec![
+        Message {
+            role: Role::User,
+            content: Some(Content::Text("Hi there!".into())),
+            ..Default::default()
+        },
+        Message {
+            role: Role::Assistant,
+            content: Some(Content::Text("Hello!".into())),
+            ..Default::default()
+        },
+    ];
+    let detection = DetectionResult {
+        detection_type: "pii".into(),
+        detection: "is_pii".into(),
+        detector_id: Some(detector_name.into()),
+        score: 0.01,
+        evidence: None,
+    };
+
+    // Add detector mock
+    let mut mocks = MockSet::new();
+    mocks.insert(
+        MockPath::new(Method::POST, CHAT_DETECTOR_ENDPOINT),
+        Mock::new(
+            MockRequest::json(ChatDetectionRequest {
+                messages: messages.clone(),
+                detector_params: DetectorParams::new(),
+            }),
+            MockResponse::json(vec![detection.clone()]),
+        ),
+    );
+
+    // Start orchestrator server and its dependencies
+    let mock_detector_server = HttpMockServer::new(detector_name, mocks)?;
+    let orchestrator_server = TestOrchestratorServer::run(
+        ORCHESTRATOR_CONFIG_FILE_PATH,
+        find_available_port().unwrap(),
+        find_available_port().unwrap(),
+        None,
+        None,
+        Some(vec![mock_detector_server]),
+        None,
+    )
+    .await?;
+
+    // Make orchestrator call
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_CHAT_DETECTION_ENDPOINT)
+        .json(&ChatDetectionHttpRequest {
+            detectors: HashMap::from([(detector_name.into(), DetectorParams::new())]),
+            messages,
+        })
+        .send()
+        .await?;
+
+    debug!("{response:#?}");
+
+    // assertions
+    assert!(response.status() == StatusCode::OK);
+    assert!(
+        response.json::<ChatDetectionResult>().await? == ChatDetectionResult { detections: vec![] }
+    );
+
+    Ok(())
+}
