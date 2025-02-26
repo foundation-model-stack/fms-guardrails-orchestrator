@@ -19,6 +19,7 @@ use test_log::test;
 
 use common::{
     detectors::{CONTEXT_DOC_DETECTOR_ENDPOINT, FACT_CHECKING_DETECTOR},
+    errors::{DetectorError, OrchestratorError},
     orchestrator::{
         TestOrchestratorServer, ORCHESTRATOR_CONFIG_FILE_PATH,
         ORCHESTRATOR_CONTEXT_DOCS_DETECTION_ENDPOINT,
@@ -160,6 +161,73 @@ async fn test_detection_above_default_threshold_is_returned() -> Result<(), anyh
             == ContextDocsResult {
                 detections: vec![detection]
             }
+    );
+
+    Ok(())
+}
+
+#[test(tokio::test)]
+async fn test_detector_returns_503() -> Result<(), anyhow::Error> {
+    let detector_name = FACT_CHECKING_DETECTOR;
+    let content = "The average human height has increased in the past century.";
+    let context = vec!["https://ourworldindata.org/human-height".to_string()];
+    let detector_error = DetectorError {
+        code: 503,
+        message: "The detector is overloaded".into(),
+    };
+
+    // Add detector mock
+    let mut mocks = MockSet::new();
+    mocks.insert(
+        MockPath::new(Method::POST, CONTEXT_DOC_DETECTOR_ENDPOINT),
+        Mock::new(
+            MockRequest::json(ContextDocsDetectionRequest {
+                detector_params: DetectorParams::new(),
+                content: content.into(),
+                context_type: ContextType::Url,
+                context: context.clone(),
+            }),
+            MockResponse::json(&detector_error).with_code(StatusCode::SERVICE_UNAVAILABLE),
+        ),
+    );
+
+    // Start orchestrator server and its dependencies
+    let mock_detector_server = HttpMockServer::new(detector_name, mocks)?;
+    let orchestrator_server = TestOrchestratorServer::run(
+        ORCHESTRATOR_CONFIG_FILE_PATH,
+        find_available_port().unwrap(),
+        find_available_port().unwrap(),
+        None,
+        None,
+        Some(vec![mock_detector_server]),
+        None,
+    )
+    .await?;
+
+    // Make orchestrator call
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_CONTEXT_DOCS_DETECTION_ENDPOINT)
+        .json(&ContextDocsHttpRequest {
+            detectors: HashMap::from([(detector_name.into(), DetectorParams::new())]),
+            content: content.into(),
+            context_type: ContextType::Url,
+            context,
+        })
+        .send()
+        .await?;
+
+    debug!("{response:#?}");
+
+    // assertions
+    assert!(response.status() == StatusCode::SERVICE_UNAVAILABLE);
+    let response = response.json::<OrchestratorError>().await?;
+    assert!(response.code == detector_error.code);
+    assert!(
+        response.details
+            == format!(
+                "detector request failed for `{}`: {}",
+                detector_name, detector_error.message
+            )
     );
 
     Ok(())
