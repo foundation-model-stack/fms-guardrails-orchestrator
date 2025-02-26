@@ -600,3 +600,51 @@ async fn test_request_missing_detector() -> Result<(), anyhow::Error> {
 
     Ok(())
 }
+
+#[test(tokio::test)]
+async fn test_request_with_invalid_detector() -> Result<(), anyhow::Error> {
+    let detector_name = PII_DETECTOR;
+
+    // Start orchestrator server and its dependencies
+    let mock_detector_server = HttpMockServer::new(detector_name, MockSet::new())?;
+    let orchestrator_server = TestOrchestratorServer::run(
+        ORCHESTRATOR_CONFIG_FILE_PATH,
+        find_available_port().unwrap(),
+        find_available_port().unwrap(),
+        None,
+        None,
+        Some(vec![mock_detector_server]),
+        None,
+    )
+    .await?;
+
+    // Make orchestrator call
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_CHAT_DETECTION_ENDPOINT)
+        .json(&json!({
+            "messages": [
+                {
+                  "content": "What is this test asserting?",
+                  "role": "user",
+                },
+                {
+                  "content": "It's making sure requests with extra fields are not accepted.",
+                  "role": "assistant",
+                }
+            ],
+            "detectors": {}
+        }))
+        .send()
+        .await?;
+
+    debug!("{response:#?}");
+
+    // assertions
+    assert!(response.status() == StatusCode::UNPROCESSABLE_ENTITY);
+    let response = response.json::<OrchestratorError>().await?;
+    debug!("{response:#?}");
+    assert!(response.code == 422);
+    assert!(response.details.contains("`detectors` is required"));
+
+    Ok(())
+}
