@@ -105,3 +105,76 @@ async fn test_detection_below_default_threshold_is_not_returned() -> Result<(), 
 
     Ok(())
 }
+
+#[test(tokio::test)]
+async fn test_detection_above_default_threshold_is_returned() -> Result<(), anyhow::Error> {
+    let detector_name = PII_DETECTOR;
+    let messages = vec![
+        Message {
+            role: Role::User,
+            content: Some(Content::Text("What is his cellphone?".into())),
+            ..Default::default()
+        },
+        Message {
+            role: Role::Assistant,
+            content: Some(Content::Text("It's +1 (123) 123-4567.".into())),
+            ..Default::default()
+        },
+    ];
+    let detection = DetectionResult {
+        detection_type: "pii".into(),
+        detection: "is_pii".into(),
+        detector_id: Some(detector_name.into()),
+        score: 0.97,
+        evidence: None,
+    };
+
+    // Add detector mock
+    let mut mocks = MockSet::new();
+    mocks.insert(
+        MockPath::new(Method::POST, CHAT_DETECTOR_ENDPOINT),
+        Mock::new(
+            MockRequest::json(ChatDetectionRequest {
+                messages: messages.clone(),
+                detector_params: DetectorParams::new(),
+            }),
+            MockResponse::json(vec![detection.clone()]),
+        ),
+    );
+
+    // Start orchestrator server and its dependencies
+    let mock_detector_server = HttpMockServer::new(detector_name, mocks)?;
+    let orchestrator_server = TestOrchestratorServer::run(
+        ORCHESTRATOR_CONFIG_FILE_PATH,
+        find_available_port().unwrap(),
+        find_available_port().unwrap(),
+        None,
+        None,
+        Some(vec![mock_detector_server]),
+        None,
+    )
+    .await?;
+
+    // Make orchestrator call
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_CHAT_DETECTION_ENDPOINT)
+        .json(&ChatDetectionHttpRequest {
+            detectors: HashMap::from([(detector_name.into(), DetectorParams::new())]),
+            messages,
+        })
+        .send()
+        .await?;
+
+    debug!("{response:#?}");
+
+    // assertions
+    assert!(response.status() == StatusCode::OK);
+    assert!(
+        response.json::<ChatDetectionResult>().await?
+            == ChatDetectionResult {
+                detections: vec![detection]
+            }
+    );
+
+    Ok(())
+}
