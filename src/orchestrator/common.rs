@@ -103,10 +103,11 @@ pub async fn chunk_streams(
 pub async fn text_contents_detections(
     ctx: Arc<Context>,
     headers: HeaderMap,
-    detectors: &HashMap<String, DetectorParams>,
+    detectors: HashMap<String, DetectorParams>,
+    input_id: InputId,
     inputs: Vec<(usize, String)>,
-) -> Result<Vec<(DetectorId, Detections)>, Error> {
-    let chunkers = get_chunker_ids(&ctx.config, detectors)?;
+) -> Result<Vec<(InputId, DetectorId, Detections)>, Error> {
+    let chunkers = get_chunker_ids(&ctx.config, &detectors)?;
     let chunks = chunks(ctx.clone(), chunkers, inputs).await?;
     let inputs = detectors
         .iter()
@@ -136,7 +137,7 @@ pub async fn text_contents_detections(
                         })
                         .collect::<Detections>();
                 detections.sort_by_key(|detection| detection.start);
-                Ok::<_, Error>((detector_id, detections))
+                Ok::<_, Error>((input_id, detector_id, detections))
             }
         })
         .buffer_unordered(8)
@@ -439,6 +440,7 @@ pub async fn chat_completion(
     headers: HeaderMap,
     mut request: openai::ChatCompletionsRequest,
 ) -> Result<openai::ChatCompletionsResponse, Error> {
+    request.stream = false;
     request.detectors = None;
     debug!("sending chat completions request");
     let model_id = request.model.clone();
@@ -464,6 +466,7 @@ pub async fn chat_completion_stream(
 ) -> Result<ChatCompletionStream, Error> {
     debug!("sending chat completions request");
     request.stream = true;
+    request.detectors = None;
     let model_id = request.model.clone();
     let client = ctx
         .clients
@@ -477,15 +480,14 @@ pub async fn chat_completion_stream(
             error,
         })?;
     let stream = match response {
-        ChatCompletionsResponse::Unary(_) => unimplemented!(),
         ChatCompletionsResponse::Streaming(rx) => ReceiverStream::new(rx),
+        ChatCompletionsResponse::Unary(_) => unimplemented!(),
     }
     .enumerate()
-    .map(|(index, result)| {
-        match result {
-            Ok(completion_chunk) => Ok((index, completion_chunk.unwrap())), // TODO: review why this is Option
-            Err(error) => Err(error.into()),
-        }
+    .map(|(index, result)| match result {
+        Ok(Some(completion)) => Ok(Some((index, completion))),
+        Ok(None) => Ok(None),
+        Err(error) => Err(error),
     })
     .boxed();
     Ok(stream)

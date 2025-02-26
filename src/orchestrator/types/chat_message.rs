@@ -2,7 +2,7 @@ use crate::clients::openai;
 
 #[derive(Default, Clone, Debug, PartialEq)]
 pub struct ChatMessage<'a> {
-    pub index: usize,
+    pub index: u32,
     pub role: Option<&'a openai::Role>,
     pub text: Option<&'a str>,
 }
@@ -20,7 +20,7 @@ impl ChatMessageIterator for openai::ChatCompletionsRequest {
                 None
             };
             ChatMessage {
-                index,
+                index: index as u32,
                 role: Some(&message.role),
                 text,
             }
@@ -41,7 +41,7 @@ impl ChatMessageIterator for openai::ChatCompletion {
 impl ChatMessageIterator for openai::ChatCompletionChunk {
     fn messages(&self) -> impl Iterator<Item = ChatMessage> {
         self.choices.iter().map(|choice| ChatMessage {
-            index: choice.index as usize,
+            index: choice.index,
             role: choice.delta.role.as_ref(),
             text: choice.delta.content.as_deref(),
         })

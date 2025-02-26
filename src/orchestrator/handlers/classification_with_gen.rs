@@ -61,20 +61,26 @@ async fn handle_input_detection(
     let model_id = task.model_id.clone();
     let input_text = task.inputs.clone();
 
+    let input_id = 0;
     let inputs = common::apply_masks(input_text.clone(), guardrails.input_masks());
-    let detections =
-        match common::text_contents_detections(ctx.clone(), headers.clone(), detectors, inputs)
-            .await
-        {
-            Ok(detections) => detections
-                .into_iter()
-                .flat_map(|(_detector_id, detections)| detections)
-                .collect::<Detections>(),
-            Err(error) => {
-                error!(%trace_id, %error, "task failed: error processing input detections");
-                return Err(error);
-            }
-        };
+    let detections = match common::text_contents_detections(
+        ctx.clone(),
+        headers.clone(),
+        detectors.clone(),
+        input_id,
+        inputs,
+    )
+    .await
+    {
+        Ok(detections) => detections
+            .into_iter()
+            .flat_map(|(_input_id, _detector_id, detections)| detections)
+            .collect::<Detections>(),
+        Err(error) => {
+            error!(%trace_id, %error, "task failed: error processing input detections");
+            return Err(error);
+        }
+    };
     if !detections.is_empty() {
         // Get token count
         let input_token_count =
@@ -103,18 +109,26 @@ async fn handle_output_detection(
     let trace_id = &task.trace_id;
     let headers = &task.headers;
     let generated_text = generation.generated_text.clone().unwrap_or_default();
+    let input_id = 0;
     let inputs = vec![(0, generated_text)];
-    let detections =
-        match common::text_contents_detections(ctx, headers.clone(), detectors, inputs).await {
-            Ok(detections) => detections
-                .into_iter()
-                .flat_map(|(_detector_id, detections)| detections)
-                .collect::<Detections>(),
-            Err(error) => {
-                error!(%trace_id, %error, "task failed: error processing input detections");
-                return Err(error);
-            }
-        };
+    let detections = match common::text_contents_detections(
+        ctx,
+        headers.clone(),
+        detectors.clone(),
+        input_id,
+        inputs,
+    )
+    .await
+    {
+        Ok(detections) => detections
+            .into_iter()
+            .flat_map(|(_input_id, _detector_id, detections)| detections)
+            .collect::<Detections>(),
+        Err(error) => {
+            error!(%trace_id, %error, "task failed: error processing input detections");
+            return Err(error);
+        }
+    };
     let mut response = generation;
     if !detections.is_empty() {
         response.token_classification_results.output = Some(detections.into());

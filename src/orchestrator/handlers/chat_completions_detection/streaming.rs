@@ -17,11 +17,11 @@ pub async fn handle_streaming(
     tokio::spawn(async move {
         let trace_id = &task.trace_id;
         let headers = &task.headers;
-        let guardrails = &task.request.detectors;
-        let input_detectors = guardrails
+        let detector_config = &task.request.detectors;
+        let input_detectors = detector_config
             .as_ref()
             .map(|config| config.input.clone().unwrap_or_default());
-        let output_detectors = guardrails
+        let output_detectors = detector_config
             .as_ref()
             .map(|config| config.output.clone().unwrap_or_default());
         info!(%trace_id, "task started");
@@ -35,6 +35,8 @@ pub async fn handle_streaming(
                     info!(%trace_id, "task completed: returning response with input detections");
                     // Send message with input detections to response channel and terminate
                     let _ = response_tx.send(Ok(Some(completion_chunk))).await;
+                    // Send None to signal completion
+                    let _ = response_tx.send(Ok(None)).await;
                     return;
                 }
                 Ok(None) => (), // No input detections
@@ -73,17 +75,19 @@ pub async fn handle_streaming(
                 &task,
                 &detectors,
                 chat_completion_stream,
-                response_tx,
+                response_tx.clone(),
             )
             .await;
         } else {
             // No output detectors, forward chat completion stream to response stream
-            forward_chat_completion_stream(trace_id, chat_completion_stream, response_tx).await;
+            forward_chat_completion_stream(trace_id, chat_completion_stream, response_tx.clone())
+                .await;
         }
 
-        // Handle input-output detection
+        // TODO: Handle input-output detection
 
-        todo!()
+        // Send None to signal completion
+        let _ = response_tx.send(Ok(None)).await;
     });
 
     Ok(ChatCompletionsResponse::Streaming(response_rx))
@@ -171,9 +175,16 @@ async fn forward_chat_completion_stream(
 ) {
     while let Some(result) = chat_completion_stream.next().await {
         match result {
-            Ok((_index, response)) => {
+            Ok(Some((_index, response))) => {
                 // Send message to response channel
                 if response_tx.send(Ok(Some(response))).await.is_err() {
+                    info!(%trace_id, "task completed: client disconnected");
+                    return;
+                }
+            }
+            Ok(None) => {
+                // Send message to response channel
+                if response_tx.send(Ok(None)).await.is_err() {
                     info!(%trace_id, "task completed: client disconnected");
                     return;
                 }
@@ -243,7 +254,7 @@ async fn process_chat_completion_stream(
 ) {
     while let Some(result) = chat_completion_stream.next().await {
         match result {
-            Ok((index, completion)) => {
+            Ok(Some((index, completion))) => {
                 for choice in &completion.choices {
                     let input_id = choice.index;
                     // Send generated text to input channel
@@ -254,6 +265,7 @@ async fn process_chat_completion_stream(
                 // Update shared chat completions
                 chat_completions.write().unwrap().push(completion);
             }
+            Ok(None) => (),
             Err(error) => {
                 // Send error to all input channels
                 for input_tx in input_senders.values() {
@@ -290,22 +302,28 @@ async fn handle_input_detection(
             "Last message role must be user, assistant, or system".into(),
         ));
     }
+    let input_id = message.index;
     let input_text = message.text.map(|s| s.to_string()).unwrap_or_default();
     let inputs = vec![(0, input_text)];
 
-    let detections =
-        match common::text_contents_detections(ctx.clone(), headers.clone(), detectors, inputs)
-            .await
-        {
-            Ok(detections) => detections
-                .into_iter()
-                .flat_map(|(_detector_id, detections)| detections)
-                .collect::<Detections>(),
-            Err(error) => {
-                error!(%trace_id, %error, "task failed: error processing input detections");
-                return Err(error);
-            }
-        };
+    let detections = match common::text_contents_detections(
+        ctx.clone(),
+        headers.clone(),
+        detectors.clone(),
+        input_id,
+        inputs,
+    )
+    .await
+    {
+        Ok(detections) => detections
+            .into_iter()
+            .flat_map(|(_input_id, _detector_id, detections)| detections)
+            .collect::<Detections>(),
+        Err(error) => {
+            error!(%trace_id, %error, "task failed: error processing input detections");
+            return Err(error);
+        }
+    };
     if !detections.is_empty() {
         // Build response with input detections
         let completion_chunk = input_detection_response(model_id, detections);

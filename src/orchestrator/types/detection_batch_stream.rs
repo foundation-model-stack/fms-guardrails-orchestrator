@@ -177,7 +177,7 @@ impl DetectionBatcher for FakeBatcher {
 /// A batcher implementation for chat completion detections.
 pub struct ChatCompletionBatcher {
     detectors: Vec<DetectorId>,
-    //state
+    //state: BTreeMap<usize, >,
 }
 
 impl ChatCompletionBatcher {

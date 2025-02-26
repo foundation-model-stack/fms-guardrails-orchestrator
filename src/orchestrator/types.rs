@@ -29,4 +29,4 @@ pub type InputReceiver = mpsc::Receiver<Result<(usize, String), Error>>;
 pub type DetectionStream = BoxStream<Result<(InputId, DetectorId, Chunk, Detections), Error>>;
 pub type GenerationStream =
     BoxStream<Result<(usize, models::ClassifiedGeneratedTextStreamResult), Error>>;
-pub type ChatCompletionStream = BoxStream<Result<(usize, ChatCompletionChunk), Error>>;
+pub type ChatCompletionStream = BoxStream<Result<Option<(usize, ChatCompletionChunk)>, Error>>;

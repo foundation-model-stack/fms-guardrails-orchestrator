@@ -21,30 +21,30 @@ use std::{
 };
 
 use axum::{
-    extract::{rejection::JsonRejection, Query, Request, State},
+    Json, Router,
+    extract::{Query, Request, State, rejection::JsonRejection},
     http::{HeaderMap, StatusCode},
     response::{
-        sse::{Event, KeepAlive, Sse},
         IntoResponse, Response,
+        sse::{Event, KeepAlive, Sse},
     },
     routing::{get, post},
-    Json, Router,
 };
 use axum_extra::extract::WithRejection;
 use futures::{
-    stream::{self, BoxStream},
     Stream, StreamExt,
+    stream::{self, BoxStream},
 };
 use hyper::body::Incoming;
 use hyper_util::rt::{TokioExecutor, TokioIo};
 use opentelemetry::trace::TraceContextExt;
-use rustls::{server::WebPkiClientVerifier, RootCertStore, ServerConfig};
+use rustls::{RootCertStore, ServerConfig, server::WebPkiClientVerifier};
 use tokio::{net::TcpListener, signal, sync::mpsc};
 use tokio_rustls::TlsAcceptor;
 use tokio_stream::wrappers::ReceiverStream;
 use tower::Service;
 use tower_http::trace::TraceLayer;
-use tracing::{debug, error, info, instrument, warn, Span};
+use tracing::{Span, debug, error, info, instrument, warn};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 use webpki::types::{CertificateDer, PrivateKeyDer};
 
@@ -52,15 +52,14 @@ use crate::{
     clients::openai::{ChatCompletionsRequest, ChatCompletionsResponse},
     models::{self, InfoParams, InfoResponse, StreamingContentDetectionRequest},
     orchestrator::{
-        self,
+        self, Orchestrator,
         common::utils::filter_headers,
         handlers::{
-            detection_on_generation::DetectionOnGenerationTask, ChatCompletionsDetectionTask,
-            ChatDetectionTask, ClassificationWithGenTask, ContextDocsDetectionTask,
-            GenerationWithDetectionTask, Handle, StreamingClassificationWithGenTask,
-            StreamingContentDetectionTask, TextContentDetectionTask,
+            ChatCompletionsDetectionTask, ChatDetectionTask, ClassificationWithGenTask,
+            ContextDocsDetectionTask, GenerationWithDetectionTask, Handle,
+            StreamingClassificationWithGenTask, StreamingContentDetectionTask,
+            TextContentDetectionTask, detection_on_generation::DetectionOnGenerationTask,
         },
-        Orchestrator,
     },
     utils,
 };
@@ -568,7 +567,8 @@ async fn chat_completions_detection(
                             Ok(Event::default().data("[DONE]"))
                         }
                         Err(error) => {
-                            let error: Error = orchestrator::Error::from(error).into();
+                            //let error: Error = orchestrator::Error::from(error).into();
+                            let error: Error = error.into();
                             Ok(Event::default()
                                 .event("error")
                                 .json_data(error.to_json())

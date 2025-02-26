@@ -95,20 +95,26 @@ async fn handle_input_detection(
     let model_id = task.model_id.clone();
     let input_text = task.inputs.clone();
 
+    let input_id = 0;
     let inputs = common::apply_masks(input_text.clone(), guardrails.input_masks());
-    let detections =
-        match common::text_contents_detections(ctx.clone(), headers.clone(), detectors, inputs)
-            .await
-        {
-            Ok(detections) => detections
-                .into_iter()
-                .flat_map(|(_detector_id, detections)| detections)
-                .collect::<Detections>(),
-            Err(error) => {
-                error!(%trace_id, %error, "task failed: error processing input detections");
-                return Err(error);
-            }
-        };
+    let detections = match common::text_contents_detections(
+        ctx.clone(),
+        headers.clone(),
+        detectors.clone(),
+        input_id,
+        inputs,
+    )
+    .await
+    {
+        Ok(detections) => detections
+            .into_iter()
+            .flat_map(|(_input_id, _detector_id, detections)| detections)
+            .collect::<Detections>(),
+        Err(error) => {
+            error!(%trace_id, %error, "task failed: error processing input detections");
+            return Err(error);
+        }
+    };
     if !detections.is_empty() {
         // Get token count
         let input_token_count =
@@ -168,8 +174,15 @@ async fn handle_output_detection(
     });
 
     // Create detection streams
-    match common::text_contents_detection_streams(ctx, task.headers.clone(), detectors, 0, input_rx)
-        .await
+    let input_id = 0;
+    match common::text_contents_detection_streams(
+        ctx,
+        task.headers.clone(),
+        detectors,
+        input_id,
+        input_rx,
+    )
+    .await
     {
         Ok(mut detection_streams) if detection_streams.len() == 1 => {
             // Process single detection stream, batching not applicable
