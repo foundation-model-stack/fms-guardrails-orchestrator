@@ -97,3 +97,70 @@ async fn test_detection_below_default_threshold_is_not_returned() -> Result<(), 
 
     Ok(())
 }
+
+#[test(tokio::test)]
+async fn test_detection_above_default_threshold_is_returned() -> Result<(), anyhow::Error> {
+    let detector_name = FACT_CHECKING_DETECTOR;
+    let content = "The average human height has increased in the past century.";
+    let context = vec!["https://ourworldindata.org/human-height".to_string()];
+    let detection = DetectionResult {
+        detection_type: "fact_check".into(),
+        detection: "is_accurate".into(),
+        detector_id: Some(detector_name.into()),
+        score: 0.91,
+        evidence: None,
+    };
+
+    // Add detector mock
+    let mut mocks = MockSet::new();
+    mocks.insert(
+        MockPath::new(Method::POST, CONTEXT_DOC_DETECTOR_ENDPOINT),
+        Mock::new(
+            MockRequest::json(ContextDocsDetectionRequest {
+                detector_params: DetectorParams::new(),
+                content: content.into(),
+                context_type: ContextType::Url,
+                context: context.clone(),
+            }),
+            MockResponse::json(vec![detection.clone()]),
+        ),
+    );
+
+    // Start orchestrator server and its dependencies
+    let mock_detector_server = HttpMockServer::new(detector_name, mocks)?;
+    let orchestrator_server = TestOrchestratorServer::run(
+        ORCHESTRATOR_CONFIG_FILE_PATH,
+        find_available_port().unwrap(),
+        find_available_port().unwrap(),
+        None,
+        None,
+        Some(vec![mock_detector_server]),
+        None,
+    )
+    .await?;
+
+    // Make orchestrator call
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_CONTEXT_DOCS_DETECTION_ENDPOINT)
+        .json(&ContextDocsHttpRequest {
+            detectors: HashMap::from([(detector_name.into(), DetectorParams::new())]),
+            content: content.into(),
+            context_type: ContextType::Url,
+            context,
+        })
+        .send()
+        .await?;
+
+    debug!("{response:#?}");
+
+    // assertions
+    assert!(response.status() == StatusCode::OK);
+    assert!(
+        response.json::<ContextDocsResult>().await?
+            == ContextDocsResult {
+                detections: vec![detection]
+            }
+    );
+
+    Ok(())
+}
