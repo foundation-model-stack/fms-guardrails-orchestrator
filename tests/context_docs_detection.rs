@@ -14,6 +14,7 @@
  limitations under the License.
 
 */
+use serde_json::json;
 use std::collections::HashMap;
 use test_log::test;
 
@@ -22,7 +23,7 @@ use common::{
     errors::{DetectorError, OrchestratorError},
     orchestrator::{
         TestOrchestratorServer, ORCHESTRATOR_CONFIG_FILE_PATH,
-        ORCHESTRATOR_CONTEXT_DOCS_DETECTION_ENDPOINT,
+        ORCHESTRATOR_CONTEXT_DOCS_DETECTION_ENDPOINT, ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE,
     },
 };
 use fms_guardrails_orchestr8::{
@@ -296,6 +297,170 @@ async fn test_detector_returns_404() -> Result<(), anyhow::Error> {
                 detector_name, detector_error.message
             )
     );
+
+    Ok(())
+}
+
+#[test(tokio::test)]
+async fn test_detector_returns_500() -> Result<(), anyhow::Error> {
+    let detector_name = FACT_CHECKING_DETECTOR;
+    let content = "The average human height has increased in the past century.";
+    let context = vec!["https://ourworldindata.org/human-height".to_string()];
+    let detector_error = DetectorError {
+        code: 500,
+        message: "The detector is overloaded".into(),
+    };
+
+    // Add detector mock
+    let mut mocks = MockSet::new();
+    mocks.insert(
+        MockPath::new(Method::POST, CONTEXT_DOC_DETECTOR_ENDPOINT),
+        Mock::new(
+            MockRequest::json(ContextDocsDetectionRequest {
+                detector_params: DetectorParams::new(),
+                content: content.into(),
+                context_type: ContextType::Url,
+                context: context.clone(),
+            }),
+            MockResponse::json(&detector_error).with_code(StatusCode::INTERNAL_SERVER_ERROR),
+        ),
+    );
+
+    // Start orchestrator server and its dependencies
+    let mock_detector_server = HttpMockServer::new(detector_name, mocks)?;
+    let orchestrator_server = TestOrchestratorServer::run(
+        ORCHESTRATOR_CONFIG_FILE_PATH,
+        find_available_port().unwrap(),
+        find_available_port().unwrap(),
+        None,
+        None,
+        Some(vec![mock_detector_server]),
+        None,
+    )
+    .await?;
+
+    // Make orchestrator call
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_CONTEXT_DOCS_DETECTION_ENDPOINT)
+        .json(&ContextDocsHttpRequest {
+            detectors: HashMap::from([(detector_name.into(), DetectorParams::new())]),
+            content: content.into(),
+            context_type: ContextType::Url,
+            context,
+        })
+        .send()
+        .await?;
+
+    debug!("{response:#?}");
+
+    // assertions
+    assert!(response.status() == StatusCode::INTERNAL_SERVER_ERROR);
+    let response = response.json::<OrchestratorError>().await?;
+    assert!(response.code == detector_error.code);
+    assert!(response.details == ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE);
+
+    Ok(())
+}
+
+#[test(tokio::test)]
+async fn test_detector_returns_invalid_response() -> Result<(), anyhow::Error> {
+    let detector_name = FACT_CHECKING_DETECTOR;
+    let content = "The average human height has increased in the past century.";
+    let context = vec!["https://ourworldindata.org/human-height".to_string()];
+
+    // Add detector mock
+    let mut mocks = MockSet::new();
+    mocks.insert(
+        MockPath::new(Method::POST, CONTEXT_DOC_DETECTOR_ENDPOINT),
+        Mock::new(
+            MockRequest::json(ContextDocsDetectionRequest {
+                detector_params: DetectorParams::new(),
+                content: content.into(),
+                context_type: ContextType::Url,
+                context: context.clone(),
+            }),
+            MockResponse::json(
+                &json!({"message": "This response does not comply with the Detector API"}),
+            )
+            .with_code(StatusCode::OK),
+        ),
+    );
+
+    // Start orchestrator server and its dependencies
+    let mock_detector_server = HttpMockServer::new(detector_name, mocks)?;
+    let orchestrator_server = TestOrchestratorServer::run(
+        ORCHESTRATOR_CONFIG_FILE_PATH,
+        find_available_port().unwrap(),
+        find_available_port().unwrap(),
+        None,
+        None,
+        Some(vec![mock_detector_server]),
+        None,
+    )
+    .await?;
+
+    // Make orchestrator call
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_CONTEXT_DOCS_DETECTION_ENDPOINT)
+        .json(&ContextDocsHttpRequest {
+            detectors: HashMap::from([(detector_name.into(), DetectorParams::new())]),
+            content: content.into(),
+            context_type: ContextType::Url,
+            context,
+        })
+        .send()
+        .await?;
+
+    debug!("{response:#?}");
+
+    // assertions
+    assert!(response.status() == StatusCode::INTERNAL_SERVER_ERROR);
+    let response = response.json::<OrchestratorError>().await?;
+    assert!(response.code == 500);
+    assert!(response.details == ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE);
+
+    Ok(())
+}
+
+#[test(tokio::test)]
+async fn test_orchestrator_receives_a_request_with_extra_fields() -> Result<(), anyhow::Error> {
+    let detector_name = FACT_CHECKING_DETECTOR;
+    let content = "The average human height has increased in the past century.";
+    let context = vec!["https://ourworldindata.org/human-height".to_string()];
+
+    // Start orchestrator server and its dependencies
+    let mock_detector_server = HttpMockServer::new(detector_name, MockSet::new())?;
+    let orchestrator_server = TestOrchestratorServer::run(
+        ORCHESTRATOR_CONFIG_FILE_PATH,
+        find_available_port().unwrap(),
+        find_available_port().unwrap(),
+        None,
+        None,
+        Some(vec![mock_detector_server]),
+        None,
+    )
+    .await?;
+
+    // Make orchestrator call
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_CONTEXT_DOCS_DETECTION_ENDPOINT)
+        .json(&json!({
+            "detectors": {detector_name: {}},
+            "content": content,
+            "context_type": "url",
+            "context": context,
+            "extra_args": true
+        }))
+        .send()
+        .await?;
+
+    debug!("{response:#?}");
+
+    // assertions
+    assert!(response.status() == StatusCode::UNPROCESSABLE_ENTITY);
+    let response = response.json::<OrchestratorError>().await?;
+    assert!(response.code == 422);
+    assert!(response.details.contains("unknown field `extra_args`"));
 
     Ok(())
 }
