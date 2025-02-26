@@ -544,3 +544,44 @@ async fn test_orchestrator_receives_a_request_missing_context() -> Result<(), an
 
     Ok(())
 }
+
+#[test(tokio::test)]
+async fn test_orchestrator_receives_a_request_missing_context_type() -> Result<(), anyhow::Error> {
+    let detector_name = FACT_CHECKING_DETECTOR;
+    let content = "The average human height has increased in the past century.";
+    let context = vec!["https://ourworldindata.org/human-height".to_string()];
+
+    // Start orchestrator server and its dependencies
+    let mock_detector_server = HttpMockServer::new(detector_name, MockSet::new())?;
+    let orchestrator_server = TestOrchestratorServer::run(
+        ORCHESTRATOR_CONFIG_FILE_PATH,
+        find_available_port().unwrap(),
+        find_available_port().unwrap(),
+        None,
+        None,
+        Some(vec![mock_detector_server]),
+        None,
+    )
+    .await?;
+
+    // Make orchestrator call
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_CONTEXT_DOCS_DETECTION_ENDPOINT)
+        .json(&json!({
+            "detectors": {detector_name: {}},
+            "context": context,
+            "content": content,
+        }))
+        .send()
+        .await?;
+
+    debug!("{response:#?}");
+
+    // assertions
+    assert!(response.status() == StatusCode::UNPROCESSABLE_ENTITY);
+    let response = response.json::<OrchestratorError>().await?;
+    assert!(response.code == 422);
+    assert!(response.details.contains("missing field `context_type`"));
+
+    Ok(())
+}
