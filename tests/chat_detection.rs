@@ -253,3 +253,77 @@ async fn test_detector_returns_503() -> Result<(), anyhow::Error> {
 
     Ok(())
 }
+
+#[test(tokio::test)]
+async fn test_detector_returns_404() -> Result<(), anyhow::Error> {
+    let detector_name = PII_DETECTOR;
+    let messages = vec![
+        Message {
+            role: Role::User,
+            content: Some(Content::Text("Why is orchestrator returning 404?".into())),
+            ..Default::default()
+        },
+        Message {
+            role: Role::Assistant,
+            content: Some(Content::Text("Because the detector returned 404.".into())),
+            ..Default::default()
+        },
+    ];
+    let detector_error = DetectorError {
+        code: 404,
+        message: "The detector is overloaded".into(),
+    };
+
+    // Add detector mock
+    let mut mocks = MockSet::new();
+    mocks.insert(
+        MockPath::new(Method::POST, CHAT_DETECTOR_ENDPOINT),
+        Mock::new(
+            MockRequest::json(ChatDetectionRequest {
+                messages: messages.clone(),
+                detector_params: DetectorParams::new(),
+            }),
+            MockResponse::json(&detector_error).with_code(StatusCode::NOT_FOUND),
+        ),
+    );
+
+    // Start orchestrator server and its dependencies
+    let mock_detector_server = HttpMockServer::new(detector_name, mocks)?;
+    let orchestrator_server = TestOrchestratorServer::run(
+        ORCHESTRATOR_CONFIG_FILE_PATH,
+        find_available_port().unwrap(),
+        find_available_port().unwrap(),
+        None,
+        None,
+        Some(vec![mock_detector_server]),
+        None,
+    )
+    .await?;
+
+    // Make orchestrator call
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_CHAT_DETECTION_ENDPOINT)
+        .json(&ChatDetectionHttpRequest {
+            detectors: HashMap::from([(detector_name.into(), DetectorParams::new())]),
+            messages,
+        })
+        .send()
+        .await?;
+
+    debug!("{response:#?}");
+
+    // assertions
+    assert!(response.status() == StatusCode::NOT_FOUND);
+    let response = response.json::<OrchestratorError>().await?;
+    debug!("{response:#?}");
+    assert!(response.code == 404);
+    assert!(
+        response.details
+            == format!(
+                "detector request failed for `{}`: {}",
+                detector_name, detector_error.message
+            )
+    );
+
+    Ok(())
+}
