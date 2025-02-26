@@ -466,3 +466,52 @@ async fn test_detector_returns_invalid_message() -> Result<(), anyhow::Error> {
 
     Ok(())
 }
+
+#[test(tokio::test)]
+async fn test_request_contains_extra_fields() -> Result<(), anyhow::Error> {
+    let detector_name = PII_DETECTOR;
+
+    // Start orchestrator server and its dependencies
+    let mock_detector_server = HttpMockServer::new(detector_name, MockSet::new())?;
+    let orchestrator_server = TestOrchestratorServer::run(
+        ORCHESTRATOR_CONFIG_FILE_PATH,
+        find_available_port().unwrap(),
+        find_available_port().unwrap(),
+        None,
+        None,
+        Some(vec![mock_detector_server]),
+        None,
+    )
+    .await?;
+
+    // Make orchestrator call
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_CHAT_DETECTION_ENDPOINT)
+        .json(&json!({
+            "detectors": {detector_name: {}},
+            "messages": [
+                {
+                  "content": "What is this test asserting?",
+                  "role": "user",
+                },
+                {
+                  "content": "It's making sure requests with extra fields are not accepted.",
+                  "role": "assistant",
+                }
+            ],
+            "extra_args": true
+        }))
+        .send()
+        .await?;
+
+    debug!("{response:#?}");
+
+    // assertions
+    assert!(response.status() == StatusCode::UNPROCESSABLE_ENTITY);
+    let response = response.json::<OrchestratorError>().await?;
+    debug!("{response:#?}");
+    assert!(response.code == 422);
+    assert!(response.details.contains("unknown field `extra_args`"));
+
+    Ok(())
+}
