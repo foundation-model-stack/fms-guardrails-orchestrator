@@ -31,10 +31,10 @@ pub async fn handle_streaming(
         if let Some(detectors) = input_detectors {
             // Handle input detection
             match handle_input_detection(ctx.clone(), &task, &detectors).await {
-                Ok(Some(completion_chunk)) => {
+                Ok(Some(chat_completion)) => {
                     info!(%trace_id, "task completed: returning response with input detections");
                     // Send message with input detections to response channel and terminate
-                    let _ = response_tx.send(Ok(Some(completion_chunk))).await;
+                    let _ = response_tx.send(Ok(Some(chat_completion))).await;
                     // Send None to signal completion
                     let _ = response_tx.send(Ok(None)).await;
                     return;
@@ -315,10 +315,7 @@ async fn handle_input_detection(
     )
     .await
     {
-        Ok(detections) => detections
-            .into_iter()
-            .flat_map(|(_input_id, _detector_id, detections)| detections)
-            .collect::<Detections>(),
+        Ok((_input_id, detections)) => detections,
         Err(error) => {
             error!(%trace_id, %error, "task failed: error processing input detections");
             return Err(error);
@@ -326,31 +323,26 @@ async fn handle_input_detection(
     };
     if !detections.is_empty() {
         // Build response with input detections
-        let completion_chunk = input_detection_response(model_id, detections);
-        Ok(Some(completion_chunk))
+        let chat_completion = ChatCompletionChunk {
+            id: Uuid::new_v4().simple().to_string(),
+            model: model_id,
+            created: common::current_timestamp_secs(),
+            detections: Some(ChatDetections {
+                input: vec![InputDetectionResult {
+                    message_index: 0,
+                    results: detections.into(),
+                }],
+                ..Default::default()
+            }),
+            warnings: vec![OrchestratorWarning::new(
+                DetectionWarningReason::UnsuitableInput,
+                UNSUITABLE_INPUT_MESSAGE,
+            )],
+            ..Default::default()
+        };
+        Ok(Some(chat_completion))
     } else {
         // No input detections
         Ok(None)
-    }
-}
-
-/// Builds a response with input detections.
-fn input_detection_response(model_id: String, detections: Detections) -> ChatCompletionChunk {
-    ChatCompletionChunk {
-        id: Uuid::new_v4().simple().to_string(),
-        model: model_id,
-        created: common::current_timestamp_secs(),
-        detections: Some(ChatDetections {
-            input: vec![InputDetectionResult {
-                message_index: 0,
-                results: detections.into(),
-            }],
-            output: vec![],
-        }),
-        warnings: vec![OrchestratorWarning::new(
-            DetectionWarningReason::UnsuitableInput,
-            UNSUITABLE_INPUT_MESSAGE,
-        )],
-        ..Default::default()
     }
 }

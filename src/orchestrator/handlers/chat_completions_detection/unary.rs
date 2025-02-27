@@ -100,19 +100,32 @@ async fn handle_input_detection(
     )
     .await
     {
-        Ok(detections) => detections
-            .into_iter()
-            .flat_map(|(_input_id, _detector_id, detections)| detections)
-            .collect::<Detections>(),
+        Ok((input_id, detections)) => detections,
         Err(error) => {
             error!(%trace_id, %error, "task failed: error processing input detections");
             return Err(error);
         }
     };
     if !detections.is_empty() {
-        // Build completion with input detections
-        let completion = input_detection_response(model_id, detections);
-        Ok(Some(completion))
+        // Build chat completion with input detections
+        let chat_completion = ChatCompletion {
+            id: Uuid::new_v4().simple().to_string(),
+            model: model_id,
+            created: common::current_timestamp_secs(),
+            detections: Some(ChatDetections {
+                input: vec![InputDetectionResult {
+                    message_index: 0,
+                    results: detections.into(),
+                }],
+                ..Default::default()
+            }),
+            warnings: vec![OrchestratorWarning::new(
+                DetectionWarningReason::UnsuitableInput,
+                UNSUITABLE_INPUT_MESSAGE,
+            )],
+            ..Default::default()
+        };
+        Ok(Some(chat_completion))
     } else {
         // No input detections
         Ok(None)
@@ -123,7 +136,7 @@ async fn handle_output_detection(
     ctx: Arc<Context>,
     task: &ChatCompletionsDetectionTask,
     detectors: HashMap<String, DetectorParams>,
-    chat_completion: ChatCompletion,
+    mut chat_completion: ChatCompletion,
 ) -> Result<ChatCompletion, Error> {
     let headers = &task.headers;
     let mut tasks = Vec::with_capacity(chat_completion.choices.len());
@@ -140,33 +153,28 @@ async fn handle_output_detection(
             inputs,
         )));
     }
-    let results = try_join_all(tasks)
+    let detections = try_join_all(tasks)
         .await?
         .into_iter()
-        .flatten()
-        .flatten()
-        .collect::<Vec<_>>();
-
-    todo!()
-}
-
-/// Builds a response with input detections.
-fn input_detection_response(model_id: String, detections: Detections) -> ChatCompletion {
-    ChatCompletion {
-        id: Uuid::new_v4().simple().to_string(),
-        model: model_id,
-        created: common::current_timestamp_secs(),
-        detections: Some(ChatDetections {
-            input: vec![InputDetectionResult {
-                message_index: 0,
+        .collect::<Result<Vec<_>, Error>>()?;
+    if !detections.is_empty() {
+        // Update chat completion with detections
+        let output = detections
+            .into_iter()
+            .map(|(input_id, detections)| OutputDetectionResult {
+                choice_index: input_id,
                 results: detections.into(),
-            }],
-            output: vec![],
-        }),
-        warnings: vec![OrchestratorWarning::new(
-            DetectionWarningReason::UnsuitableInput,
-            UNSUITABLE_INPUT_MESSAGE,
-        )],
-        ..Default::default()
+            })
+            .collect::<Vec<_>>();
+        chat_completion.detections = Some(ChatDetections {
+            output,
+            ..Default::default()
+        });
+        chat_completion.warnings = vec![OrchestratorWarning::new(
+            DetectionWarningReason::UnsuitableOutput,
+            UNSUITABLE_OUTPUT_MESSAGE,
+        )];
     }
+
+    Ok(chat_completion)
 }

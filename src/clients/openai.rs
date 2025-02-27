@@ -716,7 +716,7 @@ pub struct OpenAiError {
 }
 
 /// Guardrails detection results.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct ChatDetections {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub input: Vec<InputDetectionResult>,
@@ -727,7 +727,7 @@ pub struct ChatDetections {
 /// Guardrails detection result for application on input.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InputDetectionResult {
-    pub message_index: usize,
+    pub message_index: u32,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub results: Vec<ContentAnalysisResponse>,
 }
@@ -735,7 +735,7 @@ pub struct InputDetectionResult {
 /// Guardrails detection result for application output.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OutputDetectionResult {
-    pub choice_index: usize,
+    pub choice_index: u32,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub results: Vec<ContentAnalysisResponse>,
 }
@@ -743,7 +743,7 @@ pub struct OutputDetectionResult {
 /// Represents the input and output of detection results following processing.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DetectionResult {
-    pub index: usize,
+    pub index: u32,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub results: Vec<GuardrailDetection>,
 }

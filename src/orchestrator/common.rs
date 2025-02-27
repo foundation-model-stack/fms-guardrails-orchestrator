@@ -106,7 +106,7 @@ pub async fn text_contents_detections(
     detectors: HashMap<String, DetectorParams>,
     input_id: InputId,
     inputs: Vec<(usize, String)>,
-) -> Result<Vec<(InputId, DetectorId, Detections)>, Error> {
+) -> Result<(InputId, Detections), Error> {
     let chunkers = get_chunker_ids(&ctx.config, &detectors)?;
     let chunks = chunks(ctx.clone(), chunkers, inputs).await?;
     let inputs = detectors
@@ -126,7 +126,7 @@ pub async fn text_contents_detections(
             let headers = headers.clone();
             let threshold = params.pop_threshold().unwrap_or_default();
             async move {
-                let mut detections =
+                let detections =
                     detect_text_contents(ctx, headers, detector_id.clone(), params, chunks)
                         .await?
                         .into_iter()
@@ -136,14 +136,15 @@ pub async fn text_contents_detections(
                             detection
                         })
                         .collect::<Detections>();
-                detections.sort_by_key(|detection| detection.start);
-                Ok::<_, Error>((input_id, detector_id, detections))
+                Ok::<_, Error>(detections)
             }
         })
         .buffer_unordered(8)
         .try_collect::<Vec<_>>()
         .await?;
-    Ok(results)
+    let mut detections = results.into_iter().flatten().collect::<Detections>();
+    detections.sort_by_key(|detection| detection.start);
+    Ok((input_id, detections))
 }
 
 /// Spawns text contents detection stream tasks.

@@ -72,10 +72,7 @@ async fn handle_input_detection(
     )
     .await
     {
-        Ok(detections) => detections
-            .into_iter()
-            .flat_map(|(_input_id, _detector_id, detections)| detections)
-            .collect::<Detections>(),
+        Ok((_input_id, detections)) => detections,
         Err(error) => {
             error!(%trace_id, %error, "task failed: error processing input detections");
             return Err(error);
@@ -92,7 +89,15 @@ async fn handle_input_detection(
                 }
             };
         // Build response with input detections
-        let response = input_detection_response(input_token_count, detections);
+        let response = ClassifiedGeneratedTextResult {
+            input_token_count,
+            token_classification_results: TextGenTokenClassificationResults {
+                input: Some(detections.into()),
+                output: None,
+            },
+            warnings: Some(vec![DetectionWarning::unsuitable_input()]),
+            ..Default::default()
+        };
         Ok(Some(response))
     } else {
         // No input detections
@@ -120,10 +125,7 @@ async fn handle_output_detection(
     )
     .await
     {
-        Ok(detections) => detections
-            .into_iter()
-            .flat_map(|(_input_id, _detector_id, detections)| detections)
-            .collect::<Detections>(),
+        Ok((_input_id, detections)) => detections,
         Err(error) => {
             error!(%trace_id, %error, "task failed: error processing input detections");
             return Err(error);
@@ -136,22 +138,6 @@ async fn handle_output_detection(
     }
     info!(%trace_id, "task completed: returning response with output detections");
     Ok(response)
-}
-
-/// Builds a response with input detections.
-fn input_detection_response(
-    input_token_count: u32,
-    detections: Detections,
-) -> ClassifiedGeneratedTextResult {
-    ClassifiedGeneratedTextResult {
-        input_token_count,
-        token_classification_results: TextGenTokenClassificationResults {
-            input: Some(detections.into()),
-            output: None,
-        },
-        warnings: Some(vec![DetectionWarning::unsuitable_input()]),
-        ..Default::default()
-    }
 }
 
 #[derive(Debug)]
