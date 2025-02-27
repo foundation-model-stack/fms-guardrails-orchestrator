@@ -265,8 +265,13 @@ async fn test_input_detector_whole_doc_no_detections() -> Result<(), anyhow::Err
     // assertions
     assert!(messages.len() == 3);
     assert!(messages[0].generated_text == Some("I".into()));
+    assert!(messages[0].token_classification_results.input == None);
+
     assert!(messages[1].generated_text == Some(" am".into()));
+    assert!(messages[1].token_classification_results.input == None);
+
     assert!(messages[2].generated_text == Some(" great!".into()));
+    assert!(messages[2].token_classification_results.input == None);
 
     Ok(())
 }
@@ -408,8 +413,13 @@ async fn test_input_detector_sentence_chunker_no_detections() -> Result<(), anyh
     // assertions
     assert!(messages.len() == 3);
     assert!(messages[0].generated_text == Some("I".into()));
+    assert!(messages[0].token_classification_results.input == None);
+
     assert!(messages[1].generated_text == Some(" am".into()));
+    assert!(messages[1].token_classification_results.input == None);
+
     assert!(messages[2].generated_text == Some(" great!".into()));
+    assert!(messages[2].token_classification_results.input == None);
 
     Ok(())
 }
