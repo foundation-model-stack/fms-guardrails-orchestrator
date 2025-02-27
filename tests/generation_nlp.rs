@@ -32,6 +32,7 @@ use test_log::test;
 
 pub mod common;
 
+/// Asserts that the NlpClient correctly invokes the streaming endpoint.
 #[test(tokio::test)]
 async fn test_nlp_streaming_call() -> Result<(), anyhow::Error> {
     // Add detector mock

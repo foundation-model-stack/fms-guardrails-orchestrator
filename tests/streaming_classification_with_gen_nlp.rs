@@ -58,6 +58,29 @@ use tracing::debug;
 
 pub mod common;
 
+// To troubleshoot tests with response deserialization errors, the following code
+// snippet is recommended:
+// // Example showing how to create an event stream from a bytes stream.
+// let mut events = Vec::new();
+// let mut event_stream = response.bytes_stream().eventsource();
+// while let Some(event) = event_stream.next().await {
+//     match event {
+//         Ok(event) => {
+//             if event.data == "[DONE]" {
+//                 break;
+//             }
+//             println!("recv: {event:?}");
+//             events.push(event.data);
+//         }
+//         Err(_) => {
+//             panic!("received error from event stream");
+//         }
+//     }
+// }
+// println!("{events:?}");
+
+/// Asserts that given a request with no detectors configured returns the text generated
+/// by the model.
 #[test(tokio::test)]
 async fn test_no_detectors() -> Result<(), anyhow::Error> {
     // Add generation mock
@@ -123,26 +146,7 @@ async fn test_no_detectors() -> Result<(), anyhow::Error> {
         .send()
         .await?;
 
-    // // Example showing how to create an event stream from a bytes stream.
-    // let mut events = Vec::new();
-    // let mut event_stream = response.bytes_stream().eventsource();
-    // while let Some(event) = event_stream.next().await {
-    //     match event {
-    //         Ok(event) => {
-    //             if event.data == "[DONE]" {
-    //                 break;
-    //             }
-    //             println!("recv: {event:?}");
-    //             events.push(event.data);
-    //         }
-    //         Err(_) => {
-    //             panic!("received error from event stream");
-    //         }
-    //     }
-    // }
-    // println!("{events:?}");
-
-    // Test custom SseStream wrapper
+    // Collects stream results
     let sse_stream: SseStream<ClassifiedGeneratedTextStreamResult> =
         SseStream::new(response.bytes_stream());
     let messages = sse_stream
@@ -161,6 +165,8 @@ async fn test_no_detectors() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
+/// Asserts that the generated text is returned when an input detector configured
+/// with the whole_doc_chunker finds no detections.
 #[test(tokio::test)]
 async fn test_input_detector_whole_doc_no_detections() -> Result<(), anyhow::Error> {
     let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC;
@@ -265,6 +271,8 @@ async fn test_input_detector_whole_doc_no_detections() -> Result<(), anyhow::Err
     Ok(())
 }
 
+/// Asserts that the generated text is returned when an input detector configured
+/// with a sentence chunker finds no detections.
 #[test(tokio::test)]
 async fn test_input_detector_sentence_chunker_no_detections() -> Result<(), anyhow::Error> {
     let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE;
@@ -406,6 +414,8 @@ async fn test_input_detector_sentence_chunker_no_detections() -> Result<(), anyh
     Ok(())
 }
 
+/// Asserts that detections found by an input detector configured with the whole_doc_chunker
+/// are returned.
 #[test(tokio::test)]
 async fn test_input_detector_whole_doc_with_detections() -> Result<(), anyhow::Error> {
     let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC;
@@ -526,6 +536,8 @@ async fn test_input_detector_whole_doc_with_detections() -> Result<(), anyhow::E
     Ok(())
 }
 
+/// Asserts that detections found by an input detector configured with a sentence chunker
+/// are returned.
 #[test(tokio::test)]
 async fn test_input_detector_sentence_chunker_with_detections() -> Result<(), anyhow::Error> {
     // Add chunker mock
@@ -678,6 +690,7 @@ async fn test_input_detector_sentence_chunker_with_detections() -> Result<(), an
     Ok(())
 }
 
+/// Asserts that 503 errors returned from detectors are correctly propagated.
 #[test(tokio::test)]
 async fn test_input_detector_returns_503() -> Result<(), anyhow::Error> {
     let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC;
@@ -756,6 +769,7 @@ async fn test_input_detector_returns_503() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
+/// Asserts that 404 errors returned from detectors are correctly propagated.
 #[test(tokio::test)]
 async fn test_input_detector_returns_404() -> Result<(), anyhow::Error> {
     let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC;
@@ -834,6 +848,7 @@ async fn test_input_detector_returns_404() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
+/// Asserts that 500 errors returned from detectors are correctly propagated.
 #[test(tokio::test)]
 async fn test_input_detector_returns_500() -> Result<(), anyhow::Error> {
     let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC;
@@ -906,8 +921,10 @@ async fn test_input_detector_returns_500() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
+/// Asserts error 500 is returned when a detector returns a message that does not comply
+/// with the detector API.
 #[test(tokio::test)]
-async fn test_input_detector_returns_non_compliant_message() -> Result<(), anyhow::Error> {
+async fn test_input_detector_returns_invalid_message() -> Result<(), anyhow::Error> {
     // ensure_global_rustls_state();
     let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC;
     let model_id = "my-super-model-8B";
@@ -980,6 +997,7 @@ async fn test_input_detector_returns_non_compliant_message() -> Result<(), anyho
     Ok(())
 }
 
+/// Asserts error 500 is returned when an input chunker returns an error.
 #[test(tokio::test)]
 async fn test_input_chunker_returns_an_error() -> Result<(), anyhow::Error> {
     let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE;
@@ -1052,6 +1070,7 @@ async fn test_input_chunker_returns_an_error() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
+// Asserts error 500 is returned when generation server returns an error.
 #[test(tokio::test)]
 async fn test_generation_server_returns_an_error() -> Result<(), anyhow::Error> {
     let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC;
@@ -1139,8 +1158,9 @@ async fn test_generation_server_returns_an_error() -> Result<(), anyhow::Error> 
     Ok(())
 }
 
+/// Asserts error 422 is returned when the orchestrator request has extra fields.
 #[test(tokio::test)]
-async fn test_orchestrator_receives_a_non_compliant_request() -> Result<(), anyhow::Error> {
+async fn test_request_with_extra_fields_returns_422() -> Result<(), anyhow::Error> {
     let model_id = "my-super-model-8B";
 
     // Run test orchestrator server
