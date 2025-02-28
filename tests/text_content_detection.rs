@@ -48,6 +48,7 @@ use tracing::debug;
 
 pub mod common;
 
+/// Asserts that generated text with no detections is returned (detector configured with whole_doc_chunker).
 #[test(tokio::test)]
 async fn test_no_detection_whole_doc() -> Result<(), anyhow::Error> {
     let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC;
@@ -88,7 +89,7 @@ async fn test_no_detection_whole_doc() -> Result<(), anyhow::Error> {
         .send()
         .await?;
 
-    debug!(?response);
+    debug!("{response:#?}");
 
     // assertions
     assert!(response.status() == StatusCode::OK);
@@ -100,6 +101,7 @@ async fn test_no_detection_whole_doc() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
+/// Asserts that generated text with no detections is returned (detector configured with a sentence chunker).
 #[test(tokio::test)]
 async fn test_no_detection_sentence_chunker() -> Result<(), anyhow::Error> {
     // Add chunker mock
@@ -177,7 +179,7 @@ async fn test_no_detection_sentence_chunker() -> Result<(), anyhow::Error> {
         .send()
         .await?;
 
-    debug!(?response);
+    debug!("{response:#?}");
 
     assert!(response.status() == StatusCode::OK);
     assert!(
@@ -188,9 +190,7 @@ async fn test_no_detection_sentence_chunker() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
-/// Asserts a scenario with a single detection works as expected (assumes a detector configured with whole_doc_chunker).
-///
-/// This test mocks a detector that detects text between <angle brackets>.
+/// Asserts that detections are returned (detector configured with whole_doc_chunker).
 #[test(tokio::test)]
 async fn test_single_detection_whole_doc() -> Result<(), anyhow::Error> {
     let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC;
@@ -240,7 +240,7 @@ async fn test_single_detection_whole_doc() -> Result<(), anyhow::Error> {
         .send()
         .await?;
 
-    debug!(?response);
+    debug!("{response:#?}");
 
     // assertions
     assert!(response.status() == StatusCode::OK);
@@ -263,9 +263,7 @@ async fn test_single_detection_whole_doc() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
-/// Asserts a scenario with a single detection works as expected (with sentence chunker).
-///
-/// This test mocks a detector that detects text between <angle brackets>.
+/// Asserts that detections are returned (detector configured with a sentence chunker).
 #[test(tokio::test)]
 async fn test_single_detection_sentence_chunker() -> Result<(), anyhow::Error> {
     // Add chunker mock
@@ -352,7 +350,7 @@ async fn test_single_detection_sentence_chunker() -> Result<(), anyhow::Error> {
         .send()
         .await?;
 
-    debug!(?response);
+    debug!("{response:#?}");
 
     // assertions
     assert!(response.status() == StatusCode::OK);
@@ -375,6 +373,7 @@ async fn test_single_detection_sentence_chunker() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
+/// Asserts that 503 errors returned by detectors are correctly propagated.
 #[test(tokio::test)]
 async fn test_detector_returns_503() -> Result<(), anyhow::Error> {
     let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC;
@@ -437,6 +436,7 @@ async fn test_detector_returns_503() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
+/// Asserts that 404 errors returned by detectors are correctly propagated.
 #[test(tokio::test)]
 async fn test_detector_returns_404() -> Result<(), anyhow::Error> {
     let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC;
@@ -499,6 +499,7 @@ async fn test_detector_returns_404() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
+/// Asserts that 500 errors returned by detectors are correctly propagated.
 #[test(tokio::test)]
 async fn test_detector_returns_500() -> Result<(), anyhow::Error> {
     let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC;
@@ -556,8 +557,9 @@ async fn test_detector_returns_500() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
+/// Asserts that error 500 is returned when a detector return an invalid message.
 #[test(tokio::test)]
-async fn test_detector_returns_non_compliant_message() -> Result<(), anyhow::Error> {
+async fn test_detector_returns_invalid_message() -> Result<(), anyhow::Error> {
     let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC;
 
     // Add input detection mock
@@ -610,6 +612,7 @@ async fn test_detector_returns_non_compliant_message() -> Result<(), anyhow::Err
     Ok(())
 }
 
+/// Asserts that error 500 is returned upon chunker failure.
 #[test(tokio::test)]
 async fn test_chunker_returns_an_error() -> Result<(), anyhow::Error> {
     let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE;
@@ -665,6 +668,7 @@ async fn test_chunker_returns_an_error() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
+/// Asserts error 422 is returned when orchestrator request contains extra fields.
 #[test(tokio::test)]
 async fn test_request_with_extra_fields_returns_422() -> Result<(), anyhow::Error> {
     let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC;
@@ -706,6 +710,8 @@ async fn test_request_with_extra_fields_returns_422() -> Result<(), anyhow::Erro
     Ok(())
 }
 
+/// Asserts error 422 is returned when orchestrator request does not contain `detectors`
+/// field.
 #[test(tokio::test)]
 async fn test_request_missing_detectors_field_returns_422() -> Result<(), anyhow::Error> {
     // Start orchestrator server and its dependencies
@@ -743,6 +749,8 @@ async fn test_request_missing_detectors_field_returns_422() -> Result<(), anyhow
     Ok(())
 }
 
+/// Asserts error 422 is returned when orchestrator request does not contain `content`
+/// field.
 #[test(tokio::test)]
 async fn test_request_missing_content_field_returns_422() -> Result<(), anyhow::Error> {
     let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC;
@@ -781,6 +789,7 @@ async fn test_request_missing_content_field_returns_422() -> Result<(), anyhow::
     Ok(())
 }
 
+/// Asserts error 422 is returned when `detectors` is empty in orchestrator request.
 #[test(tokio::test)]
 async fn test_request_with_empty_detectors_field_returns_422() -> Result<(), anyhow::Error> {
     // Start orchestrator server and its dependencies
