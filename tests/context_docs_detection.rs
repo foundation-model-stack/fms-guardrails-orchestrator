@@ -52,7 +52,7 @@ async fn test_detection_below_default_threshold_is_not_returned() -> Result<(), 
     // Add detector mock
     let mut mocks = MockSet::new();
     mocks.insert(
-        MockPath::new(Method::POST, CONTEXT_DOC_DETECTOR_ENDPOINT),
+        MockPath::post(CONTEXT_DOC_DETECTOR_ENDPOINT),
         Mock::new(
             MockRequest::json(ContextDocsDetectionRequest {
                 detector_params: DetectorParams::new(),
@@ -116,7 +116,7 @@ async fn test_detection_above_default_threshold_is_returned() -> Result<(), anyh
     // Add detector mock
     let mut mocks = MockSet::new();
     mocks.insert(
-        MockPath::new(Method::POST, CONTEXT_DOC_DETECTOR_ENDPOINT),
+        MockPath::post(CONTEXT_DOC_DETECTOR_ENDPOINT),
         Mock::new(
             MockRequest::json(ContextDocsDetectionRequest {
                 detector_params: DetectorParams::new(),
@@ -180,7 +180,7 @@ async fn test_detector_returns_503() -> Result<(), anyhow::Error> {
     // Add detector mock
     let mut mocks = MockSet::new();
     mocks.insert(
-        MockPath::new(Method::POST, CONTEXT_DOC_DETECTOR_ENDPOINT),
+        MockPath::post(CONTEXT_DOC_DETECTOR_ENDPOINT),
         Mock::new(
             MockRequest::json(ContextDocsDetectionRequest {
                 detector_params: DetectorParams::new(),
@@ -247,7 +247,7 @@ async fn test_detector_returns_404() -> Result<(), anyhow::Error> {
     // Add detector mock
     let mut mocks = MockSet::new();
     mocks.insert(
-        MockPath::new(Method::POST, CONTEXT_DOC_DETECTOR_ENDPOINT),
+        MockPath::post(CONTEXT_DOC_DETECTOR_ENDPOINT),
         Mock::new(
             MockRequest::json(ContextDocsDetectionRequest {
                 detector_params: DetectorParams::new(),
@@ -314,7 +314,7 @@ async fn test_detector_returns_500() -> Result<(), anyhow::Error> {
     // Add detector mock
     let mut mocks = MockSet::new();
     mocks.insert(
-        MockPath::new(Method::POST, CONTEXT_DOC_DETECTOR_ENDPOINT),
+        MockPath::post(CONTEXT_DOC_DETECTOR_ENDPOINT),
         Mock::new(
             MockRequest::json(ContextDocsDetectionRequest {
                 detector_params: DetectorParams::new(),
@@ -371,7 +371,7 @@ async fn test_detector_returns_invalid_response() -> Result<(), anyhow::Error> {
     // Add detector mock
     let mut mocks = MockSet::new();
     mocks.insert(
-        MockPath::new(Method::POST, CONTEXT_DOC_DETECTOR_ENDPOINT),
+        MockPath::post(CONTEXT_DOC_DETECTOR_ENDPOINT),
         Mock::new(
             MockRequest::json(ContextDocsDetectionRequest {
                 detector_params: DetectorParams::new(),
