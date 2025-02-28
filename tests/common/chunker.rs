@@ -14,13 +14,6 @@
  limitations under the License.
 
 */
-use mocktail::generate_grpc_server;
-use mocktail::mock::MockSet;
-
-generate_grpc_server!(
-    "caikit.runtime.Chunkers.ChunkersService",
-    MockChunkersServiceServer
-);
 
 // Chunker names
 pub const CHUNKER_NAME_SENTENCE: &str = "sentence_chunker";

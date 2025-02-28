@@ -15,9 +15,7 @@
 
 */
 
-use common::generation::{
-    MockNlpServiceServer, GENERATION_NLP_MODEL_ID_HEADER_NAME, GENERATION_NLP_STREAMING_ENDPOINT,
-};
+use common::generation::{GENERATION_NLP_MODEL_ID_HEADER_NAME, GENERATION_NLP_STREAMING_ENDPOINT};
 use fms_guardrails_orchestr8::{
     clients::NlpClient,
     config::ServiceConfig,
@@ -60,7 +58,7 @@ async fn test_nlp_streaming_call() -> Result<(), anyhow::Error> {
 
     let mut mocks = MockSet::new();
     mocks.insert(
-        MockPath::new(Method::POST, GENERATION_NLP_STREAMING_ENDPOINT),
+        MockPath::post(GENERATION_NLP_STREAMING_ENDPOINT),
         Mock::new(
             MockRequest::pb(ServerStreamingTextGenerationTaskRequest {
                 text: "Hi there! How are you?".into(),
@@ -71,7 +69,7 @@ async fn test_nlp_streaming_call() -> Result<(), anyhow::Error> {
         ),
     );
 
-    let generation_nlp_server = MockNlpServiceServer::new(mocks)?;
+    let generation_nlp_server = GrpcMockServer::new("nlp", mocks)?;
     generation_nlp_server.start().await?;
 
     let client = NlpClient::new(&ServiceConfig {

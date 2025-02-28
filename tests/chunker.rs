@@ -15,7 +15,7 @@
 
 */
 
-use common::chunker::{MockChunkersServiceServer, CHUNKER_UNARY_ENDPOINT};
+use common::chunker::CHUNKER_UNARY_ENDPOINT;
 use fms_guardrails_orchestr8::{
     clients::chunker::{ChunkerClient, MODEL_ID_HEADER_NAME},
     config::ServiceConfig,
@@ -62,7 +62,7 @@ async fn test_isolated_chunker_unary_call() -> Result<(), anyhow::Error> {
 
     let mut mocks = MockSet::new();
     mocks.insert(
-        MockPath::new(Method::POST, CHUNKER_UNARY_ENDPOINT),
+        MockPath::post(CHUNKER_UNARY_ENDPOINT),
         Mock::new(
             MockRequest::pb(ChunkerTokenizationTaskRequest {
                 text: input_text.into(),
@@ -72,7 +72,7 @@ async fn test_isolated_chunker_unary_call() -> Result<(), anyhow::Error> {
         ),
     );
 
-    let mock_chunker_server = MockChunkersServiceServer::new(mocks)?;
+    let mock_chunker_server = GrpcMockServer::new(chunker_id, mocks)?;
     let _ = mock_chunker_server.start().await;
 
     let client = ChunkerClient::new(&ServiceConfig {

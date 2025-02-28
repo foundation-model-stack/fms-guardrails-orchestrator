@@ -19,18 +19,15 @@ use std::collections::HashMap;
 use test_log::test;
 
 use common::{
-    chunker::{
-        MockChunkersServiceServer, CHUNKER_MODEL_ID_HEADER_NAME, CHUNKER_NAME_SENTENCE,
-        CHUNKER_UNARY_ENDPOINT,
-    },
+    chunker::{CHUNKER_MODEL_ID_HEADER_NAME, CHUNKER_NAME_SENTENCE, CHUNKER_UNARY_ENDPOINT},
     detectors::{
         DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE, DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC,
         TEXT_CONTENTS_DETECTOR_ENDPOINT,
     },
     errors::{DetectorError, OrchestratorError},
     generation::{
-        MockNlpServiceServer, GENERATION_NLP_MODEL_ID_HEADER_NAME,
-        GENERATION_NLP_STREAMING_ENDPOINT, GENERATION_NLP_TOKENIZATION_ENDPOINT,
+        GENERATION_NLP_MODEL_ID_HEADER_NAME, GENERATION_NLP_STREAMING_ENDPOINT,
+        GENERATION_NLP_TOKENIZATION_ENDPOINT,
     },
     orchestrator::{
         SseStream, TestOrchestratorServer, ORCHESTRATOR_CONFIG_FILE_PATH,
@@ -108,7 +105,7 @@ async fn test_no_detectors() -> Result<(), anyhow::Error> {
 
     let mut mocks = MockSet::new();
     mocks.insert(
-        MockPath::new(Method::POST, GENERATION_NLP_STREAMING_ENDPOINT),
+        MockPath::post(GENERATION_NLP_STREAMING_ENDPOINT),
         Mock::new(
             MockRequest::pb(ServerStreamingTextGenerationTaskRequest {
                 text: "Hi there! How are you?".into(),
@@ -120,7 +117,7 @@ async fn test_no_detectors() -> Result<(), anyhow::Error> {
     );
 
     // Configure mock servers
-    let generation_server = MockNlpServiceServer::new(mocks)?;
+    let generation_server = GrpcMockServer::new("nlp", mocks)?;
 
     // Run test orchestrator server
     let orchestrator_server = TestOrchestratorServer::run(
@@ -174,7 +171,7 @@ async fn test_input_detector_whole_doc_no_detections() -> Result<(), anyhow::Err
     // Add input detection mock
     let mut detection_mocks = MockSet::new();
     detection_mocks.insert(
-        MockPath::new(Method::POST, TEXT_CONTENTS_DETECTOR_ENDPOINT),
+        MockPath::post(TEXT_CONTENTS_DETECTOR_ENDPOINT),
         Mock::new(
             MockRequest::json(ContentAnalysisRequest {
                 contents: vec!["Hi there! How are you?".into()],
@@ -209,7 +206,7 @@ async fn test_input_detector_whole_doc_no_detections() -> Result<(), anyhow::Err
 
     let mut generation_mocks = MockSet::new();
     generation_mocks.insert(
-        MockPath::new(Method::POST, GENERATION_NLP_STREAMING_ENDPOINT),
+        MockPath::post(GENERATION_NLP_STREAMING_ENDPOINT),
         Mock::new(
             MockRequest::pb(ServerStreamingTextGenerationTaskRequest {
                 text: "Hi there! How are you?".into(),
@@ -222,7 +219,7 @@ async fn test_input_detector_whole_doc_no_detections() -> Result<(), anyhow::Err
 
     // Start orchestrator server and its dependencies
     let mock_detector_server = HttpMockServer::new(detector_name, detection_mocks)?;
-    let generation_server = MockNlpServiceServer::new(generation_mocks)?;
+    let generation_server = GrpcMockServer::new("nlp", generation_mocks)?;
     let orchestrator_server = TestOrchestratorServer::run(
         ORCHESTRATOR_CONFIG_FILE_PATH,
         find_available_port().unwrap(),
@@ -289,7 +286,7 @@ async fn test_input_detector_sentence_chunker_no_detections() -> Result<(), anyh
 
     let mut chunker_mocks = MockSet::new();
     chunker_mocks.insert(
-        MockPath::new(Method::POST, CHUNKER_UNARY_ENDPOINT),
+        MockPath::post(CHUNKER_UNARY_ENDPOINT),
         Mock::new(
             MockRequest::pb(ChunkerTokenizationTaskRequest {
                 text: "Hi there! How are you?".into(),
@@ -316,7 +313,7 @@ async fn test_input_detector_sentence_chunker_no_detections() -> Result<(), anyh
     // Add input detection mock
     let mut detection_mocks = MockSet::new();
     detection_mocks.insert(
-        MockPath::new(Method::POST, TEXT_CONTENTS_DETECTOR_ENDPOINT),
+        MockPath::post(TEXT_CONTENTS_DETECTOR_ENDPOINT),
         Mock::new(
             MockRequest::json(ContentAnalysisRequest {
                 contents: vec!["Hi there!".into(), " How are you?".into()],
@@ -354,7 +351,7 @@ async fn test_input_detector_sentence_chunker_no_detections() -> Result<(), anyh
 
     let mut generation_mocks = MockSet::new();
     generation_mocks.insert(
-        MockPath::new(Method::POST, GENERATION_NLP_STREAMING_ENDPOINT),
+        MockPath::post(GENERATION_NLP_STREAMING_ENDPOINT),
         Mock::new(
             MockRequest::pb(ServerStreamingTextGenerationTaskRequest {
                 text: "Hi there! How are you?".into(),
@@ -366,9 +363,9 @@ async fn test_input_detector_sentence_chunker_no_detections() -> Result<(), anyh
     );
 
     // Start orchestrator server and its dependencies
-    let mock_chunker_server = MockChunkersServiceServer::new(chunker_mocks)?;
+    let mock_chunker_server = GrpcMockServer::new(chunker_id, chunker_mocks)?;
     let mock_detector_server = HttpMockServer::new(detector_name, detection_mocks)?;
-    let generation_server = MockNlpServiceServer::new(generation_mocks)?;
+    let generation_server = GrpcMockServer::new("nlp", generation_mocks)?;
     let orchestrator_server = TestOrchestratorServer::run(
         ORCHESTRATOR_CONFIG_FILE_PATH,
         find_available_port().unwrap(),
@@ -376,7 +373,7 @@ async fn test_input_detector_sentence_chunker_no_detections() -> Result<(), anyh
         Some(generation_server),
         None,
         Some(vec![mock_detector_server]),
-        Some(vec![(chunker_id.into(), mock_chunker_server)]),
+        Some(vec![mock_chunker_server]),
     )
     .await?;
 
@@ -443,7 +440,7 @@ async fn test_input_detector_whole_doc_with_detections() -> Result<(), anyhow::E
     // Add input detection mock
     let mut detection_mocks = MockSet::new();
     detection_mocks.insert(
-        MockPath::new(Method::POST, TEXT_CONTENTS_DETECTOR_ENDPOINT),
+        MockPath::post(TEXT_CONTENTS_DETECTOR_ENDPOINT),
         Mock::new(
             MockRequest::json(ContentAnalysisRequest {
                 contents: vec![
@@ -468,7 +465,7 @@ async fn test_input_detector_whole_doc_with_detections() -> Result<(), anyhow::E
     );
     let mut generation_mocks = MockSet::new();
     generation_mocks.insert(
-        MockPath::new(Method::POST, GENERATION_NLP_TOKENIZATION_ENDPOINT),
+        MockPath::post(GENERATION_NLP_TOKENIZATION_ENDPOINT),
         Mock::new(
             MockRequest::pb(TokenizationTaskRequest {
                 text: "This sentence does not have a detection. But <this one does>.".into(),
@@ -481,7 +478,7 @@ async fn test_input_detector_whole_doc_with_detections() -> Result<(), anyhow::E
 
     // Start orchestrator server and its dependencies
     let mock_detector_server = HttpMockServer::new(detector_name, detection_mocks)?;
-    let generation_server = MockNlpServiceServer::new(generation_mocks)?;
+    let generation_server = GrpcMockServer::new("nlp", generation_mocks)?;
     let orchestrator_server = TestOrchestratorServer::run(
         ORCHESTRATOR_CONFIG_FILE_PATH,
         find_available_port().unwrap(),
@@ -557,7 +554,7 @@ async fn test_input_detector_sentence_chunker_with_detections() -> Result<(), an
 
     let mut chunker_mocks = MockSet::new();
     chunker_mocks.insert(
-        MockPath::new(Method::POST, CHUNKER_UNARY_ENDPOINT),
+        MockPath::post(CHUNKER_UNARY_ENDPOINT),
         Mock::new(
             MockRequest::pb(ChunkerTokenizationTaskRequest {
                 text: "This sentence does not have a detection. But <this one does>.".into(),
@@ -595,7 +592,7 @@ async fn test_input_detector_sentence_chunker_with_detections() -> Result<(), an
     };
     let mut detection_mocks = MockSet::new();
     detection_mocks.insert(
-        MockPath::new(Method::POST, TEXT_CONTENTS_DETECTOR_ENDPOINT),
+        MockPath::post(TEXT_CONTENTS_DETECTOR_ENDPOINT),
         Mock::new(
             MockRequest::json(ContentAnalysisRequest {
                 contents: vec![
@@ -621,7 +618,7 @@ async fn test_input_detector_sentence_chunker_with_detections() -> Result<(), an
     );
     let mut generation_mocks = MockSet::new();
     generation_mocks.insert(
-        MockPath::new(Method::POST, GENERATION_NLP_TOKENIZATION_ENDPOINT),
+        MockPath::post(GENERATION_NLP_TOKENIZATION_ENDPOINT),
         Mock::new(
             MockRequest::pb(TokenizationTaskRequest {
                 text: "This sentence does not have a detection. But <this one does>.".into(),
@@ -633,9 +630,9 @@ async fn test_input_detector_sentence_chunker_with_detections() -> Result<(), an
     );
 
     // Start orchestrator server and its dependencies
-    let mock_chunker_server = MockChunkersServiceServer::new(chunker_mocks)?;
+    let mock_chunker_server = GrpcMockServer::new(chunker_id, chunker_mocks)?;
     let mock_detector_server = HttpMockServer::new(detector_name, detection_mocks)?;
-    let generation_server = MockNlpServiceServer::new(generation_mocks)?;
+    let generation_server = GrpcMockServer::new("nlp", generation_mocks)?;
     let orchestrator_server = TestOrchestratorServer::run(
         ORCHESTRATOR_CONFIG_FILE_PATH,
         find_available_port().unwrap(),
@@ -643,7 +640,7 @@ async fn test_input_detector_sentence_chunker_with_detections() -> Result<(), an
         Some(generation_server),
         None,
         Some(vec![mock_detector_server]),
-        Some(vec![(chunker_id.into(), mock_chunker_server)]),
+        Some(vec![mock_chunker_server]),
     )
     .await?;
 
@@ -713,7 +710,7 @@ async fn test_input_detector_returns_503() -> Result<(), anyhow::Error> {
     // Add input detection mock
     let mut detection_mocks = MockSet::new();
     detection_mocks.insert(
-        MockPath::new(Method::POST, TEXT_CONTENTS_DETECTOR_ENDPOINT),
+        MockPath::post(TEXT_CONTENTS_DETECTOR_ENDPOINT),
         Mock::new(
             MockRequest::json(ContentAnalysisRequest {
                 contents: vec!["This should return a 503".into()],
@@ -792,7 +789,7 @@ async fn test_input_detector_returns_404() -> Result<(), anyhow::Error> {
     // Add input detection mock
     let mut detection_mocks = MockSet::new();
     detection_mocks.insert(
-        MockPath::new(Method::POST, TEXT_CONTENTS_DETECTOR_ENDPOINT),
+        MockPath::post(TEXT_CONTENTS_DETECTOR_ENDPOINT),
         Mock::new(
             MockRequest::json(ContentAnalysisRequest {
                 contents: vec!["This should return a 404".into()],
@@ -871,7 +868,7 @@ async fn test_input_detector_returns_500() -> Result<(), anyhow::Error> {
     // Add input detection mock
     let mut detection_mocks = MockSet::new();
     detection_mocks.insert(
-        MockPath::new(Method::POST, TEXT_CONTENTS_DETECTOR_ENDPOINT),
+        MockPath::post(TEXT_CONTENTS_DETECTOR_ENDPOINT),
         Mock::new(
             MockRequest::json(ContentAnalysisRequest {
                 contents: vec!["This should return a 500".into()],
@@ -945,7 +942,7 @@ async fn test_input_detector_returns_invalid_message() -> Result<(), anyhow::Err
     // Add input detection mock
     let mut detection_mocks = MockSet::new();
     detection_mocks.insert(
-        MockPath::new(Method::POST, TEXT_CONTENTS_DETECTOR_ENDPOINT),
+        MockPath::post(TEXT_CONTENTS_DETECTOR_ENDPOINT),
         Mock::new(
             MockRequest::json(ContentAnalysisRequest {
                 contents: vec![
@@ -1020,7 +1017,7 @@ async fn test_input_chunker_returns_an_error() -> Result<(), anyhow::Error> {
 
     let mut chunker_mocks = MockSet::new();
     chunker_mocks.insert(
-        MockPath::new(Method::POST, CHUNKER_UNARY_ENDPOINT),
+        MockPath::post(CHUNKER_UNARY_ENDPOINT),
         Mock::new(
             MockRequest::pb(ChunkerTokenizationTaskRequest {
                 text: "Hi there! How are you?".into(),
@@ -1031,7 +1028,7 @@ async fn test_input_chunker_returns_an_error() -> Result<(), anyhow::Error> {
     );
 
     // Start orchestrator server and its dependencies
-    let mock_chunker_server = MockChunkersServiceServer::new(chunker_mocks)?;
+    let mock_chunker_server = GrpcMockServer::new(chunker_id, chunker_mocks)?;
     let orchestrator_server = TestOrchestratorServer::run(
         ORCHESTRATOR_CONFIG_FILE_PATH,
         find_available_port().unwrap(),
@@ -1039,7 +1036,7 @@ async fn test_input_chunker_returns_an_error() -> Result<(), anyhow::Error> {
         None,
         None,
         None,
-        Some(vec![(chunker_id.into(), mock_chunker_server)]),
+        Some(vec![mock_chunker_server]),
     )
     .await?;
 
@@ -1088,7 +1085,7 @@ async fn test_generation_server_returns_an_error() -> Result<(), anyhow::Error> 
     // Add input detection mock
     let mut detection_mocks = MockSet::new();
     detection_mocks.insert(
-        MockPath::new(Method::POST, TEXT_CONTENTS_DETECTOR_ENDPOINT),
+        MockPath::post(TEXT_CONTENTS_DETECTOR_ENDPOINT),
         Mock::new(
             MockRequest::json(ContentAnalysisRequest {
                 contents: vec!["Hi there! How are you?".into()],
@@ -1108,7 +1105,7 @@ async fn test_generation_server_returns_an_error() -> Result<(), anyhow::Error> 
 
     let mut generation_mocks = MockSet::new();
     generation_mocks.insert(
-        MockPath::new(Method::POST, GENERATION_NLP_STREAMING_ENDPOINT),
+        MockPath::post(GENERATION_NLP_STREAMING_ENDPOINT),
         Mock::new(
             MockRequest::pb(ServerStreamingTextGenerationTaskRequest {
                 text: "Hi there! How are you?".into(),
@@ -1121,7 +1118,7 @@ async fn test_generation_server_returns_an_error() -> Result<(), anyhow::Error> 
 
     // Start orchestrator server and its dependencies
     let mock_detector_server = HttpMockServer::new(detector_name, detection_mocks)?;
-    let generation_server = MockNlpServiceServer::new(generation_mocks)?;
+    let generation_server = GrpcMockServer::new("nlp", generation_mocks)?;
     let orchestrator_server = TestOrchestratorServer::run(
         ORCHESTRATOR_CONFIG_FILE_PATH,
         find_available_port().unwrap(),

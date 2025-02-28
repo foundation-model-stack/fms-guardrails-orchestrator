@@ -90,7 +90,7 @@ tonic-build = "0.12.3"
 [dev-dependencies]
 axum-test = "17.1.0"
 faux = "0.1.12"
-mocktail = { git = "https://github.com/IBM/mocktail", version = "0.1.0-alpha" }
+mocktail = { git = "https://github.com/IBM/mocktail", version = "0.1.2-alpha" }
 test-log = "0.2.17"
 
 [profile.release]

@@ -14,10 +14,6 @@
  limitations under the License.
 
 */
-use mocktail::generate_grpc_server;
-use mocktail::mock::MockSet;
-
-generate_grpc_server!("caikit.runtime.Nlp.NlpService", MockNlpServiceServer);
 
 // NLP generation server endpoints
 pub const GENERATION_NLP_STREAMING_ENDPOINT: &str =

@@ -28,13 +28,11 @@ use bytes::Bytes;
 use eventsource_stream::{EventStream, Eventsource};
 use fms_guardrails_orchestr8::{config::OrchestratorConfig, orchestrator::Orchestrator};
 use futures::{stream::BoxStream, Stream, StreamExt};
-use mocktail::server::HttpMockServer;
+use mocktail::server::{GrpcMockServer, HttpMockServer};
 use rustls::crypto::ring;
 use serde::de::DeserializeOwned;
 use tokio::task::JoinHandle;
 use url::Url;
-
-use super::{chunker::MockChunkersServiceServer, generation::MockNlpServiceServer};
 
 // Default orchestrator configuration file for integration tests.
 pub const ORCHESTRATOR_CONFIG_FILE_PATH: &str = "tests/test_config.yaml";
@@ -65,10 +63,10 @@ impl TestOrchestratorServer {
         config_path: impl AsRef<Path>,
         port: u16,
         health_port: u16,
-        generation_server: Option<MockNlpServiceServer>,
+        generation_server: Option<GrpcMockServer>,
         chat_generation_server: Option<HttpMockServer>,
         detector_servers: Option<Vec<HttpMockServer>>,
-        chunker_servers: Option<Vec<(String, MockChunkersServiceServer)>>,
+        chunker_servers: Option<Vec<GrpcMockServer>>,
     ) -> Result<Self, anyhow::Error> {
         // Set default crypto provider
         ensure_global_rustls_state();
@@ -87,7 +85,7 @@ impl TestOrchestratorServer {
     }
 
     async fn initialize_generation_server(
-        generation_server: Option<MockNlpServiceServer>,
+        generation_server: Option<GrpcMockServer>,
         config: &mut OrchestratorConfig,
     ) -> Result<(), anyhow::Error> {
         Ok(if let Some(generation_server) = generation_server {
@@ -128,17 +126,17 @@ impl TestOrchestratorServer {
     }
 
     async fn initialize_chunkers(
-        chunker_servers: Option<Vec<(String, MockChunkersServiceServer)>>,
+        chunker_servers: Option<Vec<GrpcMockServer>>,
         config: &mut OrchestratorConfig,
     ) -> Result<(), anyhow::Error> {
         Ok(if let Some(chunker_servers) = chunker_servers {
-            for (name, chunker_server) in chunker_servers {
+            for chunker_server in chunker_servers {
                 chunker_server.start().await?;
                 config
                     .chunkers
                     .as_mut()
                     .unwrap()
-                    .get_mut(&name)
+                    .get_mut(chunker_server.name())
                     .unwrap()
                     .service
                     .port = Some(chunker_server.addr().port());

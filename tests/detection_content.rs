@@ -19,7 +19,7 @@ use std::collections::HashMap;
 use test_log::test;
 
 use common::{
-    chunker::{MockChunkersServiceServer, CHUNKER_NAME_SENTENCE, CHUNKER_UNARY_ENDPOINT},
+    chunker::{CHUNKER_NAME_SENTENCE, CHUNKER_UNARY_ENDPOINT},
     detectors::{
         DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE, DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC,
         TEXT_CONTENTS_DETECTOR_ENDPOINT,
@@ -56,7 +56,7 @@ async fn test_single_detection_whole_doc() -> Result<(), anyhow::Error> {
     // Add detector mock
     let mut mocks = MockSet::new();
     mocks.insert(
-        MockPath::new(Method::POST, TEXT_CONTENTS_DETECTOR_ENDPOINT),
+        MockPath::post(TEXT_CONTENTS_DETECTOR_ENDPOINT),
         Mock::new(
             MockRequest::json(ContentAnalysisRequest {
                 contents: vec!["This sentence has <a detection here>.".into()],
@@ -133,7 +133,7 @@ async fn test_single_detection_sentence_chunker() -> Result<(), anyhow::Error> {
 
     let mut chunker_mocks = MockSet::new();
     chunker_mocks.insert(
-        MockPath::new(Method::POST, CHUNKER_UNARY_ENDPOINT),
+        MockPath::post(CHUNKER_UNARY_ENDPOINT),
         Mock::new(
             MockRequest::pb(ChunkerTokenizationTaskRequest {
                 text: "This sentence does not have a detection. But <this one does>.".into(),
@@ -161,7 +161,7 @@ async fn test_single_detection_sentence_chunker() -> Result<(), anyhow::Error> {
     let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE;
     let mut mocks = MockSet::new();
     mocks.insert(
-        MockPath::new(Method::POST, TEXT_CONTENTS_DETECTOR_ENDPOINT),
+        MockPath::post(TEXT_CONTENTS_DETECTOR_ENDPOINT),
         Mock::new(
             MockRequest::json(ContentAnalysisRequest {
                 contents: vec![
@@ -187,7 +187,7 @@ async fn test_single_detection_sentence_chunker() -> Result<(), anyhow::Error> {
     );
 
     // Start orchestrator server and its dependencies
-    let mock_chunker_server = MockChunkersServiceServer::new(chunker_mocks)?;
+    let mock_chunker_server = GrpcMockServer::new(chunker_id, chunker_mocks)?;
     let mock_detector_server = HttpMockServer::new(detector_name, mocks)?;
     let orchestrator_server = TestOrchestratorServer::run(
         ORCHESTRATOR_CONFIG_FILE_PATH,
@@ -196,7 +196,7 @@ async fn test_single_detection_sentence_chunker() -> Result<(), anyhow::Error> {
         None,
         None,
         Some(vec![mock_detector_server]),
-        Some(vec![(chunker_id.into(), mock_chunker_server)]),
+        Some(vec![mock_chunker_server]),
     )
     .await?;
 
