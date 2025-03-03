@@ -1077,7 +1077,7 @@ async fn test_input_chunker_returns_an_error() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
-// Asserts error 500 is returned when generation server returns an error.
+/// Asserts error 500 is returned when generation server returns an error.
 #[test(tokio::test)]
 async fn test_generation_server_returns_an_error() -> Result<(), anyhow::Error> {
     let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC;
