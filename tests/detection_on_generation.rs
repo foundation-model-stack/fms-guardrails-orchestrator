@@ -40,6 +40,7 @@ use tracing::debug;
 
 pub mod common;
 
+// Asserts detections below the default threshold are not returned.
 #[test(tokio::test)]
 async fn test_detection_below_default_threshold_is_not_returned() -> Result<(), anyhow::Error> {
     let detector_name = ANSWER_RELEVANCE_DETECTOR;
@@ -56,7 +57,7 @@ async fn test_detection_below_default_threshold_is_not_returned() -> Result<(), 
     // Add detector mock
     let mut mocks = MockSet::new();
     mocks.insert(
-        MockPath::new(Method::POST, DETECTION_ON_GENERATION_DETECTOR_ENDPOINT),
+        MockPath::post(DETECTION_ON_GENERATION_DETECTOR_ENDPOINT),
         Mock::new(
             MockRequest::json(GenerationDetectionRequest {
                 prompt: prompt.into(),
@@ -103,6 +104,7 @@ async fn test_detection_below_default_threshold_is_not_returned() -> Result<(), 
     Ok(())
 }
 
+// Asserts detections above the default threshold are returned.
 #[test(tokio::test)]
 async fn test_detection_above_default_threshold_is_returned() -> Result<(), anyhow::Error> {
     let detector_name = ANSWER_RELEVANCE_DETECTOR;
@@ -120,7 +122,7 @@ async fn test_detection_above_default_threshold_is_returned() -> Result<(), anyh
     // Add detector mock
     let mut mocks = MockSet::new();
     mocks.insert(
-        MockPath::new(Method::POST, DETECTION_ON_GENERATION_DETECTOR_ENDPOINT),
+        MockPath::post(DETECTION_ON_GENERATION_DETECTOR_ENDPOINT),
         Mock::new(
             MockRequest::json(GenerationDetectionRequest {
                 prompt: prompt.into(),
@@ -169,6 +171,7 @@ async fn test_detection_above_default_threshold_is_returned() -> Result<(), anyh
     Ok(())
 }
 
+// Asserts error 503 from detectors is propagated.
 #[test(tokio::test)]
 async fn test_detector_returns_503() -> Result<(), anyhow::Error> {
     let detector_name = ANSWER_RELEVANCE_DETECTOR;
@@ -183,7 +186,7 @@ async fn test_detector_returns_503() -> Result<(), anyhow::Error> {
     // Add detector mock
     let mut mocks = MockSet::new();
     mocks.insert(
-        MockPath::new(Method::POST, DETECTION_ON_GENERATION_DETECTOR_ENDPOINT),
+        MockPath::post(DETECTION_ON_GENERATION_DETECTOR_ENDPOINT),
         Mock::new(
             MockRequest::json(GenerationDetectionRequest {
                 prompt: prompt.into(),
@@ -235,6 +238,7 @@ async fn test_detector_returns_503() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
+// Asserts error 404 from detectors is propagated.
 #[test(tokio::test)]
 async fn test_detector_returns_404() -> Result<(), anyhow::Error> {
     let detector_name = ANSWER_RELEVANCE_DETECTOR;
@@ -249,7 +253,7 @@ async fn test_detector_returns_404() -> Result<(), anyhow::Error> {
     // Add detector mock
     let mut mocks = MockSet::new();
     mocks.insert(
-        MockPath::new(Method::POST, DETECTION_ON_GENERATION_DETECTOR_ENDPOINT),
+        MockPath::post(DETECTION_ON_GENERATION_DETECTOR_ENDPOINT),
         Mock::new(
             MockRequest::json(GenerationDetectionRequest {
                 prompt: prompt.into(),
@@ -301,6 +305,7 @@ async fn test_detector_returns_404() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
+// Asserts error 500 from detectors is propagated with generic message.
 #[test(tokio::test)]
 async fn test_detector_returns_500() -> Result<(), anyhow::Error> {
     let detector_name = ANSWER_RELEVANCE_DETECTOR;
@@ -315,7 +320,7 @@ async fn test_detector_returns_500() -> Result<(), anyhow::Error> {
     // Add detector mock
     let mut mocks = MockSet::new();
     mocks.insert(
-        MockPath::new(Method::POST, DETECTION_ON_GENERATION_DETECTOR_ENDPOINT),
+        MockPath::post(DETECTION_ON_GENERATION_DETECTOR_ENDPOINT),
         Mock::new(
             MockRequest::json(GenerationDetectionRequest {
                 prompt: prompt.into(),
@@ -361,8 +366,10 @@ async fn test_detector_returns_500() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
+/// Asserts error 500 is returned with a generic message when detectors return a response
+/// that does not comply with the detector API.
 #[test(tokio::test)]
-async fn test_detector_returns_non_compliant_message() -> Result<(), anyhow::Error> {
+async fn test_detector_returns_invalid_message() -> Result<(), anyhow::Error> {
     let detector_name = ANSWER_RELEVANCE_DETECTOR;
     let prompt = "In 2014, what was the average height of men who were born in 1996?";
     let generated_text =
@@ -371,7 +378,7 @@ async fn test_detector_returns_non_compliant_message() -> Result<(), anyhow::Err
     // Add detector mock
     let mut mocks = MockSet::new();
     mocks.insert(
-        MockPath::new(Method::POST, DETECTION_ON_GENERATION_DETECTOR_ENDPOINT),
+        MockPath::post(DETECTION_ON_GENERATION_DETECTOR_ENDPOINT),
         Mock::new(
             MockRequest::json(GenerationDetectionRequest {
                 prompt: prompt.into(),
@@ -419,6 +426,7 @@ async fn test_detector_returns_non_compliant_message() -> Result<(), anyhow::Err
     Ok(())
 }
 
+/// Asserts requests with extra fields return 422.
 #[test(tokio::test)]
 async fn test_request_with_extra_fields_returns_422() -> Result<(), anyhow::Error> {
     let detector_name = ANSWER_RELEVANCE_DETECTOR;
@@ -463,6 +471,7 @@ async fn test_request_with_extra_fields_returns_422() -> Result<(), anyhow::Erro
     Ok(())
 }
 
+/// Asserts requests missing `prompt` return 422.
 #[test(tokio::test)]
 async fn test_request_missing_prompt_returns_422() -> Result<(), anyhow::Error> {
     let detector_name = ANSWER_RELEVANCE_DETECTOR;
@@ -504,6 +513,7 @@ async fn test_request_missing_prompt_returns_422() -> Result<(), anyhow::Error> 
     Ok(())
 }
 
+/// Asserts requests missing `generated_text` return 422.
 #[test(tokio::test)]
 async fn test_request_missing_generated_text_returns_422() -> Result<(), anyhow::Error> {
     let detector_name = ANSWER_RELEVANCE_DETECTOR;
@@ -544,6 +554,7 @@ async fn test_request_missing_generated_text_returns_422() -> Result<(), anyhow:
     Ok(())
 }
 
+/// Asserts requests missing `detectors` return 422.
 #[test(tokio::test)]
 async fn test_request_missing_detectors_returns_422() -> Result<(), anyhow::Error> {
     let detector_name = ANSWER_RELEVANCE_DETECTOR;
@@ -586,6 +597,7 @@ async fn test_request_missing_detectors_returns_422() -> Result<(), anyhow::Erro
     Ok(())
 }
 
+/// Asserts requests with empty `detectors` return 422.
 #[test(tokio::test)]
 async fn test_request_with_empty_detectors_returns_422() -> Result<(), anyhow::Error> {
     let detector_name = ANSWER_RELEVANCE_DETECTOR;
