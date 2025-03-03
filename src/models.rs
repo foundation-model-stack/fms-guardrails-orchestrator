@@ -496,7 +496,13 @@ pub enum FinishReason {
     Error,
 }
 
-/// Warning reason and message on input detection
+pub const UNSUITABLE_INPUT_MESSAGE: &str = "Unsuitable input detected. \
+    Please check the detected entities on your input and try again \
+    with the unsuitable input removed.";
+
+pub const UNSUITABLE_OUTPUT_MESSAGE: &str = "Unsuitable output detected.";
+
+/// Detection warning reason and message.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DetectionWarning {
     /// Warning reason

@@ -26,9 +26,7 @@ use serde::{Deserialize, Serialize};
 use tracing::{debug, info, instrument};
 use uuid::Uuid;
 
-use super::{
-    ChatCompletionsDetectionTask, Context, Error, Orchestrator, UNSUITABLE_OUTPUT_MESSAGE,
-};
+use super::{ChatCompletionsDetectionTask, Context, Error, Orchestrator};
 use crate::{
     clients::{
         detector::{ChatDetectionRequest, ContentAnalysisRequest, ContentAnalysisResponse},
@@ -39,11 +37,13 @@ use crate::{
         },
     },
     config::DetectorType,
-    models::{DetectionWarningReason, DetectorParams},
+    models::{
+        DetectionWarningReason, DetectorParams, UNSUITABLE_INPUT_MESSAGE, UNSUITABLE_OUTPUT_MESSAGE,
+    },
     orchestrator::{
         detector_processing::content,
         unary::{chunk, detect_content},
-        Chunk, UNSUITABLE_INPUT_MESSAGE,
+        Chunk,
     },
 };
 
@@ -52,7 +52,7 @@ use crate::{
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ChatMessageInternal {
     /// Index of the message
-    pub message_index: usize,
+    pub message_index: u32,
     /// The role of the messages author.
     pub role: Role,
     /// The contents of the message.
@@ -76,7 +76,7 @@ impl From<&ChatCompletionsRequest> for Vec<ChatMessageInternal> {
             .iter()
             .enumerate()
             .map(|(index, message)| ChatMessageInternal {
-                message_index: index,
+                message_index: index as u32,
                 role: message.role.clone(),
                 content: message.content.clone(),
                 refusal: message.refusal.clone(),
@@ -296,7 +296,7 @@ pub async fn message_detection(
         .collect::<Result<Vec<_>, Error>>()?;
 
     // Build detection map
-    let mut detection_map: BTreeMap<usize, Vec<ContentAnalysisResponse>> = BTreeMap::new();
+    let mut detection_map: BTreeMap<u32, Vec<ContentAnalysisResponse>> = BTreeMap::new();
     for (index, detections) in detections {
         if !detections.is_empty() {
             match detection_map.entry(index) {
@@ -355,7 +355,7 @@ fn preprocess_chat_messages(
 async fn detector_chunk_task(
     ctx: &Arc<Context>,
     detector_chat_messages: HashMap<String, Vec<ChatMessageInternal>>,
-) -> Result<HashMap<String, Vec<(usize, Vec<Chunk>)>>, Error> {
+) -> Result<HashMap<String, Vec<(u32, Vec<Chunk>)>>, Error> {
     let mut chunks = HashMap::new();
 
     // TODO: Improve error handling for the code below

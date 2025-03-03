@@ -25,9 +25,9 @@ use futures::{
 use tracing::{debug, error, info, instrument, Instrument, Span};
 
 use super::{
-    apply_masks, get_chunker_ids, ChatDetectionTask, Chunk, ClassificationWithGenTask, Context,
-    ContextDocsDetectionTask, DetectionOnGenerationTask, Error, GenerationWithDetectionTask,
-    Orchestrator, TextContentDetectionTask,
+    ChatDetectionTask, Chunk, ClassificationWithGenTask, Context, ContextDocsDetectionTask,
+    DetectionOnGenerationTask, Error, GenerationWithDetectionTask, Orchestrator,
+    TextContentDetectionTask,
 };
 use crate::{
     clients::{
@@ -46,8 +46,9 @@ use crate::{
         DetectionOnGenerationResult, DetectionResult, DetectionWarning, DetectionWarningReason,
         DetectorParams, GenerationWithDetectionResult, GuardrailsTextGenerationParameters,
         TextContentDetectionResult, TextGenTokenClassificationResults, TokenClassificationResult,
+        UNSUITABLE_INPUT_MESSAGE,
     },
-    orchestrator::UNSUITABLE_INPUT_MESSAGE,
+    orchestrator::common::{apply_masks, get_chunker_ids},
     pb::caikit::runtime::chunkers,
 };
 

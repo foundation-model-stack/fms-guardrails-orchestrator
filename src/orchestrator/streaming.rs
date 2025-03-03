@@ -26,7 +26,7 @@ use tokio::sync::{broadcast, mpsc};
 use tokio_stream::wrappers::{BroadcastStream, ReceiverStream};
 use tracing::{debug, error, info, instrument, warn, Instrument, Span};
 
-use super::{get_chunker_ids, Context, Error, Orchestrator, StreamingClassificationWithGenTask};
+use super::{Context, Error, Orchestrator, StreamingClassificationWithGenTask};
 use crate::{
     clients::{
         chunker::{tokenize_whole_doc_stream, ChunkerClient, DEFAULT_CHUNKER_ID},
@@ -36,11 +36,11 @@ use crate::{
     models::{
         ClassifiedGeneratedTextStreamResult, DetectionWarning, DetectionWarningReason,
         DetectorParams, GuardrailsTextGenerationParameters, TextGenTokenClassificationResults,
-        TokenClassificationResult,
+        TokenClassificationResult, UNSUITABLE_INPUT_MESSAGE,
     },
     orchestrator::{
+        common::get_chunker_ids,
         unary::{input_detection_task, tokenize},
-        UNSUITABLE_INPUT_MESSAGE,
     },
     pb::{caikit::runtime::chunkers, caikit_data_model::nlp::ChunkerTokenizationStreamResult},
 };
