@@ -40,7 +40,7 @@ use tracing::debug;
 
 pub mod common;
 
-// Asserts detections below the default threshold are not returned.
+/// Asserts detections below the default threshold are not returned.
 #[test(tokio::test)]
 async fn test_detection_below_default_threshold_is_not_returned() -> Result<(), anyhow::Error> {
     let detector_name = ANSWER_RELEVANCE_DETECTOR;
@@ -104,7 +104,7 @@ async fn test_detection_below_default_threshold_is_not_returned() -> Result<(), 
     Ok(())
 }
 
-// Asserts detections above the default threshold are returned.
+/// Asserts detections above the default threshold are returned.
 #[test(tokio::test)]
 async fn test_detection_above_default_threshold_is_returned() -> Result<(), anyhow::Error> {
     let detector_name = ANSWER_RELEVANCE_DETECTOR;
@@ -171,7 +171,7 @@ async fn test_detection_above_default_threshold_is_returned() -> Result<(), anyh
     Ok(())
 }
 
-// Asserts error 503 from detectors is propagated.
+/// Asserts error 503 from detectors is propagated.
 #[test(tokio::test)]
 async fn test_detector_returns_503() -> Result<(), anyhow::Error> {
     let detector_name = ANSWER_RELEVANCE_DETECTOR;
@@ -238,7 +238,7 @@ async fn test_detector_returns_503() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
-// Asserts error 404 from detectors is propagated.
+/// Asserts error 404 from detectors is propagated.
 #[test(tokio::test)]
 async fn test_detector_returns_404() -> Result<(), anyhow::Error> {
     let detector_name = ANSWER_RELEVANCE_DETECTOR;
@@ -305,7 +305,7 @@ async fn test_detector_returns_404() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
-// Asserts error 500 from detectors is propagated with generic message.
+/// Asserts error 500 from detectors is propagated with generic message.
 #[test(tokio::test)]
 async fn test_detector_returns_500() -> Result<(), anyhow::Error> {
     let detector_name = ANSWER_RELEVANCE_DETECTOR;
