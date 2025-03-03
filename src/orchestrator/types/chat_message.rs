@@ -1,5 +1,6 @@
 use crate::clients::openai;
 
+/// A chat message.
 #[derive(Default, Clone, Debug, PartialEq)]
 pub struct ChatMessage<'a> {
     pub index: u32,
@@ -7,6 +8,7 @@ pub struct ChatMessage<'a> {
     pub text: Option<&'a str>,
 }
 
+/// An iterator over chat messages.
 pub trait ChatMessageIterator {
     fn messages(&self) -> impl Iterator<Item = ChatMessage>;
 }

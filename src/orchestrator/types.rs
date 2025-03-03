@@ -1,6 +1,7 @@
 use std::pin::Pin;
 
 use futures::Stream;
+use tokio::sync::mpsc;
 
 pub mod chat_message;
 pub use chat_message::{ChatMessage, ChatMessageIterator};
@@ -8,11 +9,10 @@ pub mod chunk;
 pub mod detection;
 pub use chunk::{Chunk, Chunks};
 pub use detection::{Detection, Detections};
+pub mod detection_batcher;
+pub use detection_batcher::*;
 pub mod detection_batch_stream;
-pub use detection_batch_stream::{
-    ChatCompletionBatcher, CompletedChunkBatcher, DetectionBatchStream, FakeBatcher,
-};
-use tokio::sync::mpsc;
+pub use detection_batch_stream::DetectionBatchStream;
 
 use super::Error;
 use crate::{clients::openai::ChatCompletionChunk, models::ClassifiedGeneratedTextStreamResult};

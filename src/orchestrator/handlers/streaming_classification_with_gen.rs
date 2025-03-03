@@ -197,7 +197,7 @@ async fn handle_output_detection(
         Ok(detection_streams) => {
             // Create detection batch stream
             let detection_batch_stream = DetectionBatchStream::new(
-                CompletedChunkBatcher::new(detectors.len()),
+                MaxProcessedIndexBatcher::new(detectors.len()),
                 detection_streams,
             );
             process_detection_batch_stream(
@@ -275,7 +275,7 @@ async fn process_detection_stream(
 async fn process_detection_batch_stream(
     trace_id: &TraceId,
     generations: Arc<RwLock<Vec<ClassifiedGeneratedTextStreamResult>>>,
-    mut detection_batch_stream: DetectionBatchStream<CompletedChunkBatcher>,
+    mut detection_batch_stream: DetectionBatchStream<MaxProcessedIndexBatcher>,
     response_tx: mpsc::Sender<Result<ClassifiedGeneratedTextStreamResult, Error>>,
 ) {
     while let Some(result) = detection_batch_stream.next().await {

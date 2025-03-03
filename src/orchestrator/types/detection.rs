@@ -1,6 +1,6 @@
 use crate::{clients::detector, models};
 
-/// Internal representation of a single detection.
+/// A detection.
 #[derive(Default, Debug, Clone, PartialEq)]
 pub struct Detection {
     pub start: Option<usize>,
@@ -20,6 +20,7 @@ pub struct DetectionEvidence {
     pub score: Option<f64>,
 }
 
+/// An array of detections.
 #[derive(Default, Debug, Clone)]
 pub struct Detections(Vec<Detection>);
 

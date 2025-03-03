@@ -1,6 +1,6 @@
 use crate::pb::caikit_data_model::nlp::{ChunkerTokenizationStreamResult, TokenizationResults};
 
-/// Internal representation of a single chunk.
+/// A chunk.
 #[derive(Default, Debug, Clone)]
 pub struct Chunk {
     /// Input message index where this chunk begins (streaming)
@@ -65,6 +65,7 @@ impl std::hash::Hash for Chunk {
     }
 }
 
+/// An array of chunks.
 #[derive(Default, Debug, Clone)]
 pub struct Chunks(Vec<Chunk>);
 
