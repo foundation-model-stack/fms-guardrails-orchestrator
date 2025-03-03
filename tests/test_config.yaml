@@ -14,13 +14,6 @@ chunkers:
       hostname: localhost
     type: sentence
 detectors:
-  test_detector:
-    type: text_contents
-    service:
-      hostname: localhost
-      port: 8000
-    chunker_id: test_chunker
-    default_threshold: 0.5
   angle_brackets_detector_sentence:
     type: text_contents
     service:
