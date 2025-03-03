@@ -26,9 +26,7 @@ use serde::{Deserialize, Serialize};
 use tracing::{debug, info, instrument};
 use uuid::Uuid;
 
-use super::{
-    ChatCompletionsDetectionTask, Context, Error, Orchestrator, UNSUITABLE_OUTPUT_MESSAGE,
-};
+use super::{ChatCompletionsDetectionTask, Context, Error, Orchestrator};
 use crate::{
     clients::{
         detector::{ChatDetectionRequest, ContentAnalysisRequest, ContentAnalysisResponse},
@@ -39,11 +37,13 @@ use crate::{
         },
     },
     config::DetectorType,
-    models::{DetectionWarningReason, DetectorParams},
+    models::{
+        DetectionWarningReason, DetectorParams, UNSUITABLE_INPUT_MESSAGE, UNSUITABLE_OUTPUT_MESSAGE,
+    },
     orchestrator::{
         detector_processing::content,
         unary::{chunk, detect_content},
-        Chunk, UNSUITABLE_INPUT_MESSAGE,
+        Chunk,
     },
 };
 

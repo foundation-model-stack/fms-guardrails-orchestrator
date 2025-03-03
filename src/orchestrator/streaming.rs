@@ -36,12 +36,9 @@ use crate::{
     models::{
         ClassifiedGeneratedTextStreamResult, DetectionWarning, DetectionWarningReason,
         DetectorParams, GuardrailsTextGenerationParameters, TextGenTokenClassificationResults,
-        TokenClassificationResult,
+        TokenClassificationResult, UNSUITABLE_INPUT_MESSAGE,
     },
-    orchestrator::{
-        unary::{input_detection_task, tokenize},
-        UNSUITABLE_INPUT_MESSAGE,
-    },
+    orchestrator::unary::{input_detection_task, tokenize},
     pb::{caikit::runtime::chunkers, caikit_data_model::nlp::ChunkerTokenizationStreamResult},
 };
 

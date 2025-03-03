@@ -46,8 +46,8 @@ use crate::{
         DetectionOnGenerationResult, DetectionResult, DetectionWarning, DetectionWarningReason,
         DetectorParams, GenerationWithDetectionResult, GuardrailsTextGenerationParameters,
         TextContentDetectionResult, TextGenTokenClassificationResults, TokenClassificationResult,
+        UNSUITABLE_INPUT_MESSAGE,
     },
-    orchestrator::UNSUITABLE_INPUT_MESSAGE,
     pb::caikit::runtime::chunkers,
 };
 
