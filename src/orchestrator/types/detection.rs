@@ -13,6 +13,7 @@ pub struct Detection {
     pub evidence: Vec<DetectionEvidence>,
 }
 
+/// Detection evidence.
 #[derive(Default, Clone, Debug, PartialEq)]
 pub struct DetectionEvidence {
     pub name: String,
@@ -21,6 +22,7 @@ pub struct DetectionEvidence {
     pub evidence: Option<Vec<Evidence>>,
 }
 
+/// Additional detection evidence.
 #[derive(Default, Clone, Debug, PartialEq)]
 pub struct Evidence {
     pub name: String,

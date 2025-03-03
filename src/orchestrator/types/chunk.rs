@@ -3,13 +3,13 @@ use crate::pb::caikit_data_model::nlp::{ChunkerTokenizationStreamResult, Tokeniz
 /// A chunk.
 #[derive(Default, Debug, Clone)]
 pub struct Chunk {
-    /// Input message index where this chunk begins (streaming)
+    /// Index of message where chunk begins (streaming only)
     pub input_start_index: usize,
-    /// Input message index where this chunk ends (streaming)
+    /// Index of message where chunk ends (streaming only)
     pub input_end_index: usize,
-    /// Char index where this chunk begins
+    /// Index of char where chunk begins
     pub start: usize,
-    /// Char index where this chunk ends
+    /// Index of char where chunk ends
     pub end: usize,
     /// Text
     pub text: String,
