@@ -874,7 +874,8 @@ async fn test_input_detector_returns_500() -> Result<(), anyhow::Error> {
                 contents: vec!["This should return a 500".into()],
                 detector_params: DetectorParams::new(),
             }),
-            MockResponse::json(&expected_detector_error).with_code(StatusCode::NOT_FOUND),
+            MockResponse::json(&expected_detector_error)
+                .with_code(StatusCode::INTERNAL_SERVER_ERROR),
         ),
     );
 
