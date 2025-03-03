@@ -32,6 +32,7 @@ use common::{
     orchestrator::{
         SseStream, TestOrchestratorServer, ORCHESTRATOR_CONFIG_FILE_PATH,
         ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE, ORCHESTRATOR_STREAMING_ENDPOINT,
+        ORCHESTRATOR_UNSUITABLE_INPUT_MESSAGE,
     },
 };
 use fms_guardrails_orchestr8::{
@@ -538,7 +539,13 @@ async fn test_input_detector_whole_doc_with_detections() -> Result<(), anyhow::E
             }
     );
     assert!(messages[0].input_token_count == mock_tokenization_response.token_count as u32);
-    assert!(messages[0].warnings == Some(vec![DetectionWarning{ id: Some(fms_guardrails_orchestr8::models::DetectionWarningReason::UnsuitableInput), message: Some("Unsuitable input detected. Please check the detected entities on your input and try again with the unsuitable input removed.".into()) }]));
+    assert!(
+        messages[0].warnings
+            == Some(vec![DetectionWarning {
+                id: Some(fms_guardrails_orchestr8::models::DetectionWarningReason::UnsuitableInput),
+                message: Some(ORCHESTRATOR_UNSUITABLE_INPUT_MESSAGE.into())
+            }])
+    );
 
     Ok(())
 }
