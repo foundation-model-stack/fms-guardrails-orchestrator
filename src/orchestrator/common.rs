@@ -217,10 +217,51 @@ pub async fn text_generation_detections(
     ctx: Arc<Context>,
     headers: HeaderMap,
     detectors: &HashMap<DetectorId, DetectorParams>,
+    input_id: InputId,
     prompt: String,
     generated_text: String,
-) -> Result<Vec<(DetectorId, Detections)>, Error> {
-    todo!()
+) -> Result<(InputId, Detections), Error> {
+    let inputs = detectors
+        .iter()
+        .map(|(detector_id, params)| {
+            Ok::<_, Error>((
+                detector_id.clone(),
+                params.clone(),
+                prompt.clone(),
+                generated_text.clone(),
+            ))
+        })
+        .collect::<Result<Vec<_>, Error>>()?;
+    let results = stream::iter(inputs)
+        .map(|(detector_id, mut params, prompt, generated_text)| {
+            let ctx = ctx.clone();
+            let headers = headers.clone();
+            let threshold = params.pop_threshold().unwrap_or_default();
+            async move {
+                let detections = detect_text_generation(
+                    ctx,
+                    headers,
+                    detector_id.clone(),
+                    params,
+                    prompt,
+                    generated_text,
+                )
+                .await?
+                .into_iter()
+                .filter(|detection| detection.score >= threshold)
+                .map(|mut detection| {
+                    detection.detector_id = Some(detector_id.clone());
+                    detection
+                })
+                .collect::<Detections>();
+                Ok::<_, Error>(detections)
+            }
+        })
+        .buffer_unordered(8)
+        .try_collect::<Vec<_>>()
+        .await?;
+    let detections = results.into_iter().flatten().collect::<Detections>();
+    Ok((input_id, detections))
 }
 
 /// Spawns text chat detection tasks.
@@ -230,9 +271,39 @@ pub async fn text_chat_detections(
     ctx: Arc<Context>,
     headers: HeaderMap,
     detectors: &HashMap<DetectorId, DetectorParams>,
+    input_id: InputId,
     messages: Vec<openai::Message>,
-) -> Result<Vec<(DetectorId, Detections)>, Error> {
-    todo!()
+) -> Result<(InputId, Detections), Error> {
+    let inputs = detectors
+        .iter()
+        .map(|(detector_id, params)| {
+            Ok::<_, Error>((detector_id.clone(), params.clone(), messages.clone()))
+        })
+        .collect::<Result<Vec<_>, Error>>()?;
+    let results = stream::iter(inputs)
+        .map(|(detector_id, mut params, messages)| {
+            let ctx = ctx.clone();
+            let headers = headers.clone();
+            let threshold = params.pop_threshold().unwrap_or_default();
+            async move {
+                let detections =
+                    detect_text_chat(ctx, headers, detector_id.clone(), params, messages)
+                        .await?
+                        .into_iter()
+                        .filter(|detection| detection.score >= threshold)
+                        .map(|mut detection| {
+                            detection.detector_id = Some(detector_id.clone());
+                            detection
+                        })
+                        .collect::<Detections>();
+                Ok::<_, Error>(detections)
+            }
+        })
+        .buffer_unordered(8)
+        .try_collect::<Vec<_>>()
+        .await?;
+    let detections = results.into_iter().flatten().collect::<Detections>();
+    Ok((input_id, detections))
 }
 
 /// Spawns text context detection tasks.
@@ -242,11 +313,56 @@ pub async fn text_context_detections(
     ctx: Arc<Context>,
     headers: HeaderMap,
     detectors: &HashMap<DetectorId, DetectorParams>,
+    input_id: InputId,
     content: String,
     context_type: ContextType,
     context: Vec<String>,
-) -> Result<Vec<(DetectorId, Detections)>, Error> {
-    todo!()
+) -> Result<(InputId, Detections), Error> {
+    let inputs = detectors
+        .iter()
+        .map(|(detector_id, params)| {
+            Ok::<_, Error>((
+                detector_id.clone(),
+                params.clone(),
+                content.clone(),
+                context_type.clone(),
+                context.clone(),
+            ))
+        })
+        .collect::<Result<Vec<_>, Error>>()?;
+    let results = stream::iter(inputs)
+        .map(
+            |(detector_id, mut params, content, context_type, context)| {
+                let ctx = ctx.clone();
+                let headers = headers.clone();
+                let threshold = params.pop_threshold().unwrap_or_default();
+                async move {
+                    let detections = detect_text_context(
+                        ctx,
+                        headers,
+                        detector_id.clone(),
+                        params,
+                        content,
+                        context_type,
+                        context,
+                    )
+                    .await?
+                    .into_iter()
+                    .filter(|detection| detection.score >= threshold)
+                    .map(|mut detection| {
+                        detection.detector_id = Some(detector_id.clone());
+                        detection
+                    })
+                    .collect::<Detections>();
+                    Ok::<_, Error>(detections)
+                }
+            },
+        )
+        .buffer_unordered(8)
+        .try_collect::<Vec<_>>()
+        .await?;
+    let detections = results.into_iter().flatten().collect::<Detections>();
+    Ok((input_id, detections))
 }
 
 // Client call helpers
@@ -572,6 +688,16 @@ mod tests {
 
     #[tokio::test]
     async fn test_text_generation_detections() -> Result<(), Error> {
+        todo!()
+    }
+
+    #[tokio::test]
+    async fn test_text_chat_detections() -> Result<(), Error> {
+        todo!()
+    }
+
+    #[tokio::test]
+    async fn test_text_context_detections() -> Result<(), Error> {
         todo!()
     }
 }
