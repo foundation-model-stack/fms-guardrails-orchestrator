@@ -159,9 +159,9 @@ async fn handle_output_detection(
     tokio::spawn({
         let generations = generations.clone();
         async move {
-            while let Some(result) = generation_stream.next().await {
+            while let Some((index, result)) = generation_stream.next().await {
                 match result {
-                    Ok((index, generation)) => {
+                    Ok(generation) => {
                         // Send generated text to input channel
                         let input = (index, generation.generated_text.clone().unwrap_or_default());
                         let _ = input_tx.send(Ok(input)).await;
@@ -222,11 +222,11 @@ async fn forward_generation_stream(
     mut generation_stream: GenerationStream,
     response_tx: mpsc::Sender<Result<ClassifiedGeneratedTextStreamResult, Error>>,
 ) {
-    while let Some(result) = generation_stream.next().await {
+    while let Some((index, result)) = generation_stream.next().await {
         match result {
-            Ok((_index, response)) => {
+            Ok(generation) => {
                 // Send message to response channel
-                if response_tx.send(Ok(response)).await.is_err() {
+                if response_tx.send(Ok(generation)).await.is_err() {
                     info!(%trace_id, "task completed: client disconnected");
                     return;
                 }

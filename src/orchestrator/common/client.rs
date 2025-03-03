@@ -261,11 +261,6 @@ pub async fn chat_completion_stream(
         ChatCompletionsResponse::Unary(_) => unimplemented!(),
     }
     .enumerate()
-    .map(|(index, result)| match result {
-        Ok(Some(completion)) => Ok(Some((index, completion))),
-        Ok(None) => Ok(None),
-        Err(error) => Err(error),
-    })
     .boxed();
     Ok(stream)
 }
@@ -325,5 +320,22 @@ pub async fn generate_stream(
     params: Option<GenerateParams>,
 ) -> Result<GenerationStream, Error> {
     debug!("sending generate stream request");
-    todo!()
+    let client = ctx
+        .clients
+        .get_as::<GenerationClient>("generation")
+        .unwrap();
+    let stream = client
+        .generate_stream(model_id.clone(), text, params, headers)
+        .await
+        .map_err(|error| Error::GenerateRequestFailed {
+            id: model_id.clone(),
+            error,
+        })?
+        .map_err(move |error| Error::GenerateRequestFailed {
+            id: model_id.clone(),
+            error,
+        })
+        .enumerate()
+        .boxed();
+    Ok(stream)
 }

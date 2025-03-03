@@ -15,7 +15,7 @@ pub use detection_batch_stream::{
 use tokio::sync::mpsc;
 
 use super::Error;
-use crate::{clients::openai::ChatCompletionChunk, models};
+use crate::{clients::openai::ChatCompletionChunk, models::ClassifiedGeneratedTextStreamResult};
 
 pub type ChunkerId = String;
 pub type DetectorId = String;
@@ -27,6 +27,5 @@ pub type InputStream = BoxStream<Result<(usize, String), Error>>;
 pub type InputSender = mpsc::Sender<Result<(usize, String), Error>>;
 pub type InputReceiver = mpsc::Receiver<Result<(usize, String), Error>>;
 pub type DetectionStream = BoxStream<Result<(InputId, DetectorId, Chunk, Detections), Error>>;
-pub type GenerationStream =
-    BoxStream<Result<(usize, models::ClassifiedGeneratedTextStreamResult), Error>>;
-pub type ChatCompletionStream = BoxStream<Result<Option<(usize, ChatCompletionChunk)>, Error>>;
+pub type GenerationStream = BoxStream<(usize, Result<ClassifiedGeneratedTextStreamResult, Error>)>;
+pub type ChatCompletionStream = BoxStream<(usize, Result<Option<ChatCompletionChunk>, Error>)>;

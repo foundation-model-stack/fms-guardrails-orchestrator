@@ -173,11 +173,11 @@ async fn forward_chat_completion_stream(
     mut chat_completion_stream: ChatCompletionStream,
     response_tx: mpsc::Sender<Result<Option<ChatCompletionChunk>, Error>>,
 ) {
-    while let Some(result) = chat_completion_stream.next().await {
+    while let Some((index, result)) = chat_completion_stream.next().await {
         match result {
-            Ok(Some((_index, response))) => {
+            Ok(Some(chat_completion)) => {
                 // Send message to response channel
-                if response_tx.send(Ok(Some(response))).await.is_err() {
+                if response_tx.send(Ok(Some(chat_completion))).await.is_err() {
                     info!(%trace_id, "task completed: client disconnected");
                     return;
                 }
@@ -252,9 +252,9 @@ async fn process_chat_completion_stream(
     mut chat_completion_stream: ChatCompletionStream,
     input_senders: HashMap<InputId, InputSender>,
 ) {
-    while let Some(result) = chat_completion_stream.next().await {
+    while let Some((index, result)) = chat_completion_stream.next().await {
         match result {
-            Ok(Some((index, completion))) => {
+            Ok(Some(completion)) => {
                 for choice in &completion.choices {
                     let input_id = choice.index;
                     // Send generated text to input channel
