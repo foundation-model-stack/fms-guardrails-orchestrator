@@ -595,7 +595,7 @@ async fn chat_completions_detection(
                             Ok(Event::default().data("[DONE]"))
                         }
                         Err(error) => {
-                            let error: Error = orchestrator::Error::from(error).into();
+                            let error: Error = error.into();
                             Ok(Event::default()
                                 .event("error")
                                 .json_data(error.to_json())
