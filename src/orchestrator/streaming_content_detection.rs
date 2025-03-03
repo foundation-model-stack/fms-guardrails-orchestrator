@@ -47,7 +47,7 @@ use crate::{
         DetectorParams, StreamingContentDetectionRequest, StreamingContentDetectionResponse,
         TokenClassificationResult,
     },
-    orchestrator::{get_chunker_ids, streaming::Chunk},
+    orchestrator::{common::get_chunker_ids, streaming::Chunk},
     pb::caikit::runtime::chunkers,
 };
 
