@@ -667,7 +667,7 @@ impl From<orchestrator::Error> for Error {
             DetectorRequestFailed { ref error, .. }
             | ChunkerRequestFailed { ref error, .. }
             | GenerateRequestFailed { ref error, .. }
-            | ChatGenerateRequestFailed { ref error, .. }
+            | ChatCompletionRequestFailed { ref error, .. }
             | TokenizeRequestFailed { ref error, .. } => match error.status_code() {
                 StatusCode::BAD_REQUEST | StatusCode::UNPROCESSABLE_ENTITY => {
                     Self::Validation(value.to_string())

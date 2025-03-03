@@ -12,20 +12,6 @@ impl Handle<ChatCompletionsDetectionTask> for Orchestrator {
     }
 }
 
-async fn handle_unary(
-    _ctx: Arc<Context>,
-    _task: ChatCompletionsDetectionTask,
-) -> Result<ChatCompletionsResponse, Error> {
-    todo!()
-}
-
-async fn handle_streaming(
-    _ctx: Arc<Context>,
-    _task: ChatCompletionsDetectionTask,
-) -> Result<ChatCompletionsResponse, Error> {
-    todo!()
-}
-
 #[derive(Debug)]
 pub struct ChatCompletionsDetectionTask {
     /// Unique identifier of request trace

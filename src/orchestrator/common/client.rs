@@ -228,7 +228,7 @@ pub async fn chat_completion(
     client
         .chat_completions(request, headers)
         .await
-        .map_err(|error| Error::ChatGenerateRequestFailed {
+        .map_err(|error| Error::ChatCompletionRequestFailed {
             id: model_id,
             error,
         })
@@ -252,7 +252,7 @@ pub async fn chat_completion_stream(
     let response = client
         .chat_completions(request, headers)
         .await
-        .map_err(|error| Error::ChatGenerateRequestFailed {
+        .map_err(|error| Error::ChatCompletionRequestFailed {
             id: model_id,
             error,
         })?;
