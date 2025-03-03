@@ -39,6 +39,7 @@ use tracing::debug;
 
 pub mod common;
 
+/// Asserts detections below the default threshold are not returned.
 #[test(tokio::test)]
 async fn test_detection_below_default_threshold_is_not_returned() -> Result<(), anyhow::Error> {
     let detector_name = PII_DETECTOR;
@@ -109,6 +110,7 @@ async fn test_detection_below_default_threshold_is_not_returned() -> Result<(), 
     Ok(())
 }
 
+/// Asserts detections above the default threshold are returned.
 #[test(tokio::test)]
 async fn test_detection_above_default_threshold_is_returned() -> Result<(), anyhow::Error> {
     let detector_name = PII_DETECTOR;
@@ -182,6 +184,7 @@ async fn test_detection_above_default_threshold_is_returned() -> Result<(), anyh
     Ok(())
 }
 
+/// Asserts error 503 from detectors is propagated.
 #[test(tokio::test)]
 async fn test_detector_returns_503() -> Result<(), anyhow::Error> {
     let detector_name = PII_DETECTOR;
@@ -256,6 +259,7 @@ async fn test_detector_returns_503() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
+/// Asserts error 404 from detectors is propagated.
 #[test(tokio::test)]
 async fn test_detector_returns_404() -> Result<(), anyhow::Error> {
     let detector_name = PII_DETECTOR;
@@ -330,6 +334,7 @@ async fn test_detector_returns_404() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
+/// Asserts error 500 from detectors is propagated.
 #[test(tokio::test)]
 async fn test_detector_returns_500() -> Result<(), anyhow::Error> {
     let detector_name = PII_DETECTOR;
@@ -398,6 +403,7 @@ async fn test_detector_returns_500() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
+/// Asserts invalid response from detectors returns 500.
 #[test(tokio::test)]
 async fn test_detector_returns_invalid_message() -> Result<(), anyhow::Error> {
     let detector_name = PII_DETECTOR;
@@ -467,6 +473,7 @@ async fn test_detector_returns_invalid_message() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
+/// Asserts requests with extra fields return 422.
 #[test(tokio::test)]
 async fn test_request_contains_extra_fields() -> Result<(), anyhow::Error> {
     let detector_name = PII_DETECTOR;
@@ -516,6 +523,7 @@ async fn test_request_contains_extra_fields() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
+/// Asserts requests missing `messages` return 422.
 #[test(tokio::test)]
 async fn test_request_missing_messages() -> Result<(), anyhow::Error> {
     let detector_name = PII_DETECTOR;
@@ -554,6 +562,7 @@ async fn test_request_missing_messages() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
+/// Asserts requests missing `detectors` return 422.
 #[test(tokio::test)]
 async fn test_request_missing_detector() -> Result<(), anyhow::Error> {
     let detector_name = PII_DETECTOR;
@@ -601,6 +610,7 @@ async fn test_request_missing_detector() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
+/// Asserts requests with empty `detectors` return 422.
 #[test(tokio::test)]
 async fn test_request_with_invalid_detector() -> Result<(), anyhow::Error> {
     let detector_name = PII_DETECTOR;
