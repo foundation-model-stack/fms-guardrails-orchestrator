@@ -20,12 +20,12 @@ use hyper::HeaderMap;
 use serde::{Deserialize, Serialize};
 use tracing::{info, instrument};
 
-use super::{DetectorClient, DetectorClientExt, DEFAULT_PORT};
+use super::{DEFAULT_PORT, DetectorClient, DetectorClientExt};
 use crate::{
-    clients::{create_http_client, http::HttpClientExt, Client, Error, HttpClient},
+    clients::{Client, Error, HttpClient, create_http_client, http::HttpClientExt},
     config::ServiceConfig,
     health::HealthCheckResult,
-    models::DetectorParams,
+    models::{DetectorParams, EvidenceObj},
 };
 
 const CONTENTS_DETECTOR_ENDPOINT: &str = "/api/v1/text/contents";
@@ -154,34 +154,4 @@ impl From<ContentAnalysisResponse> for crate::models::TokenClassificationResult 
             token_count: None,
         }
     }
-}
-
-/// Evidence
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-pub struct Evidence {
-    /// Evidence name
-    pub name: String,
-    /// Optional, evidence value
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub value: Option<String>,
-    /// Optional, score for evidence
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub score: Option<f64>,
-}
-
-/// Evidence in response
-#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
-pub struct EvidenceObj {
-    /// Evidence name
-    pub name: String,
-    /// Optional, evidence value
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub value: Option<String>,
-    /// Optional, score for evidence
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub score: Option<f64>,
-    /// Optional, evidence on evidence value
-    // Evidence nesting should likely not go beyond this
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub evidence: Option<Vec<Evidence>>,
 }

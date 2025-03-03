@@ -18,6 +18,14 @@ pub struct DetectionEvidence {
     pub name: String,
     pub value: Option<String>,
     pub score: Option<f64>,
+    pub evidence: Option<Vec<Evidence>>,
+}
+
+#[derive(Default, Clone, Debug, PartialEq)]
+pub struct Evidence {
+    pub name: String,
+    pub value: Option<String>,
+    pub score: Option<f64>,
 }
 
 /// An array of detections.
@@ -99,13 +107,25 @@ impl From<Vec<Vec<detector::ContentAnalysisResponse>>> for Detections {
     }
 }
 
-impl From<detector::EvidenceObj> for DetectionEvidence {
-    fn from(value: detector::EvidenceObj) -> Self {
+impl From<DetectionEvidence> for models::EvidenceObj {
+    fn from(value: DetectionEvidence) -> Self {
         Self {
             name: value.name,
             value: value.value,
             score: value.score,
-            // TODO: evidence
+            evidence: value
+                .evidence
+                .map(|vs| vs.into_iter().map(Into::into).collect()),
+        }
+    }
+}
+
+impl From<Evidence> for models::Evidence {
+    fn from(value: Evidence) -> Self {
+        Self {
+            name: value.name,
+            value: value.value,
+            score: value.score,
         }
     }
 }
@@ -116,7 +136,19 @@ impl From<models::EvidenceObj> for DetectionEvidence {
             name: value.name,
             value: value.value,
             score: value.score,
-            // TODO: evidence
+            evidence: value
+                .evidence
+                .map(|vs| vs.into_iter().map(Into::into).collect()),
+        }
+    }
+}
+
+impl From<models::Evidence> for Evidence {
+    fn from(value: models::Evidence) -> Self {
+        Self {
+            name: value.name,
+            value: value.value,
+            score: value.score,
         }
     }
 }
@@ -168,6 +200,8 @@ impl From<Detections> for Vec<models::TokenClassificationResult> {
 
 impl From<Detection> for detector::ContentAnalysisResponse {
     fn from(value: Detection) -> Self {
+        let evidence = (!value.evidence.is_empty())
+            .then_some(value.evidence.into_iter().map(Into::into).collect());
         Self {
             start: value.start.unwrap(),
             end: value.end.unwrap(),
@@ -176,7 +210,7 @@ impl From<Detection> for detector::ContentAnalysisResponse {
             detection_type: value.detection_type,
             detector_id: value.detector_id,
             score: value.score,
-            evidence: None, //value.evidence, // TODO
+            evidence,
         }
     }
 }
