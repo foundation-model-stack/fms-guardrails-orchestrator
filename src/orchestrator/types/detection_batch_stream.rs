@@ -20,8 +20,12 @@ use tokio::sync::mpsc;
 use super::{DetectionBatcher, DetectionStream};
 use crate::orchestrator::Error;
 
-/// Wraps detection streams and produces a stream
-/// of batches using a [`DetectionBatcher`].
+/// A stream adapter that wraps multiple detection streams and
+/// produces a stream of batches using a [`DetectionBatcher`]
+/// implementation.
+///
+/// The detection batcher enables flexible batching
+/// logic and returned batch types for different use cases.
 pub struct DetectionBatchStream<B: DetectionBatcher> {
     batch_rx: mpsc::Receiver<Result<B::Batch, Error>>,
 }
