@@ -1,7 +1,7 @@
 use futures::{stream, Stream, StreamExt};
 use tokio::sync::mpsc;
 
-use super::{Chunk, DetectionBatcher, DetectionStream, Detections, DetectorId, InputId};
+use super::{DetectionBatcher, DetectionStream};
 use crate::orchestrator::Error;
 
 /// Wraps detection streams and produces a stream
@@ -17,17 +17,17 @@ where
     pub fn new(mut batcher: B, streams: Vec<DetectionStream>) -> Self {
         // Create batch channel
         let (batch_tx, batch_rx) = mpsc::channel(32);
-        // Create batcher channel
-        let (batcher_tx, mut batcher_rx) =
-            mpsc::channel::<Result<(InputId, DetectorId, Chunk, Detections), Error>>(32);
+
+        // Create a stream set (single stream) from multiple detection streams
+        let mut stream_set = stream::select_all(streams);
 
         // Spawn batcher task
-        // This task receives new detections, pushes them to the batcher,
-        // and sends batches to the batch (output) channel as they become ready.
+        // This task consumes new detections, pushes them to the batcher,
+        // and sends batches to the batch channel as they become ready.
         tokio::spawn(async move {
             loop {
                 tokio::select! {
-                    result = batcher_rx.recv() => {
+                    result = stream_set.next() => {
                         match result {
                             Some(Ok((input_id, detector_id, chunk, detections))) => {
                                 // Push detections to batcher
@@ -51,18 +51,6 @@ where
                         }
                     },
                 }
-            }
-        });
-
-        // Create a stream set (single stream) from multiple detection streams
-        let mut stream_set = stream::select_all(streams);
-
-        // Spawn detection consumer task
-        // This task consumes new detections and sends them to the batcher task.
-        tokio::spawn(async move {
-            while let Some(result) = stream_set.next().await {
-                // Send new detections to batcher task
-                let _ = batcher_tx.send(result).await;
             }
         });
 
