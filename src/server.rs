@@ -166,59 +166,7 @@ pub async fn run(
     }
 
     // (2b) Add main guardrails server routes
-    let mut router = Router::new()
-        .route(
-            &format!("{}/classification-with-text-generation", API_PREFIX),
-            post(classification_with_gen),
-        )
-        .route(
-            &format!("{}/detection/stream-content", TEXT_API_PREFIX),
-            post(stream_content_detection),
-        )
-        .route(
-            &format!(
-                "{}/server-streaming-classification-with-text-generation",
-                API_PREFIX
-            ),
-            post(stream_classification_with_gen),
-        )
-        .route(
-            &format!("{}/generation-detection", TEXT_API_PREFIX),
-            post(generation_with_detection),
-        )
-        .route(
-            &format!("{}/detection/content", TEXT_API_PREFIX),
-            post(detection_content),
-        )
-        .route(
-            &format!("{}/detection/chat", TEXT_API_PREFIX),
-            post(detect_chat),
-        )
-        .route(
-            &format!("{}/detection/context", TEXT_API_PREFIX),
-            post(detect_context_documents),
-        )
-        .route(
-            &format!("{}/detection/generated", TEXT_API_PREFIX),
-            post(detect_generated),
-        );
-
-    // If chat generation is configured, enable the chat completions detection endpoint.
-    if shared_state.orchestrator.config().chat_generation.is_some() {
-        info!("Enabling chat completions detection endpoint");
-        router = router.route(
-            "/api/v2/chat/completions-detection",
-            post(chat_completions_detection),
-        );
-    }
-
-    let app = router.with_state(shared_state).layer(
-        TraceLayer::new_for_http()
-            .make_span_with(utils::trace::incoming_request_span)
-            .on_request(utils::trace::on_incoming_request)
-            .on_response(utils::trace::on_outgoing_response)
-            .on_eos(utils::trace::on_outgoing_eos),
-    );
+    let app = get_app(shared_state);
 
     // (2c) Generate main guardrails server handle based on whether TLS is needed
     let listener: TcpListener = TcpListener::bind(&http_addr)
@@ -321,6 +269,58 @@ pub fn get_health_app(state: Arc<ServerState>) -> Router {
         .route("/health", get(health))
         .route("/info", get(info))
         .with_state(state)
+}
+
+pub fn get_app(state: Arc<ServerState>) -> Router {
+    let mut router = Router::new()
+        .route(
+            &format!("{}/classification-with-text-generation", API_PREFIX),
+            post(classification_with_gen),
+        )
+        .route(
+            &format!(
+                "{}/server-streaming-classification-with-text-generation",
+                API_PREFIX
+            ),
+            post(stream_classification_with_gen),
+        )
+        .route(
+            &format!("{}/generation-detection", TEXT_API_PREFIX),
+            post(generation_with_detection),
+        )
+        .route(
+            &format!("{}/detection/content", TEXT_API_PREFIX),
+            post(detection_content),
+        )
+        .route(
+            &format!("{}/detection/chat", TEXT_API_PREFIX),
+            post(detect_chat),
+        )
+        .route(
+            &format!("{}/detection/context", TEXT_API_PREFIX),
+            post(detect_context_documents),
+        )
+        .route(
+            &format!("{}/detection/generated", TEXT_API_PREFIX),
+            post(detect_generated),
+        );
+
+    // If chat generation is configured, enable the chat completions detection endpoint.
+    if state.orchestrator.config().chat_generation.is_some() {
+        info!("Enabling chat completions detection endpoint");
+        router = router.route(
+            "/api/v2/chat/completions-detection",
+            post(chat_completions_detection),
+        );
+    }
+
+    router.with_state(state).layer(
+        TraceLayer::new_for_http()
+            .make_span_with(utils::trace::incoming_request_span)
+            .on_request(utils::trace::on_incoming_request)
+            .on_response(utils::trace::on_outgoing_response)
+            .on_eos(utils::trace::on_outgoing_eos),
+    )
 }
 
 async fn health() -> Result<impl IntoResponse, ()> {
