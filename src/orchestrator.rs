@@ -23,6 +23,7 @@ pub mod common;
 pub mod detector_processing;
 pub mod streaming;
 pub mod streaming_content_detection;
+pub mod types;
 pub mod unary;
 
 use std::{collections::HashMap, pin::Pin, sync::Arc};
