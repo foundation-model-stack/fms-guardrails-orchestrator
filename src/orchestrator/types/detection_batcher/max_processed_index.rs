@@ -90,7 +90,7 @@ mod test {
         let n = 2;
         let mut batcher = MaxProcessedIndexBatcher::new(n);
 
-        // Push detections for pii detector
+        // Push chunk detections for pii detector
         batcher.push(
             input_id,
             "pii".into(),
@@ -110,7 +110,7 @@ mod test {
         // pop_batch() should return None
         assert!(batcher.pop_batch().is_none());
 
-        // Push detections for hap detector
+        // Push chunk detections for hap detector
         batcher.push(
             input_id,
             "hap".into(),
@@ -146,6 +146,86 @@ mod test {
 
     #[test]
     fn test_out_of_order_chunks() {
-        todo!()
+        let input_id = 0;
+        let chunks = [
+            Chunk {
+                input_start_index: 0,
+                input_end_index: 10,
+                start: 0,
+                end: 56,
+                text: " a powerful tool for the development \
+                    of complex systems."
+                    .into(),
+            },
+            Chunk {
+                input_start_index: 11,
+                input_end_index: 26,
+                start: 56,
+                end: 135,
+                text: " It has been used in many fields, such as \
+                    computer vision and image processing."
+                    .into(),
+            },
+        ];
+
+        // Create a batcher that will process batches for 2 detectors
+        let n = 2;
+        let mut batcher = MaxProcessedIndexBatcher::new(n);
+
+        // Push chunk-2 detections for pii detector
+        batcher.push(
+            input_id,
+            "pii".into(),
+            chunks[1].clone(),
+            Detections::default(), // no detections
+        );
+        // Push chunk-2 detections for hap detector
+        batcher.push(
+            input_id,
+            "hap".into(),
+            chunks[1].clone(),
+            Detections::default(), // no detections
+        );
+        // Push chunk-1 detections for hap detector
+        batcher.push(
+            input_id,
+            "hap".into(),
+            chunks[0].clone(),
+            Detections::default(), // no detections
+        );
+
+        // We have detections for chunk-2, but not chunk-1
+        // pop_batch() should return None
+        assert!(batcher.pop_batch().is_none());
+
+        // Push chunk-1 detections for pii detector
+        batcher.push(
+            input_id,
+            "pii".into(),
+            chunks[0].clone(),
+            vec![Detection {
+                start: Some(10),
+                end: Some(20),
+                detector_id: Some("pii".into()),
+                detection_type: "pii".into(),
+                score: 0.4,
+                ..Default::default()
+            }]
+            .into(),
+        );
+
+        // We have detections for chunk-1 and chunk-2
+        // pop_batch() should return chunk-1 with 1 pii detection
+        let batch = batcher.pop_batch();
+        assert!(batch
+            .is_some_and(|(chunk, detections)| { chunk == chunks[0] && detections.len() == 1 }));
+
+        // pop_batch() should return chunk-2 with no detections
+        let batch = batcher.pop_batch();
+        assert!(batch
+            .is_some_and(|(chunk, detections)| { chunk == chunks[1] && detections.is_empty() }));
+
+        // batcher state should be empty as all batches have been returned
+        assert!(batcher.state.is_empty());
     }
 }
