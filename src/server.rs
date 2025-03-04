@@ -36,7 +36,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use axum_extra::extract::WithRejection;
+use axum_extra::{extract::WithRejection, json_lines::JsonLines};
 use futures::{
     stream::{self, BoxStream},
     Stream, StreamExt,
@@ -433,23 +433,35 @@ async fn stream_classification_with_gen(
 async fn stream_content_detection(
     State(state): State<Arc<ServerState>>,
     headers: HeaderMap,
-    request: Request,
-) -> Response {
+    json_lines: JsonLines<StreamingContentDetectionRequest>,
+) -> Result<impl IntoResponse, Error> {
     let trace_id = Span::current().context().span().span_context().trace_id();
-    let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
     info!(?trace_id, "handling content detection streaming request");
 
+    // Validate the content-type from the header and ensure it is application/x-ndjson
+    // If it's not, return a UnsupportedContentType error with the appropriate message
+    let content_type = headers
+        .get(http::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok());
+    match content_type {
+        Some(content_type) if content_type.starts_with("application/x-ndjson") => (),
+        _ => {
+            return Err(Error::UnsupportedContentType(
+                "expected application/x-ndjson".into(),
+            ))
+        }
+    };
+    let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
+
     // Create input stream
-    let input_stream = request
-        .into_body()
-        .into_data_stream()
+    let input_stream = json_lines
         .map(|result| {
-            let message =
-                serde_json::from_slice::<StreamingContentDetectionRequest>(&result.unwrap())?;
+            let message = result.unwrap();
             message.validate()?;
             Ok(message)
         })
         .boxed();
+
     // Create task and submit to handler
     let task = StreamingContentDetectionTask::new(trace_id, headers, input_stream);
     let mut response_stream = state
@@ -482,7 +494,7 @@ async fn stream_content_detection(
         }
     });
 
-    Response::new(axum::body::Body::from_stream(output_stream))
+    Ok(Response::new(axum::body::Body::from_stream(output_stream)))
 }
 
 #[instrument(skip_all)]
@@ -684,6 +696,8 @@ pub enum Error {
     JsonExtractorRejection(#[from] JsonRejection),
     #[error("{0}")]
     JsonError(String),
+    #[error("unsupported content type: {0}")]
+    UnsupportedContentType(String),
 }
 
 impl From<orchestrator::Error> for Error {
@@ -717,6 +731,7 @@ impl Error {
             Validation(_) => (StatusCode::UNPROCESSABLE_ENTITY, self.to_string()),
             NotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
             ServiceUnavailable(_) => (StatusCode::SERVICE_UNAVAILABLE, self.to_string()),
+            UnsupportedContentType(_) => (StatusCode::UNSUPPORTED_MEDIA_TYPE, self.to_string()),
             Unexpected => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
             JsonExtractorRejection(json_rejection) => match json_rejection {
                 JsonRejection::JsonDataError(e) => {
@@ -742,6 +757,7 @@ impl IntoResponse for Error {
             Validation(_) => (StatusCode::UNPROCESSABLE_ENTITY, self.to_string()),
             NotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
             ServiceUnavailable(_) => (StatusCode::SERVICE_UNAVAILABLE, self.to_string()),
+            UnsupportedContentType(_) => (StatusCode::UNSUPPORTED_MEDIA_TYPE, self.to_string()),
             Unexpected => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
             JsonExtractorRejection(json_rejection) => match json_rejection {
                 JsonRejection::JsonDataError(e) => {
