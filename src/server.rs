@@ -41,7 +41,6 @@ use futures::{
     stream::{self, BoxStream},
     Stream, StreamExt,
 };
-use http::header::CONTENT_TYPE;
 use hyper::body::Incoming;
 use hyper_util::rt::{TokioExecutor, TokioIo};
 use opentelemetry::trace::TraceContextExt;
@@ -435,17 +434,25 @@ async fn stream_content_detection(
     State(state): State<Arc<ServerState>>,
     headers: HeaderMap,
     json_lines: JsonLines<StreamingContentDetectionRequest>,
-) -> Response {
+) -> Result<impl IntoResponse, Error> {
     let trace_id = Span::current().context().span().span_context().trace_id();
-    let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
     info!(?trace_id, "handling content detection streaming request");
-    // info!(?headers, "shonda testing headers");
 
-    //if headers.get(CONTENT_TYPE).and_then(|v| v.to_str().ok()).map(|ct| ct.starts_with("application/x-ndjson")) != Some(true) {
-    //    return Error::UnsupportedContentType("expected application/x-ndjson".into())
-    //        .into_response();
-    //}
-    
+    // Validate the content-type from the header and ensure it is application/x-ndjson
+    // If it's not, return a UnsupportedContentType error with the appropriate message
+    let content_type = headers
+        .get(http::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok());
+    match content_type {
+        Some(content_type) if content_type.starts_with("application/x-ndjson") => (),
+        _ => {
+            return Err(Error::UnsupportedContentType(
+                "expected application/x-ndjson".into(),
+            ))
+        }
+    };
+    let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
+
     // Create input stream
     let input_stream = json_lines
         .map(|result| {
@@ -487,7 +494,7 @@ async fn stream_content_detection(
         }
     });
 
-    Response::new(axum::body::Body::from_stream(output_stream))
+    Ok(Response::new(axum::body::Body::from_stream(output_stream)))
 }
 
 #[instrument(skip_all)]
