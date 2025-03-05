@@ -34,14 +34,14 @@ use super::{Chunk, DetectionBatcher, Detections, DetectorId, InputId};
 ///
 /// This batcher requires that all detectors use the same chunker.
 pub struct MaxProcessedIndexBatcher {
-    n: usize,
+    n_detectors: usize,
     state: BTreeMap<Chunk, Vec<Detections>>,
 }
 
 impl MaxProcessedIndexBatcher {
-    pub fn new(n: usize) -> Self {
+    pub fn new(n_detectors: usize) -> Self {
         Self {
-            n,
+            n_detectors,
             state: BTreeMap::default(),
         }
     }
@@ -74,7 +74,7 @@ impl DetectionBatcher for MaxProcessedIndexBatcher {
         if self
             .state
             .first_key_value()
-            .is_some_and(|(_, detections)| detections.len() == self.n)
+            .is_some_and(|(_, detections)| detections.len() == self.n_detectors)
         {
             // We have all detections for the chunk, remove and return it.
             if let Some((chunk, detections)) = self.state.pop_first() {
