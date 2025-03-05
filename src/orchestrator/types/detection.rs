@@ -19,23 +19,35 @@ use crate::{clients::detector, models};
 /// A detection.
 #[derive(Default, Debug, Clone, PartialEq)]
 pub struct Detection {
+    /// Start index of the detection
     pub start: Option<usize>,
+    /// End index of the detection
     pub end: Option<usize>,
+    /// Text corresponding to the detection
     pub text: Option<String>,
+    /// ID of the detector
     pub detector_id: Option<String>,
+    /// Type of detection
     pub detection_type: String,
+    /// Detection class
     pub detection: String,
+    /// Confidence level of the detection class
     pub score: f64,
+    /// Detection evidence
     pub evidence: Vec<DetectionEvidence>,
 }
 
 /// Detection evidence.
 #[derive(Default, Clone, Debug, PartialEq)]
 pub struct DetectionEvidence {
+    /// Evidence name
     pub name: String,
+    /// Evidence value
     pub value: Option<String>,
+    /// Evidence score
     pub score: Option<f64>,
-    pub evidence: Option<Vec<Evidence>>,
+    /// Additional evidence
+    pub evidence: Vec<Evidence>,
 }
 
 /// Additional detection evidence.
@@ -127,13 +139,13 @@ impl From<Vec<Vec<detector::ContentAnalysisResponse>>> for Detections {
 
 impl From<DetectionEvidence> for models::EvidenceObj {
     fn from(value: DetectionEvidence) -> Self {
+        let evidence = (!value.evidence.is_empty())
+            .then_some(value.evidence.into_iter().map(Into::into).collect());
         Self {
             name: value.name,
             value: value.value,
             score: value.score,
-            evidence: value
-                .evidence
-                .map(|vs| vs.into_iter().map(Into::into).collect()),
+            evidence,
         }
     }
 }
@@ -156,7 +168,8 @@ impl From<models::EvidenceObj> for DetectionEvidence {
             score: value.score,
             evidence: value
                 .evidence
-                .map(|vs| vs.into_iter().map(Into::into).collect()),
+                .map(|vs| vs.into_iter().map(Into::into).collect())
+                .unwrap_or_default(),
         }
     }
 }
