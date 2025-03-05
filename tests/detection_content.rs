@@ -16,7 +16,6 @@
 */
 
 use std::collections::HashMap;
-use test_log::test;
 
 use common::{
     chunker::{CHUNKER_NAME_SENTENCE, CHUNKER_UNARY_ENDPOINT},
@@ -41,7 +40,8 @@ use fms_guardrails_orchestr8::{
     },
 };
 use hyper::StatusCode;
-use mocktail::{prelude::*, utils::find_available_port};
+use mocktail::prelude::*;
+use test_log::test;
 use tracing::debug;
 
 pub mod common;
@@ -77,16 +77,11 @@ async fn test_single_detection_whole_doc() -> Result<(), anyhow::Error> {
 
     // Start orchestrator server and its dependencies
     let mock_detector_server = HttpMockServer::new(detector_name, mocks)?;
-    let orchestrator_server = TestOrchestratorServer::run(
-        ORCHESTRATOR_CONFIG_FILE_PATH,
-        find_available_port().unwrap(),
-        find_available_port().unwrap(),
-        None,
-        None,
-        Some(vec![mock_detector_server]),
-        None,
-    )
-    .await?;
+    let orchestrator_server = TestOrchestratorServer::builder()
+        .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
+        .detector_servers([mock_detector_server])
+        .build()
+        .await?;
 
     // Make orchestrator call
     let response = orchestrator_server
@@ -189,16 +184,12 @@ async fn test_single_detection_sentence_chunker() -> Result<(), anyhow::Error> {
     // Start orchestrator server and its dependencies
     let mock_chunker_server = GrpcMockServer::new(chunker_id, chunker_mocks)?;
     let mock_detector_server = HttpMockServer::new(detector_name, mocks)?;
-    let orchestrator_server = TestOrchestratorServer::run(
-        ORCHESTRATOR_CONFIG_FILE_PATH,
-        find_available_port().unwrap(),
-        find_available_port().unwrap(),
-        None,
-        None,
-        Some(vec![mock_detector_server]),
-        Some(vec![mock_chunker_server]),
-    )
-    .await?;
+    let orchestrator_server = TestOrchestratorServer::builder()
+        .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
+        .detector_servers([mock_detector_server])
+        .chunker_servers([mock_chunker_server])
+        .build()
+        .await?;
 
     // Make orchestrator call
     let response = orchestrator_server

@@ -16,7 +16,6 @@
 */
 
 use std::collections::HashMap;
-use test_log::test;
 
 use common::{
     chunker::{CHUNKER_MODEL_ID_HEADER_NAME, CHUNKER_NAME_SENTENCE, CHUNKER_UNARY_ENDPOINT},
@@ -51,7 +50,8 @@ use fms_guardrails_orchestr8::{
     },
 };
 use futures::StreamExt;
-use mocktail::{prelude::*, utils::find_available_port};
+use mocktail::prelude::*;
+use test_log::test;
 use tracing::debug;
 
 pub mod common;
@@ -121,16 +121,11 @@ async fn test_no_detectors() -> Result<(), anyhow::Error> {
     let generation_server = GrpcMockServer::new("nlp", mocks)?;
 
     // Run test orchestrator server
-    let orchestrator_server = TestOrchestratorServer::run(
-        ORCHESTRATOR_CONFIG_FILE_PATH,
-        find_available_port().unwrap(),
-        find_available_port().unwrap(),
-        Some(generation_server),
-        None,
-        None,
-        None,
-    )
-    .await?;
+    let orchestrator_server = TestOrchestratorServer::builder()
+        .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
+        .generation_server(generation_server)
+        .build()
+        .await?;
 
     // Example orchestrator request with streaming response
     let response = orchestrator_server
@@ -221,16 +216,12 @@ async fn test_input_detector_whole_doc_no_detections() -> Result<(), anyhow::Err
     // Start orchestrator server and its dependencies
     let mock_detector_server = HttpMockServer::new(detector_name, detection_mocks)?;
     let generation_server = GrpcMockServer::new("nlp", generation_mocks)?;
-    let orchestrator_server = TestOrchestratorServer::run(
-        ORCHESTRATOR_CONFIG_FILE_PATH,
-        find_available_port().unwrap(),
-        find_available_port().unwrap(),
-        Some(generation_server),
-        None,
-        Some(vec![mock_detector_server]),
-        None,
-    )
-    .await?;
+    let orchestrator_server = TestOrchestratorServer::builder()
+        .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
+        .generation_server(generation_server)
+        .detector_servers([mock_detector_server])
+        .build()
+        .await?;
 
     // Example orchestrator request with streaming response
     let response = orchestrator_server
@@ -263,13 +254,13 @@ async fn test_input_detector_whole_doc_no_detections() -> Result<(), anyhow::Err
     // assertions
     assert!(messages.len() == 3);
     assert!(messages[0].generated_text == Some("I".into()));
-    assert!(messages[0].token_classification_results.input == None);
+    assert!(messages[0].token_classification_results.input.is_none());
 
     assert!(messages[1].generated_text == Some(" am".into()));
-    assert!(messages[1].token_classification_results.input == None);
+    assert!(messages[1].token_classification_results.input.is_none());
 
     assert!(messages[2].generated_text == Some(" great!".into()));
-    assert!(messages[2].token_classification_results.input == None);
+    assert!(messages[2].token_classification_results.input.is_none());
 
     Ok(())
 }
@@ -367,16 +358,13 @@ async fn test_input_detector_sentence_chunker_no_detections() -> Result<(), anyh
     let mock_chunker_server = GrpcMockServer::new(chunker_id, chunker_mocks)?;
     let mock_detector_server = HttpMockServer::new(detector_name, detection_mocks)?;
     let generation_server = GrpcMockServer::new("nlp", generation_mocks)?;
-    let orchestrator_server = TestOrchestratorServer::run(
-        ORCHESTRATOR_CONFIG_FILE_PATH,
-        find_available_port().unwrap(),
-        find_available_port().unwrap(),
-        Some(generation_server),
-        None,
-        Some(vec![mock_detector_server]),
-        Some(vec![mock_chunker_server]),
-    )
-    .await?;
+    let orchestrator_server = TestOrchestratorServer::builder()
+        .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
+        .generation_server(generation_server)
+        .detector_servers([mock_detector_server])
+        .chunker_servers([mock_chunker_server])
+        .build()
+        .await?;
 
     // Example orchestrator request with streaming response
     let response = orchestrator_server
@@ -411,13 +399,13 @@ async fn test_input_detector_sentence_chunker_no_detections() -> Result<(), anyh
     // assertions
     assert!(messages.len() == 3);
     assert!(messages[0].generated_text == Some("I".into()));
-    assert!(messages[0].token_classification_results.input == None);
+    assert!(messages[0].token_classification_results.input.is_none());
 
     assert!(messages[1].generated_text == Some(" am".into()));
-    assert!(messages[1].token_classification_results.input == None);
+    assert!(messages[1].token_classification_results.input.is_none());
 
     assert!(messages[2].generated_text == Some(" great!".into()));
-    assert!(messages[2].token_classification_results.input == None);
+    assert!(messages[2].token_classification_results.input.is_none());
 
     Ok(())
 }
@@ -470,7 +458,6 @@ async fn test_input_detector_whole_doc_with_detections() -> Result<(), anyhow::E
         Mock::new(
             MockRequest::pb(TokenizationTaskRequest {
                 text: "This sentence does not have a detection. But <this one does>.".into(),
-                ..Default::default()
             })
             .with_headers(headers.clone()),
             MockResponse::pb(mock_tokenization_response.clone()),
@@ -480,16 +467,12 @@ async fn test_input_detector_whole_doc_with_detections() -> Result<(), anyhow::E
     // Start orchestrator server and its dependencies
     let mock_detector_server = HttpMockServer::new(detector_name, detection_mocks)?;
     let generation_server = GrpcMockServer::new("nlp", generation_mocks)?;
-    let orchestrator_server = TestOrchestratorServer::run(
-        ORCHESTRATOR_CONFIG_FILE_PATH,
-        find_available_port().unwrap(),
-        find_available_port().unwrap(),
-        Some(generation_server),
-        None,
-        Some(vec![mock_detector_server]),
-        None,
-    )
-    .await?;
+    let orchestrator_server = TestOrchestratorServer::builder()
+        .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
+        .generation_server(generation_server)
+        .detector_servers([mock_detector_server])
+        .build()
+        .await?;
 
     // Example orchestrator request with streaming response
     let response = orchestrator_server
@@ -521,7 +504,7 @@ async fn test_input_detector_whole_doc_with_detections() -> Result<(), anyhow::E
 
     // assertions
     assert!(messages.len() == 1);
-    assert!(messages[0].generated_text == None);
+    assert!(messages[0].generated_text.is_none());
     assert!(
         messages[0].token_classification_results
             == TextGenTokenClassificationResults {
@@ -629,7 +612,6 @@ async fn test_input_detector_sentence_chunker_with_detections() -> Result<(), an
         Mock::new(
             MockRequest::pb(TokenizationTaskRequest {
                 text: "This sentence does not have a detection. But <this one does>.".into(),
-                ..Default::default()
             })
             .with_headers(headers.clone()),
             MockResponse::pb(mock_tokenization_response.clone()),
@@ -640,16 +622,13 @@ async fn test_input_detector_sentence_chunker_with_detections() -> Result<(), an
     let mock_chunker_server = GrpcMockServer::new(chunker_id, chunker_mocks)?;
     let mock_detector_server = HttpMockServer::new(detector_name, detection_mocks)?;
     let generation_server = GrpcMockServer::new("nlp", generation_mocks)?;
-    let orchestrator_server = TestOrchestratorServer::run(
-        ORCHESTRATOR_CONFIG_FILE_PATH,
-        find_available_port().unwrap(),
-        find_available_port().unwrap(),
-        Some(generation_server),
-        None,
-        Some(vec![mock_detector_server]),
-        Some(vec![mock_chunker_server]),
-    )
-    .await?;
+    let orchestrator_server = TestOrchestratorServer::builder()
+        .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
+        .generation_server(generation_server)
+        .detector_servers([mock_detector_server])
+        .chunker_servers([mock_chunker_server])
+        .build()
+        .await?;
 
     // Example orchestrator request with streaming response
     let response = orchestrator_server
@@ -681,13 +660,13 @@ async fn test_input_detector_sentence_chunker_with_detections() -> Result<(), an
 
     // assertions
     assert!(messages.len() == 1);
-    assert!(messages[0].generated_text == None);
+    assert!(messages[0].generated_text.is_none());
     assert!(
         messages[0].token_classification_results
             == TextGenTokenClassificationResults {
                 input: Some(vec![TokenClassificationResult {
-                    start: 46 as u32, // index of first token of detected text, relative to the `inputs` string sent in the orchestrator request.
-                    end: 59 as u32, // index of last token (+1) of detected text, relative to the `inputs` string sent in the orchestrator request.
+                    start: 46, // index of first token of detected text, relative to the `inputs` string sent in the orchestrator request.
+                    end: 59, // index of last token (+1) of detected text, relative to the `inputs` string sent in the orchestrator request.
                     word: mock_detection_response.text,
                     entity: mock_detection_response.detection,
                     entity_group: mock_detection_response.detection_type,
@@ -729,16 +708,11 @@ async fn test_input_detector_returns_503() -> Result<(), anyhow::Error> {
 
     // Start orchestrator server and its dependencies
     let mock_detector_server = HttpMockServer::new(detector_name, detection_mocks)?;
-    let orchestrator_server = TestOrchestratorServer::run(
-        ORCHESTRATOR_CONFIG_FILE_PATH,
-        find_available_port().unwrap(),
-        find_available_port().unwrap(),
-        None,
-        None,
-        Some(vec![mock_detector_server]),
-        None,
-    )
-    .await?;
+    let orchestrator_server = TestOrchestratorServer::builder()
+        .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
+        .detector_servers([mock_detector_server])
+        .build()
+        .await?;
 
     // Example orchestrator request with streaming response
     let response = orchestrator_server
@@ -808,16 +782,11 @@ async fn test_input_detector_returns_404() -> Result<(), anyhow::Error> {
 
     // Start orchestrator server and its dependencies
     let mock_detector_server = HttpMockServer::new(detector_name, detection_mocks)?;
-    let orchestrator_server = TestOrchestratorServer::run(
-        ORCHESTRATOR_CONFIG_FILE_PATH,
-        find_available_port().unwrap(),
-        find_available_port().unwrap(),
-        None,
-        None,
-        Some(vec![mock_detector_server]),
-        None,
-    )
-    .await?;
+    let orchestrator_server = TestOrchestratorServer::builder()
+        .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
+        .detector_servers([mock_detector_server])
+        .build()
+        .await?;
 
     // Example orchestrator request with streaming response
     let response = orchestrator_server
@@ -888,16 +857,11 @@ async fn test_input_detector_returns_500() -> Result<(), anyhow::Error> {
 
     // Start orchestrator server and its dependencies
     let mock_detector_server = HttpMockServer::new(detector_name, detection_mocks)?;
-    let orchestrator_server = TestOrchestratorServer::run(
-        ORCHESTRATOR_CONFIG_FILE_PATH,
-        find_available_port().unwrap(),
-        find_available_port().unwrap(),
-        None,
-        None,
-        Some(vec![mock_detector_server]),
-        None,
-    )
-    .await?;
+    let orchestrator_server = TestOrchestratorServer::builder()
+        .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
+        .detector_servers([mock_detector_server])
+        .build()
+        .await?;
 
     // Example orchestrator request with streaming response
     let response = orchestrator_server
@@ -964,16 +928,11 @@ async fn test_input_detector_returns_invalid_message() -> Result<(), anyhow::Err
 
     // Start orchestrator server and its dependencies
     let mock_detector_server = HttpMockServer::new(detector_name, detection_mocks)?;
-    let orchestrator_server = TestOrchestratorServer::run(
-        ORCHESTRATOR_CONFIG_FILE_PATH,
-        find_available_port().unwrap(),
-        find_available_port().unwrap(),
-        None,
-        None,
-        Some(vec![mock_detector_server]),
-        None,
-    )
-    .await?;
+    let orchestrator_server = TestOrchestratorServer::builder()
+        .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
+        .detector_servers([mock_detector_server])
+        .build()
+        .await?;
 
     // Example orchestrator request with streaming response
     let response = orchestrator_server
@@ -1037,16 +996,11 @@ async fn test_input_chunker_returns_an_error() -> Result<(), anyhow::Error> {
 
     // Start orchestrator server and its dependencies
     let mock_chunker_server = GrpcMockServer::new(chunker_id, chunker_mocks)?;
-    let orchestrator_server = TestOrchestratorServer::run(
-        ORCHESTRATOR_CONFIG_FILE_PATH,
-        find_available_port().unwrap(),
-        find_available_port().unwrap(),
-        None,
-        None,
-        None,
-        Some(vec![mock_chunker_server]),
-    )
-    .await?;
+    let orchestrator_server = TestOrchestratorServer::builder()
+        .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
+        .chunker_servers([mock_chunker_server])
+        .build()
+        .await?;
 
     // Example orchestrator request with streaming response
     let response = orchestrator_server
@@ -1127,16 +1081,12 @@ async fn test_generation_server_returns_an_error() -> Result<(), anyhow::Error> 
     // Start orchestrator server and its dependencies
     let mock_detector_server = HttpMockServer::new(detector_name, detection_mocks)?;
     let generation_server = GrpcMockServer::new("nlp", generation_mocks)?;
-    let orchestrator_server = TestOrchestratorServer::run(
-        ORCHESTRATOR_CONFIG_FILE_PATH,
-        find_available_port().unwrap(),
-        find_available_port().unwrap(),
-        Some(generation_server),
-        None,
-        Some(vec![mock_detector_server]),
-        None,
-    )
-    .await?;
+    let orchestrator_server = TestOrchestratorServer::builder()
+        .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
+        .generation_server(generation_server)
+        .detector_servers([mock_detector_server])
+        .build()
+        .await?;
 
     // Example orchestrator request with streaming response
     let response = orchestrator_server
@@ -1179,16 +1129,10 @@ async fn test_request_with_extra_fields_returns_422() -> Result<(), anyhow::Erro
     let model_id = "my-super-model-8B";
 
     // Run test orchestrator server
-    let orchestrator_server = TestOrchestratorServer::run(
-        ORCHESTRATOR_CONFIG_FILE_PATH,
-        find_available_port().unwrap(),
-        find_available_port().unwrap(),
-        None,
-        None,
-        None,
-        None,
-    )
-    .await?;
+    let orchestrator_server = TestOrchestratorServer::builder()
+        .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
+        .build()
+        .await?;
 
     // Example orchestrator request with streaming response
     let response = orchestrator_server
