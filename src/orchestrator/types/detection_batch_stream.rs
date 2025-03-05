@@ -65,7 +65,7 @@ where
                                 break;
                             },
                             None => {
-                                // Batcher channel closed
+                                // Detection stream set closed
                                 break;
                             },
                         }
