@@ -358,6 +358,20 @@ impl OrchestratorConfig {
             .get(detector_id)
             .map(|detector_config| detector_config.chunker_id.clone())
     }
+
+    /// Gets a chunker config.
+    pub fn chunker(&self, chunker_id: &str) -> Option<&ChunkerConfig> {
+        if let Some(chunkers) = &self.chunkers {
+            chunkers.get(chunker_id)
+        } else {
+            None
+        }
+    }
+
+    /// Gets a detector config.
+    pub fn detector(&self, detector_id: &str) -> Option<&DetectorConfig> {
+        self.detectors.get(detector_id)
+    }
 }
 
 /// Applies named TLS config to a service.
