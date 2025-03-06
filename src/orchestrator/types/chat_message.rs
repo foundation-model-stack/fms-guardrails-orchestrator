@@ -26,6 +26,8 @@ pub struct ChatMessage<'a> {
     pub role: Option<&'a openai::Role>,
     /// The text contents of the message.
     pub text: Option<&'a str>,
+    /// The refusal message.
+    pub refusal: Option<&'a str>,
 }
 
 /// An iterator over chat messages.
@@ -46,6 +48,7 @@ impl ChatMessageIterator for openai::ChatCompletionsRequest {
                 index: index as u32,
                 role: Some(&message.role),
                 text,
+                refusal: message.refusal.as_deref(),
             }
         })
     }
@@ -57,6 +60,7 @@ impl ChatMessageIterator for openai::ChatCompletion {
             index: choice.index,
             role: Some(&choice.message.role),
             text: choice.message.content.as_deref(),
+            refusal: choice.message.refusal.as_deref(),
         })
     }
 }
@@ -67,6 +71,7 @@ impl ChatMessageIterator for openai::ChatCompletionChunk {
             index: choice.index,
             role: choice.delta.role.as_ref(),
             text: choice.delta.content.as_deref(),
+            refusal: choice.delta.refusal.as_deref(),
         })
     }
 }
