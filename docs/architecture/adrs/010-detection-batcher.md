@@ -27,7 +27,7 @@ To support initial streaming requirements outlined in ADR 002, we implemented th
 
 The primary issue with these components is that they were designed specifically for the *Streaming Classification With Generation* task and lack flexibility to be extended to additional streaming use cases that require batching detections, e.g.
 - A use case may require different batching logic
-- A use case may need to use different containers to implement it's batching logic
+- A use case may need to use different data structures to implement it's batching logic
 - A use case may need to return a different batch type
 - A use case may need to build a different result type
 
