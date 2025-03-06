@@ -181,7 +181,7 @@ impl Orchestrator {
                 let chat_completions = client
                     .chat_completions(chat_request, headers)
                     .await
-                    .map_err(|error| Error::ChatGenerateRequestFailed {
+                    .map_err(|error| Error::ChatCompletionRequestFailed {
                         id: model_id.clone(),
                         error,
                     })?;

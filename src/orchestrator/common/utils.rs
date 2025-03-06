@@ -41,6 +41,7 @@ pub fn apply_masks(text: String, masks: Option<&[(usize, usize)]>) -> Vec<(usize
     }
 }
 
+/// Looks up chunker ids for detectors.
 pub fn get_chunker_ids(
     ctx: &Arc<Context>,
     detectors: &HashMap<String, DetectorParams>,
