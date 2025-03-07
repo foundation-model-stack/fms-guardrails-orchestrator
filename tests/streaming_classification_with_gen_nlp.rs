@@ -144,7 +144,7 @@ async fn no_detectors() -> Result<(), anyhow::Error> {
         .await
         .into_iter()
         .collect::<Result<Vec<_>, anyhow::Error>>()?;
-    debug!(?messages);
+    debug!("{messages:#?}");
 
     // assertions
     assert!(messages.len() == 3);
@@ -538,8 +538,7 @@ async fn input_detector_client_error() -> Result<(), anyhow::Error> {
                 contents: vec![generation_server_error_input.into()],
                 detector_params: DetectorParams::new(),
             }),
-            MockResponse::json(&expected_detector_error)
-                .with_code(StatusCode::INTERNAL_SERVER_ERROR),
+            MockResponse::json([Vec::<ContentAnalysisResponse>::new()]),
         ),
     );
 
@@ -554,7 +553,7 @@ async fn input_detector_client_error() -> Result<(), anyhow::Error> {
                 ..Default::default()
             })
             .with_headers(generation_headers.clone()),
-            MockResponse::json([Vec::<ContentAnalysisResponse>::new()]),
+            MockResponse::empty().with_code(StatusCode::INTERNAL_SERVER_ERROR),
         ),
     );
 
@@ -599,8 +598,13 @@ async fn input_detector_client_error() -> Result<(), anyhow::Error> {
     debug!("{messages:#?}");
 
     assert!(messages.len() == 1);
-    assert!(messages[0].code == 500);
-    assert!(messages[0].details == ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE);
+    assert_eq!(
+        messages[0],
+        OrchestratorError {
+            code: 500,
+            details: ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE.into()
+        }
+    );
 
     // Test error from detector
     let response = orchestrator_server
@@ -631,8 +635,13 @@ async fn input_detector_client_error() -> Result<(), anyhow::Error> {
     debug!("{messages:#?}");
 
     assert!(messages.len() == 1);
-    assert!(messages[0].code == 500);
-    assert!(messages[0].details == ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE);
+    assert_eq!(
+        messages[0],
+        OrchestratorError {
+            code: 500,
+            details: ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE.into()
+        }
+    );
 
     // Test error from generation server
     let response = orchestrator_server
@@ -663,8 +672,13 @@ async fn input_detector_client_error() -> Result<(), anyhow::Error> {
     debug!("{messages:#?}");
 
     assert!(messages.len() == 1);
-    assert!(messages[0].code == 500);
-    assert!(messages[0].details == ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE);
+    assert_eq!(
+        messages[0],
+        OrchestratorError {
+            code: 500,
+            details: ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE.into()
+        }
+    );
 
     Ok(())
 }
