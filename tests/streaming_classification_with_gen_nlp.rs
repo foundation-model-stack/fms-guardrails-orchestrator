@@ -46,7 +46,7 @@ use fms_guardrails_orchestr8::{
         caikit_data_model::nlp::{GeneratedTextStreamResult, Token, TokenizationResults},
     },
 };
-use futures::StreamExt;
+use futures::TryStreamExt;
 use mocktail::prelude::*;
 use test_log::test;
 use tracing::debug;
@@ -139,11 +139,7 @@ async fn no_detectors() -> Result<(), anyhow::Error> {
     // Collects stream results
     let sse_stream: SseStream<ClassifiedGeneratedTextStreamResult> =
         SseStream::new(response.bytes_stream());
-    let messages = sse_stream
-        .collect::<Vec<_>>()
-        .await
-        .into_iter()
-        .collect::<Result<Vec<_>, anyhow::Error>>()?;
+    let messages = sse_stream.try_collect::<Vec<_>>().await?;
     debug!("{messages:#?}");
 
     // assertions
@@ -279,11 +275,7 @@ async fn input_detector_no_detections() -> Result<(), anyhow::Error> {
     // Test custom SseStream wrapper
     let sse_stream: SseStream<ClassifiedGeneratedTextStreamResult> =
         SseStream::new(response.bytes_stream());
-    let messages = sse_stream
-        .collect::<Vec<_>>()
-        .await
-        .into_iter()
-        .collect::<Result<Vec<_>, anyhow::Error>>()?;
+    let messages = sse_stream.try_collect::<Vec<_>>().await?;
     debug!("{messages:#?}");
 
     // assertions
@@ -418,11 +410,7 @@ async fn input_detector_detections() -> Result<(), anyhow::Error> {
     // Test custom SseStream wrapper
     let sse_stream: SseStream<ClassifiedGeneratedTextStreamResult> =
         SseStream::new(response.bytes_stream());
-    let messages = sse_stream
-        .collect::<Vec<_>>()
-        .await
-        .into_iter()
-        .collect::<Result<Vec<_>, anyhow::Error>>()?;
+    let messages = sse_stream.try_collect::<Vec<_>>().await?;
     debug!("{messages:#?}");
 
     // assertions
@@ -590,11 +578,7 @@ async fn input_detector_client_error() -> Result<(), anyhow::Error> {
     debug!(?response, "RESPONSE RECEIVED FROM ORCHESTRATOR");
 
     let sse_stream: SseStream<OrchestratorError> = SseStream::new(response.bytes_stream());
-    let messages = sse_stream
-        .collect::<Vec<_>>()
-        .await
-        .into_iter()
-        .collect::<Result<Vec<_>, anyhow::Error>>()?;
+    let messages = sse_stream.try_collect::<Vec<_>>().await?;
     debug!("{messages:#?}");
 
     assert!(messages.len() == 1);
@@ -627,11 +611,7 @@ async fn input_detector_client_error() -> Result<(), anyhow::Error> {
     debug!(?response, "RESPONSE RECEIVED FROM ORCHESTRATOR");
 
     let sse_stream: SseStream<OrchestratorError> = SseStream::new(response.bytes_stream());
-    let messages = sse_stream
-        .collect::<Vec<_>>()
-        .await
-        .into_iter()
-        .collect::<Result<Vec<_>, anyhow::Error>>()?;
+    let messages = sse_stream.try_collect::<Vec<_>>().await?;
     debug!("{messages:#?}");
 
     assert!(messages.len() == 1);
@@ -664,11 +644,7 @@ async fn input_detector_client_error() -> Result<(), anyhow::Error> {
     debug!(?response, "RESPONSE RECEIVED FROM ORCHESTRATOR");
 
     let sse_stream: SseStream<OrchestratorError> = SseStream::new(response.bytes_stream());
-    let messages = sse_stream
-        .collect::<Vec<_>>()
-        .await
-        .into_iter()
-        .collect::<Result<Vec<_>, anyhow::Error>>()?;
+    let messages = sse_stream.try_collect::<Vec<_>>().await?;
     debug!("{messages:#?}");
 
     assert!(messages.len() == 1);
