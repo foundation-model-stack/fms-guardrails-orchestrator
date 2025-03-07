@@ -77,7 +77,7 @@ pub mod common;
 /// Asserts that given a request with no detectors configured returns the text generated
 /// by the model.
 #[test(tokio::test)]
-async fn no_detectors_returns_generation() -> Result<(), anyhow::Error> {
+async fn no_detectors() -> Result<(), anyhow::Error> {
     // Add generation mock
     let model_id = "my-super-model-8B";
     let mut headers = HeaderMap::new();
@@ -158,7 +158,7 @@ async fn no_detectors_returns_generation() -> Result<(), anyhow::Error> {
 /// Asserts that the generated text is returned when an input detector configured
 /// with a sentence chunker finds no detections.
 #[test(tokio::test)]
-async fn input_detector_no_detections_returns_generation() -> Result<(), anyhow::Error> {
+async fn input_detector_no_detections() -> Result<(), anyhow::Error> {
     let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE;
 
     // Add input chunker mock
@@ -303,7 +303,7 @@ async fn input_detector_no_detections_returns_generation() -> Result<(), anyhow:
 /// Asserts that detections found by an input detector configured with a sentence chunker
 /// are returned.
 #[test(tokio::test)]
-async fn input_detector_detections_returns_detections() -> Result<(), anyhow::Error> {
+async fn input_detector_detections() -> Result<(), anyhow::Error> {
     // Add chunker mock
     let chunker_id = CHUNKER_NAME_SENTENCE;
     let mut chunker_headers = HeaderMap::new();
@@ -458,7 +458,7 @@ async fn input_detector_detections_returns_detections() -> Result<(), anyhow::Er
 
 /// Asserts that errors returned from input chunkers, input detectors and generation server are correctly propagated.
 #[test(tokio::test)]
-async fn input_detector_client_error_returns_error() -> Result<(), anyhow::Error> {
+async fn input_detector_client_error() -> Result<(), anyhow::Error> {
     let chunker_id = CHUNKER_NAME_SENTENCE;
     let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE;
     let model_id = "my-super-model-8B";
@@ -671,7 +671,7 @@ async fn input_detector_client_error_returns_error() -> Result<(), anyhow::Error
 
 /// Asserts orchestrator request validation
 #[test(tokio::test)]
-async fn orchestrator_validation_error_returns_error() -> Result<(), anyhow::Error> {
+async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     let model_id = "my-super-model-8B";
 
     // Run test orchestrator server
