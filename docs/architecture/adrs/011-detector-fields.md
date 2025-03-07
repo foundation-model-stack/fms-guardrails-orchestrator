@@ -20,12 +20,8 @@ Any placement of additional detector fields should account for the two types of 
 - This ADR considers fields that apply on each particular detection or decision made by the detector model.
 - Knowledge of future model plans is being restricted here, so only a few examples are given with already released model functionalities.
 
-
 ## Decisions
-- The updates will affect what endpoints of the detector API return, and changes will be reflected on the orchestrator API as well
-- To keep the experience consistent among various detector API endpoints i.e. `/text/contents` vs. others, any added fields will be on the same level e.g. on the same level as `detection`.
-
-- We will add a new high-level field of `metadata`
+- We will add a new high-level field of `metadata` to account for additional model information from detectors. This field will provide a dictionary with string keys and arbitrary values, so that values are not constrained to particular types like strings or floats. This will enable flexibility and is how APIs like [Llama Stack](https://github.com/meta-llama/llama-stack) provides additional information, whether on datasets or models.
     
 Example
 ```json
@@ -42,24 +38,15 @@ Example
         }
     }
 ```
-[TODO: cleanup
-]
-Pros:
-- Enables a lot of flexibility, and is how APIs like [Llama Stack](https://github.com/meta-llama/llama-stack) provides additional information, whether on datasets or models
-- Field/attribute values do not have to be limited to particular types like string or floats
-- Broad enough to be a backup for any new fields
 
-Cons:
-- `metadata` as a term is extremely broad
-- Addition of `metadata` may create confusion with current `evidence`
-- Arbitrary keys and values will be difficult to validate [though a decision could be made to not validate, like how `detector_params` are very flexible on detector requests]
-
-Any 'actionable' needs to be not in metadata, orchestrator is currently not designed to take any 'action'/decision based on model outputs - the API is designed to present information to the user/consuming application that can then decide what to do with the information, whether it's doing another generation call or masking or presenting the info to that consuming application's users.
-
-`evidence` has to answer "why was this decision made?" 
-
+- To distinguish `metadata` from the existing `evidence` field, any attributes under `evidence` are meant to help answer: "Why was this decision made?"
+- `metadata` will just present information, and the orchestrator will not be altering workflow directions based on any information within the `metadata`. The orchestrator is currently not designed to take any action or decision based on model outputs, as the API is designed to present information to the orchestrator API user or consuming application. The user or application can then decide what to do with the information, whether doing another generation call, masking text, or further presenting the info to that consuming application's users. 
+- The updates will affect what endpoints of the detector API return, and changes will be reflected on the orchestrator API as well.
+- To keep the experience consistent among various detector API endpoints i.e. `/text/contents` vs. others, any added fields will be on the same level e.g. on the same level as `detection`.
 
 ### Alternate Considerations
+
+A few alternate strategies were considered with pros and cons documented.
 
 #### Alternate naming for new high-level field to nest new fields
 
@@ -86,12 +73,12 @@ Pros:
 Cons:
 - `features` might not be appropriate for all attributes
 - May be confusing in relation to model ['features' in relation to data](https://en.wikipedia.org/wiki/Feature_(machine_learning))
-- Similar to `metadata` case, addition of `features` may create confusion with current `evidence`
-- Similar to `metadata` case, arbitrary keys and values will be difficult to validate [though a decision could be made to not validate, like how `detector_params` are very flexible on detector requests]
+- Similar to the `metadata` case, addition of `features` could create potential confusion with `evidence`
+- Similar to the `metadata` case, arbitrary keys and values will be difficult to validate, but implementations also do not have to validate.
 
-b. `attributes` [less restrictive than `features` but potentially not any more descriptive than `metadata`]
+b. `attributes` - This is a more general term than `features` but can be considered more restricting than `metadata`. Not all fields may be considered `attributes` of the decision.
 
-c. `controls` [concept may be too Granite specific, just noting down [ref](https://www.ibm.com/granite/docs/models/granite/)]
+c. `controls` - This concept may be too Granite specific  [ref](https://www.ibm.com/granite/docs/models/granite/). Fields like `confidence` are also not "controlled" or requested by the user.
 
 #### Use current API with `evidence`
 
@@ -148,6 +135,8 @@ Cons:
 ## Consequences
 - Both detector API users and orchestrator API users will see additional fields reflected with current detection results
 - The APIs will handle additional model outputs as model versions are released
+
+[TODO: expand]
 
 ## Status
 
