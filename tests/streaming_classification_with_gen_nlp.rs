@@ -120,7 +120,7 @@ async fn no_detectors() -> Result<(), anyhow::Error> {
     // Run test orchestrator server
     let orchestrator_server = TestOrchestratorServer::builder()
         .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
-        .generation_server(generation_server)
+        .generation_server(&generation_server)
         .build()
         .await?;
 
@@ -246,9 +246,9 @@ async fn input_detector_no_detections() -> Result<(), anyhow::Error> {
     let generation_server = GrpcMockServer::new("nlp", generation_mocks)?;
     let orchestrator_server = TestOrchestratorServer::builder()
         .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
-        .generation_server(generation_server)
-        .detector_servers([mock_detector_server])
-        .chunker_servers([mock_chunker_server])
+        .generation_server(&generation_server)
+        .detector_servers([&mock_detector_server])
+        .chunker_servers([&mock_chunker_server])
         .build()
         .await?;
 
@@ -383,9 +383,9 @@ async fn input_detector_detections() -> Result<(), anyhow::Error> {
     let generation_server = GrpcMockServer::new("nlp", generation_mocks)?;
     let orchestrator_server = TestOrchestratorServer::builder()
         .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
-        .generation_server(generation_server)
-        .detector_servers([mock_detector_server])
-        .chunker_servers([mock_chunker_server])
+        .generation_server(&generation_server)
+        .detector_servers([&mock_detector_server])
+        .chunker_servers([&mock_chunker_server])
         .build()
         .await?;
 
@@ -551,9 +551,9 @@ async fn input_detector_client_error() -> Result<(), anyhow::Error> {
     let mock_generation_server = GrpcMockServer::new("nlp", generation_mocks)?;
     let orchestrator_server = TestOrchestratorServer::builder()
         .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
-        .chunker_servers([mock_chunker_server])
-        .detector_servers([mock_detector_server])
-        .generation_server(mock_generation_server)
+        .chunker_servers([&mock_chunker_server])
+        .detector_servers([&mock_detector_server])
+        .generation_server(&mock_generation_server)
         .build()
         .await?;
 

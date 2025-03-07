@@ -79,7 +79,7 @@ async fn test_single_detection_whole_doc() -> Result<(), anyhow::Error> {
     let mock_detector_server = HttpMockServer::new(detector_name, mocks)?;
     let orchestrator_server = TestOrchestratorServer::builder()
         .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
-        .detector_servers([mock_detector_server])
+        .detector_servers([&mock_detector_server])
         .build()
         .await?;
 
@@ -186,8 +186,8 @@ async fn test_single_detection_sentence_chunker() -> Result<(), anyhow::Error> {
     let mock_detector_server = HttpMockServer::new(detector_name, mocks)?;
     let orchestrator_server = TestOrchestratorServer::builder()
         .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
-        .detector_servers([mock_detector_server])
-        .chunker_servers([mock_chunker_server])
+        .detector_servers([&mock_detector_server])
+        .chunker_servers([&mock_chunker_server])
         .build()
         .await?;
 
