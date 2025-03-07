@@ -133,10 +133,10 @@ Cons:
 - Still raises the question of what goes under existing `evidence` or is put at the higher level
 
 ## Consequences
-- Both detector API users and orchestrator API users will see additional fields reflected with current detection results
-- The APIs will handle additional model outputs as model versions are released
-
-[TODO: expand]
+- Both detector API users and orchestrator API users will see additional fields reflected with detection results.
+- The APIs will handle additional model outputs as model versions are released.
+- API users will be able to parse the `metadata` field to receive additional model information.
+- Implementers of the detector API can use the `metadata` field to provide additional model information.
 
 ## Status
 
