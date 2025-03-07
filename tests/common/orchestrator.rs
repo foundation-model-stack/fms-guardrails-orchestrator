@@ -28,7 +28,7 @@ use eventsource_stream::{EventStream, Eventsource};
 use fms_guardrails_orchestr8::{config::OrchestratorConfig, orchestrator::Orchestrator};
 use futures::{stream::BoxStream, Stream, StreamExt};
 use mocktail::{
-    server::{GrpcMockServer, HttpMockServer},
+    server::{GrpcMockServer, HttpMockServer, MockServer},
     utils::find_available_port,
 };
 use rustls::crypto::ring;
