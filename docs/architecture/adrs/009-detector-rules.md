@@ -54,3 +54,7 @@ When new requests for detectors such as the `/text/contents` detectors is formed
 - Rules for detector types are defined and will be applied via `from_` functions when detector requests are constructed. There may have to exist many `from_` functions in the codebase to account for the variety of detector types to make compatible with various generation requests/responses.
 - "Conversion functions" will help convert various request or response objects in preparation for rule application.
 - Without refactoring, the conversion functions and application of rules will have to be applied at the orchestrator endpoint handler level, but this can be altered.
+
+## Status
+
+Accepted

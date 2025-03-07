@@ -2,7 +2,7 @@
 
 This ADR documents the design and decisions for the detectors APIs published and integrated into orchestrator. This will also serve the basis of expanding or enhancing the detectors API in future.
 
-Detector API can be found [at these github pages](https://foundation-model-stack.github.io/fms-guardrails-orchestrator/?urls.primaryName=Detector+API).
+Detector API can be found [at this Github page](https://foundation-model-stack.github.io/fms-guardrails-orchestrator/?urls.primaryName=Detector+API).
 
 ## Motivation
 

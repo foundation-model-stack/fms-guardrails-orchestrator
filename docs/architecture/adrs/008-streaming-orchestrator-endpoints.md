@@ -39,4 +39,4 @@ NOTE: This ADR will not prescribe implementation details, but while the underlyi
 
 ## Status
 
-Proposed
+Accepted

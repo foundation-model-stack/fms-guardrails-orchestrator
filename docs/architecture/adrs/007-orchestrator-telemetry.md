@@ -69,10 +69,6 @@ corresponding to this trace to any requests outgoing to clients, and similarly, 
 to provide a `traceparent` header in the response. The orchestrator will not propagate the `traceparent` to outgoing
 responses back to the end user (or expect `traceparent` in incoming requests) for security reasons.
 
-## Status
-
-Accepted
-
 ## Consequences
 
 - The orchestrator and client services have a common standard to conform to for telemetry, allowing for traceability
@@ -94,3 +90,7 @@ Accepted
   additional compile time to the orchestrator.
 - The OpenTelemetry API/SDK and OTLP standard are new and still evolving, and the orchestrator will need to keep up
   with changes in the OpenTelemetry ecosystem, there could be occasional breaking changes that will need addressing.
+
+## Status
+
+Accepted

@@ -446,6 +446,16 @@ components:
         score:
           type: number
           title: Score
+        evidence:
+          anyOf:
+            - items:
+                $ref: "#/components/schemas/EvidenceObj"
+              type: array
+        metadata:
+          type: object
+          default: {}
+          title: Metadata
+          description: Optional metadata for additional model information
       title: Content Detection Response Object
       example:
         start: 0
@@ -518,6 +528,16 @@ components:
               score:
                 type: number
                 title: Score
+              evidence:
+                anyOf:
+                  - items:
+                      $ref: "#/components/schemas/EvidenceObj"
+                    type: array
+              metadata:
+                type: object
+                default: {}
+                title: Metadata
+                description: Optional metadata for additional model information
           title: Detections on entire history of chat messages
       title: Chat Detection Response
       required: ["detections"]
@@ -575,6 +595,11 @@ components:
             - items:
                 $ref: "#/components/schemas/EvidenceObj"
               type: array
+        metadata:
+          type: object
+          default: {}
+          title: Metadata
+          description: Optional metadata for additional model information
       title: Context Docs Detection Response Object
 
     GenerationDetectionRequest:
@@ -617,6 +642,16 @@ components:
               score:
                 type: number
                 title: Score
+              evidence:
+                anyOf:
+                  - items:
+                      $ref: "#/components/schemas/EvidenceObj"
+                    type: array
+              metadata:
+                type: object
+                default: {}
+                title: Metadata
+                description: Optional metadata for additional model information
         input_token_count:
           type: string
           title: Input token Count
@@ -659,6 +694,16 @@ components:
         score:
           type: number
           title: Score
+        evidence:
+          anyOf:
+            - items:
+                $ref: "#/components/schemas/EvidenceObj"
+              type: array
+        metadata:
+          type: object
+          default: {}
+          title: Metadata
+          description: Optional metadata for additional model information
       title: Generated Text Detection Response Object
 
     ########################## Classification #################################
