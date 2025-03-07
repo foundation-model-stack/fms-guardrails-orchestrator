@@ -19,10 +19,7 @@ use std::collections::HashMap;
 
 use common::{
     chunker::{CHUNKER_MODEL_ID_HEADER_NAME, CHUNKER_NAME_SENTENCE, CHUNKER_UNARY_ENDPOINT},
-    detectors::{
-        DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE, DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC,
-        TEXT_CONTENTS_DETECTOR_ENDPOINT,
-    },
+    detectors::{DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE, TEXT_CONTENTS_DETECTOR_ENDPOINT},
     errors::{DetectorError, OrchestratorError},
     generation::{
         GENERATION_NLP_MODEL_ID_HEADER_NAME, GENERATION_NLP_STREAMING_ENDPOINT,
@@ -462,19 +459,109 @@ async fn input_detector_detections_returns_detections() -> Result<(), anyhow::Er
 /// Asserts that errors returned from input chunkers, input detectors and generation server are correctly propagated.
 #[test(tokio::test)]
 async fn input_detector_client_error_returns_error() -> Result<(), anyhow::Error> {
-    let input_text = "This should return a 500";
     let chunker_id = CHUNKER_NAME_SENTENCE;
     let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE;
     let model_id = "my-super-model-8B";
+
+    let chunker_error_input = "Chunker should return an error";
+    let detector_error_input = "Detector should return an error";
+    let generation_server_error_input = "Generation should return an error";
+
+    let mut chunker_headers = HeaderMap::new();
+    chunker_headers.insert(CHUNKER_MODEL_ID_HEADER_NAME, chunker_id.parse()?);
+    let mut chunker_mocks = MockSet::new();
+    chunker_mocks.insert(
+        MockPath::post(CHUNKER_UNARY_ENDPOINT),
+        Mock::new(
+            MockRequest::pb(ChunkerTokenizationTaskRequest {
+                text: chunker_error_input.into(),
+            })
+            .with_headers(chunker_headers.clone()),
+            MockResponse::empty().with_code(StatusCode::INTERNAL_SERVER_ERROR),
+        ),
+    );
+    chunker_mocks.insert(
+        MockPath::post(CHUNKER_UNARY_ENDPOINT),
+        Mock::new(
+            MockRequest::pb(ChunkerTokenizationTaskRequest {
+                text: detector_error_input.into(),
+            })
+            .with_headers(chunker_headers.clone()),
+            MockResponse::pb(TokenizationResults {
+                results: vec![Token {
+                    start: 0,
+                    end: detector_error_input.len() as i64,
+                    text: detector_error_input.into(),
+                }],
+                token_count: 0,
+            }),
+        ),
+    );
+    chunker_mocks.insert(
+        MockPath::post(CHUNKER_UNARY_ENDPOINT),
+        Mock::new(
+            MockRequest::pb(ChunkerTokenizationTaskRequest {
+                text: generation_server_error_input.into(),
+            })
+            .with_headers(chunker_headers.clone()),
+            MockResponse::pb(TokenizationResults {
+                results: vec![Token {
+                    start: 0,
+                    end: generation_server_error_input.len() as i64,
+                    text: generation_server_error_input.into(),
+                }],
+                token_count: 0,
+            }),
+        ),
+    );
+
     let expected_detector_error = DetectorError {
         code: 500,
         message: "Internal detector error.".into(),
     };
+    let mut detector_mocks = MockSet::new();
+    detector_mocks.insert(
+        MockPath::post(TEXT_CONTENTS_DETECTOR_ENDPOINT),
+        Mock::new(
+            MockRequest::json(ContentAnalysisRequest {
+                contents: vec![detector_error_input.into()],
+                detector_params: DetectorParams::new(),
+            }),
+            MockResponse::json(&expected_detector_error)
+                .with_code(StatusCode::INTERNAL_SERVER_ERROR),
+        ),
+    );
+    detector_mocks.insert(
+        MockPath::post(TEXT_CONTENTS_DETECTOR_ENDPOINT),
+        Mock::new(
+            MockRequest::json(ContentAnalysisRequest {
+                contents: vec![generation_server_error_input.into()],
+                detector_params: DetectorParams::new(),
+            }),
+            MockResponse::json(&expected_detector_error)
+                .with_code(StatusCode::INTERNAL_SERVER_ERROR),
+        ),
+    );
+
+    let mut generation_headers = HeaderMap::new();
+    generation_headers.insert(GENERATION_NLP_MODEL_ID_HEADER_NAME, model_id.parse()?);
+    let mut generation_mocks = MockSet::new();
+    generation_mocks.insert(
+        MockPath::post(GENERATION_NLP_STREAMING_ENDPOINT),
+        Mock::new(
+            MockRequest::pb(ServerStreamingTextGenerationTaskRequest {
+                text: generation_server_error_input.into(),
+                ..Default::default()
+            })
+            .with_headers(generation_headers.clone()),
+            MockResponse::json([Vec::<ContentAnalysisResponse>::new()]),
+        ),
+    );
 
     // Start orchestrator server and its dependencies
-    let mock_chunker_server = GrpcMockServer::new(chunker_id, MockSet::new())?;
-    let mock_detector_server = HttpMockServer::new(detector_name, MockSet::new())?;
-    let mock_generation_server = GrpcMockServer::new("nlp", MockSet::new())?;
+    let mock_chunker_server = GrpcMockServer::new(chunker_id, chunker_mocks)?;
+    let mock_detector_server = HttpMockServer::new(detector_name, detector_mocks)?;
+    let mock_generation_server = GrpcMockServer::new("nlp", generation_mocks)?;
     let orchestrator_server = TestOrchestratorServer::builder()
         .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
         .chunker_servers([mock_chunker_server])
@@ -484,30 +571,11 @@ async fn input_detector_client_error_returns_error() -> Result<(), anyhow::Error
         .await?;
 
     // Test error from chunker
-    let mut chunker_headers = HeaderMap::new();
-    chunker_headers.insert(CHUNKER_MODEL_ID_HEADER_NAME, chunker_id.parse()?);
-
-    orchestrator_server
-        .chunkers
-        .get(chunker_id)
-        .unwrap()
-        .mocks()
-        .insert(
-            MockPath::post(CHUNKER_UNARY_ENDPOINT),
-            Mock::new(
-                MockRequest::pb(ChunkerTokenizationTaskRequest {
-                    text: input_text.into(),
-                })
-                .with_headers(chunker_headers.clone()),
-                MockResponse::empty().with_code(StatusCode::INTERNAL_SERVER_ERROR),
-            ),
-        );
-
     let response = orchestrator_server
         .post(ORCHESTRATOR_STREAMING_ENDPOINT)
         .json(&GuardrailsHttpRequest {
             model_id: model_id.into(),
-            inputs: input_text.into(),
+            inputs: chunker_error_input.into(),
             guardrail_config: Some(GuardrailsConfig {
                 input: Some(GuardrailsConfigInput {
                     models: HashMap::from([(detector_name.into(), DetectorParams::new())]),
@@ -535,56 +603,11 @@ async fn input_detector_client_error_returns_error() -> Result<(), anyhow::Error
     assert!(messages[0].details == ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE);
 
     // Test error from detector
-    orchestrator_server
-        .chunkers
-        .get(chunker_id)
-        .unwrap()
-        .mocks()
-        .clear();
-    orchestrator_server
-        .chunkers
-        .get(chunker_id)
-        .unwrap()
-        .mocks()
-        .insert(
-            MockPath::post(CHUNKER_UNARY_ENDPOINT),
-            Mock::new(
-                MockRequest::pb(ChunkerTokenizationTaskRequest {
-                    text: input_text.into(),
-                })
-                .with_headers(chunker_headers.clone()),
-                MockResponse::pb(TokenizationResults {
-                    results: vec![Token {
-                        start: 0,
-                        end: 24,
-                        text: input_text.into(),
-                    }],
-                    token_count: 0,
-                }),
-            ),
-        );
-    orchestrator_server
-        .detectors
-        .get(detector_name)
-        .unwrap()
-        .mocks()
-        .insert(
-            MockPath::post(TEXT_CONTENTS_DETECTOR_ENDPOINT),
-            Mock::new(
-                MockRequest::json(ContentAnalysisRequest {
-                    contents: vec![input_text.into()],
-                    detector_params: DetectorParams::new(),
-                }),
-                MockResponse::json(&expected_detector_error)
-                    .with_code(StatusCode::INTERNAL_SERVER_ERROR),
-            ),
-        );
-
     let response = orchestrator_server
         .post(ORCHESTRATOR_STREAMING_ENDPOINT)
         .json(&GuardrailsHttpRequest {
             model_id: model_id.into(),
-            inputs: input_text.into(),
+            inputs: detector_error_input.into(),
             guardrail_config: Some(GuardrailsConfig {
                 input: Some(GuardrailsConfigInput {
                     models: HashMap::from([(detector_name.into(), DetectorParams::new())]),
@@ -612,86 +635,11 @@ async fn input_detector_client_error_returns_error() -> Result<(), anyhow::Error
     assert!(messages[0].details == ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE);
 
     // Test error from generation server
-    let model_id = "my-super-model-8B";
-    let mut generation_headers = HeaderMap::new();
-    generation_headers.insert(
-        GENERATION_NLP_MODEL_ID_HEADER_NAME,
-        model_id.parse().unwrap(),
-    );
-
-    orchestrator_server
-        .chunkers
-        .get(chunker_id)
-        .unwrap()
-        .mocks()
-        .clear();
-    orchestrator_server
-        .detectors
-        .get(detector_name)
-        .unwrap()
-        .mocks()
-        .clear();
-    orchestrator_server
-        .chunkers
-        .get(chunker_id)
-        .unwrap()
-        .mocks()
-        .insert(
-            MockPath::post(CHUNKER_UNARY_ENDPOINT),
-            Mock::new(
-                MockRequest::pb(ChunkerTokenizationTaskRequest {
-                    text: input_text.into(),
-                })
-                .with_headers(chunker_headers),
-                MockResponse::pb(TokenizationResults {
-                    results: vec![Token {
-                        start: 0,
-                        end: 24,
-                        text: input_text.into(),
-                    }],
-                    token_count: 0,
-                }),
-            ),
-        );
-    orchestrator_server
-        .detectors
-        .get(detector_name)
-        .unwrap()
-        .mocks()
-        .insert(
-            MockPath::post(TEXT_CONTENTS_DETECTOR_ENDPOINT),
-            Mock::new(
-                MockRequest::json(ContentAnalysisRequest {
-                    contents: vec![input_text.into()],
-                    detector_params: DetectorParams::new(),
-                }),
-                MockResponse::json(&expected_detector_error)
-                    .with_code(StatusCode::INTERNAL_SERVER_ERROR),
-            ),
-        );
-    orchestrator_server
-        .generation_server
-        .as_ref()
-        .unwrap()
-        .mocks()
-        .insert(
-            MockPath::post(GENERATION_NLP_STREAMING_ENDPOINT),
-            Mock::new(
-                MockRequest::pb(ServerStreamingTextGenerationTaskRequest {
-                    text: input_text.into(),
-                    ..Default::default()
-                })
-                .with_headers(generation_headers.clone()),
-                MockResponse::json([Vec::<ContentAnalysisResponse>::new()]),
-            ),
-        );
-
-    let model_id = "my-super-model-8B";
     let response = orchestrator_server
         .post(ORCHESTRATOR_STREAMING_ENDPOINT)
         .json(&GuardrailsHttpRequest {
             model_id: model_id.into(),
-            inputs: input_text.into(),
+            inputs: generation_server_error_input.into(),
             guardrail_config: Some(GuardrailsConfig {
                 input: Some(GuardrailsConfigInput {
                     models: HashMap::from([(detector_name.into(), DetectorParams::new())]),
