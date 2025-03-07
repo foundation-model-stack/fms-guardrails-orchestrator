@@ -21,11 +21,77 @@ Any placement of additional detector fields should account for the two types of 
 - Knowledge of future model plans is being restricted here, so only a few examples are given with already released model functionalities.
 
 
-## Options 
-[TODO: This will be split among decision/alternate considerations when more finalized]
+## Decisions
+- The updates will affect what endpoints of the detector API return, and changes will be reflected on the orchestrator API as well
+- To keep the experience consistent among various detector API endpoints i.e. `/text/contents` vs. others, any added fields will be on the same level e.g. on the same level as `detection`.
 
-Here we consider some options for adding new fields or attributes like "confidence" or "categories" to the API. Options do not always have to be mutually exclusive. 
+- We will add a new high-level field of `metadata`
+    
+Example
+```json
+    {
+      "detection_type": "animal",
+      "detection": "goose",
+      "score": 0.2,
+      "evidence": [],
+      "metadata":
+        {
+          "confidence": "High",
+          "key": 0.3,
+          "categories": ["bird"]
+        }
+    }
+```
+[TODO: cleanup
+]
+Pros:
+- Enables a lot of flexibility, and is how APIs like [Llama Stack](https://github.com/meta-llama/llama-stack) provides additional information, whether on datasets or models
+- Field/attribute values do not have to be limited to particular types like string or floats
+- Broad enough to be a backup for any new fields
 
+Cons:
+- `metadata` as a term is extremely broad
+- Addition of `metadata` may create confusion with current `evidence`
+- Arbitrary keys and values will be difficult to validate [though a decision could be made to not validate, like how `detector_params` are very flexible on detector requests]
+
+Any 'actionable' needs to be not in metadata, orchestrator is currently not designed to take any 'action'/decision based on model outputs - the API is designed to present information to the user/consuming application that can then decide what to do with the information, whether it's doing another generation call or masking or presenting the info to that consuming application's users.
+
+`evidence` has to answer "why was this decision made?" 
+
+
+### Alternate Considerations
+
+#### Alternate naming for new high-level field to nest new fields
+
+a. `features`
+
+Example
+```json
+    {
+      "detection_type": "animal",
+      "detection": "goose",
+      "score": 0.2,
+      "evidence": [],
+      "features":
+        {
+          "confidence": "High",
+          "key": 0.3,
+          "categories": ["bird"]
+        }
+    }
+```
+Pros:
+- Slightly more descriptive than just `metadata`
+
+Cons:
+- `features` might not be appropriate for all attributes
+- May be confusing in relation to model ['features' in relation to data](https://en.wikipedia.org/wiki/Feature_(machine_learning))
+- Similar to `metadata` case, addition of `features` may create confusion with current `evidence`
+- Similar to `metadata` case, arbitrary keys and values will be difficult to validate [though a decision could be made to not validate, like how `detector_params` are very flexible on detector requests]
+
+b. `attributes` [less restrictive than `features` but potentially not any more descriptive than `metadata`]
+
+c. `controls` [concept may be too Granite specific, just noting down [ref](https://www.ibm.com/granite/docs/models/granite/)]
 
 #### Use current API with `evidence`
 
@@ -58,66 +124,6 @@ Cons:
 - Not all fields or attributes are necessarily appropriate as `evidence` or explanatory toward the particular detection but may be providing more information 
 - `value` is constrained to string and `score` is constrained to float currently. For some fields, `value` may be more appropriate as another data format.
 
-
-#### Add new high level field to nest new fields
-
-Options:
-
-a. `metadata`
-    
-Example
-```json
-    {
-      "detection_type": "animal",
-      "detection": "goose",
-      "score": 0.2,
-      "evidence": [],
-      "metadata":
-        {
-          "confidence": "High",
-          "key": 0.3,
-          "categories": ["bird"]
-        }
-    }
-```
-Pros:
-- Enables a lot of flexibility, and is how APIs like [Llama Stack](https://github.com/meta-llama/llama-stack) provides additional information, whether on datasets or models
-- Field/attribute values do not have to be limited to particular types like string or floats
-
-Cons:
-- `metadata` as a term is extremely broad
-- Addition of `metadata` may create confusion with current `evidence`
-- Arbitrary keys and values will be difficult to validate [though a decision could be made to not validate, like how `detector_params` are very flexible on detector requests]
-
-
-b. `features`
-
-Example
-```json
-    {
-      "detection_type": "animal",
-      "detection": "goose",
-      "score": 0.2,
-      "evidence": [],
-      "features":
-        {
-          "confidence": "High",
-          "key": 0.3,
-          "categories": ["bird"]
-        }
-    }
-```
-Pros:
-- Slightly more descriptive than just `metadata`
-Cons:
-- `features` might not be appropriate for all attributes
-- Similar to `metadata` case, addition of `features` may create confusion with current `evidence`
-- Similar to `metadata` case, arbitrary keys and values will be difficult to validate [though a decision could be made to not validate, like how `detector_params` are very flexible on detector requests]
-
-c. `attributes` [less restrictive than `features` but potentially not any more descriptive than `metadata`]
-d. `controls` [concept may be too Granite specific, just noting down [ref](https://www.ibm.com/granite/docs/models/granite/)]
-
-
 #### Add fields at same level as current fields
 
 Example
@@ -138,12 +144,6 @@ Cons:
 - More so than the `metadata` case, this will be more difficult to document in the API and allow users to expect particular fields on responses, especially if different detectors provide different fields
 - Arbitrary keys and values will be difficult to validate
 - Still raises the question of what goes under existing `evidence` or is put at the higher level
-
-## Decisions
-- The updates will affect what endpoints of the detector API return, and changes will be reflected on the orchestrator API as well
-- To keep the experience consistent among various detector API endpoints i.e. `/text/contents` vs. others, any added fields will be on the same level e.g. on the same level as `detection`.
-
-### Alternate Considerations
 
 ## Consequences
 - Both detector API users and orchestrator API users will see additional fields reflected with current detection results
