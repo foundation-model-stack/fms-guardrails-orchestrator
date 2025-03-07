@@ -17,7 +17,7 @@
 //! Processing tasks
 use std::{collections::HashMap, sync::Arc};
 
-use futures::{stream, StreamExt, TryStreamExt};
+use futures::{future::try_join_all, stream, StreamExt, TryStreamExt};
 use http::HeaderMap;
 use tokio::sync::{broadcast, mpsc};
 use tokio_stream::wrappers::ReceiverStream;
@@ -44,49 +44,56 @@ pub async fn chunks(
     chunkers: Vec<ChunkerId>,
     inputs: Vec<(usize, String)>, // (offset, text)
 ) -> Result<HashMap<ChunkerId, Chunks>, Error> {
-    fn whole_doc_chunk(offset: usize, text: String) -> Chunks {
-        vec![Chunk {
-            start: offset,
-            end: text.chars().count() + offset,
-            text,
-            ..Default::default()
-        }]
-        .into()
+    if inputs.is_empty() {
+        return Ok(HashMap::default());
     }
-    let inputs = chunkers
-        .iter()
-        .flat_map(|chunker_id| {
-            inputs
-                .iter()
-                .map(|(offset, text)| (chunker_id.clone(), *offset, text.clone()))
-        })
-        .collect::<Vec<_>>();
-    let results = stream::iter(inputs)
-        .map(|(chunker_id, offset, text)| {
+    let tasks = chunkers
+        .into_iter()
+        .map(|chunker_id| {
             let ctx = ctx.clone();
-            async move {
-                if chunker_id == DEFAULT_CHUNKER_ID {
-                    debug!("using whole doc chunker");
-                    // Return single chunk
-                    return Ok((chunker_id, whole_doc_chunk(offset, text)));
-                }
-                let client = ctx.clients.get_as::<ChunkerClient>(&chunker_id).unwrap();
-                let chunks = chunk(client, chunker_id.clone(), text)
+            let inputs = inputs.clone();
+            tokio::spawn(async move {
+                let chunks = stream::iter(inputs)
+                    .map(|(offset, text)| {
+                        let ctx = ctx.clone();
+                        let chunker_id = chunker_id.clone();
+                        async move {
+                            if chunker_id == DEFAULT_CHUNKER_ID {
+                                debug!("using whole doc chunker");
+                                // Return single chunk
+                                return Ok(whole_doc_chunk(offset, text));
+                            }
+                            let client = ctx
+                                .clients
+                                .get_as::<ChunkerClient>(&chunker_id)
+                                .ok_or_else(|| Error::ChunkerNotFound(chunker_id.clone()))?;
+                            let chunks = chunk(client, chunker_id.clone(), text)
+                                .await?
+                                .into_iter()
+                                .map(|mut chunk| {
+                                    chunk.start += offset;
+                                    chunk.end += offset;
+                                    chunk
+                                })
+                                .collect::<Chunks>();
+                            Ok::<_, Error>(chunks)
+                        }
+                    })
+                    .buffer_unordered(8)
+                    .try_collect::<Vec<_>>()
                     .await?
                     .into_iter()
-                    .map(|mut chunk| {
-                        chunk.start += offset;
-                        chunk.end += offset;
-                        chunk
-                    })
-                    .collect();
-                Ok::<_, Error>((chunker_id, chunks))
-            }
+                    .flatten()
+                    .collect::<Chunks>();
+                Ok::<(ChunkerId, Chunks), Error>((chunker_id, chunks))
+            })
         })
-        .buffer_unordered(8)
-        .try_collect::<HashMap<_, _>>()
-        .await?;
-    Ok(results)
+        .collect::<Vec<_>>();
+    let chunk_map = try_join_all(tasks)
+        .await?
+        .into_iter()
+        .collect::<Result<HashMap<_, _>, Error>>()?;
+    Ok(chunk_map)
 }
 
 /// Spawns chunk streaming tasks.
@@ -97,37 +104,6 @@ pub async fn chunk_streams(
     chunkers: Vec<ChunkerId>,
     input_rx: InputReceiver,
 ) -> Result<HashMap<ChunkerId, broadcast::Sender<Result<Chunk, Error>>>, Error> {
-    // TODO: Drop support for this as it collects the entire input stream
-    fn whole_doc_chunk_stream(
-        mut input_broadcast_rx: broadcast::Receiver<Result<(usize, String), Error>>,
-    ) -> Result<ChunkStream, Error> {
-        // Create output channel
-        let (output_tx, output_rx) = mpsc::channel(1);
-        // Spawn task to collect input channel
-        tokio::spawn(async move {
-            // Collect input channel
-            // Alternatively, wrap receiver in BroadcastStream and collect() via StreamExt
-            let mut inputs = Vec::new();
-            while let Ok(input) = input_broadcast_rx.recv().await.unwrap() {
-                inputs.push(input);
-            }
-            // Build chunk
-            let (indices, text): (Vec<_>, Vec<_>) = inputs.into_iter().unzip();
-            let text = text.concat();
-            let chunk = Chunk {
-                input_start_index: 0,
-                input_end_index: indices.last().copied().unwrap_or_default(),
-                start: 0,
-                end: text.chars().count(),
-                text,
-            };
-            // Send chunk to output channel
-            let _ = output_tx.send(Ok::<_, Error>(chunk)).await;
-        });
-
-        Ok::<_, Error>(ReceiverStream::new(output_rx).boxed())
-    }
-
     // Create input broadcast channel
     let input_stream = ReceiverStream::new(input_rx).boxed();
     let input_broadcast_tx = broadcast_stream(input_stream);
@@ -140,9 +116,13 @@ pub async fn chunk_streams(
         // Open chunk stream
         let chunk_stream = if chunker_id == DEFAULT_CHUNKER_ID {
             debug!("using whole doc chunker");
+            // TODO: drop support for this as it collects the stream
             whole_doc_chunk_stream(input_broadcast_rx)
         } else {
-            let client = ctx.clients.get_as::<ChunkerClient>(&chunker_id).unwrap();
+            let client = ctx
+                .clients
+                .get_as::<ChunkerClient>(&chunker_id)
+                .ok_or_else(|| Error::ChunkerNotFound(chunker_id.clone()))?;
             chunk_stream(client, chunker_id.clone(), input_broadcast_rx).await
         }?;
         // Create chunk broadcast channel
@@ -152,6 +132,46 @@ pub async fn chunk_streams(
 
     // Return a map of chunker_id->chunker_broadcast_tx
     Ok(streams.into_iter().collect())
+}
+
+fn whole_doc_chunk(offset: usize, text: String) -> Chunks {
+    vec![Chunk {
+        start: offset,
+        end: text.chars().count() + offset,
+        text,
+        ..Default::default()
+    }]
+    .into()
+}
+
+fn whole_doc_chunk_stream(
+    mut input_broadcast_rx: broadcast::Receiver<Result<(usize, String), Error>>,
+) -> Result<ChunkStream, Error> {
+    // Create output channel
+    let (output_tx, output_rx) = mpsc::channel(1);
+    // Spawn task to collect input channel
+    tokio::spawn(async move {
+        // Collect input channel
+        // Alternatively, wrap receiver in BroadcastStream and collect() via StreamExt
+        let mut inputs = Vec::new();
+        while let Ok(input) = input_broadcast_rx.recv().await.unwrap() {
+            inputs.push(input);
+        }
+        // Build chunk
+        let (indices, text): (Vec<_>, Vec<_>) = inputs.into_iter().unzip();
+        let text = text.concat();
+        let chunk = Chunk {
+            input_start_index: 0,
+            input_end_index: indices.last().copied().unwrap_or_default(),
+            start: 0,
+            end: text.chars().count(),
+            text,
+        };
+        // Send chunk to output channel
+        let _ = output_tx.send(Ok::<_, Error>(chunk)).await;
+    });
+
+    Ok::<_, Error>(ReceiverStream::new(output_rx).boxed())
 }
 
 /// Spawns text contents detection tasks.
@@ -458,4 +478,352 @@ where
         }
     });
     broadcast_tx
+}
+
+#[cfg(test)]
+mod test {
+    use std::time::Duration;
+
+    use mocktail::prelude::*;
+    use tokio::sync::OnceCell;
+
+    use super::*;
+    use crate::{
+        clients::detector::{ContentAnalysisRequest, ContentAnalysisResponse},
+        config::{
+            ChunkerConfig, ChunkerType, DetectorConfig, DetectorType, OrchestratorConfig,
+            ServiceConfig,
+        },
+        orchestrator::create_clients,
+        pb::{
+            caikit::runtime::chunkers::ChunkerTokenizationTaskRequest,
+            caikit_data_model::nlp::{Token, TokenizationResults},
+        },
+    };
+
+    static CONTEXT: OnceCell<Arc<Context>> = OnceCell::const_new();
+    const CHUNKER_PATH: &str =
+        "/caikit.runtime.Chunkers.ChunkersService/ChunkerTokenizationTaskPredict";
+    const TEXT_CONTENTS_DETECTOR_PATH: &str = "/api/v1/text/contents";
+    const TEXT1: &str = "Lorem ipsum dolor sit amet, consectetuer adipiscing elit. \
+    Aenean commodo ligula eget dolor. Cum sociis natoque \
+    penatibus et magnis dis parturient montes, nascetur ridiculus mus.";
+    const TEXT1_CHUNKS: [(i64, i64, &str); 3] = [
+        (0, 57, "Lorem ipsum dolor sit amet, consectetuer adipiscing elit."),
+        (58, 92, " Aenean commodo ligula eget dolor."),
+        (93, 179, " Cum sociis natoque penatibus et magnis dis parturient montes, nascetur ridiculus mus.")
+    ];
+    const TEXT1_TOKEN_COUNT: i64 = 25;
+    const TEXT2: &str = "Qui reprehenderit aspernatur est unde autem et corporis animi hic \
+    autem distinctio cum dolore fugit hic nihil vitae. Quo magni voluptatem et \
+    vitae maxime est voluptatem itaque. ";
+    const TEXT2_CHUNKS: [(i64, i64, &str); 2] = [
+        (
+            0,
+            139,
+            "Qui reprehenderit aspernatur est unde autem et corporis animi hic \
+        autem distinctio cum dolore fugit hic nihil vitae.",
+        ),
+        (
+            140,
+            201,
+            " Quo magni voluptatem et vitae maxime est voluptatem itaque. ",
+        ),
+    ];
+    const TEXT2_TOKEN_COUNT: i64 = 27;
+
+    async fn init_context() -> Arc<Context> {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let mut config = OrchestratorConfig::default();
+
+        // Create sentence_chunker
+        let mut mocks = MockSet::new();
+        mocks.mock(|when, then| {
+            when.path(CHUNKER_PATH)
+                .pb(ChunkerTokenizationTaskRequest { text: TEXT1.into() });
+            then.pb(TokenizationResults {
+                results: TEXT1_CHUNKS
+                    .into_iter()
+                    .map(|(start, end, text)| Token {
+                        start,
+                        end,
+                        text: text.to_string(),
+                    })
+                    .collect(),
+                token_count: TEXT1_TOKEN_COUNT,
+            });
+        });
+        mocks.mock(|when, then| {
+            when.path(CHUNKER_PATH)
+                .pb(ChunkerTokenizationTaskRequest { text: TEXT2.into() });
+            then.pb(TokenizationResults {
+                results: TEXT2_CHUNKS
+                    .into_iter()
+                    .map(|(start, end, text)| Token {
+                        start,
+                        end,
+                        text: text.to_string(),
+                    })
+                    .collect(),
+                token_count: TEXT2_TOKEN_COUNT,
+            });
+        });
+        let sentence_chunker_server = MockServer::new("sentence_chunker").grpc().with_mocks(mocks);
+        sentence_chunker_server.start().await.unwrap();
+        config.chunkers = Some(HashMap::default());
+        config.chunkers.as_mut().unwrap().insert(
+            "sentence_chunker".into(),
+            ChunkerConfig {
+                r#type: ChunkerType::Sentence,
+                service: ServiceConfig {
+                    hostname: sentence_chunker_server.hostname().unwrap(),
+                    port: Some(sentence_chunker_server.port().unwrap()),
+                    ..Default::default()
+                },
+            },
+        );
+
+        // Create whole_doc_chunker
+        let mut mocks = MockSet::new();
+        mocks.mock(|when, then| {
+            when.path(CHUNKER_PATH)
+                .pb(ChunkerTokenizationTaskRequest { text: TEXT1.into() });
+            then.pb(TokenizationResults {
+                results: vec![Token {
+                    start: TEXT1_CHUNKS[0].0,
+                    end: TEXT1_CHUNKS[2].1,
+                    text: TEXT1.into(),
+                }],
+                token_count: TEXT1_TOKEN_COUNT,
+            });
+        });
+        let whole_doc_chunker_server = MockServer::new("whole_doc_chunker")
+            .grpc()
+            .with_mocks(mocks);
+        whole_doc_chunker_server.start().await.unwrap();
+        config.chunkers.as_mut().unwrap().insert(
+            "whole_doc_chunker".into(),
+            ChunkerConfig {
+                r#type: ChunkerType::All,
+                service: ServiceConfig {
+                    hostname: whole_doc_chunker_server.hostname().unwrap(),
+                    port: Some(whole_doc_chunker_server.port().unwrap()),
+                    ..Default::default()
+                },
+            },
+        );
+
+        // Create error chunker
+        let mut mocks = MockSet::new();
+        mocks.mock(|when, then| {
+            when.path(CHUNKER_PATH);
+            then.internal_server_error();
+        });
+        let error_chunker_server = MockServer::new("error_chunker").grpc().with_mocks(mocks);
+        error_chunker_server.start().await.unwrap();
+        config.chunkers.as_mut().unwrap().insert(
+            "error_chunker".into(),
+            ChunkerConfig {
+                r#type: ChunkerType::All,
+                service: ServiceConfig {
+                    hostname: error_chunker_server.hostname().unwrap(),
+                    port: Some(error_chunker_server.port().unwrap()),
+                    ..Default::default()
+                },
+            },
+        );
+
+        // Create fake detector
+        let mut mocks = MockSet::new();
+        mocks.mock(|when, then| {
+            when.post()
+                .path(TEXT_CONTENTS_DETECTOR_PATH)
+                .json(ContentAnalysisRequest {
+                    contents: TEXT1_CHUNKS
+                        .into_iter()
+                        .map(|(_, _, text)| text.into())
+                        .collect(),
+                    detector_params: Default::default(),
+                });
+            then.json(vec![vec![ContentAnalysisResponse {
+                start: 5,
+                end: 9,
+                text: "amet".into(),
+                detection: "nothing".into(),
+                detection_type: "fake".into(),
+                detector_id: None,
+                score: 0.2,
+                evidence: None,
+            }]]);
+        });
+        let fake_detector_server = MockServer::new("fake_detector").with_mocks(mocks);
+        fake_detector_server.start().await.unwrap();
+        config.detectors.insert(
+            "fake_detector".into(),
+            DetectorConfig {
+                r#type: DetectorType::TextContents,
+                service: ServiceConfig {
+                    hostname: fake_detector_server.hostname().unwrap(),
+                    port: Some(fake_detector_server.port().unwrap()),
+                    ..Default::default()
+                },
+                chunker_id: "sentence_chunker".into(),
+                default_threshold: 0.0,
+                health_service: None,
+            },
+        );
+
+        tokio::time::sleep(Duration::from_secs(1)).await;
+
+        let clients = create_clients(&config).await.unwrap();
+        Arc::new(Context::new(config, clients))
+    }
+
+    #[test_log::test(tokio::test)]
+    async fn test_chunks() -> Result<(), Error> {
+        let ctx = CONTEXT.get_or_init(init_context).await;
+
+        // Single input with sentence chunker and whole doc chunker
+        let chunk_map = chunks(
+            ctx.clone(),
+            vec!["sentence_chunker".into(), "whole_doc_chunker".into()],
+            vec![(0, TEXT1.to_string())],
+        )
+        .await?;
+
+        assert_eq!(chunk_map.len(), 2, "chunk map length should be 2");
+        assert!(
+            chunk_map
+                .get("sentence_chunker")
+                .is_some_and(|c| c.len() == 3),
+            "sentence_chunker should have 3 chunks"
+        );
+        assert!(
+            chunk_map
+                .get("whole_doc_chunker")
+                .is_some_and(|c| c.len() == 1),
+            "whole_doc_chunker should have 1 chunk"
+        );
+
+        // Multiple inputs with sentence chunker
+        let chunk_map = chunks(
+            ctx.clone(),
+            vec!["sentence_chunker".into()],
+            vec![(0, TEXT1.to_string()), (0, TEXT2.to_string())],
+        )
+        .await?;
+        assert_eq!(chunk_map.len(), 1, "chunk map length should be 1");
+        assert!(
+            chunk_map
+                .get("sentence_chunker")
+                .is_some_and(|c| c.len() == 5),
+            "sentence_chunker should have 5 chunks"
+        );
+
+        // Chunker does not exist
+        let result = chunks(
+            ctx.clone(),
+            vec!["does_not_exist".into()],
+            vec![(0, TEXT1.to_string())],
+        )
+        .await;
+        assert!(
+            result.is_err_and(|e| matches!(e, Error::ChunkerNotFound(_))),
+            "should return chunker not found error"
+        );
+
+        // Chunker server error
+        let result = chunks(
+            ctx.clone(),
+            vec!["error_chunker".into()],
+            vec![(0, TEXT1.to_string())],
+        )
+        .await;
+        assert!(
+            result.is_err_and(|e| {
+                match e {
+                    Error::ChunkerRequestFailed { error, .. } => {
+                        error.status_code().is_server_error()
+                    }
+                    _ => false,
+                }
+            }),
+            "should return chunker request failed error"
+        );
+
+        // Empty inputs
+        let chunk_map = chunks(ctx.clone(), vec!["sentence_chunker".into()], vec![]).await?;
+        assert!(chunk_map.is_empty(), "chunk map should be empty");
+
+        // With mask offsets
+        let chunk_map = chunks(
+            ctx.clone(),
+            vec!["sentence_chunker".into()],
+            vec![(5, TEXT1.to_string())],
+        )
+        .await?;
+        assert_eq!(chunk_map.len(), 1, "chunk map length should be 1");
+        assert!(
+            chunk_map
+                .get("sentence_chunker")
+                .is_some_and(|c| c.len() == 3),
+            "should have 3 chunks"
+        );
+        assert_eq!(
+            chunk_map.get("sentence_chunker").unwrap()[0].start,
+            5,
+            "chunk 1 start index should be equal to the offset 5"
+        );
+
+        Ok(())
+    }
+
+    #[test_log::test(tokio::test)]
+    async fn test_text_contents_detections() -> Result<(), Error> {
+        let ctx = CONTEXT.get_or_init(init_context).await;
+
+        // Single detector
+        let mut detector_params = DetectorParams::new();
+        detector_params.insert("threshold".to_string(), 0.2.into());
+        let detectors = HashMap::from([("fake_detector".to_string(), detector_params)]);
+        let detections = text_contents_detections(
+            ctx.clone(),
+            HeaderMap::default(),
+            detectors,
+            0,
+            vec![(0, TEXT1.to_string())],
+        )
+        .await?;
+        assert_eq!(detections.1.len(), 1, "should have 1 detection");
+
+        // Single detector, below threshold
+        let mut detector_params = DetectorParams::new();
+        detector_params.insert("threshold".to_string(), 0.4.into());
+        let detectors = HashMap::from([("fake_detector".to_string(), detector_params)]);
+        let detections = text_contents_detections(
+            ctx.clone(),
+            HeaderMap::default(),
+            detectors,
+            0,
+            vec![(0, TEXT1.to_string())],
+        )
+        .await?;
+        assert!(detections.1.is_empty(), "should have no detections");
+
+        // TODO: add more cases
+
+        Ok(())
+    }
+
+    #[test_log::test(tokio::test)]
+    async fn test_chunk_streams() -> Result<(), Error> {
+        // TODO
+        Ok(())
+    }
+
+    #[test_log::test(tokio::test)]
+    async fn test_text_contents_detection_streams() -> Result<(), Error> {
+        // TODO
+        Ok(())
+    }
 }
