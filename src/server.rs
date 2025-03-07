@@ -704,7 +704,7 @@ impl From<orchestrator::Error> for Error {
     fn from(value: orchestrator::Error) -> Self {
         use orchestrator::Error::*;
         match value {
-            DetectorNotFound(_) => Self::NotFound(value.to_string()),
+            DetectorNotFound(_) | ChunkerNotFound(_) => Self::NotFound(value.to_string()),
             DetectorRequestFailed { ref error, .. }
             | ChunkerRequestFailed { ref error, .. }
             | GenerateRequestFailed { ref error, .. }
