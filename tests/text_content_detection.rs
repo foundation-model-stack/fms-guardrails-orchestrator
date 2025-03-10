@@ -48,62 +48,15 @@ use tracing::debug;
 
 pub mod common;
 
-/// Asserts that generated text with no detections is returned (detector configured with whole_doc_chunker).
+/// Asserts no detections scenarios.
 #[test(tokio::test)]
-async fn test_no_detection_whole_doc() -> Result<(), anyhow::Error> {
-    let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC;
-
-    // Add detector mock
-    let mut mocks = MockSet::new();
-    mocks.insert(
-        MockPath::post(TEXT_CONTENTS_DETECTOR_ENDPOINT),
-        Mock::new(
-            MockRequest::json(ContentAnalysisRequest {
-                contents: vec!["This sentence has no detections.".into()],
-                detector_params: DetectorParams::new(),
-            }),
-            MockResponse::json(vec![Vec::<ContentAnalysisResponse>::new()]),
-        ),
-    );
-
-    // Start orchestrator server and its dependencies
-    let mock_detector_server = HttpMockServer::new(detector_name, mocks)?;
-    let orchestrator_server = TestOrchestratorServer::builder()
-        .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
-        .detector_servers([&mock_detector_server])
-        .build()
-        .await?;
-
-    // Make orchestrator call
-    let response = orchestrator_server
-        .post(ORCHESTRATOR_CONTENT_DETECTION_ENDPOINT)
-        .json(&TextContentDetectionHttpRequest {
-            content: "This sentence has no detections.".into(),
-            detectors: HashMap::from([(detector_name.into(), DetectorParams::new())]),
-        })
-        .send()
-        .await?;
-
-    debug!("{response:#?}");
-
-    // assertions
-    assert!(response.status() == StatusCode::OK);
-    assert!(
-        response.json::<TextContentDetectionResult>().await?
-            == TextContentDetectionResult::default()
-    );
-
-    Ok(())
-}
-
-/// Asserts that generated text with no detections is returned (detector configured with a sentence chunker).
-#[test(tokio::test)]
-async fn test_no_detection_sentence_chunker() -> Result<(), anyhow::Error> {
-    // Add chunker mock
+async fn no_detections() -> Result<(), anyhow::Error> {
     let chunker_id = CHUNKER_NAME_SENTENCE;
+    let sentence_detector = DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE;
+    let whole_doc_detector = DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC;
+
     let mut chunker_headers = HeaderMap::new();
     chunker_headers.insert(CHUNKER_MODEL_ID_HEADER_NAME, chunker_id.parse()?);
-
     let mut chunker_mocks = MockSet::new();
     chunker_mocks.insert(
         MockPath::post(CHUNKER_UNARY_ENDPOINT),
@@ -130,10 +83,8 @@ async fn test_no_detection_sentence_chunker() -> Result<(), anyhow::Error> {
         ),
     );
 
-    // Add detector mock
-    let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE;
-    let mut mocks = MockSet::new();
-    mocks.insert(
+    let mut sentence_detector_mocks = MockSet::new();
+    sentence_detector_mocks.insert(
         MockPath::post(TEXT_CONTENTS_DETECTOR_ENDPOINT),
         Mock::new(
             MockRequest::json(ContentAnalysisRequest {
@@ -150,113 +101,88 @@ async fn test_no_detection_sentence_chunker() -> Result<(), anyhow::Error> {
         ),
     );
 
-    // Start orchestrator server and its dependencies
-    let mock_chunker_server = GrpcMockServer::new(chunker_id, chunker_mocks)?;
-    let mock_detector_server = HttpMockServer::new(detector_name, mocks)?;
-    let orchestrator_server = TestOrchestratorServer::builder()
-        .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
-        .chunker_servers([&mock_chunker_server])
-        .detector_servers([&mock_detector_server])
-        .build()
-        .await?;
-
-    // Make orchestrator call
-    let response = orchestrator_server
-        .post(ORCHESTRATOR_CONTENT_DETECTION_ENDPOINT)
-        .json(&TextContentDetectionHttpRequest {
-            content: "This sentence does not have a detection. Neither does this one.".into(),
-            detectors: HashMap::from([(detector_name.into(), DetectorParams::new())]),
-        })
-        .send()
-        .await?;
-
-    debug!("{response:#?}");
-
-    assert!(response.status() == StatusCode::OK);
-    assert!(
-        response.json::<TextContentDetectionResult>().await?
-            == TextContentDetectionResult::default()
-    );
-
-    Ok(())
-}
-
-/// Asserts that detections are returned (detector configured with whole_doc_chunker).
-#[test(tokio::test)]
-async fn test_single_detection_whole_doc() -> Result<(), anyhow::Error> {
-    let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC;
-
-    // Add detector mock
-    let mut mocks = MockSet::new();
-    mocks.insert(
+    let mut whole_doc_detector_mocks = MockSet::new();
+    whole_doc_detector_mocks.insert(
         MockPath::post(TEXT_CONTENTS_DETECTOR_ENDPOINT),
         Mock::new(
             MockRequest::json(ContentAnalysisRequest {
-                contents: vec!["This sentence has <a detection here>.".into()],
+                contents: vec!["This sentence has no detections.".into()],
                 detector_params: DetectorParams::new(),
             }),
-            MockResponse::json(vec![vec![ContentAnalysisResponse {
-                start: 18,
-                end: 35,
-                text: "a detection here".into(),
-                detection: "has_angle_brackets".into(),
-                detection_type: "angle_brackets".into(),
-                detector_id: Some(detector_name.into()),
-                score: 1.0,
-                evidence: None,
-            }]]),
+            MockResponse::json(vec![Vec::<ContentAnalysisResponse>::new()]),
         ),
     );
 
     // Start orchestrator server and its dependencies
-    let mock_detector_server = HttpMockServer::new(detector_name, mocks)?;
+    let mock_chunker_server = GrpcMockServer::new(chunker_id, chunker_mocks)?;
+    let mock_sentence_detector_server =
+        HttpMockServer::new(sentence_detector, sentence_detector_mocks)?;
+    let mock_whole_doc_detector_server =
+        HttpMockServer::new(whole_doc_detector, whole_doc_detector_mocks)?;
     let orchestrator_server = TestOrchestratorServer::builder()
         .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
-        .detector_servers([&mock_detector_server])
+        .chunker_servers([&mock_chunker_server])
+        .detector_servers([
+            &mock_sentence_detector_server,
+            &mock_whole_doc_detector_server,
+        ])
         .build()
         .await?;
 
-    // Make orchestrator call
+    // Assert whole doc detector call
     let response = orchestrator_server
         .post(ORCHESTRATOR_CONTENT_DETECTION_ENDPOINT)
         .json(&TextContentDetectionHttpRequest {
-            content: "This sentence has <a detection here>.".into(),
-            detectors: HashMap::from([(detector_name.into(), DetectorParams::new())]),
+            content: "This sentence has no detections.".into(),
+            detectors: HashMap::from([(whole_doc_detector.into(), DetectorParams::new())]),
         })
         .send()
         .await?;
-
     debug!("{response:#?}");
 
-    // assertions
-    assert!(response.status() == StatusCode::OK);
+    assert!(
+        response.status() == StatusCode::OK,
+        "error on whole doc detector response status assertion"
+    );
     assert!(
         response.json::<TextContentDetectionResult>().await?
-            == TextContentDetectionResult {
-                detections: vec![ContentAnalysisResponse {
-                    start: 18,
-                    end: 35,
-                    text: "a detection here".into(),
-                    detection: "has_angle_brackets".into(),
-                    detection_type: "angle_brackets".into(),
-                    detector_id: Some(detector_name.into()),
-                    score: 1.0,
-                    evidence: None,
-                }],
-            }
+            == TextContentDetectionResult::default(),
+        "error on whole doc detector response body assertion"
+    );
+
+    // Assert sentence detector call
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_CONTENT_DETECTION_ENDPOINT)
+        .json(&TextContentDetectionHttpRequest {
+            content: "This sentence does not have a detection. Neither does this one.".into(),
+            detectors: HashMap::from([(sentence_detector.into(), DetectorParams::new())]),
+        })
+        .send()
+        .await?;
+    debug!("{response:#?}");
+
+    assert!(
+        response.status() == StatusCode::OK,
+        "error on sentence detector response status assertion"
+    );
+    assert!(
+        response.json::<TextContentDetectionResult>().await?
+            == TextContentDetectionResult::default(),
+        "error on sentence detector response body assertion"
     );
 
     Ok(())
 }
 
-/// Asserts that detections are returned (detector configured with a sentence chunker).
+/// Asserts detection scenarios.
 #[test(tokio::test)]
-async fn test_single_detection_sentence_chunker() -> Result<(), anyhow::Error> {
-    // Add chunker mock
+async fn detections() -> Result<(), anyhow::Error> {
     let chunker_id = CHUNKER_NAME_SENTENCE;
+    let sentence_detector = DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE;
+    let whole_doc_detector = DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC;
+
     let mut chunker_headers = HeaderMap::new();
     chunker_headers.insert(CHUNKER_MODEL_ID_HEADER_NAME, chunker_id.parse()?);
-
     let mut chunker_mocks = MockSet::new();
     chunker_mocks.insert(
         MockPath::post(CHUNKER_UNARY_ENDPOINT),
@@ -283,10 +209,8 @@ async fn test_single_detection_sentence_chunker() -> Result<(), anyhow::Error> {
         ),
     );
 
-    // Add detector mock
-    let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE;
-    let mut mocks = MockSet::new();
-    mocks.insert(
+    let mut sentence_detector_mocks = MockSet::new();
+    sentence_detector_mocks.insert(
         MockPath::post(TEXT_CONTENTS_DETECTOR_ENDPOINT),
         Mock::new(
             MockRequest::json(ContentAnalysisRequest {
@@ -304,7 +228,7 @@ async fn test_single_detection_sentence_chunker() -> Result<(), anyhow::Error> {
                     text: "this one does".into(),
                     detection: "has_angle_brackets".into(),
                     detection_type: "angle_brackets".into(),
-                    detector_id: Some(detector_name.into()),
+                    detector_id: Some(sentence_detector.into()),
                     score: 1.0,
                     evidence: None,
                 }],
@@ -312,32 +236,96 @@ async fn test_single_detection_sentence_chunker() -> Result<(), anyhow::Error> {
         ),
     );
 
+    let mut whole_doc_detector_mocks = MockSet::new();
+    whole_doc_detector_mocks.insert(
+        MockPath::post(TEXT_CONTENTS_DETECTOR_ENDPOINT),
+        Mock::new(
+            MockRequest::json(ContentAnalysisRequest {
+                contents: vec!["This sentence has <a detection here>.".into()],
+                detector_params: DetectorParams::new(),
+            }),
+            MockResponse::json(vec![vec![ContentAnalysisResponse {
+                start: 18,
+                end: 35,
+                text: "a detection here".into(),
+                detection: "has_angle_brackets".into(),
+                detection_type: "angle_brackets".into(),
+                detector_id: Some(sentence_detector.into()),
+                score: 1.0,
+                evidence: None,
+            }]]),
+        ),
+    );
+
     // Start orchestrator server and its dependencies
     let mock_chunker_server = GrpcMockServer::new(chunker_id, chunker_mocks)?;
-    let mock_detector_server = HttpMockServer::new(detector_name, mocks)?;
+    let mock_whole_doc_detector_server =
+        HttpMockServer::new(whole_doc_detector, whole_doc_detector_mocks)?;
+    let mock_sentence_detector_server =
+        HttpMockServer::new(sentence_detector, sentence_detector_mocks)?;
     let orchestrator_server = TestOrchestratorServer::builder()
         .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
         .chunker_servers([&mock_chunker_server])
-        .detector_servers([&mock_detector_server])
+        .detector_servers([
+            &mock_whole_doc_detector_server,
+            &mock_sentence_detector_server,
+        ])
         .build()
         .await?;
 
-    // Make orchestrator call
+    // Assert whole doc detector scenario
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_CONTENT_DETECTION_ENDPOINT)
+        .json(&TextContentDetectionHttpRequest {
+            content: "This sentence has <a detection here>.".into(),
+            detectors: HashMap::from([(whole_doc_detector.into(), DetectorParams::new())]),
+        })
+        .send()
+        .await?;
+    debug!("{response:#?}");
+
+    assert!(
+        response.status() == StatusCode::OK,
+        "error on whole doc detector response status assertion"
+    );
+    let response = response.json::<TextContentDetectionResult>().await?;
+    debug!("{response:#?}");
+    assert!(
+        response
+            == TextContentDetectionResult {
+                detections: vec![ContentAnalysisResponse {
+                    start: 18,
+                    end: 35,
+                    text: "a detection here".into(),
+                    detection: "has_angle_brackets".into(),
+                    detection_type: "angle_brackets".into(),
+                    detector_id: Some(whole_doc_detector.into()),
+                    score: 1.0,
+                    evidence: None,
+                }],
+            },
+        "error on whole doc detector response body assertion"
+    );
+
+    // Assert sentence detector scenario
     let response = orchestrator_server
         .post(ORCHESTRATOR_CONTENT_DETECTION_ENDPOINT)
         .json(&TextContentDetectionHttpRequest {
             content: "This sentence does not have a detection. But <this one does>.".into(),
-            detectors: HashMap::from([(detector_name.into(), DetectorParams::new())]),
+            detectors: HashMap::from([(sentence_detector.into(), DetectorParams::new())]),
         })
         .send()
         .await?;
-
     debug!("{response:#?}");
 
-    // assertions
-    assert!(response.status() == StatusCode::OK);
     assert!(
-        response.json::<TextContentDetectionResult>().await?
+        response.status() == StatusCode::OK,
+        "error on sentence detector response status assertion"
+    );
+    let response = response.json::<TextContentDetectionResult>().await?;
+    debug!("{response:#?}");
+    assert!(
+        response
             == TextContentDetectionResult {
                 detections: vec![ContentAnalysisResponse {
                     start: 45,
@@ -345,11 +333,12 @@ async fn test_single_detection_sentence_chunker() -> Result<(), anyhow::Error> {
                     text: "this one does".into(),
                     detection: "has_angle_brackets".into(),
                     detection_type: "angle_brackets".into(),
-                    detector_id: Some(detector_name.into()),
+                    detector_id: Some(sentence_detector.into()),
                     score: 1.0,
                     evidence: None,
                 }],
-            }
+            },
+        "error on sentence detector response body assertion"
     );
 
     Ok(())
