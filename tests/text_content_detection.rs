@@ -355,124 +355,9 @@ async fn test_single_detection_sentence_chunker() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
-/// Asserts that 503 errors returned by detectors are correctly propagated.
+/// Asserts clients returning errors.
 #[test(tokio::test)]
-async fn test_detector_returns_503() -> Result<(), anyhow::Error> {
-    let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC;
-    let expected_detector_error = DetectorError {
-        code: 503,
-        message: "The detector service is overloaded.".into(),
-    };
-
-    // Add input detection mock
-    let mut detection_mocks = MockSet::new();
-    detection_mocks.insert(
-        MockPath::post(TEXT_CONTENTS_DETECTOR_ENDPOINT),
-        Mock::new(
-            MockRequest::json(ContentAnalysisRequest {
-                contents: vec!["This should return a 503".into()],
-                detector_params: DetectorParams::new(),
-            }),
-            MockResponse::json(&expected_detector_error).with_code(StatusCode::SERVICE_UNAVAILABLE),
-        ),
-    );
-
-    // Start orchestrator server and its dependencies
-    let mock_detector_server = HttpMockServer::new(detector_name, detection_mocks)?;
-    let orchestrator_server = TestOrchestratorServer::builder()
-        .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
-        .detector_servers([&mock_detector_server])
-        .build()
-        .await?;
-
-    // Example orchestrator request with streaming response
-    let response = orchestrator_server
-        .post(ORCHESTRATOR_CONTENT_DETECTION_ENDPOINT)
-        .json(&TextContentDetectionHttpRequest {
-            content: "This should return a 503".into(),
-            detectors: HashMap::from([(detector_name.into(), DetectorParams::new())]),
-        })
-        .send()
-        .await?;
-
-    debug!(?response, "RESPONSE RECEIVED FROM ORCHESTRATOR");
-
-    // assertions
-    assert!(response.status() == StatusCode::SERVICE_UNAVAILABLE);
-
-    let response: OrchestratorError = response.json().await?;
-    assert!(response.code == 503);
-    assert!(
-        response.details
-            == format!(
-                "detector request failed for `{}`: {}",
-                detector_name, expected_detector_error.message
-            )
-    );
-
-    Ok(())
-}
-
-/// Asserts that 404 errors returned by detectors are correctly propagated.
-#[test(tokio::test)]
-async fn test_detector_returns_404() -> Result<(), anyhow::Error> {
-    let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC;
-    let expected_detector_error = DetectorError {
-        code: 404,
-        message: "The detector service was not found.".into(),
-    };
-
-    // Add input detection mock
-    let mut detection_mocks = MockSet::new();
-    detection_mocks.insert(
-        MockPath::post(TEXT_CONTENTS_DETECTOR_ENDPOINT),
-        Mock::new(
-            MockRequest::json(ContentAnalysisRequest {
-                contents: vec!["This should return a 404".into()],
-                detector_params: DetectorParams::new(),
-            }),
-            MockResponse::json(&expected_detector_error).with_code(StatusCode::NOT_FOUND),
-        ),
-    );
-
-    // Start orchestrator server and its dependencies
-    let mock_detector_server = HttpMockServer::new(detector_name, detection_mocks)?;
-    let orchestrator_server = TestOrchestratorServer::builder()
-        .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
-        .detector_servers([&mock_detector_server])
-        .build()
-        .await?;
-    // Example orchestrator request with streaming response
-    let response = orchestrator_server
-        .post(ORCHESTRATOR_CONTENT_DETECTION_ENDPOINT)
-        .json(&TextContentDetectionHttpRequest {
-            content: "This should return a 404".into(),
-            detectors: HashMap::from([(detector_name.into(), DetectorParams::new())]),
-        })
-        .send()
-        .await?;
-
-    debug!(?response, "RESPONSE RECEIVED FROM ORCHESTRATOR");
-
-    // assertions
-    assert!(response.status() == StatusCode::NOT_FOUND);
-
-    let response: OrchestratorError = response.json().await?;
-    assert!(response.code == 404);
-    assert!(
-        response.details
-            == format!(
-                "detector request failed for `{}`: {}",
-                detector_name, expected_detector_error.message
-            )
-    );
-
-    Ok(())
-}
-
-/// Asserts that 500 errors returned by detectors are correctly propagated.
-#[test(tokio::test)]
-async fn test_detector_returns_500() -> Result<(), anyhow::Error> {
+async fn client_error() -> Result<(), anyhow::Error> {
     let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC;
     let expected_detector_error = DetectorError {
         code: 500,
@@ -523,110 +408,9 @@ async fn test_detector_returns_500() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
-/// Asserts that error 500 is returned when a detector return an invalid message.
+/// Asserts orchestrator validation errors.
 #[test(tokio::test)]
-async fn test_detector_returns_invalid_message() -> Result<(), anyhow::Error> {
-    let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC;
-
-    // Add input detection mock
-    let mut detection_mocks = MockSet::new();
-    detection_mocks.insert(
-        MockPath::post(TEXT_CONTENTS_DETECTOR_ENDPOINT),
-        Mock::new(
-            MockRequest::json(ContentAnalysisRequest {
-                contents: vec!["This should return a non-compliant message".into()],
-                detector_params: DetectorParams::new(),
-            }),
-            MockResponse::json(&json!({
-                "my_detection": "This message does not comply with the expected API"
-            })),
-        ),
-    );
-
-    // Start orchestrator server and its dependencies
-    let mock_detector_server = HttpMockServer::new(detector_name, detection_mocks)?;
-    let orchestrator_server = TestOrchestratorServer::builder()
-        .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
-        .detector_servers([&mock_detector_server])
-        .build()
-        .await?;
-
-    // Example orchestrator request with streaming response
-    let response = orchestrator_server
-        .post(ORCHESTRATOR_CONTENT_DETECTION_ENDPOINT)
-        .json(&TextContentDetectionHttpRequest {
-            content: "This should return a non-compliant message".into(),
-            detectors: HashMap::from([(detector_name.into(), DetectorParams::new())]),
-        })
-        .send()
-        .await?;
-
-    debug!(?response, "RESPONSE RECEIVED FROM ORCHESTRATOR");
-
-    // assertions
-    assert!(response.status() == StatusCode::INTERNAL_SERVER_ERROR);
-
-    let response: OrchestratorError = response.json().await?;
-    assert!(response.code == 500);
-    assert!(response.details == ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE);
-
-    Ok(())
-}
-
-/// Asserts that error 500 is returned upon chunker failure.
-#[test(tokio::test)]
-async fn test_chunker_returns_an_error() -> Result<(), anyhow::Error> {
-    let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE;
-
-    // Add input chunker mock
-    let chunker_id = CHUNKER_NAME_SENTENCE;
-    let mut chunker_headers = HeaderMap::new();
-    chunker_headers.insert(CHUNKER_MODEL_ID_HEADER_NAME, chunker_id.parse()?);
-
-    let mut chunker_mocks = MockSet::new();
-    chunker_mocks.insert(
-        MockPath::post(CHUNKER_UNARY_ENDPOINT),
-        Mock::new(
-            MockRequest::pb(ChunkerTokenizationTaskRequest {
-                text: "This should return a 500".into(),
-            })
-            .with_headers(chunker_headers),
-            MockResponse::empty().with_code(StatusCode::INTERNAL_SERVER_ERROR),
-        ),
-    );
-
-    // Start orchestrator server and its dependencies
-    let mock_chunker_server = GrpcMockServer::new(chunker_id, chunker_mocks)?;
-    let orchestrator_server = TestOrchestratorServer::builder()
-        .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
-        .chunker_servers([&mock_chunker_server])
-        .build()
-        .await?;
-
-    let response = orchestrator_server
-        .post(ORCHESTRATOR_CONTENT_DETECTION_ENDPOINT)
-        .json(&TextContentDetectionHttpRequest {
-            content: "This should return a 500".into(),
-            detectors: HashMap::from([(detector_name.into(), DetectorParams::new())]),
-        })
-        .send()
-        .await?;
-
-    debug!(?response, "RESPONSE RECEIVED FROM ORCHESTRATOR");
-
-    // assertions
-    assert!(response.status() == StatusCode::INTERNAL_SERVER_ERROR);
-
-    let response: OrchestratorError = response.json().await?;
-    assert!(response.code == 500);
-    assert!(response.details == ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE);
-
-    Ok(())
-}
-
-/// Asserts error 422 is returned when orchestrator request contains extra fields.
-#[test(tokio::test)]
-async fn test_request_with_extra_fields_returns_422() -> Result<(), anyhow::Error> {
+async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC;
 
     // Start orchestrator server and its dependencies
@@ -635,7 +419,7 @@ async fn test_request_with_extra_fields_returns_422() -> Result<(), anyhow::Erro
         .build()
         .await?;
 
-    // Make orchestrator call
+    // assert request with extra fields
     let response = orchestrator_server
         .post(ORCHESTRATOR_CONTENT_DETECTION_ENDPOINT)
         .json(&json!({
@@ -645,32 +429,15 @@ async fn test_request_with_extra_fields_returns_422() -> Result<(), anyhow::Erro
         }))
         .send()
         .await?;
-
     debug!("{response:#?}");
 
-    // assertions
     assert!(response.status() == StatusCode::UNPROCESSABLE_ENTITY);
-
     let response: OrchestratorError = response.json().await?;
     debug!("orchestrator json response body:\n{response:#?}");
-
     assert!(response.code == 422);
     assert!(response.details.contains("unknown field `extra_args`"));
 
-    Ok(())
-}
-
-/// Asserts error 422 is returned when orchestrator request does not contain `detectors`
-/// field.
-#[test(tokio::test)]
-async fn test_request_missing_detectors_field_returns_422() -> Result<(), anyhow::Error> {
-    // Start orchestrator server and its dependencies
-    let orchestrator_server = TestOrchestratorServer::builder()
-        .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
-        .build()
-        .await?;
-
-    // Make orchestrator call
+    // assert request missing `detectors`
     let response = orchestrator_server
         .post(ORCHESTRATOR_CONTENT_DETECTION_ENDPOINT)
         .json(&json!({
@@ -678,33 +445,15 @@ async fn test_request_missing_detectors_field_returns_422() -> Result<(), anyhow
         }))
         .send()
         .await?;
-
     debug!("{response:#?}");
 
-    // assertions
     assert!(response.status() == StatusCode::UNPROCESSABLE_ENTITY);
-
     let response: OrchestratorError = response.json().await?;
     debug!("orchestrator json response body:\n{response:#?}");
-
     assert!(response.code == 422);
     assert!(response.details.starts_with("missing field `detectors`"));
 
-    Ok(())
-}
-
-/// Asserts error 422 is returned when orchestrator request does not contain `content`
-/// field.
-#[test(tokio::test)]
-async fn test_request_missing_content_field_returns_422() -> Result<(), anyhow::Error> {
-    let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC;
-    // Start orchestrator server and its dependencies
-    let orchestrator_server = TestOrchestratorServer::builder()
-        .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
-        .build()
-        .await?;
-
-    // Make orchestrator call
+    // assert request missing `content`
     let response = orchestrator_server
         .post(ORCHESTRATOR_CONTENT_DETECTION_ENDPOINT)
         .json(&json!({
@@ -712,31 +461,15 @@ async fn test_request_missing_content_field_returns_422() -> Result<(), anyhow::
         }))
         .send()
         .await?;
-
     debug!("{response:#?}");
 
-    // assertions
     assert!(response.status() == StatusCode::UNPROCESSABLE_ENTITY);
-
     let response: OrchestratorError = response.json().await?;
     debug!("orchestrator json response body:\n{response:#?}");
-
     assert!(response.code == 422);
     assert!(response.details.starts_with("missing field `content`"));
 
-    Ok(())
-}
-
-/// Asserts error 422 is returned when `detectors` is empty in orchestrator request.
-#[test(tokio::test)]
-async fn test_request_with_empty_detectors_field_returns_422() -> Result<(), anyhow::Error> {
-    // Start orchestrator server and its dependencies
-    let orchestrator_server = TestOrchestratorServer::builder()
-        .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
-        .build()
-        .await?;
-
-    // Make orchestrator call
+    // assert empty `detectors`
     let response = orchestrator_server
         .post(ORCHESTRATOR_CONTENT_DETECTION_ENDPOINT)
         .json(&json!({
@@ -745,15 +478,11 @@ async fn test_request_with_empty_detectors_field_returns_422() -> Result<(), any
         }))
         .send()
         .await?;
-
     debug!("{response:#?}");
 
-    // assertions
     assert!(response.status() == StatusCode::UNPROCESSABLE_ENTITY);
-
     let response: OrchestratorError = response.json().await?;
     debug!("orchestrator json response body:\n{response:#?}");
-
     assert!(response.code == 422);
     assert!(response.details == "`detectors` is required");
 
