@@ -21,7 +21,7 @@ Any placement of additional detector fields should account for the two types of 
 - Knowledge of future model plans is being restricted here, so only a few examples are given with already released model functionalities.
 
 ## Decisions
-- We will add a new high-level field of `metadata` to account for additional model information from detectors. This field will provide a dictionary with string keys and arbitrary values, so that values are not constrained to particular types like strings or floats. This will enable flexibility and is how APIs like [Llama Stack](https://github.com/meta-llama/llama-stack) provides additional information, whether on datasets or models.
+- We will add a new high-level field of `metadata` to account for additional information from detector models. This field will provide a dictionary with string keys and arbitrary values, so that values are not constrained to particular types like strings or floats. This will enable flexibility and is how APIs like [Llama Stack](https://github.com/meta-llama/llama-stack) provides additional information, whether on datasets or models.
     
 Example
 ```json
