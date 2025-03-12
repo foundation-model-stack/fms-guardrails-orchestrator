@@ -38,14 +38,14 @@ use axum::{
 };
 use axum_extra::{extract::WithRejection, json_lines::JsonLines};
 use futures::{
-    stream::{self, BoxStream, TryStreamExt},
+    stream::{self, BoxStream},
     Stream, StreamExt,
 };
 use hyper::body::Incoming;
 use hyper_util::rt::{TokioExecutor, TokioIo};
 use opentelemetry::trace::TraceContextExt;
 use rustls::{server::WebPkiClientVerifier, RootCertStore, ServerConfig};
-use tokio::{net::TcpListener, signal};
+use tokio::{net::TcpListener, signal, sync::mpsc};
 use tokio_rustls::TlsAcceptor;
 use tokio_stream::wrappers::ReceiverStream;
 use tower::Service;
@@ -464,14 +464,37 @@ async fn stream_content_detection(
 
     // Create task and submit to handler
     let task = StreamingContentDetectionTask::new(trace_id, headers, input_stream);
-    let response_stream = state
+    let mut response_stream = state
         .orchestrator
         .handle_streaming_content_detection(task)
-        .await
-        .map_err(Error::from);
+        .await;
 
-    // Wrap the response stream in Jsonlines
-    Ok(JsonLines::new(response_stream).into_response())
+    // Create output stream
+    // This stream returns ND-JSON formatted messages to the client
+    // StreamingContentDetectionResponse / server::Error
+    let (output_tx, output_rx) = mpsc::channel::<Result<String, Infallible>>(32);
+    let output_stream = ReceiverStream::new(output_rx);
+
+    // Spawn task to consume response stream (typed) and send to output stream (json)
+    tokio::spawn(async move {
+        while let Some(result) = response_stream.next().await {
+            match result {
+                Ok(msg) => {
+                    let msg = utils::json::to_nd_string(&msg).unwrap();
+                    let _ = output_tx.send(Ok(msg)).await;
+                }
+                Err(error) => {
+                    // Convert orchestrator::Error to server::Error
+                    let error: Error = error.into();
+                    // server::Error doesn't impl Serialize, so we use to_json()
+                    let error_msg = utils::json::to_nd_string(&error.to_json()).unwrap();
+                    let _ = output_tx.send(Ok(error_msg)).await;
+                }
+            }
+        }
+    });
+
+    Ok(Response::new(axum::body::Body::from_stream(output_stream)))
 }
 
 #[instrument(skip_all)]
