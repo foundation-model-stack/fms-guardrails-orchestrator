@@ -47,6 +47,7 @@ use fms_guardrails_orchestr8::{
     },
 };
 use futures::TryStreamExt;
+use http::HeaderMap;
 use mocktail::prelude::*;
 use test_log::test;
 use tracing::debug;
@@ -80,42 +81,33 @@ pub mod common;
 async fn no_detectors() -> Result<(), anyhow::Error> {
     // Add generation mock
     let model_id = "my-super-model-8B";
-    let mut headers = HeaderMap::new();
-    headers.insert(
-        GENERATION_NLP_MODEL_ID_HEADER_NAME,
-        model_id.parse().unwrap(),
-    );
-
-    let expected_response = vec![
-        GeneratedTextStreamResult {
-            generated_text: "I".into(),
-            ..Default::default()
-        },
-        GeneratedTextStreamResult {
-            generated_text: " am".into(),
-            ..Default::default()
-        },
-        GeneratedTextStreamResult {
-            generated_text: " great!".into(),
-            ..Default::default()
-        },
-    ];
 
     let mut mocks = MockSet::new();
-    mocks.insert(
-        MockPath::post(GENERATION_NLP_STREAMING_ENDPOINT),
-        Mock::new(
-            MockRequest::pb(ServerStreamingTextGenerationTaskRequest {
+    mocks.mock(|when, then| {
+        when.path(GENERATION_NLP_STREAMING_ENDPOINT)
+            .header(GENERATION_NLP_MODEL_ID_HEADER_NAME, model_id)
+            .pb(ServerStreamingTextGenerationTaskRequest {
                 text: "Hi there! How are you?".into(),
                 ..Default::default()
-            })
-            .with_headers(headers.clone()),
-            MockResponse::pb_stream(expected_response.clone()),
-        ),
-    );
+            });
+        then.pb_stream([
+            GeneratedTextStreamResult {
+                generated_text: "I".into(),
+                ..Default::default()
+            },
+            GeneratedTextStreamResult {
+                generated_text: " am".into(),
+                ..Default::default()
+            },
+            GeneratedTextStreamResult {
+                generated_text: " great!".into(),
+                ..Default::default()
+            },
+        ]);
+    });
 
     // Configure mock servers
-    let generation_server = GrpcMockServer::new("nlp", mocks)?;
+    let generation_server = MockServer::new("nlp").grpc().with_mocks(mocks);
 
     // Run test orchestrator server
     let orchestrator_server = TestOrchestratorServer::builder()
@@ -159,91 +151,76 @@ async fn input_detector_no_detections() -> Result<(), anyhow::Error> {
 
     // Add input chunker mock
     let chunker_id = CHUNKER_NAME_SENTENCE;
-    let mut chunker_headers = HeaderMap::new();
-    chunker_headers.insert(CHUNKER_MODEL_ID_HEADER_NAME, chunker_id.parse()?);
 
     let mut chunker_mocks = MockSet::new();
-    chunker_mocks.insert(
-        MockPath::post(CHUNKER_UNARY_ENDPOINT),
-        Mock::new(
-            MockRequest::pb(ChunkerTokenizationTaskRequest {
+    chunker_mocks.mock(|when, then| {
+        when.path(CHUNKER_UNARY_ENDPOINT)
+            .header(CHUNKER_MODEL_ID_HEADER_NAME, chunker_id)
+            .pb(ChunkerTokenizationTaskRequest {
                 text: "Hi there! How are you?".into(),
-            })
-            .with_headers(chunker_headers),
-            MockResponse::pb(TokenizationResults {
-                results: vec![
-                    Token {
-                        start: 0,
-                        end: 9,
-                        text: "Hi there!".into(),
-                    },
-                    Token {
-                        start: 10,
-                        end: 22,
-                        text: " How are you?".into(),
-                    },
-                ],
-                token_count: 0,
-            }),
-        ),
-    );
+            });
+        then.pb(TokenizationResults {
+            results: vec![
+                Token {
+                    start: 0,
+                    end: 9,
+                    text: "Hi there!".into(),
+                },
+                Token {
+                    start: 10,
+                    end: 22,
+                    text: " How are you?".into(),
+                },
+            ],
+            token_count: 0,
+        });
+    });
 
     // Add input detection mock
     let mut detection_mocks = MockSet::new();
-    detection_mocks.insert(
-        MockPath::post(TEXT_CONTENTS_DETECTOR_ENDPOINT),
-        Mock::new(
-            MockRequest::json(ContentAnalysisRequest {
+    detection_mocks.mock(|when, then| {
+        when.post()
+            .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
+            .json(ContentAnalysisRequest {
                 contents: vec!["Hi there!".into(), " How are you?".into()],
                 detector_params: DetectorParams::new(),
-            }),
-            MockResponse::json([
-                Vec::<ContentAnalysisResponse>::new(),
-                Vec::<ContentAnalysisResponse>::new(),
-            ]),
-        ),
-    );
+            });
+        then.json([
+            Vec::<ContentAnalysisResponse>::new(),
+            Vec::<ContentAnalysisResponse>::new(),
+        ]);
+    });
 
     // Add generation mock
     let model_id = "my-super-model-8B";
-    let mut headers = HeaderMap::new();
-    headers.insert(
-        GENERATION_NLP_MODEL_ID_HEADER_NAME,
-        model_id.parse().unwrap(),
-    );
-
-    let expected_response = vec![
-        GeneratedTextStreamResult {
-            generated_text: "I".into(),
-            ..Default::default()
-        },
-        GeneratedTextStreamResult {
-            generated_text: " am".into(),
-            ..Default::default()
-        },
-        GeneratedTextStreamResult {
-            generated_text: " great!".into(),
-            ..Default::default()
-        },
-    ];
 
     let mut generation_mocks = MockSet::new();
-    generation_mocks.insert(
-        MockPath::post(GENERATION_NLP_STREAMING_ENDPOINT),
-        Mock::new(
-            MockRequest::pb(ServerStreamingTextGenerationTaskRequest {
+    generation_mocks.mock(|when, then| {
+        when.header(GENERATION_NLP_MODEL_ID_HEADER_NAME, model_id)
+            .pb(ServerStreamingTextGenerationTaskRequest {
                 text: "Hi there! How are you?".into(),
                 ..Default::default()
-            })
-            .with_headers(headers.clone()),
-            MockResponse::pb_stream(expected_response.clone()),
-        ),
-    );
+            });
+        then.pb_stream([
+            GeneratedTextStreamResult {
+                generated_text: "I".into(),
+                ..Default::default()
+            },
+            GeneratedTextStreamResult {
+                generated_text: " am".into(),
+                ..Default::default()
+            },
+            GeneratedTextStreamResult {
+                generated_text: " great!".into(),
+                ..Default::default()
+            },
+        ]);
+    });
 
     // Start orchestrator server and its dependencies
-    let mock_chunker_server = GrpcMockServer::new(chunker_id, chunker_mocks)?;
-    let mock_detector_server = HttpMockServer::new(detector_name, detection_mocks)?;
-    let generation_server = GrpcMockServer::new("nlp", generation_mocks)?;
+    let mock_chunker_server = MockServer::new(chunker_id).grpc().with_mocks(chunker_mocks);
+    let mock_detector_server = MockServer::new(detector_name).with_mocks(detection_mocks);
+    let generation_server = MockServer::new("nlp").grpc().with_mocks(generation_mocks);
     let orchestrator_server = TestOrchestratorServer::builder()
         .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
         .generation_server(&generation_server)
@@ -298,34 +275,30 @@ async fn input_detector_no_detections() -> Result<(), anyhow::Error> {
 async fn input_detector_detections() -> Result<(), anyhow::Error> {
     // Add chunker mock
     let chunker_id = CHUNKER_NAME_SENTENCE;
-    let mut chunker_headers = HeaderMap::new();
-    chunker_headers.insert(CHUNKER_MODEL_ID_HEADER_NAME, chunker_id.parse()?);
-
     let mut chunker_mocks = MockSet::new();
-    chunker_mocks.insert(
-        MockPath::post(CHUNKER_UNARY_ENDPOINT),
-        Mock::new(
-            MockRequest::pb(ChunkerTokenizationTaskRequest {
+    chunker_mocks.mock(|when, then| {
+        when.header(CHUNKER_MODEL_ID_HEADER_NAME, chunker_id)
+            .post()
+            .path(CHUNKER_UNARY_ENDPOINT)
+            .pb(ChunkerTokenizationTaskRequest {
                 text: "This sentence does not have a detection. But <this one does>.".into(),
-            })
-            .with_headers(chunker_headers),
-            MockResponse::pb(TokenizationResults {
-                results: vec![
-                    Token {
-                        start: 0,
-                        end: 40,
-                        text: "This sentence does not have a detection.".into(),
-                    },
-                    Token {
-                        start: 41,
-                        end: 61,
-                        text: "But <this one does>.".into(),
-                    },
-                ],
-                token_count: 0,
-            }),
-        ),
-    );
+            });
+        then.pb(TokenizationResults {
+            results: vec![
+                Token {
+                    start: 0,
+                    end: 40,
+                    text: "This sentence does not have a detection.".into(),
+                },
+                Token {
+                    start: 41,
+                    end: 61,
+                    text: "But <this one does>.".into(),
+                },
+            ],
+            token_count: 0,
+        });
+    });
 
     // Add input detection mock
     let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE;
@@ -340,19 +313,17 @@ async fn input_detector_detections() -> Result<(), anyhow::Error> {
         evidence: None,
     };
     let mut detection_mocks = MockSet::new();
-    detection_mocks.insert(
-        MockPath::post(TEXT_CONTENTS_DETECTOR_ENDPOINT),
-        Mock::new(
-            MockRequest::json(ContentAnalysisRequest {
+    detection_mocks.mock(|when, then| {
+        when.path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
+            .json(ContentAnalysisRequest {
                 contents: vec![
                     "This sentence does not have a detection.".into(),
                     "But <this one does>.".into(),
                 ],
                 detector_params: DetectorParams::new(),
-            }),
-            MockResponse::json(vec![vec![], vec![mock_detection_response.clone()]]),
-        ),
-    );
+            });
+        then.json(vec![vec![], vec![mock_detection_response.clone()]]);
+    });
 
     // Add generation mock for input token count
     let model_id = "my-super-model-8B";
@@ -360,27 +331,19 @@ async fn input_detector_detections() -> Result<(), anyhow::Error> {
         results: Vec::new(),
         token_count: 61,
     };
-    let mut headers = HeaderMap::new();
-    headers.insert(
-        GENERATION_NLP_MODEL_ID_HEADER_NAME,
-        model_id.parse().unwrap(),
-    );
     let mut generation_mocks = MockSet::new();
-    generation_mocks.insert(
-        MockPath::post(GENERATION_NLP_TOKENIZATION_ENDPOINT),
-        Mock::new(
-            MockRequest::pb(TokenizationTaskRequest {
+    generation_mocks.mock(|when, then| {
+        when.path(GENERATION_NLP_TOKENIZATION_ENDPOINT)
+            .pb(TokenizationTaskRequest {
                 text: "This sentence does not have a detection. But <this one does>.".into(),
-            })
-            .with_headers(headers.clone()),
-            MockResponse::pb(mock_tokenization_response.clone()),
-        ),
-    );
+            });
+        then.pb(mock_tokenization_response.clone());
+    });
 
     // Start orchestrator server and its dependencies
-    let mock_chunker_server = GrpcMockServer::new(chunker_id, chunker_mocks)?;
-    let mock_detector_server = HttpMockServer::new(detector_name, detection_mocks)?;
-    let generation_server = GrpcMockServer::new("nlp", generation_mocks)?;
+    let mock_chunker_server = MockServer::new(chunker_id).grpc().with_mocks(chunker_mocks);
+    let mock_detector_server = MockServer::new(detector_name).with_mocks(detection_mocks);
+    let generation_server = MockServer::new("nlp").grpc().with_mocks(generation_mocks);
     let orchestrator_server = TestOrchestratorServer::builder()
         .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
         .generation_server(&generation_server)
@@ -455,100 +418,85 @@ async fn input_detector_client_error() -> Result<(), anyhow::Error> {
     let detector_error_input = "Detector should return an error";
     let generation_server_error_input = "Generation should return an error";
 
-    let mut chunker_headers = HeaderMap::new();
-    chunker_headers.insert(CHUNKER_MODEL_ID_HEADER_NAME, chunker_id.parse()?);
     let mut chunker_mocks = MockSet::new();
-    chunker_mocks.insert(
-        MockPath::post(CHUNKER_UNARY_ENDPOINT),
-        Mock::new(
-            MockRequest::pb(ChunkerTokenizationTaskRequest {
+    chunker_mocks.mock(|when, then| {
+        when.path(CHUNKER_UNARY_ENDPOINT)
+            .header(CHUNKER_MODEL_ID_HEADER_NAME, chunker_id)
+            .pb(ChunkerTokenizationTaskRequest {
                 text: chunker_error_input.into(),
-            })
-            .with_headers(chunker_headers.clone()),
-            MockResponse::empty().with_code(StatusCode::INTERNAL_SERVER_ERROR),
-        ),
-    );
-    chunker_mocks.insert(
-        MockPath::post(CHUNKER_UNARY_ENDPOINT),
-        Mock::new(
-            MockRequest::pb(ChunkerTokenizationTaskRequest {
+            });
+        then.internal_server_error();
+    });
+    chunker_mocks.mock(|when, then| {
+        when.path(CHUNKER_UNARY_ENDPOINT)
+            .header(CHUNKER_MODEL_ID_HEADER_NAME, chunker_id)
+            .pb(ChunkerTokenizationTaskRequest {
                 text: detector_error_input.into(),
-            })
-            .with_headers(chunker_headers.clone()),
-            MockResponse::pb(TokenizationResults {
-                results: vec![Token {
-                    start: 0,
-                    end: detector_error_input.len() as i64,
-                    text: detector_error_input.into(),
-                }],
-                token_count: 0,
-            }),
-        ),
-    );
-    chunker_mocks.insert(
-        MockPath::post(CHUNKER_UNARY_ENDPOINT),
-        Mock::new(
-            MockRequest::pb(ChunkerTokenizationTaskRequest {
+            });
+        then.pb(TokenizationResults {
+            results: vec![Token {
+                start: 0,
+                end: detector_error_input.len() as i64,
+                text: detector_error_input.into(),
+            }],
+            token_count: 0,
+        });
+    });
+    chunker_mocks.mock(|when, then| {
+        when.path(CHUNKER_UNARY_ENDPOINT)
+            .header(CHUNKER_MODEL_ID_HEADER_NAME, chunker_id)
+            .pb(ChunkerTokenizationTaskRequest {
                 text: generation_server_error_input.into(),
-            })
-            .with_headers(chunker_headers.clone()),
-            MockResponse::pb(TokenizationResults {
-                results: vec![Token {
-                    start: 0,
-                    end: generation_server_error_input.len() as i64,
-                    text: generation_server_error_input.into(),
-                }],
-                token_count: 0,
-            }),
-        ),
-    );
+            });
+        then.pb(TokenizationResults {
+            results: vec![Token {
+                start: 0,
+                end: generation_server_error_input.len() as i64,
+                text: generation_server_error_input.into(),
+            }],
+            token_count: 0,
+        });
+    });
 
     let expected_detector_error = DetectorError {
         code: 500,
         message: "Internal detector error.".into(),
     };
     let mut detector_mocks = MockSet::new();
-    detector_mocks.insert(
-        MockPath::post(TEXT_CONTENTS_DETECTOR_ENDPOINT),
-        Mock::new(
-            MockRequest::json(ContentAnalysisRequest {
+    detector_mocks.mock(|when, then| {
+        when.post()
+            .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
+            .json(ContentAnalysisRequest {
                 contents: vec![detector_error_input.into()],
                 detector_params: DetectorParams::new(),
-            }),
-            MockResponse::json(&expected_detector_error)
-                .with_code(StatusCode::INTERNAL_SERVER_ERROR),
-        ),
-    );
-    detector_mocks.insert(
-        MockPath::post(TEXT_CONTENTS_DETECTOR_ENDPOINT),
-        Mock::new(
-            MockRequest::json(ContentAnalysisRequest {
+            });
+        then.json(&expected_detector_error).internal_server_error();
+    });
+    detector_mocks.mock(|when, then| {
+        when.post()
+            .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
+            .json(ContentAnalysisRequest {
                 contents: vec![generation_server_error_input.into()],
                 detector_params: DetectorParams::new(),
-            }),
-            MockResponse::json([Vec::<ContentAnalysisResponse>::new()]),
-        ),
-    );
+            });
+        then.json([Vec::<ContentAnalysisResponse>::new()]);
+    });
 
-    let mut generation_headers = HeaderMap::new();
-    generation_headers.insert(GENERATION_NLP_MODEL_ID_HEADER_NAME, model_id.parse()?);
     let mut generation_mocks = MockSet::new();
-    generation_mocks.insert(
-        MockPath::post(GENERATION_NLP_STREAMING_ENDPOINT),
-        Mock::new(
-            MockRequest::pb(ServerStreamingTextGenerationTaskRequest {
+    generation_mocks.mock(|when, then| {
+        when.path(GENERATION_NLP_STREAMING_ENDPOINT)
+            .header(GENERATION_NLP_MODEL_ID_HEADER_NAME, model_id)
+            .pb(ServerStreamingTextGenerationTaskRequest {
                 text: generation_server_error_input.into(),
                 ..Default::default()
-            })
-            .with_headers(generation_headers.clone()),
-            MockResponse::empty().with_code(StatusCode::INTERNAL_SERVER_ERROR),
-        ),
-    );
+            });
+        then.internal_server_error();
+    });
 
     // Start orchestrator server and its dependencies
-    let mock_chunker_server = GrpcMockServer::new(chunker_id, chunker_mocks)?;
-    let mock_detector_server = HttpMockServer::new(detector_name, detector_mocks)?;
-    let mock_generation_server = GrpcMockServer::new("nlp", generation_mocks)?;
+    let mock_chunker_server = MockServer::new(chunker_id).grpc().with_mocks(chunker_mocks);
+    let mock_detector_server = MockServer::new(detector_name).with_mocks(detector_mocks);
+    let mock_generation_server = MockServer::new("nlp").grpc().with_mocks(generation_mocks);
     let orchestrator_server = TestOrchestratorServer::builder()
         .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
         .chunker_servers([&mock_chunker_server])
@@ -688,10 +636,10 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     debug!(?response);
 
     // assertions
-    assert!(response.status() == StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(response.status() == 422);
 
     let response_body = response.json::<OrchestratorError>().await?;
-    assert!(response_body.code == StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(response_body.code == 422);
     assert!(response_body
         .details
         .starts_with("non_existing_field: unknown field `non_existing_field`"));

@@ -55,70 +55,64 @@ async fn no_detections() -> Result<(), anyhow::Error> {
     let sentence_detector = DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE;
     let whole_doc_detector = DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC;
 
-    let mut chunker_headers = HeaderMap::new();
-    chunker_headers.insert(CHUNKER_MODEL_ID_HEADER_NAME, chunker_id.parse()?);
     let mut chunker_mocks = MockSet::new();
-    chunker_mocks.insert(
-        MockPath::post(CHUNKER_UNARY_ENDPOINT),
-        Mock::new(
-            MockRequest::pb(ChunkerTokenizationTaskRequest {
+    chunker_mocks.mock(|when, then| {
+        when.path(CHUNKER_UNARY_ENDPOINT)
+            .header(CHUNKER_MODEL_ID_HEADER_NAME, chunker_id)
+            .pb(ChunkerTokenizationTaskRequest {
                 text: "This sentence does not have a detection. Neither does this one.".into(),
-            })
-            .with_headers(chunker_headers),
-            MockResponse::pb(TokenizationResults {
-                results: vec![
-                    Token {
-                        start: 0,
-                        end: 40,
-                        text: "This sentence does not have a detection.".into(),
-                    },
-                    Token {
-                        start: 41,
-                        end: 64,
-                        text: "Neither does this one.".into(),
-                    },
-                ],
-                token_count: 0,
-            }),
-        ),
-    );
+            });
+        then.pb(TokenizationResults {
+            results: vec![
+                Token {
+                    start: 0,
+                    end: 40,
+                    text: "This sentence does not have a detection.".into(),
+                },
+                Token {
+                    start: 41,
+                    end: 64,
+                    text: "Neither does this one.".into(),
+                },
+            ],
+            token_count: 0,
+        });
+    });
 
     let mut sentence_detector_mocks = MockSet::new();
-    sentence_detector_mocks.insert(
-        MockPath::post(TEXT_CONTENTS_DETECTOR_ENDPOINT),
-        Mock::new(
-            MockRequest::json(ContentAnalysisRequest {
+    sentence_detector_mocks.mock(|when, then| {
+        when.post()
+            .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
+            .json(ContentAnalysisRequest {
                 contents: vec![
                     "This sentence does not have a detection.".into(),
                     "Neither does this one.".into(),
                 ],
                 detector_params: DetectorParams::new(),
-            }),
-            MockResponse::json(vec![
-                Vec::<ContentAnalysisResponse>::new(),
-                Vec::<ContentAnalysisResponse>::new(),
-            ]),
-        ),
-    );
+            });
+        then.json(vec![
+            Vec::<ContentAnalysisResponse>::new(),
+            Vec::<ContentAnalysisResponse>::new(),
+        ]);
+    });
 
     let mut whole_doc_detector_mocks = MockSet::new();
-    whole_doc_detector_mocks.insert(
-        MockPath::post(TEXT_CONTENTS_DETECTOR_ENDPOINT),
-        Mock::new(
-            MockRequest::json(ContentAnalysisRequest {
+    whole_doc_detector_mocks.mock(|when, then| {
+        when.post()
+            .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
+            .json(ContentAnalysisRequest {
                 contents: vec!["This sentence has no detections.".into()],
                 detector_params: DetectorParams::new(),
-            }),
-            MockResponse::json(vec![Vec::<ContentAnalysisResponse>::new()]),
-        ),
-    );
+            });
+        then.json(vec![Vec::<ContentAnalysisResponse>::new()]);
+    });
 
     // Start orchestrator server and its dependencies
-    let mock_chunker_server = GrpcMockServer::new(chunker_id, chunker_mocks)?;
+    let mock_chunker_server = MockServer::new(chunker_id).with_mocks(chunker_mocks);
     let mock_sentence_detector_server =
-        HttpMockServer::new(sentence_detector, sentence_detector_mocks)?;
+        MockServer::new(sentence_detector).with_mocks(sentence_detector_mocks);
     let mock_whole_doc_detector_server =
-        HttpMockServer::new(whole_doc_detector, whole_doc_detector_mocks)?;
+        MockServer::new(whole_doc_detector).with_mocks(whole_doc_detector_mocks);
     let orchestrator_server = TestOrchestratorServer::builder()
         .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
         .chunker_servers([&mock_chunker_server])
@@ -181,88 +175,82 @@ async fn detections() -> Result<(), anyhow::Error> {
     let sentence_detector = DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE;
     let whole_doc_detector = DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC;
 
-    let mut chunker_headers = HeaderMap::new();
-    chunker_headers.insert(CHUNKER_MODEL_ID_HEADER_NAME, chunker_id.parse()?);
     let mut chunker_mocks = MockSet::new();
-    chunker_mocks.insert(
-        MockPath::post(CHUNKER_UNARY_ENDPOINT),
-        Mock::new(
-            MockRequest::pb(ChunkerTokenizationTaskRequest {
+    chunker_mocks.mock(|when, then| {
+        when.path(CHUNKER_UNARY_ENDPOINT)
+            .header(CHUNKER_MODEL_ID_HEADER_NAME, chunker_id)
+            .pb(ChunkerTokenizationTaskRequest {
                 text: "This sentence does not have a detection. But <this one does>.".into(),
-            })
-            .with_headers(chunker_headers),
-            MockResponse::pb(TokenizationResults {
-                results: vec![
-                    Token {
-                        start: 0,
-                        end: 40,
-                        text: "This sentence does not have a detection.".into(),
-                    },
-                    Token {
-                        start: 41,
-                        end: 61,
-                        text: "But <this one does>.".into(),
-                    },
-                ],
-                token_count: 0,
-            }),
-        ),
-    );
+            });
+        then.pb(TokenizationResults {
+            results: vec![
+                Token {
+                    start: 0,
+                    end: 40,
+                    text: "This sentence does not have a detection.".into(),
+                },
+                Token {
+                    start: 41,
+                    end: 61,
+                    text: "But <this one does>.".into(),
+                },
+            ],
+            token_count: 0,
+        });
+    });
 
     let mut sentence_detector_mocks = MockSet::new();
-    sentence_detector_mocks.insert(
-        MockPath::post(TEXT_CONTENTS_DETECTOR_ENDPOINT),
-        Mock::new(
-            MockRequest::json(ContentAnalysisRequest {
+    sentence_detector_mocks.mock(|when, then| {
+        when.post()
+            .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
+            .json(ContentAnalysisRequest {
                 contents: vec![
                     "This sentence does not have a detection.".into(),
                     "But <this one does>.".into(),
                 ],
                 detector_params: DetectorParams::new(),
-            }),
-            MockResponse::json(vec![
-                vec![],
-                vec![ContentAnalysisResponse {
-                    start: 4,
-                    end: 18,
-                    text: "this one does".into(),
-                    detection: "has_angle_brackets".into(),
-                    detection_type: "angle_brackets".into(),
-                    detector_id: Some(sentence_detector.into()),
-                    score: 1.0,
-                    evidence: None,
-                }],
-            ]),
-        ),
-    );
-
-    let mut whole_doc_detector_mocks = MockSet::new();
-    whole_doc_detector_mocks.insert(
-        MockPath::post(TEXT_CONTENTS_DETECTOR_ENDPOINT),
-        Mock::new(
-            MockRequest::json(ContentAnalysisRequest {
-                contents: vec!["This sentence has <a detection here>.".into()],
-                detector_params: DetectorParams::new(),
-            }),
-            MockResponse::json(vec![vec![ContentAnalysisResponse {
-                start: 18,
-                end: 35,
-                text: "a detection here".into(),
+            });
+        then.json(vec![
+            vec![],
+            vec![ContentAnalysisResponse {
+                start: 4,
+                end: 18,
+                text: "this one does".into(),
                 detection: "has_angle_brackets".into(),
                 detection_type: "angle_brackets".into(),
                 detector_id: Some(sentence_detector.into()),
                 score: 1.0,
                 evidence: None,
-            }]]),
-        ),
-    );
+            }],
+        ]);
+    });
+
+    let mut whole_doc_detector_mocks = MockSet::new();
+    whole_doc_detector_mocks.mock(|when, then| {
+        when.post()
+            .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
+            .json(ContentAnalysisRequest {
+                contents: vec!["This sentence has <a detection here>.".into()],
+                detector_params: DetectorParams::new(),
+            });
+        then.json(vec![vec![ContentAnalysisResponse {
+            start: 18,
+            end: 35,
+            text: "a detection here".into(),
+            detection: "has_angle_brackets".into(),
+            detection_type: "angle_brackets".into(),
+            detector_id: Some(sentence_detector.into()),
+            score: 1.0,
+            evidence: None,
+        }]]);
+    });
 
     // Start orchestrator server and its dependencies
-    let mock_chunker_server = GrpcMockServer::new(chunker_id, chunker_mocks)?;
+    let mock_chunker_server = MockServer::new(chunker_id).with_mocks(chunker_mocks);
     let mock_whole_doc_detector_server =
-        HttpMockServer::new(whole_doc_detector, whole_doc_detector_mocks)?;
+        MockServer::new(whole_doc_detector).with_mocks(whole_doc_detector_mocks);
     let mock_sentence_detector_server =
-        HttpMockServer::new(sentence_detector, sentence_detector_mocks)?;
+        MockServer::new(sentence_detector).with_mocks(sentence_detector_mocks);
     let orchestrator_server = TestOrchestratorServer::builder()
         .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
         .chunker_servers([&mock_chunker_server])
@@ -355,20 +343,18 @@ async fn client_error() -> Result<(), anyhow::Error> {
 
     // Add input detection mock
     let mut detection_mocks = MockSet::new();
-    detection_mocks.insert(
-        MockPath::post(TEXT_CONTENTS_DETECTOR_ENDPOINT),
-        Mock::new(
-            MockRequest::json(ContentAnalysisRequest {
+    detection_mocks.mock(|when, then| {
+        when.post()
+            .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
+            .json(ContentAnalysisRequest {
                 contents: vec!["This should return a 500".into()],
                 detector_params: DetectorParams::new(),
-            }),
-            MockResponse::json(&expected_detector_error)
-                .with_code(StatusCode::INTERNAL_SERVER_ERROR),
-        ),
-    );
+            });
+        then.json(&expected_detector_error).internal_server_error();
+    });
 
     // Start orchestrator server and its dependencies
-    let mock_detector_server = HttpMockServer::new(detector_name, detection_mocks)?;
+    let mock_detector_server = MockServer::new(detector_name).with_mocks(detection_mocks);
     let orchestrator_server = TestOrchestratorServer::builder()
         .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
         .detector_servers([&mock_detector_server])
