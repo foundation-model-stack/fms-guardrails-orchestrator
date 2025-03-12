@@ -47,7 +47,6 @@ use fms_guardrails_orchestr8::{
     },
 };
 use futures::TryStreamExt;
-use http::HeaderMap;
 use mocktail::prelude::*;
 use test_log::test;
 use tracing::debug;
