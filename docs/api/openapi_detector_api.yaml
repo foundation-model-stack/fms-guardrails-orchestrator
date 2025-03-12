@@ -272,6 +272,11 @@ components:
                 $ref: '#/components/schemas/EvidenceObj'
               type: array
           description: Optional field providing evidence for the provided detection
+        metadata:
+          type: object
+          default: {}
+          title: Metadata
+          description: Optional metadata for additional model information
       type: object
       required:
         - detection
@@ -329,6 +334,11 @@ components:
                 $ref: '#/components/schemas/EvidenceObj'
               type: array
           description: Optional field providing evidence for the provided detection
+        metadata:
+          type: object
+          default: {}
+          title: Metadata
+          description: Optional metadata for additional model information
       type: object
       required:
         - detection
@@ -456,6 +466,11 @@ components:
                 $ref: '#/components/schemas/EvidenceObj'
               type: array
           description: Optional field providing evidence for the provided detection
+        metadata:
+          type: object
+          default: {}
+          title: Metadata
+          description: Optional metadata for additional model information
       type: object
       required:
         - detection
@@ -530,6 +545,11 @@ components:
                 $ref: '#/components/schemas/EvidenceObj'
               type: array
           description: Optional field providing evidence for the provided detection
+        metadata:
+          type: object
+          default: {}
+          title: Metadata
+          description: Optional metadata for additional model information
       type: object
       required:
         - start
