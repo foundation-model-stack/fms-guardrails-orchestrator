@@ -20,7 +20,6 @@
 // For more: https://github.com/rust-lang/rust/issues/46379
 
 use std::sync::Arc;
-use test_log::test;
 
 use axum_test::TestServer;
 use common::orchestrator::ensure_global_rustls_state;
@@ -31,6 +30,7 @@ use fms_guardrails_orchestr8::{
 };
 use hyper::StatusCode;
 use serde_json::Value;
+use test_log::test;
 use tokio::sync::OnceCell;
 use tracing::debug;
 
