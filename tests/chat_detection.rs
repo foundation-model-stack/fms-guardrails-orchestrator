@@ -97,9 +97,10 @@ async fn no_detections() -> Result<(), anyhow::Error> {
     debug!("{response:#?}");
 
     // assertions
-    assert!(response.status() == StatusCode::OK);
-    assert!(
-        response.json::<ChatDetectionResult>().await? == ChatDetectionResult { detections: vec![] }
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response.json::<ChatDetectionResult>().await?,
+        ChatDetectionResult::default()
     );
 
     Ok(())
@@ -162,12 +163,12 @@ async fn detections() -> Result<(), anyhow::Error> {
     debug!("{response:#?}");
 
     // assertions
-    assert!(response.status() == StatusCode::OK);
-    assert!(
-        response.json::<ChatDetectionResult>().await?
-            == ChatDetectionResult {
-                detections: vec![detection]
-            }
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response.json::<ChatDetectionResult>().await?,
+        ChatDetectionResult {
+            detections: vec![detection]
+        }
     );
 
     Ok(())
@@ -227,11 +228,11 @@ async fn client_errors() -> Result<(), anyhow::Error> {
     debug!("{response:#?}");
 
     // assertions
-    assert!(response.status() == StatusCode::INTERNAL_SERVER_ERROR);
+    assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
     let response = response.json::<OrchestratorError>().await?;
     debug!("{response:#?}");
-    assert!(response.code == 500);
-    assert!(response.details == ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE);
+    assert_eq!(response.code, 500);
+    assert_eq!(response.details, ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE);
 
     Ok(())
 }
@@ -268,10 +269,10 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
         .await?;
     debug!("{response:#?}");
 
-    assert!(response.status() == StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
     let response = response.json::<OrchestratorError>().await?;
     debug!("{response:#?}");
-    assert!(response.code == 422);
+    assert_eq!(response.code, 422);
     assert!(response.details.contains("unknown field `extra_args`"));
 
     // Asserts requests missing `messages` return 422.
@@ -284,10 +285,10 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
         .await?;
     debug!("{response:#?}");
 
-    assert!(response.status() == StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
     let response = response.json::<OrchestratorError>().await?;
     debug!("{response:#?}");
-    assert!(response.code == 422);
+    assert_eq!(response.code, 422);
     assert!(response.details.contains("missing field `messages`"));
 
     // Asserts requests missing `detectors` return 422.
@@ -309,10 +310,10 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
         .await?;
     debug!("{response:#?}");
 
-    assert!(response.status() == StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
     let response = response.json::<OrchestratorError>().await?;
     debug!("{response:#?}");
-    assert!(response.code == 422);
+    assert_eq!(response.code, 422);
     assert!(response.details.contains("missing field `detectors`"));
 
     // Asserts requests with empty `detectors` return 422.
@@ -335,10 +336,10 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
         .await?;
     debug!("{response:#?}");
 
-    assert!(response.status() == StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
     let response = response.json::<OrchestratorError>().await?;
     debug!("{response:#?}");
-    assert!(response.code == 422);
+    assert_eq!(response.code, 422);
     assert!(response.details.contains("`detectors` is required"));
 
     Ok(())
