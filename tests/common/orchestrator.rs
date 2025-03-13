@@ -27,10 +27,8 @@ use bytes::Bytes;
 use eventsource_stream::{EventStream, Eventsource};
 use fms_guardrails_orchestr8::{config::OrchestratorConfig, orchestrator::Orchestrator};
 use futures::{stream::BoxStream, Stream, StreamExt};
-use mocktail::{
-    server::{GrpcMockServer, HttpMockServer, MockServer},
-    utils::find_available_port,
-};
+use mocktail::server::MockServer;
+use rand::Rng;
 use rustls::crypto::ring;
 use serde::de::DeserializeOwned;
 use tokio::task::JoinHandle;
@@ -43,6 +41,7 @@ pub const ORCHESTRATOR_CONFIG_FILE_PATH: &str = "tests/test_config.yaml";
 pub const ORCHESTRATOR_STREAMING_ENDPOINT: &str =
     "/api/v1/task/server-streaming-classification-with-text-generation";
 pub const ORCHESTRATOR_CONTENT_DETECTION_ENDPOINT: &str = "/api/v2/text/detection/content";
+pub const ORCHESTRATOR_DETECTION_ON_GENERATION_ENDPOINT: &str = "/api/v2/text/detection/generated";
 
 // Messages
 pub const ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE: &str =
@@ -58,10 +57,10 @@ pub struct TestOrchestratorServerBuilder<'a> {
     config_path: String,
     port: Option<u16>,
     health_port: Option<u16>,
-    generation_server: Option<&'a GrpcMockServer>,
-    chat_generation_server: Option<&'a HttpMockServer>,
-    detector_servers: Option<Vec<&'a HttpMockServer>>,
-    chunker_servers: Option<Vec<&'a GrpcMockServer>>,
+    generation_server: Option<&'a MockServer>,
+    chat_generation_server: Option<&'a MockServer>,
+    detector_servers: Option<Vec<&'a MockServer>>,
+    chunker_servers: Option<Vec<&'a MockServer>>,
 }
 
 impl<'a> TestOrchestratorServerBuilder<'a> {
@@ -84,28 +83,22 @@ impl<'a> TestOrchestratorServerBuilder<'a> {
         self
     }
 
-    pub fn generation_server(mut self, server: &'a GrpcMockServer) -> Self {
+    pub fn generation_server(mut self, server: &'a MockServer) -> Self {
         self.generation_server = Some(server);
         self
     }
 
-    pub fn chat_generation_server(mut self, server: &'a HttpMockServer) -> Self {
+    pub fn chat_generation_server(mut self, server: &'a MockServer) -> Self {
         self.chat_generation_server = Some(server);
         self
     }
 
-    pub fn detector_servers(
-        mut self,
-        servers: impl IntoIterator<Item = &'a HttpMockServer>,
-    ) -> Self {
+    pub fn detector_servers(mut self, servers: impl IntoIterator<Item = &'a MockServer>) -> Self {
         self.detector_servers = Some(servers.into_iter().collect());
         self
     }
 
-    pub fn chunker_servers(
-        mut self,
-        servers: impl IntoIterator<Item = &'a GrpcMockServer>,
-    ) -> Self {
+    pub fn chunker_servers(mut self, servers: impl IntoIterator<Item = &'a MockServer>) -> Self {
         self.chunker_servers = Some(servers.into_iter().collect());
         self
     }
@@ -212,32 +205,33 @@ impl TestOrchestratorServer {
 
 /// Starts and configures generation server.
 async fn initialize_generation_server(
-    generation_server: Option<&GrpcMockServer>,
+    generation_server: Option<&MockServer>,
     config: &mut OrchestratorConfig,
 ) -> Result<(), anyhow::Error> {
     if let Some(generation_server) = generation_server {
         generation_server.start().await?;
-        config.generation.as_mut().unwrap().service.port = Some(generation_server.addr().port());
+        config.generation.as_mut().unwrap().service.port =
+            Some(generation_server.addr().unwrap().port());
     };
     Ok(())
 }
 
 /// Starts and configures chat generation server.
 async fn initialize_chat_generation_server(
-    chat_generation_server: Option<&HttpMockServer>,
+    chat_generation_server: Option<&MockServer>,
     config: &mut OrchestratorConfig,
 ) -> Result<(), anyhow::Error> {
     if let Some(chat_generation_server) = chat_generation_server {
         chat_generation_server.start().await?;
         config.chat_generation.as_mut().unwrap().service.port =
-            Some(chat_generation_server.addr().port());
+            Some(chat_generation_server.addr().unwrap().port());
     };
     Ok(())
 }
 
 /// Starts and configures detector servers.
 async fn initialize_detectors(
-    detector_servers: Option<&[&HttpMockServer]>,
+    detector_servers: Option<&[&MockServer]>,
     config: &mut OrchestratorConfig,
 ) -> Result<(), anyhow::Error> {
     if let Some(detector_servers) = detector_servers {
@@ -248,7 +242,7 @@ async fn initialize_detectors(
                 .get_mut(detector_server.name())
                 .unwrap()
                 .service
-                .port = Some(detector_server.addr().port());
+                .port = Some(detector_server.addr().unwrap().port());
         }
     };
     Ok(())
@@ -256,7 +250,7 @@ async fn initialize_detectors(
 
 /// Starts and configures chunker servers.
 async fn initialize_chunkers(
-    chunker_servers: Option<&[&GrpcMockServer]>,
+    chunker_servers: Option<&[&MockServer]>,
     config: &mut OrchestratorConfig,
 ) -> Result<(), anyhow::Error> {
     if let Some(chunker_servers) = chunker_servers {
@@ -269,7 +263,7 @@ async fn initialize_chunkers(
                 .get_mut(chunker_server.name())
                 .unwrap()
                 .service
-                .port = Some(chunker_server.addr().port());
+                .port = Some(chunker_server.addr().unwrap().port());
         }
     };
     Ok(())
@@ -312,4 +306,18 @@ where
             Poll::Pending => Poll::Pending,
         }
     }
+}
+
+fn find_available_port() -> Option<u16> {
+    let mut rng = rand::rng();
+    loop {
+        let port: u16 = rng.random_range(40000..60000);
+        if port_is_available(port) {
+            return Some(port);
+        }
+    }
+}
+
+fn port_is_available(port: u16) -> bool {
+    std::net::TcpListener::bind(("0.0.0.0", port)).is_ok()
 }
