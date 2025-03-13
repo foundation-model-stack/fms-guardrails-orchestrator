@@ -108,7 +108,7 @@ async fn no_detections() -> Result<(), anyhow::Error> {
     });
 
     // Start orchestrator server and its dependencies
-    let mock_chunker_server = MockServer::new(chunker_id).with_mocks(chunker_mocks);
+    let mock_chunker_server = MockServer::new(chunker_id).grpc().with_mocks(chunker_mocks);
     let mock_sentence_detector_server =
         MockServer::new(sentence_detector).with_mocks(sentence_detector_mocks);
     let mock_whole_doc_detector_server =
