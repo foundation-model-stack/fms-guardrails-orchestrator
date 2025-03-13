@@ -87,9 +87,10 @@ async fn no_detections() -> Result<(), anyhow::Error> {
     debug!("{response:#?}");
 
     // assertions
-    assert!(response.status() == StatusCode::OK);
-    assert!(
-        response.json::<ContextDocsResult>().await? == ContextDocsResult { detections: vec![] }
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response.json::<ContextDocsResult>().await?,
+        ContextDocsResult::default()
     );
 
     Ok(())
@@ -147,12 +148,12 @@ async fn detections() -> Result<(), anyhow::Error> {
     debug!("{response:#?}");
 
     // assertions
-    assert!(response.status() == StatusCode::OK);
-    assert!(
-        response.json::<ContextDocsResult>().await?
-            == ContextDocsResult {
-                detections: vec![detection]
-            }
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response.json::<ContextDocsResult>().await?,
+        ContextDocsResult {
+            detections: vec![detection]
+        }
     );
 
     Ok(())
@@ -207,10 +208,10 @@ async fn client_error() -> Result<(), anyhow::Error> {
     debug!("{response:#?}");
 
     // assertions
-    assert!(response.status() == StatusCode::INTERNAL_SERVER_ERROR);
+    assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
     let response = response.json::<OrchestratorError>().await?;
-    assert!(response.code == detector_error.code);
-    assert!(response.details == ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE);
+    assert_eq!(response.code, detector_error.code);
+    assert_eq!(response.details, ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE);
 
     Ok(())
 }
@@ -242,9 +243,9 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
         .await?;
     debug!("{response:#?}");
 
-    assert!(response.status() == StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
     let response = response.json::<OrchestratorError>().await?;
-    assert!(response.code == 422);
+    assert_eq!(response.code, 422);
     assert!(response.details.contains("unknown field `extra_args`"));
 
     // Asserts requests missing `content` return 422.
@@ -259,9 +260,9 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
         .await?;
     debug!("{response:#?}");
 
-    assert!(response.status() == StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
     let response = response.json::<OrchestratorError>().await?;
-    assert!(response.code == 422);
+    assert_eq!(response.code, 422);
     assert!(response.details.contains("missing field `content`"));
 
     // Asserts requests missing `context` return 422.
@@ -276,9 +277,9 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
         .await?;
     debug!("{response:#?}");
 
-    assert!(response.status() == StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
     let response = response.json::<OrchestratorError>().await?;
-    assert!(response.code == 422);
+    assert_eq!(response.code, 422);
     assert!(response.details.contains("missing field `context`"));
 
     // Asserts requests missing `context_type` return 422.
@@ -293,9 +294,9 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
         .await?;
     debug!("{response:#?}");
 
-    assert!(response.status() == StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
     let response = response.json::<OrchestratorError>().await?;
-    assert!(response.code == 422);
+    assert_eq!(response.code, 422);
     assert!(response.details.contains("missing field `context_type`"));
 
     // Asserts requests with invalid `context_type` return 422.
@@ -311,10 +312,10 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
         .await?;
     debug!("{response:#?}");
 
-    assert!(response.status() == StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
     let response = response.json::<OrchestratorError>().await?;
     debug!("{response:#?}");
-    assert!(response.code == 422);
+    assert_eq!(response.code, 422);
     assert!(response
         .details
         .starts_with("context_type: unknown variant `thoughts`, expected `docs` or `url`"));
@@ -331,10 +332,10 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
         .await?;
     debug!("{response:#?}");
 
-    assert!(response.status() == StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
     let response = response.json::<OrchestratorError>().await?;
     debug!("{response:#?}");
-    assert!(response.code == 422);
+    assert_eq!(response.code, 422);
     assert!(response.details.starts_with("missing field `detectors`"));
 
     // Asserts requests with empty `detectors` return 422.
@@ -349,10 +350,10 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
         .await?;
     debug!("{response:#?}");
 
-    assert!(response.status() == StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
     let response = response.json::<OrchestratorError>().await?;
     debug!("{response:#?}");
-    assert!(response.code == 422);
+    assert_eq!(response.code, 422);
     assert!(response.details.starts_with("missing field `detectors`"));
 
     Ok(())
