@@ -134,13 +134,14 @@ async fn no_detections() -> Result<(), anyhow::Error> {
         .await?;
     debug!("{response:#?}");
 
-    assert!(
-        response.status() == StatusCode::OK,
+    assert_eq!(
+        response.status(),
+        StatusCode::OK,
         "error on whole doc detector response status assertion"
     );
-    assert!(
-        response.json::<TextContentDetectionResult>().await?
-            == TextContentDetectionResult::default(),
+    assert_eq!(
+        response.json::<TextContentDetectionResult>().await?,
+        TextContentDetectionResult::default(),
         "error on whole doc detector response body assertion"
     );
 
@@ -155,13 +156,14 @@ async fn no_detections() -> Result<(), anyhow::Error> {
         .await?;
     debug!("{response:#?}");
 
-    assert!(
-        response.status() == StatusCode::OK,
+    assert_eq!(
+        response.status(),
+        StatusCode::OK,
         "error on sentence detector response status assertion"
     );
-    assert!(
-        response.json::<TextContentDetectionResult>().await?
-            == TextContentDetectionResult::default(),
+    assert_eq!(
+        response.json::<TextContentDetectionResult>().await?,
+        TextContentDetectionResult::default(),
         "error on sentence detector response body assertion"
     );
 
@@ -272,26 +274,27 @@ async fn detections() -> Result<(), anyhow::Error> {
         .await?;
     debug!("{response:#?}");
 
-    assert!(
-        response.status() == StatusCode::OK,
+    assert_eq!(
+        response.status(),
+        StatusCode::OK,
         "error on whole doc detector response status assertion"
     );
     let response = response.json::<TextContentDetectionResult>().await?;
     debug!("{response:#?}");
-    assert!(
-        response
-            == TextContentDetectionResult {
-                detections: vec![ContentAnalysisResponse {
-                    start: 18,
-                    end: 35,
-                    text: "a detection here".into(),
-                    detection: "has_angle_brackets".into(),
-                    detection_type: "angle_brackets".into(),
-                    detector_id: Some(whole_doc_detector.into()),
-                    score: 1.0,
-                    evidence: None,
-                }],
-            },
+    assert_eq!(
+        response,
+        TextContentDetectionResult {
+            detections: vec![ContentAnalysisResponse {
+                start: 18,
+                end: 35,
+                text: "a detection here".into(),
+                detection: "has_angle_brackets".into(),
+                detection_type: "angle_brackets".into(),
+                detector_id: Some(whole_doc_detector.into()),
+                score: 1.0,
+                evidence: None,
+            }],
+        },
         "error on whole doc detector response body assertion"
     );
 
@@ -306,26 +309,27 @@ async fn detections() -> Result<(), anyhow::Error> {
         .await?;
     debug!("{response:#?}");
 
-    assert!(
-        response.status() == StatusCode::OK,
+    assert_eq!(
+        response.status(),
+        StatusCode::OK,
         "error on sentence detector response status assertion"
     );
     let response = response.json::<TextContentDetectionResult>().await?;
     debug!("{response:#?}");
-    assert!(
-        response
-            == TextContentDetectionResult {
-                detections: vec![ContentAnalysisResponse {
-                    start: 45,
-                    end: 59,
-                    text: "this one does".into(),
-                    detection: "has_angle_brackets".into(),
-                    detection_type: "angle_brackets".into(),
-                    detector_id: Some(sentence_detector.into()),
-                    score: 1.0,
-                    evidence: None,
-                }],
-            },
+    assert_eq!(
+        response,
+        TextContentDetectionResult {
+            detections: vec![ContentAnalysisResponse {
+                start: 45,
+                end: 59,
+                text: "this one does".into(),
+                detection: "has_angle_brackets".into(),
+                detection_type: "angle_brackets".into(),
+                detector_id: Some(sentence_detector.into()),
+                score: 1.0,
+                evidence: None,
+            }],
+        },
         "error on sentence detector response body assertion"
     );
 
@@ -374,11 +378,11 @@ async fn client_error() -> Result<(), anyhow::Error> {
     debug!(?response, "RESPONSE RECEIVED FROM ORCHESTRATOR");
 
     // assertions
-    assert!(response.status() == StatusCode::INTERNAL_SERVER_ERROR);
+    assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
 
     let response: OrchestratorError = response.json().await?;
-    assert!(response.code == 500);
-    assert!(response.details == ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE);
+    assert_eq!(response.code, 500);
+    assert_eq!(response.details, ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE);
 
     Ok(())
 }
@@ -406,10 +410,10 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
         .await?;
     debug!("{response:#?}");
 
-    assert!(response.status() == StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
     let response: OrchestratorError = response.json().await?;
     debug!("orchestrator json response body:\n{response:#?}");
-    assert!(response.code == 422);
+    assert_eq!(response.code, 422);
     assert!(response.details.contains("unknown field `extra_args`"));
 
     // assert request missing `detectors`
@@ -422,10 +426,10 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
         .await?;
     debug!("{response:#?}");
 
-    assert!(response.status() == StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
     let response: OrchestratorError = response.json().await?;
     debug!("orchestrator json response body:\n{response:#?}");
-    assert!(response.code == 422);
+    assert_eq!(response.code, 422);
     assert!(response.details.starts_with("missing field `detectors`"));
 
     // assert request missing `content`
@@ -438,10 +442,10 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
         .await?;
     debug!("{response:#?}");
 
-    assert!(response.status() == StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
     let response: OrchestratorError = response.json().await?;
     debug!("orchestrator json response body:\n{response:#?}");
-    assert!(response.code == 422);
+    assert_eq!(response.code, 422);
     assert!(response.details.starts_with("missing field `content`"));
 
     // assert empty `detectors`
@@ -455,11 +459,11 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
         .await?;
     debug!("{response:#?}");
 
-    assert!(response.status() == StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
     let response: OrchestratorError = response.json().await?;
     debug!("orchestrator json response body:\n{response:#?}");
-    assert!(response.code == 422);
-    assert!(response.details == "`detectors` is required");
+    assert_eq!(response.code, 422);
+    assert_eq!(response.details, "`detectors` is required");
 
     Ok(())
 }

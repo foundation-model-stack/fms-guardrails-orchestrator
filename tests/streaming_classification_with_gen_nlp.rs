@@ -134,10 +134,10 @@ async fn no_detectors() -> Result<(), anyhow::Error> {
     debug!("{messages:#?}");
 
     // assertions
-    assert!(messages.len() == 3);
-    assert!(messages[0].generated_text == Some("I".into()));
-    assert!(messages[1].generated_text == Some(" am".into()));
-    assert!(messages[2].generated_text == Some(" great!".into()));
+    assert_eq!(messages.len(), 3);
+    assert_eq!(messages[0].generated_text, Some("I".into()));
+    assert_eq!(messages[1].generated_text, Some(" am".into()));
+    assert_eq!(messages[2].generated_text, Some(" great!".into()));
 
     Ok(())
 }
@@ -255,14 +255,14 @@ async fn input_detector_no_detections() -> Result<(), anyhow::Error> {
     debug!("{messages:#?}");
 
     // assertions
-    assert!(messages.len() == 3);
-    assert!(messages[0].generated_text == Some("I".into()));
+    assert_eq!(messages.len(), 3);
+    assert_eq!(messages[0].generated_text, Some("I".into()));
     assert!(messages[0].token_classification_results.input.is_none());
 
-    assert!(messages[1].generated_text == Some(" am".into()));
+    assert_eq!(messages[1].generated_text, Some(" am".into()));
     assert!(messages[1].token_classification_results.input.is_none());
 
-    assert!(messages[2].generated_text == Some(" great!".into()));
+    assert_eq!(messages[2].generated_text, Some(" great!".into()));
     assert!(messages[2].token_classification_results.input.is_none());
 
     Ok(())
@@ -376,31 +376,34 @@ async fn input_detector_detections() -> Result<(), anyhow::Error> {
     debug!("{messages:#?}");
 
     // assertions
-    assert!(messages.len() == 1);
+    assert_eq!(messages.len(), 1);
     assert!(messages[0].generated_text.is_none());
-    assert!(
-        messages[0].token_classification_results
-            == TextGenTokenClassificationResults {
-                input: Some(vec![TokenClassificationResult {
-                    start: 46, // index of first token of detected text, relative to the `inputs` string sent in the orchestrator request.
-                    end: 59, // index of last token (+1) of detected text, relative to the `inputs` string sent in the orchestrator request.
-                    word: mock_detection_response.text,
-                    entity: mock_detection_response.detection,
-                    entity_group: mock_detection_response.detection_type,
-                    detector_id: mock_detection_response.detector_id,
-                    score: mock_detection_response.score,
-                    token_count: None
-                }]),
-                output: None
-            }
+    assert_eq!(
+        messages[0].token_classification_results,
+        TextGenTokenClassificationResults {
+            input: Some(vec![TokenClassificationResult {
+                start: 46, // index of first token of detected text, relative to the `inputs` string sent in the orchestrator request.
+                end: 59, // index of last token (+1) of detected text, relative to the `inputs` string sent in the orchestrator request.
+                word: mock_detection_response.text,
+                entity: mock_detection_response.detection,
+                entity_group: mock_detection_response.detection_type,
+                detector_id: mock_detection_response.detector_id,
+                score: mock_detection_response.score,
+                token_count: None
+            }]),
+            output: None
+        }
     );
-    assert!(messages[0].input_token_count == mock_tokenization_response.token_count as u32);
-    assert!(
-        messages[0].warnings
-            == Some(vec![DetectionWarning {
-                id: Some(fms_guardrails_orchestr8::models::DetectionWarningReason::UnsuitableInput),
-                message: Some(ORCHESTRATOR_UNSUITABLE_INPUT_MESSAGE.into())
-            }])
+    assert_eq!(
+        messages[0].input_token_count,
+        mock_tokenization_response.token_count as u32
+    );
+    assert_eq!(
+        messages[0].warnings,
+        Some(vec![DetectionWarning {
+            id: Some(fms_guardrails_orchestr8::models::DetectionWarningReason::UnsuitableInput),
+            message: Some(ORCHESTRATOR_UNSUITABLE_INPUT_MESSAGE.into())
+        }])
     );
 
     Ok(())
@@ -528,7 +531,7 @@ async fn input_detector_client_error() -> Result<(), anyhow::Error> {
     let messages = sse_stream.try_collect::<Vec<_>>().await?;
     debug!("{messages:#?}");
 
-    assert!(messages.len() == 1);
+    assert_eq!(messages.len(), 1);
     assert_eq!(
         messages[0],
         OrchestratorError {
@@ -561,7 +564,7 @@ async fn input_detector_client_error() -> Result<(), anyhow::Error> {
     let messages = sse_stream.try_collect::<Vec<_>>().await?;
     debug!("{messages:#?}");
 
-    assert!(messages.len() == 1);
+    assert_eq!(messages.len(), 1);
     assert_eq!(
         messages[0],
         OrchestratorError {
@@ -594,7 +597,7 @@ async fn input_detector_client_error() -> Result<(), anyhow::Error> {
     let messages = sse_stream.try_collect::<Vec<_>>().await?;
     debug!("{messages:#?}");
 
-    assert!(messages.len() == 1);
+    assert_eq!(messages.len(), 1);
     assert_eq!(
         messages[0],
         OrchestratorError {
@@ -635,10 +638,10 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     debug!(?response);
 
     // assertions
-    assert!(response.status() == 422);
+    assert_eq!(response.status(), 422);
 
     let response_body = response.json::<OrchestratorError>().await?;
-    assert!(response_body.code == 422);
+    assert_eq!(response_body.code, 422);
     assert!(response_body
         .details
         .starts_with("non_existing_field: unknown field `non_existing_field`"));
