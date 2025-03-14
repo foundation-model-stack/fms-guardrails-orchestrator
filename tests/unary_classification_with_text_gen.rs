@@ -147,7 +147,7 @@ async fn no_detections() -> Result<(), anyhow::Error> {
 
     // Configure mock servers
     let mock_detector_server = MockServer::new(DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE).with_mocks(detector_mocks);
-    let mock_generation_server = MockServer::new("generation_server").grpc().with_mocks(generation_mocks);
+    let mock_generation_server = MockServer::new("nlp").grpc().with_mocks(generation_mocks);
     let mock_chunker_server = MockServer::new(CHUNKER_NAME_SENTENCE.into()).grpc().with_mocks(chunker_mocks);
 
     // Run test orchestrator server
@@ -172,10 +172,10 @@ async fn no_detections() -> Result<(), anyhow::Error> {
         .await?;
 
     // Assertions on no detectors scenario
-    assert!(response.status() == StatusCode::OK);
+    assert_eq!(response.status(), StatusCode::OK);
     let results = response.json::<ClassifiedGeneratedTextResult>().await?;
     assert_eq!(results.generated_text, Some(expected_response.clone().generated_text));
-    assert!(results.warnings == None);
+    assert_eq!(results.warnings, None);
 
     // Orchestrator request with input detector for no input detections scenario
     let response = orchestrator_server
@@ -196,10 +196,10 @@ async fn no_detections() -> Result<(), anyhow::Error> {
         .await?;
 
     // Assertions on no input detections scenario
-    assert!(response.status() == StatusCode::OK);
+    assert_eq!(response.status(), StatusCode::OK);
     let results = response.json::<ClassifiedGeneratedTextResult>().await?;
     assert_eq!(results.generated_text, Some(expected_response.clone().generated_text));
-    assert!(results.warnings == None);
+    assert_eq!(results.warnings, None);
 
     // Orchestrator request with output detector for no output detections scenario
     let response = orchestrator_server
@@ -219,10 +219,10 @@ async fn no_detections() -> Result<(), anyhow::Error> {
         .await?;
 
     // Assertions on output no detections scenario
-    assert!(response.status() == StatusCode::OK);
+    assert_eq!(response.status(), StatusCode::OK);
     let results = response.json::<ClassifiedGeneratedTextResult>().await?;
     assert_eq!(results.generated_text, Some(expected_response.generated_text));
-    assert!(results.warnings == None);
+    assert_eq!(results.warnings, None);
 
     Ok(())
 
@@ -361,7 +361,7 @@ async fn input_detector_detections() -> Result<(), anyhow::Error> {
     });
 
     // Configure mock servers
-    let mock_generation_server = MockServer::new("generation_server").grpc().with_mocks(generation_mocks);
+    let mock_generation_server = MockServer::new("nlp").grpc().with_mocks(generation_mocks);
     let mock_chunker_server = MockServer::new(CHUNKER_NAME_SENTENCE).grpc().with_mocks(chunker_mocks);
     let mock_detector_server = MockServer::new(DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE).with_mocks(detector_mocks);
 
@@ -393,11 +393,10 @@ async fn input_detector_detections() -> Result<(), anyhow::Error> {
         .await?;
 
     // Assertions for input single detection
-    assert!(response.status() == StatusCode::OK);
+    assert_eq!(response.status(), StatusCode::OK);
     let results = response.json::<ClassifiedGeneratedTextResult>().await?;
-    assert!(results.generated_text == None);
-    assert!(results.token_classification_results
-            == TextGenTokenClassificationResults {
+    assert_eq!(results.generated_text, None);
+    assert_eq!(results.token_classification_results, TextGenTokenClassificationResults {
                 input: Some(vec![TokenClassificationResult {
                     start: 46 as u32,
                     end: 59 as u32,
@@ -410,8 +409,8 @@ async fn input_detector_detections() -> Result<(), anyhow::Error> {
                 }]),
                 output: None
             });
-    assert!(results.input_token_count == mock_tokenization_responses[0].token_count as u32);
-    assert!(results.warnings == Some(vec![DetectionWarning { 
+    assert_eq!(results.input_token_count, mock_tokenization_responses[0].token_count as u32);
+    assert_eq!(results.warnings, Some(vec![DetectionWarning { 
         id: Some(DetectionWarningReason::UnsuitableInput), 
         message: Some(ORCHESTRATOR_UNSUITABLE_INPUT_MESSAGE.into())
     }]));
@@ -435,11 +434,10 @@ async fn input_detector_detections() -> Result<(), anyhow::Error> {
         .await?;
 
     // Assertions for input multiple detections
-    assert!(response.status() == StatusCode::OK);
+    assert_eq!(response.status(), StatusCode::OK);
     let results = response.json::<ClassifiedGeneratedTextResult>().await?;
-    assert!(results.generated_text == None);
-    assert!(results.token_classification_results
-        == TextGenTokenClassificationResults {
+    assert_eq!(results.generated_text, None);
+    assert_eq!(results.token_classification_results, TextGenTokenClassificationResults {
             input: Some(vec![TokenClassificationResult {
                 start: 46 as u32,
                 end: 59 as u32,
@@ -544,7 +542,7 @@ async fn input_detector_client_error() -> Result<(), anyhow::Error> {
     });
 
     // Configure mock servers
-    let mock_generation_server = MockServer::new("generation_server").grpc().with_mocks(generation_mocks);
+    let mock_generation_server = MockServer::new("nlp").grpc().with_mocks(generation_mocks);
     let mock_chunker_server = MockServer::new(CHUNKER_NAME_SENTENCE).grpc().with_mocks(chunker_mocks);
     let mock_detector_server = MockServer::new(DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE).with_mocks(detector_mocks);
 
@@ -577,8 +575,8 @@ async fn input_detector_client_error() -> Result<(), anyhow::Error> {
 
     // Assertions for generation internal server error scenario
     let results = response.json::<OrchestratorError>().await?;
-    assert!(results.code == StatusCode::INTERNAL_SERVER_ERROR);
-    assert!(results.details == ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE);
+    assert_eq!(results.code, StatusCode::INTERNAL_SERVER_ERROR);
+    assert_eq!(results.details, ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE);
 
     // Orchestrator request with unary response for detector internal server error scenario 
     let response = orchestrator_server
@@ -600,8 +598,8 @@ async fn input_detector_client_error() -> Result<(), anyhow::Error> {
 
     // Assertions for detector internal server error scenario
     let results = response.json::<OrchestratorError>().await?;
-    assert!(results.code == StatusCode::INTERNAL_SERVER_ERROR);
-    assert!(results.details == ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE);
+    assert_eq!(results.code, StatusCode::INTERNAL_SERVER_ERROR);
+    assert_eq!(results.details, ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE);
 
     // Orchestrator request with unary response
     let response = orchestrator_server
@@ -623,8 +621,8 @@ async fn input_detector_client_error() -> Result<(), anyhow::Error> {
 
     // Assertions for chunker internal server error scenario 
     let results = response.json::<OrchestratorError>().await?;
-    assert!(results.code == StatusCode::INTERNAL_SERVER_ERROR);
-    assert!(results.details == ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE);
+    assert_eq!(results.code, StatusCode::INTERNAL_SERVER_ERROR);
+    assert_eq!(results.details, ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE);
 
     Ok(())
 }
@@ -806,7 +804,7 @@ async fn output_detector_detections() -> Result<(), anyhow::Error> {
     });
 
     // Configure mock servers
-    let mock_generation_server = MockServer::new("generation_server").grpc().with_mocks(generation_mocks);
+    let mock_generation_server = MockServer::new("nlp").grpc().with_mocks(generation_mocks);
     let mock_detector_server = MockServer::new(DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE).with_mocks(detector_mocks);
     let mock_chunker_server = MockServer::new(CHUNKER_NAME_SENTENCE).grpc().with_mocks(chunker_mocks);
 
@@ -837,11 +835,10 @@ async fn output_detector_detections() -> Result<(), anyhow::Error> {
         .await?;
 
     // Assertions for output detection
-    assert!(response.status() == StatusCode::OK);
+    assert_eq!(response.status(), StatusCode::OK);
     let results = response.json::<ClassifiedGeneratedTextResult>().await?;
-    assert!(results.generated_text == Some("This sentence does not have a detection. But <this one does>.".into()));
-    assert!(results.token_classification_results
-            == TextGenTokenClassificationResults {
+    assert_eq!(results.generated_text, Some("This sentence does not have a detection. But <this one does>.".into()));
+    assert_eq!(results.token_classification_results, TextGenTokenClassificationResults {
                 input: None,
                 output: Some(vec![TokenClassificationResult {
                     start: 46 as u32,
@@ -873,11 +870,10 @@ async fn output_detector_detections() -> Result<(), anyhow::Error> {
         .await?;
 
     // Assertions for output multiple detections
-    assert!(response.status() == StatusCode::OK);
+    assert_eq!(response.status(), StatusCode::OK);
     let results = response.json::<ClassifiedGeneratedTextResult>().await?;
-    assert!(results.generated_text == Some("This sentence does not have a detection. But <this one does>. Also <this other one>.".into()));
-    assert!(results.token_classification_results
-            == TextGenTokenClassificationResults {
+    assert_eq!(results.generated_text, Some("This sentence does not have a detection. But <this one does>. Also <this other one>.".into()));
+    assert_eq!(results.token_classification_results, TextGenTokenClassificationResults {
                 input: None,
                 output: Some(vec![TokenClassificationResult {
                     start: 46 as u32,
@@ -1015,7 +1011,7 @@ async fn output_detector_client_error() -> Result<(), anyhow::Error> {
     });
 
     // Configure mock servers
-    let mock_generation_server = MockServer::new("generation_server").grpc().with_mocks(generation_mocks);
+    let mock_generation_server = MockServer::new("nlp").grpc().with_mocks(generation_mocks);
     let mock_chunker_server = MockServer::new(CHUNKER_NAME_SENTENCE).grpc().with_mocks(chunker_mocks);
     let mock_detector_server = MockServer::new(DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE).with_mocks(detector_mocks);
 
@@ -1047,8 +1043,8 @@ async fn output_detector_client_error() -> Result<(), anyhow::Error> {
 
     // Assertions for generation internal server error scenario
     let results = response.json::<OrchestratorError>().await?;
-    assert!(results.code == StatusCode::INTERNAL_SERVER_ERROR);
-    assert!(results.details == ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE);
+    assert_eq!(results.code, StatusCode::INTERNAL_SERVER_ERROR);
+    assert_eq!(results.details, ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE);
 
 
     // Orchestrator request with unary response for detector internal server error scenario 
@@ -1070,8 +1066,8 @@ async fn output_detector_client_error() -> Result<(), anyhow::Error> {
 
     // Assertions for detector internal server error scenario
     let results = response.json::<OrchestratorError>().await?;
-    assert!(results.code == StatusCode::INTERNAL_SERVER_ERROR);
-    assert!(results.details == ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE);
+    assert_eq!(results.code, StatusCode::INTERNAL_SERVER_ERROR);
+    assert_eq!(results.details, ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE);
 
     // Orchestrator request with unary response
     let response = orchestrator_server
@@ -1092,8 +1088,8 @@ async fn output_detector_client_error() -> Result<(), anyhow::Error> {
 
     // Assertions for chunker internal server error scenario 
     let results = response.json::<OrchestratorError>().await?;
-    assert!(results.code == StatusCode::INTERNAL_SERVER_ERROR);
-    assert!(results.details == ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE);
+    assert_eq!(results.code, StatusCode::INTERNAL_SERVER_ERROR);
+    assert_eq!(results.details, ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE);
 
     Ok(())
 } 
@@ -1123,7 +1119,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
 
     // Assertions for invalid request
     let results = response.json::<OrchestratorError>().await?;
-    assert!(results.code == StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(results.code, StatusCode::UNPROCESSABLE_ENTITY);
     assert!(results.details.starts_with("non_existing_field: unknown field `non_existing_field`"));
 
     Ok(())
