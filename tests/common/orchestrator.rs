@@ -40,12 +40,12 @@ pub const ORCHESTRATOR_CONFIG_FILE_PATH: &str = "tests/test_config.yaml";
 // Endpoints
 pub const ORCHESTRATOR_STREAMING_ENDPOINT: &str =
     "/api/v1/task/server-streaming-classification-with-text-generation";
+pub const ORCHESTRATOR_UNARY_ENDPOINT: &str =
+    "/api/v1/task/classification-with-text-generation";
 pub const ORCHESTRATOR_CONTENT_DETECTION_ENDPOINT: &str = "/api/v2/text/detection/content";
 pub const ORCHESTRATOR_DETECTION_ON_GENERATION_ENDPOINT: &str = "/api/v2/text/detection/generated";
 pub const ORCHESTRATOR_CONTEXT_DOCS_DETECTION_ENDPOINT: &str = "/api/v2/text/detection/context";
 pub const ORCHESTRATOR_CHAT_DETECTION_ENDPOINT: &str = "/api/v2/text/detection/chat";
-pub const ORCHESTRATOR_UNARY_ENDPOINT: &str =
-    "/api/v1/task/classification-with-text-generation";
 
 // Messages
 pub const ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE: &str =
