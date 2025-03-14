@@ -20,8 +20,10 @@ pub const DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC: &str = "angle_brackets_detecto
 pub const DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE: &str = "angle_brackets_detector_sentence";
 pub const ANSWER_RELEVANCE_DETECTOR: &str = "answer_relevance_detector";
 pub const FACT_CHECKING_DETECTOR: &str = "fact_checking_detector";
+pub const PII_DETECTOR: &str = "pii_detector";
 
 // Detector endpoints
 pub const TEXT_CONTENTS_DETECTOR_ENDPOINT: &str = "/api/v1/text/contents";
 pub const DETECTION_ON_GENERATION_DETECTOR_ENDPOINT: &str = "/api/v1/text/generation";
 pub const CONTEXT_DOC_DETECTOR_ENDPOINT: &str = "/api/v1/text/context/doc";
+pub const CHAT_DETECTOR_ENDPOINT: &str = "/api/v1/text/chat";
