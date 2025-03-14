@@ -67,7 +67,7 @@ pub async fn chunk(
 pub async fn chunk_stream(
     client: &ChunkerClient,
     chunker_id: ChunkerId,
-    input_rx: broadcast::Receiver<Result<(usize, String), Error>>,
+    input_rx: broadcast::Receiver<Result<(usize, String), Error>>, // (message_index, text)
 ) -> Result<ChunkStream, Error> {
     let input_stream = BroadcastStream::new(input_rx)
         .map(|result| {
