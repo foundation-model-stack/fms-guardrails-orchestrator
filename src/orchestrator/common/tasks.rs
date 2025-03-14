@@ -102,7 +102,7 @@ pub async fn chunks(
 pub async fn chunk_streams(
     ctx: Arc<Context>,
     chunkers: Vec<ChunkerId>,
-    input_rx: InputReceiver,
+    input_rx: mpsc::Receiver<Result<(usize, String), Error>>, // (message_index, text)
 ) -> Result<HashMap<ChunkerId, broadcast::Sender<Result<Chunk, Error>>>, Error> {
     // Create input broadcast channel
     let input_stream = ReceiverStream::new(input_rx).boxed();
@@ -236,7 +236,7 @@ pub async fn text_contents_detection_streams(
     headers: HeaderMap,
     detectors: &HashMap<String, DetectorParams>,
     input_id: InputId,
-    input_rx: InputReceiver,
+    input_rx: mpsc::Receiver<Result<(usize, String), Error>>, // (message_index, text)
 ) -> Result<Vec<DetectionStream>, Error> {
     // Create chunk streams
     let chunkers = get_chunker_ids(&ctx, detectors)?;
@@ -496,41 +496,27 @@ mod test {
         },
         orchestrator::create_clients,
         pb::{
-            caikit::runtime::chunkers::ChunkerTokenizationTaskRequest,
-            caikit_data_model::nlp::{Token, TokenizationResults},
+            caikit::runtime::chunkers::{
+                BidiStreamingChunkerTokenizationTaskRequest, ChunkerTokenizationTaskRequest,
+            },
+            caikit_data_model::nlp::{ChunkerTokenizationStreamResult, Token, TokenizationResults},
         },
     };
 
     static CONTEXT: OnceCell<Arc<Context>> = OnceCell::const_new();
+
     const CHUNKER_PATH: &str =
         "/caikit.runtime.Chunkers.ChunkersService/ChunkerTokenizationTaskPredict";
+    const CHUNKER_STREAMING_PATH: &str =
+        "/caikit.runtime.Chunkers.ChunkersService/BidiStreamingChunkerTokenizationTaskPredict";
     const TEXT_CONTENTS_DETECTOR_PATH: &str = "/api/v1/text/contents";
+
     const TEXT1: &str = "Lorem ipsum dolor sit amet, consectetuer adipiscing elit. \
-    Aenean commodo ligula eget dolor. Cum sociis natoque \
-    penatibus et magnis dis parturient montes, nascetur ridiculus mus.";
-    const TEXT1_CHUNKS: [(i64, i64, &str); 3] = [
-        (0, 57, "Lorem ipsum dolor sit amet, consectetuer adipiscing elit."),
-        (58, 92, " Aenean commodo ligula eget dolor."),
-        (93, 179, " Cum sociis natoque penatibus et magnis dis parturient montes, nascetur ridiculus mus.")
-    ];
-    const TEXT1_TOKEN_COUNT: i64 = 25;
+        Aenean commodo ligula eget dolor. Cum sociis natoque \
+        penatibus et magnis dis parturient montes, nascetur ridiculus mus.";
     const TEXT2: &str = "Qui reprehenderit aspernatur est unde autem et corporis animi hic \
-    autem distinctio cum dolore fugit hic nihil vitae. Quo magni voluptatem et \
-    vitae maxime est voluptatem itaque. ";
-    const TEXT2_CHUNKS: [(i64, i64, &str); 2] = [
-        (
-            0,
-            139,
-            "Qui reprehenderit aspernatur est unde autem et corporis animi hic \
-        autem distinctio cum dolore fugit hic nihil vitae.",
-        ),
-        (
-            140,
-            201,
-            " Quo magni voluptatem et vitae maxime est voluptatem itaque. ",
-        ),
-    ];
-    const TEXT2_TOKEN_COUNT: i64 = 27;
+        autem distinctio cum dolore fugit hic nihil vitae. Quo magni voluptatem et \
+        vitae maxime est voluptatem itaque. ";
 
     async fn init_context() -> Arc<Context> {
         let _ = rustls::crypto::ring::default_provider().install_default();
@@ -542,31 +528,63 @@ mod test {
             when.path(CHUNKER_PATH)
                 .pb(ChunkerTokenizationTaskRequest { text: TEXT1.into() });
             then.pb(TokenizationResults {
-                results: TEXT1_CHUNKS
-                    .into_iter()
-                    .map(|(start, end, text)| Token {
-                        start,
-                        end,
-                        text: text.to_string(),
-                    })
-                    .collect(),
-                token_count: TEXT1_TOKEN_COUNT,
+                results: vec![
+                    Token { start: 0, end: 57, text: "Lorem ipsum dolor sit amet, consectetuer adipiscing elit.".into() },
+                    Token { start: 58, end: 92, text: " Aenean commodo ligula eget dolor.".into() },
+                    Token { start: 93, end: 179, text: " Cum sociis natoque penatibus et magnis dis parturient montes, nascetur ridiculus mus.".into() }
+                ],
+                token_count: 25,
             });
         });
         mocks.mock(|when, then| {
             when.path(CHUNKER_PATH)
                 .pb(ChunkerTokenizationTaskRequest { text: TEXT2.into() });
             then.pb(TokenizationResults {
-                results: TEXT2_CHUNKS
-                    .into_iter()
-                    .map(|(start, end, text)| Token {
-                        start,
-                        end,
-                        text: text.to_string(),
-                    })
-                    .collect(),
-                token_count: TEXT2_TOKEN_COUNT,
+                results: vec![
+                    Token {
+                        start: 0,
+                        end: 139,
+                        text: "Qui reprehenderit aspernatur est unde autem et corporis animi hic \
+                        autem distinctio cum dolore fugit hic nihil vitae."
+                            .into(),
+                    },
+                    Token {
+                        start: 140,
+                        end: 201,
+                        text: " Quo magni voluptatem et vitae maxime est voluptatem itaque. "
+                            .into(),
+                    },
+                ],
+                token_count: 27,
             });
+        });
+        mocks.mock(|when, then| {
+            when.path(CHUNKER_STREAMING_PATH).pb_stream([
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: "Lorem ipsum".into(),
+                    input_index_stream: 0,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: " dolor sit amet, ".into(),
+                    input_index_stream: 1,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: "consectetuer adipiscing elit.".into(),
+                    input_index_stream: 2,
+                },
+            ]);
+            then.pb_stream([ChunkerTokenizationStreamResult {
+                results: vec![Token {
+                    start: 0,
+                    end: 57,
+                    text: "Lorem ipsum dolor sit amet, consectetuer adipiscing elit.".into(),
+                }],
+                token_count: 8,
+                processed_index: 57,
+                start_index: 0,
+                input_start_index: 0,
+                input_end_index: 2,
+            }]);
         });
         let sentence_chunker_server = MockServer::new("sentence_chunker").grpc().with_mocks(mocks);
         sentence_chunker_server.start().await.unwrap();
@@ -590,11 +608,11 @@ mod test {
                 .pb(ChunkerTokenizationTaskRequest { text: TEXT1.into() });
             then.pb(TokenizationResults {
                 results: vec![Token {
-                    start: TEXT1_CHUNKS[0].0,
-                    end: TEXT1_CHUNKS[2].1,
+                    start: 0,
+                    end: 179,
                     text: TEXT1.into(),
                 }],
-                token_count: TEXT1_TOKEN_COUNT,
+                token_count: 25,
             });
         });
         let whole_doc_chunker_server = MockServer::new("whole_doc_chunker")
@@ -639,10 +657,11 @@ mod test {
             when.post()
                 .path(TEXT_CONTENTS_DETECTOR_PATH)
                 .json(ContentAnalysisRequest {
-                    contents: TEXT1_CHUNKS
-                        .into_iter()
-                        .map(|(_, _, text)| text.into())
-                        .collect(),
+                    contents: vec![
+                        "Lorem ipsum dolor sit amet, consectetuer adipiscing elit.".into(),
+                        " Aenean commodo ligula eget dolor.".into(),
+                        " Cum sociis natoque penatibus et magnis dis parturient montes, nascetur ridiculus mus.".into(),
+                    ],
                     detector_params: Default::default(),
                 });
             then.json(vec![vec![ContentAnalysisResponse {
@@ -810,14 +829,75 @@ mod test {
         .await?;
         assert!(detections.1.is_empty(), "should have no detections");
 
+        // Detector does not exist
+        let detectors = HashMap::from([("does_not_exist".to_string(), DetectorParams::new())]);
+        let result = text_contents_detections(
+            ctx.clone(),
+            HeaderMap::default(),
+            detectors,
+            0,
+            vec![(0, TEXT1.to_string())],
+        )
+        .await;
+        assert!(
+            result.is_err_and(|e| matches!(e, Error::DetectorNotFound(_))),
+            "should return detector not found error"
+        );
+
         // TODO: add more cases
 
         Ok(())
     }
 
-    #[test_log::test(tokio::test)]
+    #[test_log::test(tokio::test(flavor = "multi_thread"))]
     async fn test_chunk_streams() -> Result<(), Error> {
+        let ctx = CONTEXT.get_or_init(init_context).await;
+
+        // Create input channel
+        let (input_tx, input_rx) = mpsc::channel(4);
+        // Create inputs
+        let inputs = vec![
+            (0, "Lorem ipsum".into()),
+            (1, " dolor sit amet, ".into()),
+            (2, "consectetuer adipiscing elit.".into()),
+        ];
+        // Spawn task to send inputs to input channel
+        tokio::spawn(async move {
+            for input in inputs {
+                let _ = input_tx.send(Ok(input)).await;
+            }
+        });
+
+        let chunk_stream_map =
+            chunk_streams(ctx.clone(), vec!["sentence_chunker".into()], input_rx).await?;
+
+        // let mut chunks = Vec::new();
+        // while let Ok(result) = chunk_broadcast_rx.recv().await {
+        //     let chunk = result.unwrap();
+        //     chunks.push(chunk);
+        // }
+
+        // Spawn task to consume chunks
+        let chunks = tokio::spawn(async move {
+            // Subscribe to sentence chunker broadcast channel
+            let mut chunk_broadcast_rx = chunk_stream_map
+                .get("sentence_chunker")
+                .unwrap()
+                .subscribe();
+            let mut chunks = Vec::new();
+            while let Ok(result) = chunk_broadcast_rx.recv().await {
+                let chunk = result.unwrap();
+                chunks.push(chunk);
+            }
+            chunks
+        })
+        .await?;
+
         // TODO
+        // This test is hanging, currently debugging
+
+        dbg!(chunks);
+
         Ok(())
     }
 
