@@ -23,14 +23,16 @@ pub enum Error {
     Client(#[from] clients::Error),
     #[error("detector `{0}` not found")]
     DetectorNotFound(String),
+    #[error("chunker `{0}` not found")]
+    ChunkerNotFound(String),
     #[error("detector request failed for `{id}`: {error}")]
     DetectorRequestFailed { id: String, error: clients::Error },
     #[error("chunker request failed for `{id}`: {error}")]
     ChunkerRequestFailed { id: String, error: clients::Error },
     #[error("generate request failed for `{id}`: {error}")]
     GenerateRequestFailed { id: String, error: clients::Error },
-    #[error("chat generation request failed for `{id}`: {error}")]
-    ChatGenerateRequestFailed { id: String, error: clients::Error },
+    #[error("chat completion request failed for `{id}`: {error}")]
+    ChatCompletionRequestFailed { id: String, error: clients::Error },
     #[error("tokenize request failed for `{id}`: {error}")]
     TokenizeRequestFailed { id: String, error: clients::Error },
     #[error("validation error: {0}")]

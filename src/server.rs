@@ -704,11 +704,11 @@ impl From<orchestrator::Error> for Error {
     fn from(value: orchestrator::Error) -> Self {
         use orchestrator::Error::*;
         match value {
-            DetectorNotFound(_) => Self::NotFound(value.to_string()),
+            DetectorNotFound(_) | ChunkerNotFound(_) => Self::NotFound(value.to_string()),
             DetectorRequestFailed { ref error, .. }
             | ChunkerRequestFailed { ref error, .. }
             | GenerateRequestFailed { ref error, .. }
-            | ChatGenerateRequestFailed { ref error, .. }
+            | ChatCompletionRequestFailed { ref error, .. }
             | TokenizeRequestFailed { ref error, .. } => match error.status_code() {
                 StatusCode::BAD_REQUEST | StatusCode::UNPROCESSABLE_ENTITY => {
                     Self::Validation(value.to_string())
