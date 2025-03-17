@@ -21,5 +21,7 @@ pub const CHUNKER_NAME_SENTENCE: &str = "sentence_chunker";
 // Chunker endpoints
 pub const CHUNKER_UNARY_ENDPOINT: &str =
     "/caikit.runtime.Chunkers.ChunkersService/ChunkerTokenizationTaskPredict";
+pub const CHUNKER_STREAMING_ENDPOINT: &str =
+    "/caikit.runtime.Chunkers.ChunkersService/BidiStreamingChunkerTokenizationTaskPredict";
 
 pub const CHUNKER_MODEL_ID_HEADER_NAME: &str = "mm-model-id";
