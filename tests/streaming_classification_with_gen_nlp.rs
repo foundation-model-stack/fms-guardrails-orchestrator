@@ -34,6 +34,7 @@ use common::{
         ORCHESTRATOR_UNSUITABLE_INPUT_MESSAGE,
     },
 };
+use eventsource_stream::Eventsource;
 use fms_guardrails_orchestr8::{
     clients::detector::{ContentAnalysisRequest, ContentAnalysisResponse},
     models::{
@@ -1044,6 +1045,292 @@ async fn output_detector_detections() -> Result<(), anyhow::Error> {
     );
     assert!(messages[1].start_index == Some(11));
     assert!(messages[1].processed_index == Some(29));
+
+    Ok(())
+}
+
+/// Asserts errors returned from clients
+#[test(tokio::test)]
+async fn output_detector_client_error() -> Result<(), anyhow::Error> {
+    let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE;
+
+    // Add generation mock
+    let model_id = "my-super-model-8B";
+    let mut generation_mocks = MockSet::new();
+    generation_mocks.mock(|when, then| {
+        when.path(GENERATION_NLP_STREAMING_ENDPOINT)
+            .header(GENERATION_NLP_MODEL_ID_HEADER_NAME, model_id)
+            .pb(ServerStreamingTextGenerationTaskRequest {
+                text: "Make chunker return an error".into(),
+                ..Default::default()
+            });
+        then.pb_stream(vec![
+            GeneratedTextStreamResult {
+                generated_text: "Chunker".into(),
+                ..Default::default()
+            },
+            GeneratedTextStreamResult {
+                generated_text: " should".into(),
+                ..Default::default()
+            },
+            GeneratedTextStreamResult {
+                generated_text: " return".into(),
+                ..Default::default()
+            },
+            GeneratedTextStreamResult {
+                generated_text: " error.".into(),
+                ..Default::default()
+            },
+        ]);
+    });
+    generation_mocks.mock(|when, then| {
+        when.path(GENERATION_NLP_STREAMING_ENDPOINT)
+            .header(GENERATION_NLP_MODEL_ID_HEADER_NAME, model_id)
+            .pb(ServerStreamingTextGenerationTaskRequest {
+                text: "Hi there! How are you?".into(),
+                ..Default::default()
+            });
+        then.pb_stream(vec![
+            GeneratedTextStreamResult {
+                generated_text: "I".into(),
+                ..Default::default()
+            },
+            GeneratedTextStreamResult {
+                generated_text: " am".into(),
+                ..Default::default()
+            },
+            GeneratedTextStreamResult {
+                generated_text: " great!".into(),
+                ..Default::default()
+            },
+            GeneratedTextStreamResult {
+                generated_text: " Detector,".into(),
+                ..Default::default()
+            },
+            GeneratedTextStreamResult {
+                generated_text: " return".into(),
+                ..Default::default()
+            },
+            GeneratedTextStreamResult {
+                generated_text: " a".into(),
+                ..Default::default()
+            },
+            GeneratedTextStreamResult {
+                generated_text: " 500!".into(),
+                ..Default::default()
+            },
+        ]);
+    });
+
+    // Add output chunker mock
+    let chunker_id = CHUNKER_NAME_SENTENCE;
+    let mut chunker_mocks = MockSet::new();
+    chunker_mocks.mock(|when, then| {
+        when.path(CHUNKER_STREAMING_ENDPOINT)
+            .header(CHUNKER_MODEL_ID_HEADER_NAME, chunker_id)
+            .pb_stream(vec![
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: "Chunker".into(),
+                    input_index_stream: 0,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: " should".into(),
+                    input_index_stream: 1,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: " return".into(),
+                    input_index_stream: 2,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: " error.".into(),
+                    input_index_stream: 3,
+                },
+            ]);
+
+        then.internal_server_error();
+    });
+    chunker_mocks.mock(|when, then| {
+        when.path(CHUNKER_STREAMING_ENDPOINT)
+            .header(CHUNKER_MODEL_ID_HEADER_NAME, chunker_id)
+            .pb_stream(vec![
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: "I".into(),
+                    input_index_stream: 0,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: " am".into(),
+                    input_index_stream: 1,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: " great!".into(),
+                    input_index_stream: 2,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: " Detector,".into(),
+                    input_index_stream: 3,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: " return".into(),
+                    input_index_stream: 4,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: " a".into(),
+                    input_index_stream: 5,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: " 500!".into(),
+                    input_index_stream: 6,
+                },
+            ]);
+
+        then.pb_stream(vec![
+            ChunkerTokenizationStreamResult {
+                results: vec![Token {
+                    start: 0,
+                    end: 11,
+                    text: "I am great!".into(),
+                }],
+                token_count: 0,
+                processed_index: 11,
+                start_index: 0,
+                input_start_index: 0,
+                input_end_index: 0,
+            },
+            ChunkerTokenizationStreamResult {
+                results: vec![Token {
+                    start: 11,
+                    end: 35,
+                    text: " Detector, return a 500!".into(),
+                }],
+                token_count: 0,
+                processed_index: 35,
+                start_index: 11,
+                input_start_index: 0,
+                input_end_index: 0,
+            },
+        ]);
+    });
+
+    // Add output detection mock
+    let expected_detector_error = DetectorError {
+        code: 500,
+        message: "The detector service is overloaded.".into(),
+    };
+    let mut detection_mocks = MockSet::new();
+    detection_mocks.mock(|when, then| {
+        when.post()
+            .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
+            .json(ContentAnalysisRequest {
+                contents: vec!["I am great!".into()],
+                detector_params: DetectorParams::new(),
+            });
+
+        then.json([Vec::<ContentAnalysisResponse>::new()]);
+    });
+    detection_mocks.mock(|when, then| {
+        when.post()
+            .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
+            .json(ContentAnalysisRequest {
+                contents: vec![" Detector, return a 500!".into()],
+                detector_params: DetectorParams::new(),
+            });
+
+        then.json(&expected_detector_error).internal_server_error();
+    });
+
+    // Start orchestrator server and its dependencies
+    let mock_chunker_server = MockServer::new(chunker_id).grpc().with_mocks(chunker_mocks);
+    let mock_detector_server = MockServer::new(detector_name).with_mocks(detection_mocks);
+    let generation_server = MockServer::new("nlp").grpc().with_mocks(generation_mocks);
+    let orchestrator_server = TestOrchestratorServer::builder()
+        .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
+        .generation_server(&generation_server)
+        .chunker_servers([&mock_chunker_server])
+        .detector_servers([&mock_detector_server])
+        .build()
+        .await?;
+
+    // assert chunker error
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_STREAMING_ENDPOINT)
+        .json(&GuardrailsHttpRequest {
+            model_id: model_id.into(),
+            inputs: "Make chunker return an error".into(),
+            guardrail_config: Some(GuardrailsConfig {
+                input: None,
+                output: Some(GuardrailsConfigOutput {
+                    models: HashMap::from([(detector_name.into(), DetectorParams::new())]),
+                }),
+            }),
+            text_gen_parameters: None,
+        })
+        .send()
+        .await?;
+    debug!("{response:#?}");
+
+    let sse_stream: SseStream<OrchestratorError> = SseStream::new(response.bytes_stream());
+    let messages = sse_stream.try_collect::<Vec<_>>().await?;
+    debug!("{messages:#?}");
+
+    assert_eq!(messages.len(), 1);
+    assert_eq!(
+        messages[0],
+        OrchestratorError {
+            code: 500,
+            details: ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE.into()
+        }
+    );
+
+    // assert detector error
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_STREAMING_ENDPOINT)
+        .json(&GuardrailsHttpRequest {
+            model_id: model_id.into(),
+            inputs: "Hi there! How are you?".into(),
+            guardrail_config: Some(GuardrailsConfig {
+                input: None,
+                output: Some(GuardrailsConfigOutput {
+                    models: HashMap::from([(detector_name.into(), DetectorParams::new())]),
+                }),
+            }),
+            text_gen_parameters: None,
+        })
+        .send()
+        .await?;
+
+    debug!("{response:#?}");
+
+    let mut events = Vec::new();
+    let mut event_stream = response.bytes_stream().eventsource();
+    while let Some(event) = event_stream.next().await {
+        match event {
+            Ok(event) => {
+                if event.data == "[DONE]" {
+                    break;
+                }
+                debug!("recv: {event:?}");
+                events.push(event.data);
+            }
+            Err(_) => {
+                panic!("received error from event stream");
+            }
+        }
+    }
+    debug!("{events:?}");
+
+    let first_response =
+        serde_json::from_str::<ClassifiedGeneratedTextStreamResult>(events[0].as_str())?;
+    let second_response = serde_json::from_str::<OrchestratorError>(events[1].as_str())?;
+
+    assert!(events.len() == 2);
+
+    assert!(first_response.generated_text == Some("I am great!".into()));
+    assert!(first_response.token_classification_results.output == Some(vec![]));
+    assert!(first_response.start_index == Some(0));
+    assert!(first_response.processed_index == Some(11));
+
+    assert!(second_response.code == 500);
+    assert!(second_response.details == ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE);
 
     Ok(())
 }
