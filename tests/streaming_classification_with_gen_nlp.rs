@@ -828,17 +828,23 @@ async fn output_detector_no_detections() -> Result<(), anyhow::Error> {
         .collect::<Result<Vec<_>, anyhow::Error>>()?;
     debug!("{messages:#?}");
 
-    assert!(messages.len() == 2);
+    assert_eq!(messages.len(), 2);
 
-    assert!(messages[0].generated_text == Some("I am great!".into()));
-    assert!(messages[0].token_classification_results.output == Some(vec![]));
-    assert!(messages[0].start_index == Some(0));
-    assert!(messages[0].processed_index == Some(11));
+    assert_eq!(messages[0].generated_text, Some("I am great!".into()));
+    assert_eq!(
+        messages[0].token_classification_results.output,
+        Some(vec![])
+    );
+    assert_eq!(messages[0].start_index, Some(0));
+    assert_eq!(messages[0].processed_index, Some(11));
 
-    assert!(messages[1].generated_text == Some(" What about you?".into()));
-    assert!(messages[1].token_classification_results.output == Some(vec![]));
-    assert!(messages[1].start_index == Some(11));
-    assert!(messages[1].processed_index == Some(27));
+    assert_eq!(messages[1].generated_text, Some(" What about you?".into()));
+    assert_eq!(
+        messages[1].token_classification_results.output,
+        Some(vec![])
+    );
+    assert_eq!(messages[1].start_index, Some(11));
+    assert_eq!(messages[1].processed_index, Some(27));
 
     Ok(())
 }
@@ -1022,34 +1028,40 @@ async fn output_detector_detections() -> Result<(), anyhow::Error> {
         .collect::<Result<Vec<_>, anyhow::Error>>()?;
     debug!("{messages:#?}");
 
-    assert!(messages.len() == 2);
+    assert_eq!(messages.len(), 2);
 
-    assert!(messages[0].generated_text == Some("I am great!".into()));
-    assert!(messages[0].token_classification_results.output == Some(vec![]));
-    assert!(messages[0].start_index == Some(0));
-    assert!(messages[0].processed_index == Some(11));
-
-    assert!(messages[1].generated_text == Some(" What about <you>?".into()));
-    assert!(
-        messages[1].token_classification_results.output
-            == Some(vec![TokenClassificationResult {
-                start: 12,
-                end: 15,
-                word: "you".into(),
-                entity: "has_angle_brackets".into(),
-                entity_group: "angle_brackets".into(),
-                detector_id: Some(detector_name.into()),
-                score: 1.0,
-                token_count: None
-            }])
+    assert_eq!(messages[0].generated_text, Some("I am great!".into()));
+    assert_eq!(
+        messages[0].token_classification_results.output,
+        Some(vec![])
     );
-    assert!(messages[1].start_index == Some(11));
-    assert!(messages[1].processed_index == Some(29));
+    assert_eq!(messages[0].start_index, Some(0));
+    assert_eq!(messages[0].processed_index, Some(11));
+
+    assert_eq!(
+        messages[1].generated_text,
+        Some(" What about <you>?".into())
+    );
+    assert_eq!(
+        messages[1].token_classification_results.output,
+        Some(vec![TokenClassificationResult {
+            start: 12,
+            end: 15,
+            word: "you".into(),
+            entity: "has_angle_brackets".into(),
+            entity_group: "angle_brackets".into(),
+            detector_id: Some(detector_name.into()),
+            score: 1.0,
+            token_count: None
+        }])
+    );
+    assert_eq!(messages[1].start_index, Some(11));
+    assert_eq!(messages[1].processed_index, Some(29));
 
     Ok(())
 }
 
-/// Asserts errors returned from clients
+/// Asserts errors returned from output clients
 #[test(tokio::test)]
 async fn output_detector_client_error() -> Result<(), anyhow::Error> {
     let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE;
@@ -1322,15 +1334,22 @@ async fn output_detector_client_error() -> Result<(), anyhow::Error> {
         serde_json::from_str::<ClassifiedGeneratedTextStreamResult>(events[0].as_str())?;
     let second_response = serde_json::from_str::<OrchestratorError>(events[1].as_str())?;
 
-    assert!(events.len() == 2);
+    assert_eq!(events.len(), 2);
+    assert_eq!(first_response.generated_text, Some("I am great!".into()));
+    assert_eq!(
+        first_response.token_classification_results.output,
+        Some(vec![])
+    );
+    assert_eq!(first_response.start_index, Some(0));
+    assert_eq!(first_response.processed_index, Some(11));
 
-    assert!(first_response.generated_text == Some("I am great!".into()));
-    assert!(first_response.token_classification_results.output == Some(vec![]));
-    assert!(first_response.start_index == Some(0));
-    assert!(first_response.processed_index == Some(11));
-
-    assert!(second_response.code == 500);
-    assert!(second_response.details == ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE);
+    assert_eq!(
+        second_response,
+        OrchestratorError {
+            code: 500,
+            details: ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE.into()
+        }
+    );
 
     Ok(())
 }
