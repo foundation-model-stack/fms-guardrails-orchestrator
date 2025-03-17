@@ -849,7 +849,32 @@ mod test {
         Ok(())
     }
 
-    #[test_log::test(tokio::test(flavor = "multi_thread"))]
+    #[test_log::test(tokio::test)]
+    async fn test_broadcast_stream() -> Result<(), Error> {
+        let (tx, rx) = mpsc::channel(32);
+        let stream = ReceiverStream::new(rx).boxed();
+        let broadcast_tx = broadcast_stream(stream);
+        let mut broadcast_rx = broadcast_tx.subscribe();
+        drop(broadcast_tx);
+
+        // Spawn task to send values
+        tokio::spawn(async move {
+            for value in 0..10 {
+                let _ = tx.send(value).await;
+            }
+        });
+
+        // Consume values from broadcast receiver
+        let mut values = Vec::with_capacity(10);
+        while let Ok(value) = broadcast_rx.recv().await {
+            values.push(value);
+        }
+        assert_eq!(values, (0..10).collect::<Vec<_>>());
+
+        Ok(())
+    }
+
+    #[test_log::test(tokio::test)]
     async fn test_chunk_streams() -> Result<(), Error> {
         let ctx = CONTEXT.get_or_init(init_context).await;
 
@@ -861,6 +886,16 @@ mod test {
             (1, " dolor sit amet, ".into()),
             (2, "consectetuer adipiscing elit.".into()),
         ];
+
+        let chunk_stream_map =
+            chunk_streams(ctx.clone(), vec!["sentence_chunker".into()], input_rx).await?;
+
+        let mut chunk_broadcast_rx = chunk_stream_map
+            .get("sentence_chunker")
+            .unwrap()
+            .subscribe();
+        drop(chunk_stream_map);
+
         // Spawn task to send inputs to input channel
         tokio::spawn(async move {
             for input in inputs {
@@ -868,35 +903,22 @@ mod test {
             }
         });
 
-        let chunk_stream_map =
-            chunk_streams(ctx.clone(), vec!["sentence_chunker".into()], input_rx).await?;
+        let mut chunks = Vec::new();
+        while let Ok(Ok(chunk)) = chunk_broadcast_rx.recv().await {
+            chunks.push(chunk);
+        }
 
-        // let mut chunks = Vec::new();
-        // while let Ok(result) = chunk_broadcast_rx.recv().await {
-        //     let chunk = result.unwrap();
-        //     chunks.push(chunk);
-        // }
-
-        // Spawn task to consume chunks
-        let chunks = tokio::spawn(async move {
-            // Subscribe to sentence chunker broadcast channel
-            let mut chunk_broadcast_rx = chunk_stream_map
-                .get("sentence_chunker")
-                .unwrap()
-                .subscribe();
-            let mut chunks = Vec::new();
-            while let Ok(result) = chunk_broadcast_rx.recv().await {
-                let chunk = result.unwrap();
-                chunks.push(chunk);
+        assert_eq!(chunks.len(), 1);
+        assert_eq!(
+            chunks[0],
+            Chunk {
+                input_start_index: 0,
+                input_end_index: 2,
+                start: 0,
+                end: 57,
+                text: "Lorem ipsum dolor sit amet, consectetuer adipiscing elit.".into(),
             }
-            chunks
-        })
-        .await?;
-
-        // TODO
-        // This test is hanging, currently debugging
-
-        dbg!(chunks);
+        );
 
         Ok(())
     }
