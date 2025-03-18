@@ -1308,7 +1308,7 @@ async fn output_detector_client_error() -> Result<(), anyhow::Error> {
     // Add output detection mock
     let expected_detector_error = DetectorError {
         code: 500,
-        message: "The detector service is overloaded.".into(),
+        message: "The detector service had an unexpected error.".into(),
     };
     let mut detection_mocks = MockSet::new();
     detection_mocks.mock(|when, then| {
