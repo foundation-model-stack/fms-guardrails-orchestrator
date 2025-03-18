@@ -39,6 +39,7 @@ use fms_guardrails_orchestr8::{
 };
 use http::StatusCode;
 use mocktail::{server::MockServer, MockSet};
+use serde_json::json;
 use test_log::test;
 use tracing::debug;
 
@@ -309,6 +310,116 @@ async fn client_error() -> Result<(), anyhow::Error> {
             details: ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE.into()
         }
     );
+
+    Ok(())
+}
+
+/// Asserts detections below default threshold are not returned.
+#[test(tokio::test)]
+async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
+    let model_id = "my-super-model-8B";
+    let detector_name = ANSWER_RELEVANCE_DETECTOR;
+    let prompt = "In 2014, what was the average height of men who were born in 1996?";
+
+    // Start orchestrator server and its dependencies
+    let orchestrator_server = TestOrchestratorServer::builder()
+        .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
+        .build()
+        .await?;
+
+    // assert request extra args
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_GENERATION_WITH_DETECTION_ENDPOINT)
+        .json(&json!({
+            "model_id": model_id,
+            "prompt": prompt,
+            "detectors": {detector_name: {}},
+            "extra_args": true
+        }))
+        .send()
+        .await?;
+    debug!("{response:#?}");
+
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    let response = response.json::<OrchestratorError>().await?;
+    debug!("{response:#?}");
+    assert_eq!(response.code, 422);
+    assert!(response.details.contains("unknown field `extra_args`"));
+
+    // Start orchestrator server and its dependencies
+    let orchestrator_server = TestOrchestratorServer::builder()
+        .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
+        .build()
+        .await?;
+
+    // assert request missing `model_id`
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_GENERATION_WITH_DETECTION_ENDPOINT)
+        .json(&json!({
+            "prompt": prompt,
+            "detectors": {detector_name: {}},
+        }))
+        .send()
+        .await?;
+    debug!("{response:#?}");
+
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    let response = response.json::<OrchestratorError>().await?;
+    debug!("{response:#?}");
+    assert_eq!(response.code, 422);
+    assert!(response.details.contains("missing field `model_id`"));
+
+    // assert request missing `prompt`
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_GENERATION_WITH_DETECTION_ENDPOINT)
+        .json(&json!({
+            "model_id": model_id,
+            "detectors": {detector_name: {}},
+        }))
+        .send()
+        .await?;
+    debug!("{response:#?}");
+
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    let response = response.json::<OrchestratorError>().await?;
+    debug!("{response:#?}");
+    assert_eq!(response.code, 422);
+    assert!(response.details.contains("missing field `prompt`"));
+
+    // assert request missing `detectors`
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_GENERATION_WITH_DETECTION_ENDPOINT)
+        .json(&json!({
+            "model_id": model_id,
+            "prompt": prompt,
+        }))
+        .send()
+        .await?;
+    debug!("{response:#?}");
+
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    let response = response.json::<OrchestratorError>().await?;
+    debug!("{response:#?}");
+    assert_eq!(response.code, 422);
+    assert!(response.details.contains("missing field `detectors`"));
+
+    // assert request with invalid `detectors`
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_GENERATION_WITH_DETECTION_ENDPOINT)
+        .json(&json!({
+            "model_id": model_id,
+            "prompt": prompt,
+            "detectors": {}
+        }))
+        .send()
+        .await?;
+    debug!("{response:#?}");
+
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    let response = response.json::<OrchestratorError>().await?;
+    debug!("{response:#?}");
+    assert_eq!(response.code, 422);
+    assert_eq!(response.details, "`detectors` is required");
 
     Ok(())
 }
