@@ -22,7 +22,10 @@ use common::{
         CHUNKER_MODEL_ID_HEADER_NAME, CHUNKER_NAME_SENTENCE, CHUNKER_STREAMING_ENDPOINT,
         CHUNKER_UNARY_ENDPOINT,
     },
-    detectors::{DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE, TEXT_CONTENTS_DETECTOR_ENDPOINT},
+    detectors::{
+        DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE, DETECTOR_NAME_PARENTHESIS_SENTENCE,
+        TEXT_CONTENTS_DETECTOR_ENDPOINT,
+    },
     errors::{DetectorError, OrchestratorError},
     generation::{
         GENERATION_NLP_MODEL_ID_HEADER_NAME, GENERATION_NLP_STREAMING_ENDPOINT,
@@ -660,8 +663,9 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
 /// Asserts that the generated text is returned when an output detector configured
 /// with a sentence chunker finds no detections.
 #[test(tokio::test)]
-async fn output_detector_no_detections() -> Result<(), anyhow::Error> {
-    let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE;
+async fn output_detectors_no_detections() -> Result<(), anyhow::Error> {
+    let angle_brackets_detector = DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE;
+    let parenthesis_detector = DETECTOR_NAME_PARENTHESIS_SENTENCE;
 
     // Add generation mock
     let model_id = "my-super-model-8B";
@@ -765,8 +769,8 @@ async fn output_detector_no_detections() -> Result<(), anyhow::Error> {
     });
 
     // Add output detection mock
-    let mut detection_mocks = MockSet::new();
-    detection_mocks.mock(|when, then| {
+    let mut angle_brackets_mocks = MockSet::new();
+    angle_brackets_mocks.mock(|when, then| {
         when.post()
             .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
             .json(ContentAnalysisRequest {
@@ -775,7 +779,7 @@ async fn output_detector_no_detections() -> Result<(), anyhow::Error> {
             });
         then.json([Vec::<ContentAnalysisResponse>::new()]);
     });
-    detection_mocks.mock(|when, then| {
+    angle_brackets_mocks.mock(|when, then| {
         when.post()
             .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
             .json(ContentAnalysisRequest {
@@ -784,18 +788,43 @@ async fn output_detector_no_detections() -> Result<(), anyhow::Error> {
             });
         then.json([Vec::<ContentAnalysisResponse>::new()]);
     });
-    dbg!(&detection_mocks);
+
+    let mut parenthesis_mocks = MockSet::new();
+    parenthesis_mocks.mock(|when, then| {
+        when.post()
+            .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
+            .json(ContentAnalysisRequest {
+                contents: vec!["I am great!".into()],
+                detector_params: DetectorParams::new(),
+            });
+        then.json([Vec::<ContentAnalysisResponse>::new()]);
+    });
+    parenthesis_mocks.mock(|when, then| {
+        when.post()
+            .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
+            .json(ContentAnalysisRequest {
+                contents: vec![" What about you?".into()],
+                detector_params: DetectorParams::new(),
+            });
+        then.json([Vec::<ContentAnalysisResponse>::new()]);
+    });
 
     // Start orchestrator server and its dependencies
     let mock_chunker_server = MockServer::new(chunker_id).grpc().with_mocks(chunker_mocks);
-    let mock_detector_server = MockServer::new(detector_name).with_mocks(detection_mocks);
+    let mock_angle_brackets_detector_server =
+        MockServer::new(angle_brackets_detector).with_mocks(angle_brackets_mocks);
+    let mock_parenthesis_detector_server =
+        MockServer::new(parenthesis_detector).with_mocks(parenthesis_mocks);
     let generation_server = MockServer::new("nlp").grpc().with_mocks(generation_mocks);
 
     let orchestrator_server = TestOrchestratorServer::builder()
         .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
         .generation_server(&generation_server)
         .chunker_servers([&mock_chunker_server])
-        .detector_servers([&mock_detector_server])
+        .detector_servers([
+            &mock_angle_brackets_detector_server,
+            &mock_parenthesis_detector_server,
+        ])
         .build()
         .await?;
 
@@ -808,7 +837,10 @@ async fn output_detector_no_detections() -> Result<(), anyhow::Error> {
             guardrail_config: Some(GuardrailsConfig {
                 input: None,
                 output: Some(GuardrailsConfigOutput {
-                    models: HashMap::from([(detector_name.into(), DetectorParams::new())]),
+                    models: HashMap::from([(
+                        angle_brackets_detector.into(),
+                        DetectorParams::new(),
+                    )]),
                 }),
             }),
             text_gen_parameters: None,
@@ -852,8 +884,9 @@ async fn output_detector_no_detections() -> Result<(), anyhow::Error> {
 /// Asserts that the generated text is returned alongside detections when an output detector
 /// configured with a sentence chunker finds detections.
 #[test(tokio::test)]
-async fn output_detector_detections() -> Result<(), anyhow::Error> {
-    let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE;
+async fn output_detectors_detections() -> Result<(), anyhow::Error> {
+    let angle_brackets_detector = DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE;
+    let parenthesis_detector = DETECTOR_NAME_PARENTHESIS_SENTENCE;
 
     // Add generation mock
     let model_id = "my-super-model-8B";
@@ -872,7 +905,7 @@ async fn output_detector_detections() -> Result<(), anyhow::Error> {
                 ..Default::default()
             },
             GeneratedTextStreamResult {
-                generated_text: " am".into(),
+                generated_text: " (am)".into(),
                 ..Default::default()
             },
             GeneratedTextStreamResult {
@@ -906,7 +939,7 @@ async fn output_detector_detections() -> Result<(), anyhow::Error> {
                     input_index_stream: 0,
                 },
                 BidiStreamingChunkerTokenizationTaskRequest {
-                    text_stream: " am".into(),
+                    text_stream: " (am)".into(),
                     input_index_stream: 1,
                 },
                 BidiStreamingChunkerTokenizationTaskRequest {
@@ -931,24 +964,24 @@ async fn output_detector_detections() -> Result<(), anyhow::Error> {
             ChunkerTokenizationStreamResult {
                 results: vec![Token {
                     start: 0,
-                    end: 11,
-                    text: "I am great!".into(),
+                    end: 13,
+                    text: "I (am) great!".into(),
                 }],
                 token_count: 0,
-                processed_index: 11,
+                processed_index: 13,
                 start_index: 0,
                 input_start_index: 0,
                 input_end_index: 0,
             },
             ChunkerTokenizationStreamResult {
                 results: vec![Token {
-                    start: 11,
-                    end: 29,
+                    start: 13,
+                    end: 31,
                     text: " What about <you>?".into(),
                 }],
                 token_count: 0,
-                processed_index: 29,
-                start_index: 11,
+                processed_index: 31,
+                start_index: 13,
                 input_start_index: 0,
                 input_end_index: 0,
             },
@@ -956,18 +989,18 @@ async fn output_detector_detections() -> Result<(), anyhow::Error> {
     });
 
     // Add output detection mock
-    let mut detection_mocks = MockSet::new();
-    detection_mocks.mock(|when, then| {
+    let mut angle_brackets_mocks = MockSet::new();
+    angle_brackets_mocks.mock(|when, then| {
         when.post()
             .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
             .json(ContentAnalysisRequest {
-                contents: vec!["I am great!".into()],
+                contents: vec!["I (am) great!".into()],
                 detector_params: DetectorParams::new(),
             });
 
         then.json([Vec::<ContentAnalysisResponse>::new()]);
     });
-    detection_mocks.mock(|when, then| {
+    angle_brackets_mocks.mock(|when, then| {
         when.post()
             .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
             .json(ContentAnalysisRequest {
@@ -976,26 +1009,63 @@ async fn output_detector_detections() -> Result<(), anyhow::Error> {
             });
 
         then.json([vec![ContentAnalysisResponse {
-            start: 12,
-            end: 15,
+            start: 13,
+            end: 16,
             text: "you".into(),
             detection: "has_angle_brackets".into(),
             detection_type: "angle_brackets".into(),
-            detector_id: Some(detector_name.into()),
+            detector_id: Some(angle_brackets_detector.into()),
             score: 1.0,
             evidence: None,
         }]]);
     });
 
+    let mut parenthesis_mocks = MockSet::new();
+    parenthesis_mocks.mock(|when, then| {
+        when.post()
+            .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
+            .json(ContentAnalysisRequest {
+                contents: vec!["I (am) great!".into()],
+                detector_params: DetectorParams::new(),
+            });
+
+        then.json([vec![ContentAnalysisResponse {
+            start: 3,
+            end: 5,
+            text: "am".into(),
+            detection: "has_parenthesis".into(),
+            detection_type: "parenthesis".into(),
+            detector_id: Some(parenthesis_detector.into()),
+            score: 1.0,
+            evidence: None,
+        }]]);
+    });
+    parenthesis_mocks.mock(|when, then| {
+        when.post()
+            .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
+            .json(ContentAnalysisRequest {
+                contents: vec![" What about <you>?".into()],
+                detector_params: DetectorParams::new(),
+            });
+
+        then.json([Vec::<ContentAnalysisResponse>::new()]);
+    });
+
     // Start orchestrator server and its dependencies
     let mock_chunker_server = MockServer::new(chunker_id).grpc().with_mocks(chunker_mocks);
-    let mock_detector_server = MockServer::new(detector_name).with_mocks(detection_mocks);
+    let mock_angle_brackets_detector_server =
+        MockServer::new(angle_brackets_detector).with_mocks(angle_brackets_mocks);
+    let mock_parenthesis_detector_server =
+        MockServer::new(parenthesis_detector).with_mocks(parenthesis_mocks);
     let generation_server = MockServer::new("nlp").grpc().with_mocks(generation_mocks);
     let orchestrator_server = TestOrchestratorServer::builder()
         .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
         .generation_server(&generation_server)
         .chunker_servers([&mock_chunker_server])
-        .detector_servers([&mock_detector_server])
+        .detector_servers([
+            &mock_angle_brackets_detector_server,
+            &mock_parenthesis_detector_server,
+        ])
         .build()
         .await?;
 
@@ -1008,7 +1078,10 @@ async fn output_detector_detections() -> Result<(), anyhow::Error> {
             guardrail_config: Some(GuardrailsConfig {
                 input: None,
                 output: Some(GuardrailsConfigOutput {
-                    models: HashMap::from([(detector_name.into(), DetectorParams::new())]),
+                    models: HashMap::from([
+                        (angle_brackets_detector.into(), DetectorParams::new()),
+                        (parenthesis_detector.into(), DetectorParams::new()),
+                    ]),
                 }),
             }),
             text_gen_parameters: None,
@@ -1030,13 +1103,22 @@ async fn output_detector_detections() -> Result<(), anyhow::Error> {
 
     assert_eq!(messages.len(), 2);
 
-    assert_eq!(messages[0].generated_text, Some("I am great!".into()));
+    assert_eq!(messages[0].generated_text, Some("I (am) great!".into()));
     assert_eq!(
         messages[0].token_classification_results.output,
-        Some(vec![])
+        Some(vec![TokenClassificationResult {
+            start: 3,
+            end: 5,
+            word: "am".into(),
+            entity: "has_parenthesis".into(),
+            entity_group: "parenthesis".into(),
+            detector_id: Some(parenthesis_detector.into()),
+            score: 1.0,
+            token_count: None
+        }])
     );
     assert_eq!(messages[0].start_index, Some(0));
-    assert_eq!(messages[0].processed_index, Some(11));
+    assert_eq!(messages[0].processed_index, Some(13));
 
     assert_eq!(
         messages[1].generated_text,
@@ -1045,18 +1127,18 @@ async fn output_detector_detections() -> Result<(), anyhow::Error> {
     assert_eq!(
         messages[1].token_classification_results.output,
         Some(vec![TokenClassificationResult {
-            start: 12,
-            end: 15,
+            start: 13,
+            end: 16,
             word: "you".into(),
             entity: "has_angle_brackets".into(),
             entity_group: "angle_brackets".into(),
-            detector_id: Some(detector_name.into()),
+            detector_id: Some(angle_brackets_detector.into()),
             score: 1.0,
             token_count: None
         }])
     );
-    assert_eq!(messages[1].start_index, Some(11));
-    assert_eq!(messages[1].processed_index, Some(29));
+    assert_eq!(messages[1].start_index, Some(13));
+    assert_eq!(messages[1].processed_index, Some(31));
 
     Ok(())
 }
