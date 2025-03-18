@@ -185,7 +185,7 @@ pub async fn text_contents_detections(
     inputs: Vec<(usize, String)>,
 ) -> Result<(InputId, Detections), Error> {
     let chunkers = get_chunker_ids(&ctx, &detectors)?;
-    let chunks = chunks(ctx.clone(), chunkers, inputs).await?;
+    let chunk_map = chunks(ctx.clone(), chunkers, inputs).await?;
     let inputs = detectors
         .iter()
         .map(|(detector_id, params)| {
@@ -193,7 +193,7 @@ pub async fn text_contents_detections(
                 .config
                 .detector(detector_id)
                 .ok_or_else(|| Error::DetectorNotFound(detector_id.clone()))?;
-            let chunks = chunks.get(&config.chunker_id).unwrap().clone();
+            let chunks = chunk_map.get(&config.chunker_id).unwrap().clone();
             Ok::<_, Error>((detector_id.clone(), params.clone(), chunks))
         })
         .collect::<Result<Vec<_>, Error>>()?;
@@ -234,23 +234,22 @@ pub async fn text_contents_detections(
 pub async fn text_contents_detection_streams(
     ctx: Arc<Context>,
     headers: HeaderMap,
-    detectors: &HashMap<String, DetectorParams>,
+    detectors: HashMap<String, DetectorParams>,
     input_id: InputId,
     input_rx: mpsc::Receiver<Result<(usize, String), Error>>, // (message_index, text)
 ) -> Result<Vec<DetectionStream>, Error> {
     // Create chunk streams
-    let chunkers = get_chunker_ids(&ctx, detectors)?;
-    let chunk_streams = chunk_streams(ctx.clone(), chunkers, input_rx).await?;
+    let chunkers = get_chunker_ids(&ctx, &detectors)?;
+    let chunk_stream_map = chunk_streams(ctx.clone(), chunkers, input_rx).await?;
     // Create detection streams
     let mut streams = Vec::with_capacity(detectors.len());
-    for (detector_id, params) in detectors {
+    for (detector_id, mut params) in detectors {
         let ctx = ctx.clone();
         let headers = headers.clone();
-        let detector_id = detector_id.clone();
-        let params = params.clone();
+        let threshold = params.pop_threshold().unwrap_or_default();
         let chunker_id = ctx.config.get_chunker_id(&detector_id).unwrap();
         // Subscribe to chunk broadcast channel
-        let mut chunk_rx = chunk_streams.get(&chunker_id).unwrap().subscribe();
+        let mut chunk_rx = chunk_stream_map.get(&chunker_id).unwrap().subscribe();
         // Create detection channel
         let (detection_tx, detection_rx) = mpsc::channel(32);
         // Spawn detection task
@@ -272,6 +271,15 @@ pub async fn text_contents_detection_streams(
                         .await
                         {
                             Ok(detections) => {
+                                // Apply threshold and set detector_id
+                                let detections = detections
+                                    .into_iter()
+                                    .filter(|detection| detection.score >= threshold)
+                                    .map(|mut detection| {
+                                        detection.detector_id = Some(detector_id.clone());
+                                        detection
+                                    })
+                                    .collect::<Detections>();
                                 // Send to detection channel
                                 let _ = detection_tx
                                     .send(Ok((input_id, detector_id.clone(), chunk, detections)))
@@ -675,6 +683,27 @@ mod test {
                 evidence: None,
             }]]);
         });
+        mocks.mock(|when, then| {
+            when.post()
+                .path(TEXT_CONTENTS_DETECTOR_PATH)
+                .json(ContentAnalysisRequest {
+                    contents: vec![
+                        "Lorem ipsum dolor sit amet, consectetuer adipiscing elit.".into()
+                    ],
+                    detector_params: Default::default(),
+                });
+            then.json(vec![vec![ContentAnalysisResponse {
+                start: 5,
+                end: 9,
+                text: "amet".into(),
+                detection: "nothing".into(),
+                detection_type: "fake".into(),
+                detector_id: None,
+                score: 0.2,
+                evidence: None,
+            }]]);
+        });
+
         let fake_detector_server = MockServer::new("fake_detector").with_mocks(mocks);
         fake_detector_server.start().await.unwrap();
         config.detectors.insert(
@@ -930,7 +959,46 @@ mod test {
     }
 
     async fn test_text_contents_detection_streams() -> Result<(), Error> {
-        // TODO
+        let ctx = CONTEXT.get_or_init(init_context).await;
+
+        // Create input channel
+        let (input_tx, input_rx) = mpsc::channel(4);
+        // Create inputs
+        let inputs = vec![
+            (0, "Lorem ipsum".into()),
+            (1, " dolor sit amet, ".into()),
+            (2, "consectetuer adipiscing elit.".into()),
+        ];
+
+        let mut detector_params = DetectorParams::new();
+        detector_params.insert("threshold".to_string(), 0.2.into());
+        let detectors = HashMap::from([("fake_detector".to_string(), detector_params)]);
+        let mut detection_streams = text_contents_detection_streams(
+            ctx.clone(),
+            HeaderMap::default(),
+            detectors,
+            0,
+            input_rx,
+        )
+        .await?;
+
+        // Spawn task to send inputs to input channel
+        tokio::spawn(async move {
+            for input in inputs {
+                let _ = input_tx.send(Ok(input)).await;
+            }
+        });
+
+        let mut fake_detector_stream = detection_streams.swap_remove(0);
+        let mut results = Vec::with_capacity(1);
+        while let Some(Ok((_input_id, _detector_id, _chunk, detections))) =
+            fake_detector_stream.next().await
+        {
+            results.push(detections);
+        }
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].len(), 1);
+
         Ok(())
     }
 }
