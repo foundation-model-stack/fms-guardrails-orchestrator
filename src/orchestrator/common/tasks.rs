@@ -698,7 +698,16 @@ mod test {
         Arc::new(Context::new(config, clients))
     }
 
-    #[test_log::test(tokio::test(flavor = "multi_thread"))]
+    #[test_log::test(tokio::test)]
+    async fn tests() -> Result<(), Error> {
+        test_chunks().await?;
+        test_text_contents_detections().await?;
+        test_broadcast_stream().await?;
+        test_chunk_streams().await?;
+        test_text_contents_detection_streams().await?;
+        Ok(())
+    }
+
     async fn test_chunks() -> Result<(), Error> {
         let ctx = CONTEXT.get_or_init(init_context).await;
 
@@ -797,7 +806,6 @@ mod test {
         Ok(())
     }
 
-    #[test_log::test(tokio::test(flavor = "multi_thread"))]
     async fn test_text_contents_detections() -> Result<(), Error> {
         let ctx = CONTEXT.get_or_init(init_context).await;
 
@@ -849,7 +857,6 @@ mod test {
         Ok(())
     }
 
-    #[test_log::test(tokio::test)]
     async fn test_broadcast_stream() -> Result<(), Error> {
         let (tx, rx) = mpsc::channel(32);
         let stream = ReceiverStream::new(rx).boxed();
@@ -874,7 +881,6 @@ mod test {
         Ok(())
     }
 
-    #[test_log::test(tokio::test)]
     async fn test_chunk_streams() -> Result<(), Error> {
         let ctx = CONTEXT.get_or_init(init_context).await;
 
@@ -903,7 +909,7 @@ mod test {
             }
         });
 
-        let mut chunks = Vec::new();
+        let mut chunks = Vec::with_capacity(1);
         while let Ok(Ok(chunk)) = chunk_broadcast_rx.recv().await {
             chunks.push(chunk);
         }
@@ -923,7 +929,6 @@ mod test {
         Ok(())
     }
 
-    #[test_log::test(tokio::test)]
     async fn test_text_contents_detection_streams() -> Result<(), Error> {
         // TODO
         Ok(())
