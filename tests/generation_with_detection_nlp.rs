@@ -18,10 +18,12 @@ use std::collections::HashMap;
 
 use common::{
     detectors::{ANSWER_RELEVANCE_DETECTOR, DETECTION_ON_GENERATION_DETECTOR_ENDPOINT},
+    errors::{DetectorError, OrchestratorError},
     generation::{GENERATION_NLP_MODEL_ID_HEADER_NAME, GENERATION_NLP_UNARY_ENDPOINT},
     orchestrator::{
         TestOrchestratorServer, ORCHESTRATOR_CONFIG_FILE_PATH,
         ORCHESTRATOR_GENERATION_WITH_DETECTION_ENDPOINT,
+        ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE,
     },
 };
 use fms_guardrails_orchestr8::{
@@ -198,6 +200,113 @@ async fn detections() -> Result<(), anyhow::Error> {
             generated_text: generated_text.into(),
             detections: vec![detection.clone()],
             input_token_count: 0
+        }
+    );
+
+    Ok(())
+}
+
+/// Asserts scenarios in which errors are returned from clients.
+#[test(tokio::test)]
+async fn client_error() -> Result<(), anyhow::Error> {
+    let detector_name = ANSWER_RELEVANCE_DETECTOR;
+    let generation_error_prompt = "Generation server should return an error";
+    let detector_error_prompt = "Detector should return an error";
+    let generated_text = "Hey, detector. Give me a 500!";
+    let detector_error = DetectorError {
+        code: 500,
+        message: "Here's your 500 error".into(),
+    };
+
+    // Add generation mock
+    let model_id = "my-super-model-8B";
+    let mut generation_mocks = MockSet::new();
+    generation_mocks.mock(|when, then| {
+        when.path(GENERATION_NLP_UNARY_ENDPOINT)
+            .header(GENERATION_NLP_MODEL_ID_HEADER_NAME, model_id)
+            .pb(TextGenerationTaskRequest {
+                text: generation_error_prompt.into(),
+                ..Default::default()
+            });
+        then.internal_server_error();
+    });
+    generation_mocks.mock(|when, then| {
+        when.path(GENERATION_NLP_UNARY_ENDPOINT)
+            .header(GENERATION_NLP_MODEL_ID_HEADER_NAME, model_id)
+            .pb(TextGenerationTaskRequest {
+                text: detector_error_prompt.into(),
+                ..Default::default()
+            });
+        then.pb(GeneratedTextResult {
+            generated_text: generated_text.into(),
+            ..Default::default()
+        });
+    });
+
+    // Add input detection mock
+    let mut detection_mocks = MockSet::new();
+    detection_mocks.mock(|when, then| {
+        when.post()
+            .path(DETECTION_ON_GENERATION_DETECTOR_ENDPOINT)
+            .json(GenerationDetectionRequest {
+                prompt: detector_error_prompt.into(),
+                generated_text: generated_text.into(),
+                detector_params: DetectorParams::new(),
+            });
+        then.json(&detector_error).internal_server_error();
+    });
+
+    // Start orchestrator server and its dependencies
+    let generation_server = MockServer::new("nlp").grpc().with_mocks(generation_mocks);
+    let mock_detector_server = MockServer::new(detector_name).with_mocks(detection_mocks);
+    let orchestrator_server = TestOrchestratorServer::builder()
+        .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
+        .generation_server(&generation_server)
+        .detector_servers([&mock_detector_server])
+        .build()
+        .await?;
+
+    // assert generation error
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_GENERATION_WITH_DETECTION_ENDPOINT)
+        .json(&GenerationWithDetectionHttpRequest {
+            model_id: model_id.into(),
+            prompt: generation_error_prompt.into(),
+            detectors: HashMap::from([(detector_name.into(), DetectorParams::new())]),
+            text_gen_parameters: None,
+        })
+        .send()
+        .await?;
+    debug!("{response:#?}");
+
+    assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    assert_eq!(
+        response.json::<OrchestratorError>().await?,
+        OrchestratorError {
+            code: 500,
+            details: ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE.into()
+        }
+    );
+
+    // assert generation error
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_GENERATION_WITH_DETECTION_ENDPOINT)
+        .json(&GenerationWithDetectionHttpRequest {
+            model_id: model_id.into(),
+            prompt: detector_error_prompt.into(),
+            detectors: HashMap::from([(detector_name.into(), DetectorParams::new())]),
+            text_gen_parameters: None,
+        })
+        .send()
+        .await?;
+    debug!("{response:#?}");
+
+    assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    assert_eq!(
+        response.json::<OrchestratorError>().await?,
+        OrchestratorError {
+            code: 500,
+            details: ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE.into()
         }
     );
 
