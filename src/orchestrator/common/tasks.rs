@@ -490,18 +490,13 @@ where
 
 #[cfg(test)]
 mod test {
-    use std::time::Duration;
-
     use mocktail::prelude::*;
     use tokio::sync::OnceCell;
 
     use super::*;
     use crate::{
         clients::detector::{ContentAnalysisRequest, ContentAnalysisResponse},
-        config::{
-            ChunkerConfig, ChunkerType, DetectorConfig, DetectorType, OrchestratorConfig,
-            ServiceConfig,
-        },
+        config::OrchestratorConfig,
         orchestrator::create_clients,
         pb::{
             caikit::runtime::chunkers::{
@@ -528,7 +523,6 @@ mod test {
 
     async fn init_context() -> Arc<Context> {
         let _ = rustls::crypto::ring::default_provider().install_default();
-        let mut config = OrchestratorConfig::default();
 
         // Create sentence_chunker
         let mut mocks = MockSet::new();
@@ -596,18 +590,6 @@ mod test {
         });
         let sentence_chunker_server = MockServer::new("sentence_chunker").grpc().with_mocks(mocks);
         sentence_chunker_server.start().await.unwrap();
-        config.chunkers = Some(HashMap::default());
-        config.chunkers.as_mut().unwrap().insert(
-            "sentence_chunker".into(),
-            ChunkerConfig {
-                r#type: ChunkerType::Sentence,
-                service: ServiceConfig {
-                    hostname: sentence_chunker_server.hostname().unwrap(),
-                    port: Some(sentence_chunker_server.port().unwrap()),
-                    ..Default::default()
-                },
-            },
-        );
 
         // Create whole_doc_chunker
         let mut mocks = MockSet::new();
@@ -627,17 +609,6 @@ mod test {
             .grpc()
             .with_mocks(mocks);
         whole_doc_chunker_server.start().await.unwrap();
-        config.chunkers.as_mut().unwrap().insert(
-            "whole_doc_chunker".into(),
-            ChunkerConfig {
-                r#type: ChunkerType::All,
-                service: ServiceConfig {
-                    hostname: whole_doc_chunker_server.hostname().unwrap(),
-                    port: Some(whole_doc_chunker_server.port().unwrap()),
-                    ..Default::default()
-                },
-            },
-        );
 
         // Create error chunker
         let mut mocks = MockSet::new();
@@ -647,17 +618,6 @@ mod test {
         });
         let error_chunker_server = MockServer::new("error_chunker").grpc().with_mocks(mocks);
         error_chunker_server.start().await.unwrap();
-        config.chunkers.as_mut().unwrap().insert(
-            "error_chunker".into(),
-            ChunkerConfig {
-                r#type: ChunkerType::All,
-                service: ServiceConfig {
-                    hostname: error_chunker_server.hostname().unwrap(),
-                    port: Some(error_chunker_server.port().unwrap()),
-                    ..Default::default()
-                },
-            },
-        );
 
         // Create fake detector
         let mut mocks = MockSet::new();
@@ -706,24 +666,27 @@ mod test {
 
         let fake_detector_server = MockServer::new("fake_detector").with_mocks(mocks);
         fake_detector_server.start().await.unwrap();
-        config.detectors.insert(
-            "fake_detector".into(),
-            DetectorConfig {
-                r#type: DetectorType::TextContents,
-                service: ServiceConfig {
-                    hostname: fake_detector_server.hostname().unwrap(),
-                    port: Some(fake_detector_server.port().unwrap()),
-                    ..Default::default()
-                },
-                chunker_id: "sentence_chunker".into(),
-                default_threshold: 0.0,
-                health_service: None,
-            },
+
+        let mut config = OrchestratorConfig::default();
+        configure_mock_servers(
+            &mut config,
+            None,
+            None,
+            Some(vec![&fake_detector_server]),
+            Some(vec![
+                &sentence_chunker_server,
+                &whole_doc_chunker_server,
+                &error_chunker_server,
+            ]),
         );
+        // Set chunker_id for detectors
+        if let Some(config) = config.detectors.get_mut("fake_detector") {
+            config.chunker_id = "sentence_chunker".into();
+        }
 
-        tokio::time::sleep(Duration::from_secs(1)).await;
-
+        // Create clients
         let clients = create_clients(&config).await.unwrap();
+
         Arc::new(Context::new(config, clients))
     }
 

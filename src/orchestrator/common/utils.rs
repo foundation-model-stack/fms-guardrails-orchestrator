@@ -58,6 +58,53 @@ pub fn get_chunker_ids(
         .collect::<Result<Vec<_>, Error>>()
 }
 
+/// Updates an orchestrator config, adding entries for mock servers.
+/// TODO: move this to the test crate, once created.
+#[cfg(test)]
+pub fn configure_mock_servers(
+    config: &mut crate::config::OrchestratorConfig,
+    generation_server: Option<&mocktail::server::MockServer>,
+    chat_generation_server: Option<&mocktail::server::MockServer>,
+    detector_servers: Option<Vec<&mocktail::server::MockServer>>,
+    chunker_servers: Option<Vec<&mocktail::server::MockServer>>,
+) {
+    if let Some(server) = generation_server {
+        let mut generation_config = crate::config::GenerationConfig::default();
+        generation_config.service.hostname = "localhost".into();
+        generation_config.service.port = Some(server.addr().unwrap().port());
+        config.generation = Some(generation_config);
+    }
+    if let Some(server) = chat_generation_server {
+        let mut chat_generation_config = crate::config::ChatGenerationConfig::default();
+        chat_generation_config.service.hostname = "localhost".into();
+        chat_generation_config.service.port = Some(server.addr().unwrap().port());
+        config.chat_generation = Some(chat_generation_config);
+    };
+    if let Some(servers) = detector_servers {
+        for server in servers {
+            let mut detector_config = crate::config::DetectorConfig::default();
+            detector_config.service.hostname = "localhost".into();
+            detector_config.service.port = Some(server.addr().unwrap().port());
+            config
+                .detectors
+                .insert(server.name().to_string(), detector_config);
+        }
+    };
+    if let Some(servers) = chunker_servers {
+        config.chunkers = Some(HashMap::new());
+        for server in servers {
+            let mut chunker_config = crate::config::ChunkerConfig::default();
+            chunker_config.service.hostname = "localhost".into();
+            chunker_config.service.port = Some(server.addr().unwrap().port());
+            config
+                .chunkers
+                .as_mut()
+                .unwrap()
+                .insert(server.name().to_string(), chunker_config);
+        }
+    };
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

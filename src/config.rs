@@ -55,7 +55,7 @@ pub enum Error {
 
 /// Configuration for service needed for
 /// orchestrator to communicate with it
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Default, Clone, Debug, Deserialize)]
 pub struct ServiceConfig {
     /// Hostname for service
     pub hostname: String,
@@ -90,8 +90,7 @@ pub enum Tls {
 }
 
 /// Client TLS configuration
-#[cfg_attr(test, derive(Default))]
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Default, Clone, Debug, Deserialize)]
 pub struct TlsConfig {
     pub cert_path: Option<PathBuf>,
     pub key_path: Option<PathBuf>,
@@ -100,10 +99,9 @@ pub struct TlsConfig {
 }
 
 /// Generation service provider
-#[cfg_attr(test, derive(Default))]
-#[derive(Clone, Copy, Debug, Deserialize)]
+#[derive(Default, Clone, Copy, Debug, Deserialize)]
 pub enum GenerationProvider {
-    #[cfg_attr(test, default)]
+    #[default]
     #[serde(rename = "tgis")]
     Tgis,
     #[serde(rename = "nlp")]
@@ -111,8 +109,7 @@ pub enum GenerationProvider {
 }
 
 /// Generation service configuration
-#[cfg_attr(test, derive(Default))]
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Default, Clone, Debug, Deserialize)]
 pub struct GenerationConfig {
     /// Generation service provider
     pub provider: GenerationProvider,
@@ -121,8 +118,7 @@ pub struct GenerationConfig {
 }
 
 /// Chat generation service configuration
-#[cfg_attr(test, derive(Default))]
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Default, Clone, Debug, Deserialize)]
 pub struct ChatGenerationConfig {
     /// Generation service connection information
     pub service: ServiceConfig,
@@ -131,19 +127,16 @@ pub struct ChatGenerationConfig {
 }
 
 /// Chunker parser type
-#[cfg_attr(test, derive(Default))]
-#[derive(Clone, Copy, Debug, Deserialize)]
+#[derive(Default, Clone, Copy, Debug, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ChunkerType {
-    #[cfg_attr(test, default)]
+    #[default]
     Sentence,
     All,
 }
 
 /// Configuration for each chunker
-#[cfg_attr(test, derive(Default))]
-#[allow(dead_code)]
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Default, Clone, Debug, Deserialize)]
 pub struct ChunkerConfig {
     /// Chunker type
     pub r#type: ChunkerType,
@@ -152,7 +145,7 @@ pub struct ChunkerConfig {
 }
 
 /// Configuration for each detector
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Default, Clone, Debug, Deserialize)]
 pub struct DetectorConfig {
     /// Detector service connection information
     pub service: ServiceConfig,
@@ -167,7 +160,7 @@ pub struct DetectorConfig {
     pub r#type: DetectorType,
 }
 
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Default, Clone, Debug, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum DetectorType {
