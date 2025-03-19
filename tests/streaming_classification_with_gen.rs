@@ -1101,44 +1101,53 @@ async fn output_detectors_detections() -> Result<(), anyhow::Error> {
         .collect::<Result<Vec<_>, anyhow::Error>>()?;
     debug!("{messages:#?}");
 
+    let expected_messages = vec![
+        ClassifiedGeneratedTextStreamResult {
+            generated_text: Some("I (am) great!".into()),
+            token_classification_results: TextGenTokenClassificationResults {
+                input: None,
+                output: Some(vec![TokenClassificationResult {
+                    start: 3,
+                    end: 5,
+                    word: "am".into(),
+                    entity: "has_parenthesis".into(),
+                    entity_group: "parenthesis".into(),
+                    detector_id: Some(parenthesis_detector.into()),
+                    score: 1.0,
+                    token_count: None,
+                }]),
+            },
+            processed_index: Some(13),
+            start_index: Some(0),
+            tokens: Some(vec![]),
+            input_tokens: Some(vec![]),
+            ..Default::default()
+        },
+        ClassifiedGeneratedTextStreamResult {
+            generated_text: Some(" What about <you>?".into()),
+            token_classification_results: TextGenTokenClassificationResults {
+                input: None,
+                output: Some(vec![TokenClassificationResult {
+                    start: 13,
+                    end: 16,
+                    word: "you".into(),
+                    entity: "has_angle_brackets".into(),
+                    entity_group: "angle_brackets".into(),
+                    detector_id: Some(angle_brackets_detector.into()),
+                    score: 1.0,
+                    token_count: None,
+                }]),
+            },
+            processed_index: Some(31),
+            start_index: Some(13),
+            tokens: Some(vec![]),
+            input_tokens: Some(vec![]),
+            ..Default::default()
+        },
+    ];
+
     assert_eq!(messages.len(), 2);
-
-    assert_eq!(messages[0].generated_text, Some("I (am) great!".into()));
-    assert_eq!(
-        messages[0].token_classification_results.output,
-        Some(vec![TokenClassificationResult {
-            start: 3,
-            end: 5,
-            word: "am".into(),
-            entity: "has_parenthesis".into(),
-            entity_group: "parenthesis".into(),
-            detector_id: Some(parenthesis_detector.into()),
-            score: 1.0,
-            token_count: None
-        }])
-    );
-    assert_eq!(messages[0].start_index, Some(0));
-    assert_eq!(messages[0].processed_index, Some(13));
-
-    assert_eq!(
-        messages[1].generated_text,
-        Some(" What about <you>?".into())
-    );
-    assert_eq!(
-        messages[1].token_classification_results.output,
-        Some(vec![TokenClassificationResult {
-            start: 13,
-            end: 16,
-            word: "you".into(),
-            entity: "has_angle_brackets".into(),
-            entity_group: "angle_brackets".into(),
-            detector_id: Some(angle_brackets_detector.into()),
-            score: 1.0,
-            token_count: None
-        }])
-    );
-    assert_eq!(messages[1].start_index, Some(13));
-    assert_eq!(messages[1].processed_index, Some(31));
+    assert_eq!(messages, expected_messages);
 
     Ok(())
 }
