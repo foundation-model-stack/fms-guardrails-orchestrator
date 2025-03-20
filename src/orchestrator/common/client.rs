@@ -254,6 +254,7 @@ pub async fn tokenize(
     model_id: String,
     text: String,
 ) -> Result<(u32, Vec<String>), Error> {
+    // (token_count, tokens)
     debug!(%model_id, "sending tokenize request");
     let response = client
         .tokenize(model_id.clone(), text, headers)
