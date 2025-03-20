@@ -90,11 +90,11 @@ async fn no_detections() -> Result<(), anyhow::Error> {
     });
 
     // Start orchestrator server and its dependencies
-    let generation_server = MockServer::new("nlp").grpc().with_mocks(generation_mocks);
+    let mock_generation_server = MockServer::new("nlp").grpc().with_mocks(generation_mocks);
     let mock_detector_server = MockServer::new(detector_name).with_mocks(detection_mocks);
     let orchestrator_server = TestOrchestratorServer::builder()
         .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
-        .generation_server(&generation_server)
+        .generation_server(&mock_generation_server)
         .detector_servers([&mock_detector_server])
         .build()
         .await?;
@@ -171,11 +171,11 @@ async fn detections() -> Result<(), anyhow::Error> {
     });
 
     // Start orchestrator server and its dependencies
-    let generation_server = MockServer::new("nlp").grpc().with_mocks(generation_mocks);
+    let mock_generation_server = MockServer::new("nlp").grpc().with_mocks(generation_mocks);
     let mock_detector_server = MockServer::new(detector_name).with_mocks(detection_mocks);
     let orchestrator_server = TestOrchestratorServer::builder()
         .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
-        .generation_server(&generation_server)
+        .generation_server(&mock_generation_server)
         .detector_servers([&mock_detector_server])
         .build()
         .await?;
@@ -257,11 +257,11 @@ async fn client_error() -> Result<(), anyhow::Error> {
     });
 
     // Start orchestrator server and its dependencies
-    let generation_server = MockServer::new("nlp").grpc().with_mocks(generation_mocks);
+    let mock_generation_server = MockServer::new("nlp").grpc().with_mocks(generation_mocks);
     let mock_detector_server = MockServer::new(detector_name).with_mocks(detection_mocks);
     let orchestrator_server = TestOrchestratorServer::builder()
         .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
-        .generation_server(&generation_server)
+        .generation_server(&mock_generation_server)
         .detector_servers([&mock_detector_server])
         .build()
         .await?;
