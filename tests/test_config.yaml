@@ -19,6 +19,12 @@ detectors:
     service:
       hostname: localhost
     chunker_id: sentence_chunker
+    default_threshold: 0.5  
+  parenthesis_detector_sentence:
+    type: text_contents
+    service:
+      hostname: localhost
+    chunker_id: sentence_chunker
     default_threshold: 0.5
   angle_brackets_detector_whole_doc:
     type: text_contents
