@@ -157,7 +157,7 @@ async fn no_detections() -> Result<(), anyhow::Error> {
     let mock_detector_server =
         MockServer::new(DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE).with_mocks(detector_mocks);
     let mock_generation_server = MockServer::new("nlp").grpc().with_mocks(generation_mocks);
-    let mock_chunker_server = MockServer::new(CHUNKER_NAME_SENTENCE.into())
+    let mock_chunker_server = MockServer::new(CHUNKER_NAME_SENTENCE)
         .grpc()
         .with_mocks(chunker_mocks);
 
@@ -257,7 +257,7 @@ async fn no_detections() -> Result<(), anyhow::Error> {
 #[test(tokio::test)]
 async fn input_detector_detections() -> Result<(), anyhow::Error> {
     // Add tokenization results mock for input detections scenarios
-    let tokenization_results = vec![
+    let tokenization_results = [
         Token {
             start: 0,
             end: 40,
@@ -276,7 +276,7 @@ async fn input_detector_detections() -> Result<(), anyhow::Error> {
     ];
 
     // Add tokenization mock responses for input detections
-    let mock_tokenization_responses = vec![
+    let mock_tokenization_responses = [
         TokenizationResults {
             results: Vec::new(),
             token_count: 61,
@@ -320,7 +320,6 @@ async fn input_detector_detections() -> Result<(), anyhow::Error> {
         when.path(GENERATION_NLP_TOKENIZATION_ENDPOINT)
             .pb(TokenizationTaskRequest {
                 text: "This sentence does not have a detection. But <this one does>.".into(),
-                ..Default::default()
             });
         then.pb(mock_tokenization_responses[0].clone());
     });
@@ -330,7 +329,6 @@ async fn input_detector_detections() -> Result<(), anyhow::Error> {
         when.path(GENERATION_NLP_TOKENIZATION_ENDPOINT)
             .pb(TokenizationTaskRequest {
                 text: "This sentence does not have a detection. But <this one does>. Also <this other one>.".into(),
-                ..Default::default()
             });
         then.pb(mock_tokenization_responses[1].clone());
     });
@@ -443,13 +441,13 @@ async fn input_detector_detections() -> Result<(), anyhow::Error> {
         results.token_classification_results,
         TextGenTokenClassificationResults {
             input: Some(vec![TokenClassificationResult {
-                start: 46 as u32,
-                end: 59 as u32,
+                start: 46_u32,
+                end: 59_u32,
                 word: expected_detections[0].text.clone(),
                 entity: expected_detections[0].detection.clone(),
                 entity_group: expected_detections[0].detection_type.clone(),
                 detector_id: expected_detections[0].detector_id.clone(),
-                score: expected_detections[0].score.clone(),
+                score: expected_detections[0].score,
                 token_count: None
             }]),
             output: None
@@ -494,8 +492,8 @@ async fn input_detector_detections() -> Result<(), anyhow::Error> {
         TextGenTokenClassificationResults {
             input: Some(vec![
                 TokenClassificationResult {
-                    start: 46 as u32,
-                    end: 59 as u32,
+                    start: 46_u32,
+                    end: 59_u32,
                     word: expected_detections[0].text.clone(),
                     entity: expected_detections[0].detection.clone(),
                     entity_group: expected_detections[0].detection_type.clone(),
@@ -504,8 +502,8 @@ async fn input_detector_detections() -> Result<(), anyhow::Error> {
                     token_count: None
                 },
                 TokenClassificationResult {
-                    start: 68 as u32,
-                    end: 82 as u32,
+                    start: 68_u32,
+                    end: 82_u32,
                     word: expected_detections[1].text.clone(),
                     entity: expected_detections[1].detection.clone(),
                     entity_group: expected_detections[1].detection_type.clone(),
@@ -566,7 +564,6 @@ async fn input_detector_client_error() -> Result<(), anyhow::Error> {
         when.path(GENERATION_NLP_TOKENIZATION_ENDPOINT)
             .pb(TokenizationTaskRequest {
                 text: generation_server_error_input.into(),
-                ..Default::default()
             });
         then.internal_server_error();
     });
@@ -926,8 +923,8 @@ async fn output_detector_detections() -> Result<(), anyhow::Error> {
         TextGenTokenClassificationResults {
             input: None,
             output: Some(vec![TokenClassificationResult {
-                start: 46 as u32,
-                end: 59 as u32,
+                start: 46_u32,
+                end: 59_u32,
                 word: expected_detections[0].text.clone(),
                 entity: expected_detections[0].detection.clone(),
                 entity_group: expected_detections[0].detection_type.clone(),
@@ -971,8 +968,8 @@ async fn output_detector_detections() -> Result<(), anyhow::Error> {
             input: None,
             output: Some(vec![
                 TokenClassificationResult {
-                    start: 46 as u32,
-                    end: 59 as u32,
+                    start: 46_u32,
+                    end: 59_u32,
                     word: expected_detections[0].text.clone(),
                     entity: expected_detections[0].detection.clone(),
                     entity_group: expected_detections[0].detection_type.clone(),
@@ -981,8 +978,8 @@ async fn output_detector_detections() -> Result<(), anyhow::Error> {
                     token_count: None
                 },
                 TokenClassificationResult {
-                    start: 68 as u32,
-                    end: 82 as u32,
+                    start: 68_u32,
+                    end: 82_u32,
                     word: expected_detections[1].text.clone(),
                     entity: expected_detections[1].detection.clone(),
                     entity_group: expected_detections[1].detection_type.clone(),
@@ -1045,7 +1042,6 @@ async fn output_detector_client_error() -> Result<(), anyhow::Error> {
             .header(GENERATION_NLP_MODEL_ID_HEADER_NAME, MODEL_ID)
             .pb(TokenizationTaskRequest {
                 text: generation_server_error_input.into(),
-                ..Default::default()
             });
         then.internal_server_error();
     });
@@ -1056,7 +1052,6 @@ async fn output_detector_client_error() -> Result<(), anyhow::Error> {
             .header(GENERATION_NLP_MODEL_ID_HEADER_NAME, MODEL_ID)
             .pb(TokenizationTaskRequest {
                 text: detector_error_input.into(),
-                ..Default::default()
             });
         then.pb(GeneratedTextResult {
             generated_text: detector_error_input.into(),
@@ -1070,7 +1065,6 @@ async fn output_detector_client_error() -> Result<(), anyhow::Error> {
             .header(GENERATION_NLP_MODEL_ID_HEADER_NAME, MODEL_ID)
             .pb(TokenizationTaskRequest {
                 text: chunker_error_input.into(),
-                ..Default::default()
             });
         then.pb(GeneratedTextResult {
             generated_text: chunker_error_input.into(),
