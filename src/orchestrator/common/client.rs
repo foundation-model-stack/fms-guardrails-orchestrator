@@ -219,7 +219,7 @@ pub async fn chat_completion(
     Ok(response)
 }
 
-/// Sends request to openai chat completions client.
+/// Sends stream request to openai chat completions client.
 #[instrument(skip_all, fields(model_id))]
 pub async fn chat_completion_stream(
     client: &OpenAiClient,
