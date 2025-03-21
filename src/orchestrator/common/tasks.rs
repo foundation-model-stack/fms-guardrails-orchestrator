@@ -52,7 +52,10 @@ pub async fn chunks(
         .map(|chunker_id| {
             let ctx = ctx.clone();
             let inputs = inputs.clone();
+            // Spawn task for chunker
+            // Chunkers are processed in-parallel
             tokio::spawn(async move {
+                // Send concurrent requests for inputs
                 let chunks = stream::iter(inputs)
                     .map(|(offset, text)| {
                         let ctx = ctx.clone();
@@ -79,7 +82,7 @@ pub async fn chunks(
                             Ok::<_, Error>(chunks)
                         }
                     })
-                    .buffer_unordered(8)
+                    .buffer_unordered(ctx.config.chunker_concurrent_requests)
                     .try_collect::<Vec<_>>()
                     .await?
                     .into_iter()
@@ -197,6 +200,7 @@ pub async fn text_contents_detections(
             Ok::<_, Error>((detector_id.clone(), params.clone(), chunks))
         })
         .collect::<Result<Vec<_>, Error>>()?;
+    // Send concurrent requests for inputs
     let results = stream::iter(inputs)
         .map(|(detector_id, mut params, chunks)| {
             let ctx = ctx.clone();
@@ -220,7 +224,7 @@ pub async fn text_contents_detections(
                 Ok::<_, Error>(detections)
             }
         })
-        .buffer_unordered(8)
+        .buffer_unordered(ctx.config.detector_concurrent_requests)
         .try_collect::<Vec<_>>()
         .await?;
     let mut detections = results.into_iter().flatten().collect::<Detections>();
@@ -326,6 +330,7 @@ pub async fn text_generation_detections(
             ))
         })
         .collect::<Result<Vec<_>, Error>>()?;
+    // Send concurrent requests for inputs
     let results = stream::iter(inputs)
         .map(|(detector_id, mut params, prompt, generated_text)| {
             let ctx = ctx.clone();
@@ -355,7 +360,7 @@ pub async fn text_generation_detections(
                 Ok::<_, Error>(detections)
             }
         })
-        .buffer_unordered(8)
+        .buffer_unordered(ctx.config.detector_concurrent_requests)
         .try_collect::<Vec<_>>()
         .await?;
     let detections = results.into_iter().flatten().collect::<Detections>();
@@ -378,6 +383,7 @@ pub async fn text_chat_detections(
             Ok::<_, Error>((detector_id.clone(), params.clone(), messages.clone()))
         })
         .collect::<Result<Vec<_>, Error>>()?;
+    // Send concurrent requests for inputs
     let results = stream::iter(inputs)
         .map(|(detector_id, mut params, messages)| {
             let ctx = ctx.clone();
@@ -401,7 +407,7 @@ pub async fn text_chat_detections(
                 Ok::<_, Error>(detections)
             }
         })
-        .buffer_unordered(8)
+        .buffer_unordered(ctx.config.detector_concurrent_requests)
         .try_collect::<Vec<_>>()
         .await?;
     let detections = results.into_iter().flatten().collect::<Detections>();
@@ -432,6 +438,7 @@ pub async fn text_context_detections(
             ))
         })
         .collect::<Result<Vec<_>, Error>>()?;
+    // Send concurrent requests for inputs
     let results = stream::iter(inputs)
         .map(
             |(detector_id, mut params, content, context_type, context)| {
@@ -464,7 +471,7 @@ pub async fn text_context_detections(
                 }
             },
         )
-        .buffer_unordered(8)
+        .buffer_unordered(ctx.config.detector_concurrent_requests)
         .try_collect::<Vec<_>>()
         .await?;
     let detections = results.into_iter().flatten().collect::<Detections>();

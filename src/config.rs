@@ -25,8 +25,17 @@ use tracing::{debug, error, info, warn};
 
 use crate::clients::{chunker::DEFAULT_CHUNKER_ID, is_valid_hostname};
 
-// Placeholder to add default allowed headers
+/// Default allowed headers to passthrough to clients.
 const DEFAULT_ALLOWED_HEADERS: &[&str] = &[];
+
+/// Default number of chunker requests to send concurrently for a task.
+const fn default_detector_concurrent_requests() -> usize {
+    5
+}
+/// Default number of detector requests to send concurrently for a task.
+const fn default_chunker_concurrent_requests() -> usize {
+    5
+}
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -189,6 +198,12 @@ pub struct OrchestratorConfig {
     // List of header keys allowed to be passed to downstream servers
     #[serde(default)]
     pub passthrough_headers: HashSet<String>,
+    /// Number of detector requests to send concurrently for a task.
+    #[serde(default = "default_detector_concurrent_requests")]
+    pub detector_concurrent_requests: usize,
+    /// Number of chunker requests to send concurrently for a task.
+    #[serde(default = "default_chunker_concurrent_requests")]
+    pub chunker_concurrent_requests: usize,
 }
 
 impl OrchestratorConfig {
