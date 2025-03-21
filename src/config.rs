@@ -181,7 +181,6 @@ pub enum DetectorType {
 }
 
 /// Overall orchestrator server configuration
-#[cfg_attr(test, derive(Default))]
 #[derive(Clone, Debug, Deserialize)]
 pub struct OrchestratorConfig {
     /// Generation service and associated configuration, can be omitted if configuring for generation is not wanted
@@ -379,6 +378,21 @@ impl OrchestratorConfig {
     /// Gets a detector config.
     pub fn detector(&self, detector_id: &str) -> Option<&DetectorConfig> {
         self.detectors.get(detector_id)
+    }
+}
+
+impl Default for OrchestratorConfig {
+    fn default() -> Self {
+        Self {
+            generation: None,
+            chat_generation: None,
+            chunkers: None,
+            detectors: HashMap::default(),
+            tls: None,
+            passthrough_headers: HashSet::default(),
+            detector_concurrent_requests: default_detector_concurrent_requests(),
+            chunker_concurrent_requests: default_chunker_concurrent_requests(),
+        }
     }
 }
 

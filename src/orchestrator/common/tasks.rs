@@ -497,6 +497,7 @@ where
 
 #[cfg(test)]
 mod test {
+
     use mocktail::prelude::*;
     use tokio::sync::OnceCell;
 
@@ -675,6 +676,7 @@ mod test {
         fake_detector_server.start().await.unwrap();
 
         let mut config = OrchestratorConfig::default();
+        dbg!(&config);
         configure_mock_servers(
             &mut config,
             None,
