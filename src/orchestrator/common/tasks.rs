@@ -540,8 +540,8 @@ mod test {
             then.pb(TokenizationResults {
                 results: vec![
                     Token { start: 0, end: 57, text: "Lorem ipsum dolor sit amet, consectetuer adipiscing elit.".into() },
-                    Token { start: 58, end: 92, text: " Aenean commodo ligula eget dolor.".into() },
-                    Token { start: 93, end: 179, text: " Cum sociis natoque penatibus et magnis dis parturient montes, nascetur ridiculus mus.".into() }
+                    Token { start: 57, end: 92, text: " Aenean commodo ligula eget dolor.".into() },
+                    Token { start: 92, end: 179, text: " Cum sociis natoque penatibus et magnis dis parturient montes, nascetur ridiculus mus.".into() }
                 ],
                 token_count: 25,
             });
@@ -559,7 +559,7 @@ mod test {
                             .into(),
                     },
                     Token {
-                        start: 140,
+                        start: 139,
                         end: 201,
                         text: " Quo magni voluptatem et vitae maxime est voluptatem itaque. "
                             .into(),
@@ -676,7 +676,6 @@ mod test {
         fake_detector_server.start().await.unwrap();
 
         let mut config = OrchestratorConfig::default();
-        dbg!(&config);
         configure_mock_servers(
             &mut config,
             None,
