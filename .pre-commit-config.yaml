@@ -1,7 +1,7 @@
 repos:
-  - repo: https://github.com/doublify/pre-commit-rust
-    rev: v1.0
+  - repo: https://github.com/mdevino/pre-commit-rust
+    rev: v1.2
     hooks:
-      - id: fmt
+      - id: fmt-nightly
       - id: cargo-check
       - id: clippy
