@@ -15,9 +15,7 @@
 
 */
 
-use serde_json::json;
 use std::collections::HashMap;
-use test_log::test;
 
 use common::{
     detectors::{ANSWER_RELEVANCE_DETECTOR, DETECTION_ON_GENERATION_DETECTOR_ENDPOINT},
@@ -36,6 +34,8 @@ use fms_guardrails_orchestr8::{
 };
 use hyper::StatusCode;
 use mocktail::prelude::*;
+use serde_json::json;
+use test_log::test;
 use tracing::debug;
 
 pub mod common;
