@@ -2,92 +2,44 @@ name: Test and Lint Orchestrator
 
 on:
   push:
-    branches: ["main"]
+    branches: [ "main" ]
   pull_request:
-    branches: ["main"]
+    branches: [ "main" ]
+    types: [opened, reopened, synchronize, ready_for_review]
 
 env:
   CARGO_TERM_COLOR: always
-  TEST_IMAGE_NAME: "orchestr8-tests:0"
-  LINT_IMAGE_NAME: "orchestr8-lint:0"
-  FMT_IMAGE_NAME: "orchestr8-fmt:0"
+  RUSTFLAGS: "-Dwarnings" # Makes CI fail on compilation/clippy warnings
+  PROTOC_VERSION: "26.0"
 
 jobs:
-  build:
+  ci-checks:
     runs-on: ubuntu-latest
-    permissions:
-      packages: write
-      contents: read
-    env:
-      CACHE_TEST_IMAGE: "ghcr.io/foundation-model-stack/fms-guardrails-orchestrator:test-cache"
-      CACHE_LINT_IMAGE: "ghcr.io/foundation-model-stack/fms-guardrails-orchestrator:lint-cache"
-      CACHE_FMT_IMAGE: "ghcr.io/foundation-model-stack/fms-guardrails-orchestrator:fmt-cache"
-      CACHE_REGISTRY: "ghcr.io"
-
+    if: github.event.pull_request.draft == false
     steps:
-      - uses: actions/checkout@v4
-      - name: "Setup Docker Buildx"
-        uses: docker/setup-buildx-action@v3
-      - name: "Log in to cache image container registry"
-        uses: docker/login-action@v3
-        if: github.event_name != 'pull_request'
-        with:
-          registry: ${{ env.CACHE_REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: "Set build cache target"
-        run: |
-          # For push to `main` (PR merged), push a new cache image with all layers (cache-mode=max).
-          # For PR builds, use GitHub action cache which isolates cached layers by PR/branch.
-          # to optimize builds for subsequent pushes to the same PR/branch.
-          # Do not set a cache-to image for PR builds to not overwrite the `main` cache image and
-          # to not ping-pong cache images for two or more different PRs.
-          # Do not push cache images for each PR or multiple branches to not exceed GitHub package
-          # usage and traffic limitations.
-          # UPDATE: GHA cache appears to have issues, cannot use `cache-to: gha,mode=min`
-          # if `cache-from: reg...,mode=max` but `cache-to: gha,mode=max` takes longer than uncached
-          # build and exhausts GHA cache size limits, so use cache `type=inline` (no external cache).
-          if [ "${{ github.event_name }}" == "pull_request" ]
-          then
-              #CACHE_TO="type=gha,mode=min"
-              CACHE_TEST_TO="type=inline"
-              CACHE_LINT_TO="type=inline"
-              CACHE_FMT_TO="type=inline"
-          else
-              CACHE_TEST_TO="type=registry,ref=${{ env.CACHE_TEST_IMAGE }},mode=max"
-              CACHE_LINT_TO="type=registry,ref=${{ env.CACHE_LINT_IMAGE }},mode=max"
-              CACHE_FMT_TO="type=registry,ref=${{ env.CACHE_FMT_IMAGE }},mode=max"
-          fi
-          echo "CACHE_TEST_TO=$CACHE_TEST_TO" >> $GITHUB_ENV
-          echo "CACHE_LINT_TO=$CACHE_LINT_TO" >> $GITHUB_ENV
-          echo "CACHE_FMT_TO=$CACHE_FMT_TO" >> $GITHUB_ENV
-      - name: Test
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          target: tests
-          tags: ${{ env.TEST_IMAGE_NAME }}
-          cache-from: type=registry,ref=${{ env.CACHE_TEST_IMAGE }}
-          cache-to: ${{ env.CACHE_TEST_TO }}
-          push: false
-          platforms: linux/amd64
-      - name: Lint with clippy
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          target: lint
-          tags: ${{ env.LINT_IMAGE_NAME }}
-          cache-from: type=registry,ref=${{ env.CACHE_LINT_IMAGE }}
-          cache-to: ${{ env.CACHE_LINT_TO }}
-          push: false
-          platforms: linux/amd64
-      - name: Format
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          target: format
-          tags: ${{ env.FMT_IMAGE_NAME }}
-          cache-from: type=registry,ref=${{ env.CACHE_FMT_IMAGE }}
-          cache-to: ${{ env.CACHE_FMT_TO }}
-          push: false
-          platforms: linux/amd64
+    - name: "Install fmt nightly"
+      run: rustup component add --toolchain nightly-x86_64-unknown-linux-gnu rustfmt
+    - name: "Install protoc"
+      run: |
+        echo "protoc version: ${PROTOC_VERSION}"
+        cd /tmp
+        curl -L -O https://github.com/protocolbuffers/protobuf/releases/download/v${PROTOC_VERSION}/protoc-${PROTOC_VERSION}-linux-x86_64.zip
+        sudo unzip protoc-*.zip -d /usr/local && rm protoc-*.zip
+        protoc --version
+    - uses: actions/checkout@v4
+    - name: Cache Rust dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+    - name: Build
+      run: cargo build
+    - name: Run formatter
+      run: cargo +nightly fmt --check --all
+    - name: Run linter
+      run: cargo clippy --no-deps --all-targets --all-features
+    - name: Run tests
+      run: cargo test
