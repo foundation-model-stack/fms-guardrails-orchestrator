@@ -21,9 +21,8 @@ use common::{
     errors::{DetectorError, OrchestratorError},
     generation::{GENERATION_NLP_MODEL_ID_HEADER_NAME, GENERATION_NLP_UNARY_ENDPOINT},
     orchestrator::{
-        TestOrchestratorServer, ORCHESTRATOR_CONFIG_FILE_PATH,
-        ORCHESTRATOR_GENERATION_WITH_DETECTION_ENDPOINT,
-        ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE,
+        ORCHESTRATOR_CONFIG_FILE_PATH, ORCHESTRATOR_GENERATION_WITH_DETECTION_ENDPOINT,
+        ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE, TestOrchestratorServer,
     },
 };
 use fms_guardrails_orchestr8::{
@@ -38,7 +37,7 @@ use fms_guardrails_orchestr8::{
     },
 };
 use http::StatusCode;
-use mocktail::{server::MockServer, MockSet};
+use mocktail::{MockSet, server::MockServer};
 use serde_json::json;
 use test_log::test;
 use tracing::debug;

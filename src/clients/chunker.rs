@@ -22,22 +22,22 @@ use axum::http::HeaderMap;
 use futures::{Future, Stream, StreamExt, TryStreamExt};
 use ginepro::LoadBalancedChannel;
 use tonic::{Code, Request, Response, Status, Streaming};
-use tracing::{debug, info, instrument, Span};
+use tracing::{Span, debug, info, instrument};
 
 use super::{
-    create_grpc_client, errors::grpc_to_http_code, grpc_request_with_headers,
-    otel_grpc::OtelGrpcService, BoxStream, Client, Error,
+    BoxStream, Client, Error, create_grpc_client, errors::grpc_to_http_code,
+    grpc_request_with_headers, otel_grpc::OtelGrpcService,
 };
 use crate::{
     config::ServiceConfig,
     health::{HealthCheckResult, HealthStatus},
     pb::{
         caikit::runtime::chunkers::{
-            chunkers_service_client::ChunkersServiceClient,
             BidiStreamingChunkerTokenizationTaskRequest, ChunkerTokenizationTaskRequest,
+            chunkers_service_client::ChunkersServiceClient,
         },
         caikit_data_model::nlp::{ChunkerTokenizationStreamResult, Token, TokenizationResults},
-        grpc::health::v1::{health_client::HealthClient, HealthCheckRequest},
+        grpc::health::v1::{HealthCheckRequest, health_client::HealthClient},
     },
     utils::trace::trace_context_from_grpc_response,
 };

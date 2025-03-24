@@ -17,7 +17,7 @@
 
 #![allow(dead_code)]
 use std::{
-    collections::{btree_map, BTreeMap},
+    collections::{BTreeMap, btree_map},
     sync::Arc,
 };
 
@@ -27,8 +27,8 @@ use tracing::instrument;
 use crate::{
     models::ClassifiedGeneratedTextStreamResult,
     orchestrator::{
-        streaming::{Chunk, Detections},
         Error,
+        streaming::{Chunk, Detections},
     },
 };
 

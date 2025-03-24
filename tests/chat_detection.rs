@@ -20,8 +20,8 @@ use common::{
     detectors::{CHAT_DETECTOR_ENDPOINT, PII_DETECTOR},
     errors::{DetectorError, OrchestratorError},
     orchestrator::{
-        TestOrchestratorServer, ORCHESTRATOR_CHAT_DETECTION_ENDPOINT,
-        ORCHESTRATOR_CONFIG_FILE_PATH, ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE,
+        ORCHESTRATOR_CHAT_DETECTION_ENDPOINT, ORCHESTRATOR_CONFIG_FILE_PATH,
+        ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE, TestOrchestratorServer,
     },
 };
 use fms_guardrails_orchestr8::{

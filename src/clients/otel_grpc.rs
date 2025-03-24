@@ -27,7 +27,7 @@ use pin_project_lite::pin_project;
 use tokio::time::Instant;
 use tonic::client::GrpcService;
 use tower::Layer;
-use tracing::{error, info, info_span, Span};
+use tracing::{Span, error, info, info_span};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 use crate::utils::trace::{current_trace_id, with_traceparent_header};

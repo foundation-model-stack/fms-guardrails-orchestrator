@@ -27,30 +27,30 @@ use std::{
 };
 
 use axum::{
-    extract::{rejection::JsonRejection, Query, Request, State},
+    Json, Router,
+    extract::{Query, Request, State, rejection::JsonRejection},
     http::{HeaderMap, StatusCode},
     response::{
-        sse::{Event, KeepAlive, Sse},
         IntoResponse, Response,
+        sse::{Event, KeepAlive, Sse},
     },
     routing::{get, post},
-    Json, Router,
 };
 use axum_extra::{extract::WithRejection, json_lines::JsonLines};
 use futures::{
-    stream::{self, BoxStream},
     Stream, StreamExt,
+    stream::{self, BoxStream},
 };
 use hyper::body::Incoming;
 use hyper_util::rt::{TokioExecutor, TokioIo};
 use opentelemetry::trace::TraceContextExt;
-use rustls::{server::WebPkiClientVerifier, RootCertStore, ServerConfig};
+use rustls::{RootCertStore, ServerConfig, server::WebPkiClientVerifier};
 use tokio::{net::TcpListener, signal, sync::mpsc};
 use tokio_rustls::TlsAcceptor;
 use tokio_stream::wrappers::ReceiverStream;
 use tower::Service;
 use tower_http::trace::TraceLayer;
-use tracing::{debug, error, info, instrument, warn, Span};
+use tracing::{Span, debug, error, info, instrument, warn};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 use webpki::types::{CertificateDer, PrivateKeyDer};
 
@@ -448,7 +448,7 @@ async fn stream_content_detection(
         _ => {
             return Err(Error::UnsupportedContentType(
                 "expected application/x-ndjson".into(),
-            ))
+            ));
         }
     };
     let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);

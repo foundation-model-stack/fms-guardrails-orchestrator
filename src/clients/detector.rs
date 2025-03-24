@@ -25,8 +25,8 @@ use tracing::instrument;
 use url::Url;
 
 use super::{
-    http::{HttpClientExt, RequestBody, ResponseBody},
     Error,
+    http::{HttpClientExt, RequestBody, ResponseBody},
 };
 
 pub mod text_contents;

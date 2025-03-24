@@ -26,7 +26,7 @@ use common::orchestrator::ensure_global_rustls_state;
 use fms_guardrails_orchestr8::{
     config::OrchestratorConfig,
     orchestrator::Orchestrator,
-    server::{get_health_app, ServerState},
+    server::{ServerState, get_health_app},
 };
 use hyper::StatusCode;
 use serde_json::Value;

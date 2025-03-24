@@ -36,11 +36,11 @@ use crate::{
     clients::detector::ContentAnalysisResponse,
     models::StreamingContentDetectionResponse,
     orchestrator::{
-        streaming::{
-            aggregator::{AggregationStrategy, DetectorId, Tracker, TrackerEntry},
-            Chunk, Detections,
-        },
         Error,
+        streaming::{
+            Chunk, Detections,
+            aggregator::{AggregationStrategy, DetectorId, Tracker, TrackerEntry},
+        },
     },
 };
 

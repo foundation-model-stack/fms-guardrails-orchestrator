@@ -20,9 +20,9 @@ use hyper::HeaderMap;
 use serde::Serialize;
 use tracing::{info, instrument};
 
-use super::{DetectorClient, DetectorClientExt, DEFAULT_PORT};
+use super::{DEFAULT_PORT, DetectorClient, DetectorClientExt};
 use crate::{
-    clients::{create_http_client, http::HttpClientExt, Client, Error, HttpClient},
+    clients::{Client, Error, HttpClient, create_http_client, http::HttpClientExt},
     config::ServiceConfig,
     health::HealthCheckResult,
     models::{DetectionResult, DetectorParams},

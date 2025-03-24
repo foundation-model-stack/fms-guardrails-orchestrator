@@ -3,9 +3,9 @@ use std::{fs::File, io, path::PathBuf, sync::Arc};
 use http_serde::http::StatusCode;
 use hyper_rustls::ConfigBuilderExt;
 use rustls::{
+    ClientConfig, DigitallySignedStruct, SignatureScheme,
     client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier},
     pki_types::{CertificateDer, PrivateKeyDer, ServerName, UnixTime},
-    ClientConfig, DigitallySignedStruct, SignatureScheme,
 };
 use serde::Deserialize;
 

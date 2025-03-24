@@ -17,16 +17,16 @@
 
 use std::{fmt::Debug, ops::Deref, time::Duration};
 
-use http_body_util::{combinators::BoxBody, BodyExt, Full};
+use http_body_util::{BodyExt, Full, combinators::BoxBody};
 use hyper::{
-    body::{Body, Bytes, Incoming},
     HeaderMap, Method, Request, StatusCode,
+    body::{Body, Bytes, Incoming},
 };
 use hyper_rustls::HttpsConnector;
 use hyper_timeout::TimeoutConnector;
 use hyper_util::client::legacy::connect::HttpConnector;
-use serde::{de::DeserializeOwned, Serialize};
-use tower::{timeout::Timeout, Service};
+use serde::{Serialize, de::DeserializeOwned};
+use tower::{Service, timeout::Timeout};
 use tower_http::{
     classify::{
         NeverClassifyEos, ServerErrorsAsFailures, ServerErrorsFailureClass, SharedClassifier,
@@ -36,14 +36,14 @@ use tower_http::{
         Trace, TraceLayer,
     },
 };
-use tracing::{debug, error, info, info_span, instrument, Span};
+use tracing::{Span, debug, error, info, info_span, instrument};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 use url::Url;
 
 use super::{Client, Error};
 use crate::{
     health::{HealthCheckResult, HealthStatus, OptionalHealthCheckResponseBody},
-    utils::{trace, AsUriExt},
+    utils::{AsUriExt, trace},
 };
 
 /// Any type that implements Debug and Serialize can be used as a request body

@@ -26,7 +26,7 @@ use std::{
 use bytes::Bytes;
 use eventsource_stream::{EventStream, Eventsource};
 use fms_guardrails_orchestr8::{config::OrchestratorConfig, orchestrator::Orchestrator};
-use futures::{stream::BoxStream, Stream, StreamExt};
+use futures::{Stream, StreamExt, stream::BoxStream};
 use mocktail::server::MockServer;
 use rand::Rng;
 use rustls::crypto::ring;

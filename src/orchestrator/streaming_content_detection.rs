@@ -30,18 +30,18 @@ mod aggregator;
 use std::{collections::HashMap, pin::Pin, sync::Arc, time::Duration};
 
 use aggregator::Aggregator;
-use futures::{future::try_join_all, stream::Peekable, Stream, StreamExt, TryStreamExt};
+use futures::{Stream, StreamExt, TryStreamExt, future::try_join_all, stream::Peekable};
 use hyper::HeaderMap;
 use tokio::sync::{broadcast, mpsc};
 use tokio_stream::wrappers::{BroadcastStream, ReceiverStream};
 use tracing::{debug, error, info, instrument, warn};
 
-use super::{streaming::Detections, Context, Error, Orchestrator, StreamingContentDetectionTask};
+use super::{Context, Error, Orchestrator, StreamingContentDetectionTask, streaming::Detections};
 use crate::{
     clients::{
-        chunker::{tokenize_whole_doc_stream, ChunkerClient, DEFAULT_CHUNKER_ID},
-        detector::ContentAnalysisRequest,
         TextContentsDetectorClient,
+        chunker::{ChunkerClient, DEFAULT_CHUNKER_ID, tokenize_whole_doc_stream},
+        detector::ContentAnalysisRequest,
     },
     models::{
         DetectorParams, StreamingContentDetectionRequest, StreamingContentDetectionResponse,
