@@ -28,11 +28,11 @@ use crate::clients::{chunker::DEFAULT_CHUNKER_ID, is_valid_hostname};
 /// Default allowed headers to passthrough to clients.
 const DEFAULT_ALLOWED_HEADERS: &[&str] = &[];
 
-/// Default number of chunker requests to send concurrently for a task.
+/// Default number of detector requests to send concurrently for a task.
 const fn default_detector_concurrent_requests() -> usize {
     5
 }
-/// Default number of detector requests to send concurrently for a task.
+/// Default number of chunker requests to send concurrently for a task.
 const fn default_chunker_concurrent_requests() -> usize {
     5
 }
