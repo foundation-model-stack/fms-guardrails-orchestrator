@@ -25,8 +25,17 @@ use tracing::{debug, error, info, warn};
 
 use crate::clients::{chunker::DEFAULT_CHUNKER_ID, is_valid_hostname};
 
-// Placeholder to add default allowed headers
+/// Default allowed headers to passthrough to clients.
 const DEFAULT_ALLOWED_HEADERS: &[&str] = &[];
+
+/// Default number of detector requests to send concurrently for a task.
+const fn default_detector_concurrent_requests() -> usize {
+    5
+}
+/// Default number of chunker requests to send concurrently for a task.
+const fn default_chunker_concurrent_requests() -> usize {
+    5
+}
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -55,7 +64,7 @@ pub enum Error {
 
 /// Configuration for service needed for
 /// orchestrator to communicate with it
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Default, Clone, Debug, Deserialize)]
 pub struct ServiceConfig {
     /// Hostname for service
     pub hostname: String,
@@ -90,8 +99,7 @@ pub enum Tls {
 }
 
 /// Client TLS configuration
-#[cfg_attr(test, derive(Default))]
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Default, Clone, Debug, Deserialize)]
 pub struct TlsConfig {
     pub cert_path: Option<PathBuf>,
     pub key_path: Option<PathBuf>,
@@ -100,10 +108,9 @@ pub struct TlsConfig {
 }
 
 /// Generation service provider
-#[cfg_attr(test, derive(Default))]
-#[derive(Clone, Copy, Debug, Deserialize)]
+#[derive(Default, Clone, Copy, Debug, Deserialize)]
 pub enum GenerationProvider {
-    #[cfg_attr(test, default)]
+    #[default]
     #[serde(rename = "tgis")]
     Tgis,
     #[serde(rename = "nlp")]
@@ -111,8 +118,7 @@ pub enum GenerationProvider {
 }
 
 /// Generation service configuration
-#[cfg_attr(test, derive(Default))]
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Default, Clone, Debug, Deserialize)]
 pub struct GenerationConfig {
     /// Generation service provider
     pub provider: GenerationProvider,
@@ -121,8 +127,7 @@ pub struct GenerationConfig {
 }
 
 /// Chat generation service configuration
-#[cfg_attr(test, derive(Default))]
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Default, Clone, Debug, Deserialize)]
 pub struct ChatGenerationConfig {
     /// Generation service connection information
     pub service: ServiceConfig,
@@ -131,19 +136,16 @@ pub struct ChatGenerationConfig {
 }
 
 /// Chunker parser type
-#[cfg_attr(test, derive(Default))]
-#[derive(Clone, Copy, Debug, Deserialize)]
+#[derive(Default, Clone, Copy, Debug, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ChunkerType {
-    #[cfg_attr(test, default)]
+    #[default]
     Sentence,
     All,
 }
 
 /// Configuration for each chunker
-#[cfg_attr(test, derive(Default))]
-#[allow(dead_code)]
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Default, Clone, Debug, Deserialize)]
 pub struct ChunkerConfig {
     /// Chunker type
     pub r#type: ChunkerType,
@@ -152,7 +154,7 @@ pub struct ChunkerConfig {
 }
 
 /// Configuration for each detector
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Default, Clone, Debug, Deserialize)]
 pub struct DetectorConfig {
     /// Detector service connection information
     pub service: ServiceConfig,
@@ -167,7 +169,7 @@ pub struct DetectorConfig {
     pub r#type: DetectorType,
 }
 
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Default, Clone, Debug, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum DetectorType {
@@ -179,7 +181,6 @@ pub enum DetectorType {
 }
 
 /// Overall orchestrator server configuration
-#[cfg_attr(test, derive(Default))]
 #[derive(Clone, Debug, Deserialize)]
 pub struct OrchestratorConfig {
     /// Generation service and associated configuration, can be omitted if configuring for generation is not wanted
@@ -196,6 +197,12 @@ pub struct OrchestratorConfig {
     // List of header keys allowed to be passed to downstream servers
     #[serde(default)]
     pub passthrough_headers: HashSet<String>,
+    /// Number of detector requests to send concurrently for a task.
+    #[serde(default = "default_detector_concurrent_requests")]
+    pub detector_concurrent_requests: usize,
+    /// Number of chunker requests to send concurrently for a task.
+    #[serde(default = "default_chunker_concurrent_requests")]
+    pub chunker_concurrent_requests: usize,
 }
 
 impl OrchestratorConfig {
@@ -357,6 +364,35 @@ impl OrchestratorConfig {
         self.detectors
             .get(detector_id)
             .map(|detector_config| detector_config.chunker_id.clone())
+    }
+
+    /// Gets a chunker config.
+    pub fn chunker(&self, chunker_id: &str) -> Option<&ChunkerConfig> {
+        if let Some(chunkers) = &self.chunkers {
+            chunkers.get(chunker_id)
+        } else {
+            None
+        }
+    }
+
+    /// Gets a detector config.
+    pub fn detector(&self, detector_id: &str) -> Option<&DetectorConfig> {
+        self.detectors.get(detector_id)
+    }
+}
+
+impl Default for OrchestratorConfig {
+    fn default() -> Self {
+        Self {
+            generation: None,
+            chat_generation: None,
+            chunkers: None,
+            detectors: HashMap::default(),
+            tls: None,
+            passthrough_headers: HashSet::default(),
+            detector_concurrent_requests: default_detector_concurrent_requests(),
+            chunker_concurrent_requests: default_chunker_concurrent_requests(),
+        }
     }
 }
 
