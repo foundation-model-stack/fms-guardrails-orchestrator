@@ -30,9 +30,8 @@ use common::{
         GENERATION_NLP_UNARY_ENDPOINT,
     },
     orchestrator::{
-        TestOrchestratorServer, ORCHESTRATOR_CONFIG_FILE_PATH,
-        ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE, ORCHESTRATOR_UNARY_ENDPOINT,
-        ORCHESTRATOR_UNSUITABLE_INPUT_MESSAGE,
+        ORCHESTRATOR_CONFIG_FILE_PATH, ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE,
+        ORCHESTRATOR_UNARY_ENDPOINT, ORCHESTRATOR_UNSUITABLE_INPUT_MESSAGE, TestOrchestratorServer,
     },
 };
 use fms_guardrails_orchestr8::{
@@ -1219,9 +1218,11 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     // Assertions for invalid request
     let results = response.json::<OrchestratorError>().await?;
     assert_eq!(results.code, StatusCode::UNPROCESSABLE_ENTITY);
-    assert!(results
-        .details
-        .starts_with("non_existing_field: unknown field `non_existing_field`"));
+    assert!(
+        results
+            .details
+            .starts_with("non_existing_field: unknown field `non_existing_field`")
+    );
 
     Ok(())
 }

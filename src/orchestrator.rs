@@ -35,14 +35,13 @@ use tracing::{debug, info};
 
 use crate::{
     clients::{
-        self,
+        self, ClientMap, GenerationClient, NlpClient, TextContentsDetectorClient, TgisClient,
         chunker::ChunkerClient,
         detector::{
-            text_context_doc::ContextType, TextChatDetectorClient, TextContextDocDetectorClient,
-            TextGenerationDetectorClient,
+            TextChatDetectorClient, TextContextDocDetectorClient, TextGenerationDetectorClient,
+            text_context_doc::ContextType,
         },
         openai::{ChatCompletionsRequest, OpenAiClient},
-        ClientMap, GenerationClient, NlpClient, TextContentsDetectorClient, TgisClient,
     },
     config::{DetectorType, GenerationProvider, OrchestratorConfig},
     health::HealthCheckCache,

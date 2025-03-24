@@ -14,7 +14,7 @@
  limitations under the License.
 
 */
-use std::collections::{btree_map, BTreeMap};
+use std::collections::{BTreeMap, btree_map};
 
 use super::{Chunk, DetectionBatcher, Detections, DetectorId, InputId};
 
@@ -96,8 +96,8 @@ mod test {
 
     use super::*;
     use crate::orchestrator::{
-        types::{Detection, DetectionBatchStream},
         Error,
+        types::{Detection, DetectionBatchStream},
     };
 
     #[test]
@@ -242,13 +242,17 @@ mod test {
         // We have all detections for chunk-1 and chunk-2
         // pop_batch() should return chunk-1 with 1 pii detection
         let batch = batcher.pop_batch();
-        assert!(batch
-            .is_some_and(|(chunk, detections)| { chunk == chunks[0] && detections.len() == 1 }));
+        assert!(
+            batch
+                .is_some_and(|(chunk, detections)| { chunk == chunks[0] && detections.len() == 1 })
+        );
 
         // pop_batch() should return chunk-2 with no detections
         let batch = batcher.pop_batch();
-        assert!(batch
-            .is_some_and(|(chunk, detections)| { chunk == chunks[1] && detections.is_empty() }));
+        assert!(
+            batch
+                .is_some_and(|(chunk, detections)| { chunk == chunks[1] && detections.is_empty() })
+        );
 
         // batcher state should be empty as all batches have been returned
         assert!(batcher.state.is_empty());
@@ -352,13 +356,15 @@ mod test {
         // We have all detections for chunk-1 and chunk-2
         // detection_batch_stream.next() should be ready and return chunk-1 with 1 pii detection
         let batch = detection_batch_stream.next().await;
-        assert!(batch.is_some_and(|result| result
-            .is_ok_and(|(chunk, detections)| chunk == chunks[0] && detections.len() == 1)));
+        assert!(batch.is_some_and(|result| {
+            result.is_ok_and(|(chunk, detections)| chunk == chunks[0] && detections.len() == 1)
+        }));
 
         // detection_batch_stream.next() should be ready and return chunk-2 with no detections
         let batch = detection_batch_stream.next().await;
-        assert!(batch.is_some_and(|result| result
-            .is_ok_and(|(chunk, detections)| chunk == chunks[1] && detections.is_empty())));
+        assert!(batch.is_some_and(|result| {
+            result.is_ok_and(|(chunk, detections)| chunk == chunks[1] && detections.is_empty())
+        }));
 
         // detection_batch_stream.next() future should not be ready
         // as detection senders have not been closed

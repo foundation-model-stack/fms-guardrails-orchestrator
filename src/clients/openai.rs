@@ -27,8 +27,8 @@ use tokio::sync::mpsc;
 use tracing::{info, instrument};
 
 use super::{
-    create_http_client, detector::ContentAnalysisResponse, http::HttpClientExt, Client, Error,
-    HttpClient,
+    Client, Error, HttpClient, create_http_client, detector::ContentAnalysisResponse,
+    http::HttpClientExt,
 };
 use crate::{
     config::ServiceConfig,

@@ -15,7 +15,7 @@
 
 */
 use std::{
-    collections::{btree_map, BTreeMap, HashMap},
+    collections::{BTreeMap, HashMap, btree_map},
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -41,9 +41,9 @@ use crate::{
         DetectionWarningReason, DetectorParams, UNSUITABLE_INPUT_MESSAGE, UNSUITABLE_OUTPUT_MESSAGE,
     },
     orchestrator::{
+        Chunk,
         detector_processing::content,
         unary::{chunk, detect_content},
-        Chunk,
     },
 };
 
@@ -431,7 +431,7 @@ async fn handle_output_detections(
     headers: &HeaderMap,
     model_id: String,
 ) -> Option<ChatCompletionsResponse> {
-    if let ChatCompletionsResponse::Unary(ref chat_completion) = chat_completions {
+    if let ChatCompletionsResponse::Unary(chat_completion) = chat_completions {
         let choices = Vec::<ChatMessageInternal>::from(chat_completion);
 
         let output_detections = match detector_output {
@@ -626,9 +626,11 @@ mod tests {
         let result: Result<ChatCompletionsRequest, _> = serde_json::from_str(json_data);
         assert!(result.is_err());
         let error = result.unwrap_err().to_string();
-        assert!(error
-            .to_string()
-            .contains("unknown field `additional_field"));
+        assert!(
+            error
+                .to_string()
+                .contains("unknown field `additional_field")
+        );
 
         // Additional unknown field (additional_message")
         let json_data = r#"

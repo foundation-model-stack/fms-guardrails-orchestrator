@@ -20,8 +20,8 @@ use common::{
     detectors::{CONTEXT_DOC_DETECTOR_ENDPOINT, FACT_CHECKING_DETECTOR},
     errors::{DetectorError, OrchestratorError},
     orchestrator::{
-        TestOrchestratorServer, ORCHESTRATOR_CONFIG_FILE_PATH,
-        ORCHESTRATOR_CONTEXT_DOCS_DETECTION_ENDPOINT, ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE,
+        ORCHESTRATOR_CONFIG_FILE_PATH, ORCHESTRATOR_CONTEXT_DOCS_DETECTION_ENDPOINT,
+        ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE, TestOrchestratorServer,
     },
 };
 use fms_guardrails_orchestr8::{
@@ -316,9 +316,11 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     let response = response.json::<OrchestratorError>().await?;
     debug!("{response:#?}");
     assert_eq!(response.code, 422);
-    assert!(response
-        .details
-        .starts_with("context_type: unknown variant `thoughts`, expected `docs` or `url`"));
+    assert!(
+        response
+            .details
+            .starts_with("context_type: unknown variant `thoughts`, expected `docs` or `url`")
+    );
 
     // Asserts requests missing `detectors` return 422.
     let response = orchestrator_server

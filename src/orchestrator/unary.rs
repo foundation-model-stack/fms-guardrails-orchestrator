@@ -22,7 +22,7 @@ use futures::{
     future::try_join_all,
     stream::{self, StreamExt},
 };
-use tracing::{debug, error, info, instrument, Instrument, Span};
+use tracing::{Instrument, Span, debug, error, info, instrument};
 
 use super::{
     ChatDetectionTask, Chunk, ClassificationWithGenTask, Context, ContextDocsDetectionTask,
@@ -31,7 +31,8 @@ use super::{
 };
 use crate::{
     clients::{
-        chunker::{tokenize_whole_doc, ChunkerClient, DEFAULT_CHUNKER_ID},
+        GenerationClient,
+        chunker::{ChunkerClient, DEFAULT_CHUNKER_ID, tokenize_whole_doc},
         detector::{
             ChatDetectionRequest, ContentAnalysisRequest, ContentAnalysisResponse,
             ContextDocsDetectionRequest, ContextType, GenerationDetectionRequest,
@@ -39,7 +40,6 @@ use crate::{
             TextGenerationDetectorClient,
         },
         openai::Message,
-        GenerationClient,
     },
     models::{
         ChatDetectionResult, ClassifiedGeneratedTextResult, ContextDocsResult,
@@ -1042,9 +1042,8 @@ mod tests {
     use super::*;
     use crate::{
         clients::{
-            self,
+            self, ClientMap, GenerationClient, TgisClient,
             detector::{ContentAnalysisResponse, GenerationDetectionRequest},
-            ClientMap, GenerationClient, TgisClient,
         },
         config::{DetectorConfig, OrchestratorConfig},
         models::{DetectionResult, EvidenceObj, FinishReason, THRESHOLD_PARAM},

@@ -19,22 +19,21 @@ use std::time::Duration;
 
 use axum::{extract::Request, http::HeaderMap, response::Response};
 use opentelemetry::{
-    global,
+    KeyValue, global,
     trace::{TraceContextExt, TraceError, TraceId, TracerProvider},
-    KeyValue,
 };
 use opentelemetry_http::{HeaderExtractor, HeaderInjector};
 use opentelemetry_otlp::{MetricExporter, SpanExporter, WithExportConfig, WithHttpConfig};
 use opentelemetry_sdk::{
+    Resource,
     metrics::{MetricError, PeriodicReader, SdkMeterProvider},
     propagation::TraceContextPropagator,
     runtime,
     trace::Sampler,
-    Resource,
 };
-use tracing::{error, info, info_span, Span};
+use tracing::{Span, error, info, info_span};
 use tracing_opentelemetry::{MetricsLayer, OpenTelemetrySpanExt};
-use tracing_subscriber::{layer::SubscriberExt, EnvFilter, Layer};
+use tracing_subscriber::{EnvFilter, Layer, layer::SubscriberExt};
 
 use crate::{
     args::{LogFormat, OtlpProtocol, TracingConfig},

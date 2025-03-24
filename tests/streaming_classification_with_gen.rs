@@ -32,9 +32,9 @@ use common::{
         GENERATION_NLP_TOKENIZATION_ENDPOINT,
     },
     orchestrator::{
-        SseStream, TestOrchestratorServer, ORCHESTRATOR_CONFIG_FILE_PATH,
-        ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE, ORCHESTRATOR_STREAMING_ENDPOINT,
-        ORCHESTRATOR_UNSUITABLE_INPUT_MESSAGE,
+        ORCHESTRATOR_CONFIG_FILE_PATH, ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE,
+        ORCHESTRATOR_STREAMING_ENDPOINT, ORCHESTRATOR_UNSUITABLE_INPUT_MESSAGE, SseStream,
+        TestOrchestratorServer,
     },
 };
 use eventsource_stream::Eventsource;
@@ -653,9 +653,11 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
 
     let response_body = response.json::<OrchestratorError>().await?;
     assert_eq!(response_body.code, 422);
-    assert!(response_body
-        .details
-        .starts_with("non_existing_field: unknown field `non_existing_field`"));
+    assert!(
+        response_body
+            .details
+            .starts_with("non_existing_field: unknown field `non_existing_field`")
+    );
 
     Ok(())
 }

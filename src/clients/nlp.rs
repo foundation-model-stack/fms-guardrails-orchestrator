@@ -20,25 +20,26 @@ use axum::http::HeaderMap;
 use futures::{StreamExt, TryStreamExt};
 use ginepro::LoadBalancedChannel;
 use tonic::{Code, Request};
-use tracing::{debug, instrument, Span};
+use tracing::{Span, debug, instrument};
 
 use super::{
-    create_grpc_client, errors::grpc_to_http_code, grpc_request_with_headers,
-    otel_grpc::OtelGrpcService, BoxStream, Client, Error,
+    BoxStream, Client, Error, create_grpc_client, errors::grpc_to_http_code,
+    grpc_request_with_headers, otel_grpc::OtelGrpcService,
 };
 use crate::{
     config::ServiceConfig,
     health::{HealthCheckResult, HealthStatus},
     pb::{
         caikit::runtime::nlp::{
-            nlp_service_client::NlpServiceClient, ServerStreamingTextGenerationTaskRequest,
-            TextGenerationTaskRequest, TokenClassificationTaskRequest, TokenizationTaskRequest,
+            ServerStreamingTextGenerationTaskRequest, TextGenerationTaskRequest,
+            TokenClassificationTaskRequest, TokenizationTaskRequest,
+            nlp_service_client::NlpServiceClient,
         },
         caikit_data_model::nlp::{
             GeneratedTextResult, GeneratedTextStreamResult, TokenClassificationResults,
             TokenizationResults,
         },
-        grpc::health::v1::{health_client::HealthClient, HealthCheckRequest},
+        grpc::health::v1::{HealthCheckRequest, health_client::HealthClient},
     },
     utils::trace::trace_context_from_grpc_response,
 };

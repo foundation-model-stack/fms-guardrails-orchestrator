@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     clients::errors::grpc_to_http_code,
-    pb::grpc::health::v1::{health_check_response::ServingStatus, HealthCheckResponse},
+    pb::grpc::health::v1::{HealthCheckResponse, health_check_response::ServingStatus},
 };
 
 /// Health status determined for or returned by a client service.

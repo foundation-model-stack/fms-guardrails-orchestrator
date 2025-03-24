@@ -14,7 +14,7 @@
  limitations under the License.
 
 */
-use futures::{stream, Stream, StreamExt};
+use futures::{Stream, StreamExt, stream};
 use tokio::sync::mpsc;
 
 use super::{DetectionBatcher, DetectionStream};

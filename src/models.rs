@@ -1014,7 +1014,7 @@ impl ChatDetectionHttpRequest {
                 None => {
                     return Err(ValidationError::Invalid(
                         "Message content cannot be empty".into(),
-                    ))
+                    ));
                 }
             }
         }
@@ -1245,9 +1245,11 @@ mod tests {
         let result: Result<GuardrailsHttpRequest, _> = serde_json::from_str(json_data);
         assert!(result.is_err());
         let error = result.unwrap_err().to_string();
-        assert!(error
-            .to_string()
-            .contains("unknown field `guardrails_config`"));
+        assert!(
+            error
+                .to_string()
+                .contains("unknown field `guardrails_config`")
+        );
 
         // No inputs
         let request = GuardrailsHttpRequest {
@@ -1347,9 +1349,11 @@ mod tests {
             }),
             text_gen_parameters: None,
         };
-        assert!(request
-            .validate()
-            .is_err_and(|e| e.to_string().contains("must be a number")));
+        assert!(
+            request
+                .validate()
+                .is_err_and(|e| e.to_string().contains("must be a number"))
+        );
     }
 
     #[test]
