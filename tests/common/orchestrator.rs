@@ -27,10 +27,11 @@ use bytes::Bytes;
 use eventsource_stream::{EventStream, Eventsource};
 use fms_guardrails_orchestr8::{config::OrchestratorConfig, orchestrator::Orchestrator};
 use futures::{Stream, StreamExt, stream::BoxStream};
+use futures::stream::{self};
 use mocktail::server::MockServer;
 use rand::Rng;
 use rustls::crypto::ring;
-use serde::de::DeserializeOwned;
+use serde::{de::DeserializeOwned, Serialize};
 use tokio::task::JoinHandle;
 use url::Url;
 
@@ -45,6 +46,7 @@ pub const ORCHESTRATOR_GENERATION_WITH_DETECTION_ENDPOINT: &str =
     "/api/v2/text/generation-detection";
 
 pub const ORCHESTRATOR_CONTENT_DETECTION_ENDPOINT: &str = "/api/v2/text/detection/content";
+pub const ORCHESTRATOR_STREAM_CONTENT_DETECTION_ENDPOINT: &str = "/api/v2/text/detection/stream-content";
 pub const ORCHESTRATOR_DETECTION_ON_GENERATION_ENDPOINT: &str = "/api/v2/text/detection/generated";
 pub const ORCHESTRATOR_CONTEXT_DOCS_DETECTION_ENDPOINT: &str = "/api/v2/text/detection/context";
 pub const ORCHESTRATOR_CHAT_DETECTION_ENDPOINT: &str = "/api/v2/text/detection/chat";
@@ -326,4 +328,18 @@ fn find_available_port() -> Option<u16> {
 
 fn port_is_available(port: u16) -> bool {
     std::net::TcpListener::bind(("0.0.0.0", port)).is_ok()
+}
+
+pub fn json_lines_stream(
+    messages: impl IntoIterator<Item = impl Serialize>,
+) -> impl Stream<Item = Result<Vec<u8>, std::io::Error>> {
+    let chunks = messages
+        .into_iter()
+        .map(|msg| {
+            let mut bytes = serde_json::to_vec(&msg).unwrap();
+            bytes.push(b'\n');
+            Ok(bytes)
+        })
+        .collect::<Vec<Result<_, std::io::Error>>>();
+    stream::iter(chunks)
 }
