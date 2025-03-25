@@ -58,10 +58,10 @@ use crate::{
     clients::openai::{ChatCompletionsRequest, ChatCompletionsResponse},
     models::{self, InfoParams, InfoResponse, StreamingContentDetectionRequest},
     orchestrator::{
-        self, ChatCompletionsDetectionTask, ChatDetectionTask, ClassificationWithGenTask,
-        ContextDocsDetectionTask, DetectionOnGenerationTask, GenerationWithDetectionTask,
-        Orchestrator, StreamingClassificationWithGenTask, StreamingContentDetectionTask,
-        TextContentDetectionTask,
+        self, ChatCompletionsDetectionTask, ChatDetectionTask, ContextDocsDetectionTask,
+        DetectionOnGenerationTask, GenerationWithDetectionTask, Orchestrator,
+        StreamingContentDetectionTask, TextContentDetectionTask,
+        handlers::{ClassificationWithGenTask, Handle, StreamingClassificationWithGenTask},
     },
     utils,
 };
@@ -351,11 +351,7 @@ async fn classification_with_gen(
     request.validate()?;
     let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
     let task = ClassificationWithGenTask::new(trace_id, request, headers);
-    match state
-        .orchestrator
-        .handle_classification_with_gen(task)
-        .await
-    {
+    match state.orchestrator.handle(task).await {
         Ok(response) => Ok(Json(response).into_response()),
         Err(error) => Err(error.into()),
     }
@@ -406,10 +402,7 @@ async fn stream_classification_with_gen(
     }
     let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
     let task = StreamingClassificationWithGenTask::new(trace_id, request, headers);
-    let response_stream = state
-        .orchestrator
-        .handle_streaming_classification_with_gen(task)
-        .await;
+    let response_stream = state.orchestrator.handle(task).await.unwrap();
     // Convert response stream to a stream of SSE events
     let event_stream = response_stream
         .map(|message| match message {

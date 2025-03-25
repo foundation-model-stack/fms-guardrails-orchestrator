@@ -25,9 +25,9 @@ use futures::{
 use tracing::{Instrument, Span, debug, error, info, instrument};
 
 use super::{
-    ChatDetectionTask, Chunk, ClassificationWithGenTask, Context, ContextDocsDetectionTask,
-    DetectionOnGenerationTask, Error, GenerationWithDetectionTask, Orchestrator,
-    TextContentDetectionTask,
+    ChatDetectionTask, Chunk, Context, ContextDocsDetectionTask, DetectionOnGenerationTask, Error,
+    GenerationWithDetectionTask, Orchestrator, TextContentDetectionTask,
+    handlers::ClassificationWithGenTask,
 };
 use crate::{
     clients::{
