@@ -26,12 +26,16 @@ use std::{
 use bytes::Bytes;
 use eventsource_stream::{EventStream, Eventsource};
 use fms_guardrails_orchestr8::{config::OrchestratorConfig, orchestrator::Orchestrator};
-use futures::{Stream, StreamExt, stream::BoxStream};
-use futures::stream::{self};
+use futures::{
+    Stream, StreamExt,
+    stream::{
+        BoxStream, {self},
+    },
+};
 use mocktail::server::MockServer;
 use rand::Rng;
 use rustls::crypto::ring;
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 use tokio::task::JoinHandle;
 use url::Url;
 
@@ -46,7 +50,8 @@ pub const ORCHESTRATOR_GENERATION_WITH_DETECTION_ENDPOINT: &str =
     "/api/v2/text/generation-detection";
 
 pub const ORCHESTRATOR_CONTENT_DETECTION_ENDPOINT: &str = "/api/v2/text/detection/content";
-pub const ORCHESTRATOR_STREAM_CONTENT_DETECTION_ENDPOINT: &str = "/api/v2/text/detection/stream-content";
+pub const ORCHESTRATOR_STREAM_CONTENT_DETECTION_ENDPOINT: &str =
+    "/api/v2/text/detection/stream-content";
 pub const ORCHESTRATOR_DETECTION_ON_GENERATION_ENDPOINT: &str = "/api/v2/text/detection/generated";
 pub const ORCHESTRATOR_CONTEXT_DOCS_DETECTION_ENDPOINT: &str = "/api/v2/text/detection/context";
 pub const ORCHESTRATOR_CHAT_DETECTION_ENDPOINT: &str = "/api/v2/text/detection/chat";
