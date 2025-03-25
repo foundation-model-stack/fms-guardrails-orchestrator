@@ -19,10 +19,10 @@ use std::collections::HashMap;
 use common::{
     chunker::{CHUNKER_MODEL_ID_HEADER_NAME, CHUNKER_NAME_SENTENCE, CHUNKER_STREAMING_ENDPOINT},
     detectors::{DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE, TEXT_CONTENTS_DETECTOR_ENDPOINT},
-    errors::OrchestratorError,
+    errors::{DetectorError, OrchestratorError},
     orchestrator::{
-        ORCHESTRATOR_CONFIG_FILE_PATH, ORCHESTRATOR_STREAM_CONTENT_DETECTION_ENDPOINT,
-        TestOrchestratorServer, json_lines_stream,
+        ORCHESTRATOR_CONFIG_FILE_PATH, ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE,
+        ORCHESTRATOR_STREAM_CONTENT_DETECTION_ENDPOINT, TestOrchestratorServer, json_lines_stream,
     },
 };
 use fms_guardrails_orchestr8::{
@@ -321,6 +321,128 @@ async fn detections() -> Result<(), anyhow::Error> {
             processed_index: 24,
         },
     ];
+    assert_eq!(messages, expected_messages);
+
+    Ok(())
+}
+
+/// Asserts clients returning errors.
+#[test(tokio::test)]
+async fn client_error() -> Result<(), anyhow::Error> {
+    let chunker_id = CHUNKER_NAME_SENTENCE;
+    let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE;
+
+    let chunker_error_payload = "Chunker should return an error.";
+    let detector_error_payload = "Detector should return an error.";
+
+    let mut chunker_mocks = MockSet::new();
+    chunker_mocks.mock(|when, then| {
+        when.path(CHUNKER_STREAMING_ENDPOINT)
+            .header(CHUNKER_MODEL_ID_HEADER_NAME, chunker_id)
+            .pb_stream(vec![BidiStreamingChunkerTokenizationTaskRequest {
+                text_stream: chunker_error_payload.into(),
+                input_index_stream: 0,
+            }]);
+        then.internal_server_error();
+    });
+    chunker_mocks.mock(|when, then| {
+        when.path(CHUNKER_STREAMING_ENDPOINT)
+            .header(CHUNKER_MODEL_ID_HEADER_NAME, chunker_id)
+            .pb_stream(vec![BidiStreamingChunkerTokenizationTaskRequest {
+                text_stream: detector_error_payload.into(),
+                input_index_stream: 0,
+            }]);
+        then.pb_stream([ChunkerTokenizationStreamResult {
+            results: vec![Token {
+                start: 0,
+                end: detector_error_payload.len() as i64,
+                text: detector_error_payload.into(),
+            }],
+            token_count: 0,
+            processed_index: detector_error_payload.len() as i64,
+            start_index: 0,
+            input_start_index: 0,
+            input_end_index: 0,
+        }]);
+    });
+
+    // Add input detection mock
+    let mut detection_mocks = MockSet::new();
+    detection_mocks.mock(|when, then| {
+        when.post()
+            .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
+            .json(ContentAnalysisRequest {
+                contents: vec![detector_error_payload.into()],
+                detector_params: DetectorParams::new(),
+            });
+        then.json(DetectorError {
+            code: 500,
+            message: "There was an error when running the detection".into(),
+        });
+    });
+
+    // Run test orchestrator server
+    let mock_chunker_server = MockServer::new(chunker_id).grpc().with_mocks(chunker_mocks);
+    let mock_detector_server = MockServer::new(detector_name).with_mocks(detection_mocks);
+    let orchestrator_server = TestOrchestratorServer::builder()
+        .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
+        .detector_servers([&mock_detector_server])
+        .chunker_servers([&mock_chunker_server])
+        .build()
+        .await?;
+
+    // Assert chunker error
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_STREAM_CONTENT_DETECTION_ENDPOINT)
+        .header("content-type", "application/x-ndjson")
+        .body(reqwest::Body::wrap_stream(json_lines_stream([
+            StreamingContentDetectionRequest {
+                detectors: Some(HashMap::from([(
+                    detector_name.into(),
+                    DetectorParams::new(),
+                )])),
+                content: chunker_error_payload.into(),
+            },
+        ])))
+        .send()
+        .await?;
+    let mut messages = Vec::<OrchestratorError>::with_capacity(1);
+    let mut stream = response.bytes_stream();
+    while let Some(Ok(msg)) = stream.next().await {
+        debug!("recv: {msg:?}");
+        messages.push(serde_json::from_slice(&msg[..]).unwrap());
+    }
+    let expected_messages = [OrchestratorError {
+        code: 500,
+        details: ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE.into(),
+    }];
+    assert_eq!(messages, expected_messages);
+
+    // Assert detector error
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_STREAM_CONTENT_DETECTION_ENDPOINT)
+        .header("content-type", "application/x-ndjson")
+        .body(reqwest::Body::wrap_stream(json_lines_stream([
+            StreamingContentDetectionRequest {
+                detectors: Some(HashMap::from([(
+                    detector_name.into(),
+                    DetectorParams::new(),
+                )])),
+                content: detector_error_payload.into(),
+            },
+        ])))
+        .send()
+        .await?;
+    let mut messages = Vec::<OrchestratorError>::with_capacity(1);
+    let mut stream = response.bytes_stream();
+    while let Some(Ok(msg)) = stream.next().await {
+        debug!("recv: {msg:?}");
+        messages.push(serde_json::from_slice(&msg[..]).unwrap());
+    }
+    let expected_messages = [OrchestratorError {
+        code: 500,
+        details: ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE.into(),
+    }];
     assert_eq!(messages, expected_messages);
 
     Ok(())
