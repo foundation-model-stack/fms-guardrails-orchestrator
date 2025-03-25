@@ -21,6 +21,7 @@ use futures::Stream;
 pub mod chat_completions_detection;
 pub mod common;
 pub mod detector_processing;
+pub mod handlers;
 pub mod streaming;
 pub mod streaming_content_detection;
 pub mod types;
@@ -47,8 +48,7 @@ use crate::{
     health::HealthCheckCache,
     models::{
         ChatDetectionHttpRequest, ContextDocsHttpRequest, DetectionOnGeneratedHttpRequest,
-        DetectorParams, GenerationWithDetectionHttpRequest, GuardrailsConfig,
-        GuardrailsHttpRequest, GuardrailsTextGenerationParameters,
+        DetectorParams, GenerationWithDetectionHttpRequest, GuardrailsTextGenerationParameters,
         StreamingContentDetectionRequest, TextContentDetectionHttpRequest,
     },
 };
@@ -221,29 +221,6 @@ pub struct Chunk {
     pub text: String,
 }
 
-#[derive(Debug)]
-pub struct ClassificationWithGenTask {
-    pub trace_id: TraceId,
-    pub model_id: String,
-    pub inputs: String,
-    pub guardrails_config: GuardrailsConfig,
-    pub text_gen_parameters: Option<GuardrailsTextGenerationParameters>,
-    pub headers: HeaderMap,
-}
-
-impl ClassificationWithGenTask {
-    pub fn new(trace_id: TraceId, request: GuardrailsHttpRequest, headers: HeaderMap) -> Self {
-        Self {
-            trace_id,
-            model_id: request.model_id,
-            inputs: request.inputs,
-            guardrails_config: request.guardrail_config.unwrap_or_default(),
-            text_gen_parameters: request.text_gen_parameters,
-            headers,
-        }
-    }
-}
-
 /// Task for the /api/v2/text/detection/content endpoint
 #[derive(Debug)]
 pub struct GenerationWithDetectionTask {
@@ -410,30 +387,6 @@ impl DetectionOnGenerationTask {
             prompt: request.prompt,
             generated_text: request.generated_text,
             detectors: request.detectors,
-            headers,
-        }
-    }
-}
-
-#[allow(dead_code)]
-#[derive(Debug)]
-pub struct StreamingClassificationWithGenTask {
-    pub trace_id: TraceId,
-    pub model_id: String,
-    pub inputs: String,
-    pub guardrails_config: GuardrailsConfig,
-    pub text_gen_parameters: Option<GuardrailsTextGenerationParameters>,
-    pub headers: HeaderMap,
-}
-
-impl StreamingClassificationWithGenTask {
-    pub fn new(trace_id: TraceId, request: GuardrailsHttpRequest, headers: HeaderMap) -> Self {
-        Self {
-            trace_id,
-            model_id: request.model_id,
-            inputs: request.inputs,
-            guardrails_config: request.guardrail_config.unwrap_or_default(),
-            text_gen_parameters: request.text_gen_parameters,
             headers,
         }
     }

@@ -516,6 +516,22 @@ pub struct DetectionWarning {
     pub message: Option<String>,
 }
 
+impl DetectionWarning {
+    pub fn unsuitable_input() -> Self {
+        DetectionWarning {
+            id: Some(DetectionWarningReason::UnsuitableInput),
+            message: Some(UNSUITABLE_INPUT_MESSAGE.to_string()),
+        }
+    }
+
+    pub fn unsuitable_output() -> Self {
+        DetectionWarning {
+            id: Some(DetectionWarningReason::UnsuitableOutput),
+            message: Some(UNSUITABLE_OUTPUT_MESSAGE.to_string()),
+        }
+    }
+}
+
 /// Enumeration of warning reasons on input detection
 /// Since this enum's variants do not hold data, we can easily define them as `#[repr(C)]`
 /// which helps with FFI.

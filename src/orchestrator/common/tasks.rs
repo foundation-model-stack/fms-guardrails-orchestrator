@@ -212,16 +212,18 @@ pub async fn text_contents_detections(
                     .clients
                     .get_as::<TextContentsDetectorClient>(&detector_id)
                     .unwrap();
-                let detections =
-                    detect_text_contents(client, headers, detector_id.clone(), params, chunks)
-                        .await?
-                        .into_iter()
-                        .filter(|detection| detection.score >= threshold)
-                        .map(|mut detection| {
-                            detection.detector_id = Some(detector_id.clone());
-                            detection
-                        })
-                        .collect::<Detections>();
+                let detections = detect_text_contents(
+                    client,
+                    headers,
+                    detector_id.clone(),
+                    params,
+                    chunks.clone(),
+                    true,
+                )
+                .await?
+                .into_iter()
+                .filter(|detection| detection.score >= threshold)
+                .collect::<Detections>();
                 Ok::<_, Error>(detections)
             }
         })
@@ -272,18 +274,15 @@ pub async fn text_contents_detection_streams(
                             detector_id.clone(),
                             params.clone(),
                             vec![chunk.clone()].into(),
+                            false,
                         )
                         .await
                         {
                             Ok(detections) => {
-                                // Apply threshold and set detector_id
+                                // Apply threshold
                                 let detections = detections
                                     .into_iter()
                                     .filter(|detection| detection.score >= threshold)
-                                    .map(|mut detection| {
-                                        detection.detector_id = Some(detector_id.clone());
-                                        detection
-                                    })
                                     .collect::<Detections>();
                                 // Send to detection channel
                                 let _ = detection_tx
@@ -353,10 +352,6 @@ pub async fn text_generation_detections(
                 .await?
                 .into_iter()
                 .filter(|detection| detection.score >= threshold)
-                .map(|mut detection| {
-                    detection.detector_id = Some(detector_id.clone());
-                    detection
-                })
                 .collect::<Detections>();
                 Ok::<_, Error>(detections)
             }
@@ -475,10 +470,6 @@ pub async fn text_context_detections(
                     .await?
                     .into_iter()
                     .filter(|detection| detection.score >= threshold)
-                    .map(|mut detection| {
-                        detection.detector_id = Some(detector_id.clone());
-                        detection
-                    })
                     .collect::<Detections>();
                     Ok::<_, Error>(detections)
                 }
