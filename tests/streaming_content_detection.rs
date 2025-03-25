@@ -1,0 +1,192 @@
+use std::collections::HashMap;
+
+/*
+ Copyright FMS Guardrails Orchestrator Authors
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+
+*/
+use common::{
+    chunker::{CHUNKER_MODEL_ID_HEADER_NAME, CHUNKER_NAME_SENTENCE, CHUNKER_STREAMING_ENDPOINT},
+    detectors::{DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE, TEXT_CONTENTS_DETECTOR_ENDPOINT},
+    orchestrator::{
+        json_lines_stream, TestOrchestratorServer, ORCHESTRATOR_CONFIG_FILE_PATH,
+        ORCHESTRATOR_STREAM_CONTENT_DETECTION_ENDPOINT,
+    },
+};
+use fms_guardrails_orchestr8::{
+    clients::detector::{ContentAnalysisRequest, ContentAnalysisResponse},
+    models::{DetectorParams, StreamingContentDetectionRequest, StreamingContentDetectionResponse},
+    pb::{
+        caikit::runtime::chunkers::BidiStreamingChunkerTokenizationTaskRequest,
+        caikit_data_model::nlp::{ChunkerTokenizationStreamResult, Token},
+    },
+};
+use futures::StreamExt;
+use mocktail::{server::MockServer, MockSet};
+use test_log::test;
+use tracing::debug;
+
+pub mod common;
+
+/// Asserts that given a request with no detectors configured returns the text generated
+/// by the model.
+#[test(tokio::test)]
+async fn no_detectors() -> Result<(), anyhow::Error> {
+    let chunker_id = CHUNKER_NAME_SENTENCE;
+    let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE;
+
+    let mut chunker_mocks = MockSet::new();
+    chunker_mocks.mock(|when, then| {
+        when.path(CHUNKER_STREAMING_ENDPOINT)
+            .header(CHUNKER_MODEL_ID_HEADER_NAME, chunker_id)
+            .pb_stream(vec![
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: "Hi".into(),
+                    input_index_stream: 0,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: " there!".into(),
+                    input_index_stream: 1,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: " How".into(),
+                    input_index_stream: 2,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: " are".into(),
+                    input_index_stream: 3,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: " you?".into(),
+                    input_index_stream: 4,
+                },
+            ]);
+
+        then.pb_stream(vec![
+            ChunkerTokenizationStreamResult {
+                results: vec![Token {
+                    start: 0,
+                    end: 9,
+                    text: "Hi there!".into(),
+                }],
+                token_count: 0,
+                processed_index: 9,
+                start_index: 0,
+                input_start_index: 0,
+                input_end_index: 0,
+            },
+            ChunkerTokenizationStreamResult {
+                results: vec![Token {
+                    start: 9,
+                    end: 22,
+                    text: " How are you?".into(),
+                }],
+                token_count: 0,
+                processed_index: 22,
+                start_index: 9,
+                input_start_index: 0,
+                input_end_index: 0,
+            },
+        ]);
+    });
+
+    // Add input detection mock
+    let mut detection_mocks = MockSet::new();
+    detection_mocks.mock(|when, then| {
+        when.post()
+            .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
+            .json(ContentAnalysisRequest {
+                contents: vec!["Hi there!".into()],
+                detector_params: DetectorParams::new(),
+            });
+        then.json([Vec::<ContentAnalysisResponse>::new()]);
+    });
+    detection_mocks.mock(|when, then| {
+        when.post()
+            .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
+            .json(ContentAnalysisRequest {
+                contents: vec![" How are you?".into()],
+                detector_params: DetectorParams::new(),
+            });
+        then.json([Vec::<ContentAnalysisResponse>::new()]);
+    });
+    dbg!(&detection_mocks);
+
+    // Run test orchestrator server
+    let mock_chunker_server = MockServer::new(chunker_id).grpc().with_mocks(chunker_mocks);
+    let mock_detector_server = MockServer::new(detector_name).with_mocks(detection_mocks);
+    let orchestrator_server = TestOrchestratorServer::builder()
+        .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
+        .detector_servers([&mock_detector_server])
+        .chunker_servers([&mock_chunker_server])
+        .build()
+        .await?;
+
+    // Example orchestrator request with streaming response
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_STREAM_CONTENT_DETECTION_ENDPOINT)
+        .header("content-type", "application/x-ndjson")
+        .body(reqwest::Body::wrap_stream(json_lines_stream([
+            StreamingContentDetectionRequest {
+                detectors: Some(HashMap::from([(
+                    detector_name.into(),
+                    DetectorParams::new(),
+                )])),
+                content: "Hi".into(),
+            },
+            StreamingContentDetectionRequest {
+                detectors: None,
+                content: " there!".into(),
+            },
+            StreamingContentDetectionRequest {
+                detectors: None,
+                content: " How".into(),
+            },
+            StreamingContentDetectionRequest {
+                detectors: None,
+                content: " are".into(),
+            },
+            StreamingContentDetectionRequest {
+                detectors: None,
+                content: " you?".into(),
+            },
+        ])))
+        .send()
+        .await?;
+
+    // Collects stream results
+    let mut messages = Vec::<StreamingContentDetectionResponse>::with_capacity(1);
+    let mut stream = response.bytes_stream();
+    while let Some(Ok(msg)) = stream.next().await {
+        debug!("recv: {msg:?}");
+        messages.push(serde_json::from_slice(&msg[..]).unwrap());
+    }
+
+    // assertions
+    let expected_messages = [
+        StreamingContentDetectionResponse {
+            detections: vec![],
+            start_index: 0,
+            processed_index: 9,
+        },
+        StreamingContentDetectionResponse {
+            detections: vec![],
+            start_index: 9,
+            processed_index: 22,
+        },
+    ];
+    assert_eq!(messages, expected_messages);
+
+    Ok(())
+}
