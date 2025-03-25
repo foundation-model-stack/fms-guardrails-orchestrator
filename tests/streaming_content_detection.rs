@@ -19,6 +19,7 @@ use std::collections::HashMap;
 use common::{
     chunker::{CHUNKER_MODEL_ID_HEADER_NAME, CHUNKER_NAME_SENTENCE, CHUNKER_STREAMING_ENDPOINT},
     detectors::{DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE, TEXT_CONTENTS_DETECTOR_ENDPOINT},
+    errors::OrchestratorError,
     orchestrator::{
         json_lines_stream, TestOrchestratorServer, ORCHESTRATOR_CONFIG_FILE_PATH,
         ORCHESTRATOR_STREAM_CONTENT_DETECTION_ENDPOINT,
@@ -34,6 +35,7 @@ use fms_guardrails_orchestr8::{
 };
 use futures::StreamExt;
 use mocktail::{server::MockServer, MockSet};
+use serde_json::json;
 use test_log::test;
 use tracing::debug;
 
@@ -187,6 +189,124 @@ async fn no_detectors() -> Result<(), anyhow::Error> {
         },
     ];
     assert_eq!(messages, expected_messages);
+
+    Ok(())
+}
+
+/// Asserts orchestrator request validation
+#[test(tokio::test)]
+async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
+    let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE;
+
+    // Run test orchestrator server
+    let orchestrator_server = TestOrchestratorServer::builder()
+        .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
+        .build()
+        .await?;
+
+    // // assert extra argument on request
+    // let response = orchestrator_server
+    //     .post(ORCHESTRATOR_STREAM_CONTENT_DETECTION_ENDPOINT)
+    //     .header("content-type", "application/x-ndjson")
+    //     .body(reqwest::Body::wrap_stream(json_lines_stream([json!( {
+    //         "detectors": {detector_name: {}},
+    //         "content": "Hi there!",
+    //         "extra_arg": true
+    //     })])))
+    //     .send()
+    //     .await?;
+    // let mut messages = Vec::<OrchestratorError>::with_capacity(1);
+    // let mut stream = response.bytes_stream();
+    // while let Some(Ok(msg)) = stream.next().await {
+    //     debug!("recv: {msg:?}");
+    //     messages.push(serde_json::from_slice(&msg[..]).unwrap());
+    // }
+    // let expected_messages = [OrchestratorError {
+    //     code: 422,
+    //     details: "`content` is required for the first message".into(),
+    // }];
+    // assert_eq!(
+    //     messages, expected_messages,
+    //     "failed on extra arg scenario"
+    // );
+
+    // // assert missing `detectors` on first frame
+    // let response = orchestrator_server
+    //     .post(ORCHESTRATOR_STREAM_CONTENT_DETECTION_ENDPOINT)
+    //     .header("content-type", "application/x-ndjson")
+    //     .body(reqwest::Body::wrap_stream(json_lines_stream([json!( {
+    //         "detectors": {detector_name: {}}
+    //     })])))
+    //     .send()
+    //     .await?;
+    // let mut messages = Vec::<OrchestratorError>::with_capacity(1);
+    // let mut stream = response.bytes_stream();
+    // while let Some(Ok(msg)) = stream.next().await {
+    //     debug!("recv: {msg:?}");
+    //     messages.push(serde_json::from_slice(&msg[..]).unwrap());
+    // }
+    // let expected_messages = [OrchestratorError {
+    //     code: 422,
+    //     details: "`content` is required for the first message".into(),
+    // }];
+    // assert_eq!(
+    //     messages, expected_messages,
+    //     "failed on missing `content` scenario"
+    // );
+
+    // assert missing `detectors` on first frame
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_STREAM_CONTENT_DETECTION_ENDPOINT)
+        .header("content-type", "application/x-ndjson")
+        .body(reqwest::Body::wrap_stream(json_lines_stream([
+            StreamingContentDetectionRequest {
+                detectors: None,
+                content: "Hi".into(),
+            },
+        ])))
+        .send()
+        .await?;
+    let mut messages = Vec::<OrchestratorError>::with_capacity(1);
+    let mut stream = response.bytes_stream();
+    while let Some(Ok(msg)) = stream.next().await {
+        debug!("recv: {msg:?}");
+        messages.push(serde_json::from_slice(&msg[..]).unwrap());
+    }
+    let expected_messages = [OrchestratorError {
+        code: 422,
+        details: "`detectors` is required for the first message".into(),
+    }];
+    assert_eq!(
+        messages, expected_messages,
+        "failed on missing `detectors` scenario"
+    );
+
+    // assert empty `detectors` on first frame
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_STREAM_CONTENT_DETECTION_ENDPOINT)
+        .header("content-type", "application/x-ndjson")
+        .body(reqwest::Body::wrap_stream(json_lines_stream([
+            StreamingContentDetectionRequest {
+                detectors: Some(HashMap::new()),
+                content: "Hi".into(),
+            },
+        ])))
+        .send()
+        .await?;
+    let mut messages = Vec::<OrchestratorError>::with_capacity(1);
+    let mut stream = response.bytes_stream();
+    while let Some(Ok(msg)) = stream.next().await {
+        debug!("recv: {msg:?}");
+        messages.push(serde_json::from_slice(&msg[..]).unwrap());
+    }
+    let expected_messages = [OrchestratorError {
+        code: 422,
+        details: "`detectors` must not be empty".into(),
+    }];
+    assert_eq!(
+        messages, expected_messages,
+        "failed on empty `detectors` scenario"
+    );
 
     Ok(())
 }
