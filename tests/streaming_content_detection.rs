@@ -21,8 +21,8 @@ use common::{
     detectors::{DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE, TEXT_CONTENTS_DETECTOR_ENDPOINT},
     errors::OrchestratorError,
     orchestrator::{
-        json_lines_stream, TestOrchestratorServer, ORCHESTRATOR_CONFIG_FILE_PATH,
-        ORCHESTRATOR_STREAM_CONTENT_DETECTION_ENDPOINT,
+        ORCHESTRATOR_CONFIG_FILE_PATH, ORCHESTRATOR_STREAM_CONTENT_DETECTION_ENDPOINT,
+        TestOrchestratorServer, json_lines_stream,
     },
 };
 use fms_guardrails_orchestr8::{
@@ -34,17 +34,16 @@ use fms_guardrails_orchestr8::{
     },
 };
 use futures::StreamExt;
-use mocktail::{server::MockServer, MockSet};
-use serde_json::json;
+use mocktail::{MockSet, server::MockServer};
+// use serde_json::json;
 use test_log::test;
 use tracing::debug;
 
 pub mod common;
 
-/// Asserts that given a request with no detectors configured returns the text generated
-/// by the model.
+/// Asserts scenario with no detections
 #[test(tokio::test)]
-async fn no_detectors() -> Result<(), anyhow::Error> {
+async fn no_detections() -> Result<(), anyhow::Error> {
     let chunker_id = CHUNKER_NAME_SENTENCE;
     let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE;
 
@@ -193,10 +192,144 @@ async fn no_detectors() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
+/// Asserts scenario with detections
+#[test(tokio::test)]
+async fn detections() -> Result<(), anyhow::Error> {
+    let chunker_id = CHUNKER_NAME_SENTENCE;
+    let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE;
+
+    let mut chunker_mocks = MockSet::new();
+    chunker_mocks.mock(|when, then| {
+        when.path(CHUNKER_STREAMING_ENDPOINT)
+            .header(CHUNKER_MODEL_ID_HEADER_NAME, chunker_id)
+            .pb_stream(vec![BidiStreamingChunkerTokenizationTaskRequest {
+                text_stream: "Hi there! How are <you>?".into(),
+                input_index_stream: 0,
+            }]);
+
+        then.pb_stream(vec![
+            ChunkerTokenizationStreamResult {
+                results: vec![Token {
+                    start: 0,
+                    end: 9,
+                    text: "Hi there!".into(),
+                }],
+                token_count: 0,
+                processed_index: 9,
+                start_index: 0,
+                input_start_index: 0,
+                input_end_index: 0,
+            },
+            ChunkerTokenizationStreamResult {
+                results: vec![Token {
+                    start: 9,
+                    end: 24,
+                    text: " How are <you>?".into(),
+                }],
+                token_count: 0,
+                processed_index: 24,
+                start_index: 9,
+                input_start_index: 0,
+                input_end_index: 0,
+            },
+        ]);
+    });
+
+    // Add input detection mock
+    let mut detection_mocks = MockSet::new();
+    detection_mocks.mock(|when, then| {
+        when.post()
+            .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
+            .json(ContentAnalysisRequest {
+                contents: vec!["Hi there!".into()],
+                detector_params: DetectorParams::new(),
+            });
+        then.json([Vec::<ContentAnalysisResponse>::new()]);
+    });
+    detection_mocks.mock(|when, then| {
+        when.post()
+            .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
+            .json(ContentAnalysisRequest {
+                contents: vec![" How are <you>?".into()],
+                detector_params: DetectorParams::new(),
+            });
+        then.json([[ContentAnalysisResponse {
+            start: 10,
+            end: 13,
+            text: "you".into(),
+            detection: "has_angle_brackets".into(),
+            detection_type: "angle_brackets".into(),
+            detector_id: Some(detector_name.into()),
+            score: 1.0,
+            evidence: None,
+        }]]);
+    });
+
+    // Run test orchestrator server
+    let mock_chunker_server = MockServer::new(chunker_id).grpc().with_mocks(chunker_mocks);
+    let mock_detector_server = MockServer::new(detector_name).with_mocks(detection_mocks);
+    let orchestrator_server = TestOrchestratorServer::builder()
+        .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
+        .detector_servers([&mock_detector_server])
+        .chunker_servers([&mock_chunker_server])
+        .build()
+        .await?;
+
+    // Example orchestrator request with streaming response
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_STREAM_CONTENT_DETECTION_ENDPOINT)
+        .header("content-type", "application/x-ndjson")
+        .body(reqwest::Body::wrap_stream(json_lines_stream([
+            StreamingContentDetectionRequest {
+                detectors: Some(HashMap::from([(
+                    detector_name.into(),
+                    DetectorParams::new(),
+                )])),
+                content: "Hi there! How are <you>?".into(),
+            },
+        ])))
+        .send()
+        .await?;
+
+    // Collects stream results
+    let mut messages = Vec::<StreamingContentDetectionResponse>::with_capacity(1);
+    let mut stream = response.bytes_stream();
+    while let Some(Ok(msg)) = stream.next().await {
+        debug!("recv: {msg:?}");
+        messages.push(serde_json::from_slice(&msg[..]).unwrap());
+    }
+
+    // assertions
+    let expected_messages = [
+        StreamingContentDetectionResponse {
+            detections: vec![],
+            start_index: 0,
+            processed_index: 9,
+        },
+        StreamingContentDetectionResponse {
+            detections: vec![ContentAnalysisResponse {
+                start: 10,
+                end: 13,
+                text: "you".into(),
+                detection: "has_angle_brackets".into(),
+                detection_type: "angle_brackets".into(),
+                detector_id: Some(detector_name.into()),
+                score: 1.0,
+                evidence: None,
+            }],
+            start_index: 9,
+            processed_index: 24,
+        },
+    ];
+    assert_eq!(messages, expected_messages);
+
+    Ok(())
+}
+
 /// Asserts orchestrator request validation
 #[test(tokio::test)]
 async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
-    let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE;
+    // let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE;
 
     // Run test orchestrator server
     let orchestrator_server = TestOrchestratorServer::builder()
