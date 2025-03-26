@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 /*
  Copyright FMS Guardrails Orchestrator Authors
 
@@ -16,6 +14,8 @@ use std::collections::HashMap;
  limitations under the License.
 
 */
+use std::collections::HashMap;
+
 use common::{
     chunker::{CHUNKER_MODEL_ID_HEADER_NAME, CHUNKER_NAME_SENTENCE, CHUNKER_STREAMING_ENDPOINT},
     detectors::{DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE, TEXT_CONTENTS_DETECTOR_ENDPOINT},
