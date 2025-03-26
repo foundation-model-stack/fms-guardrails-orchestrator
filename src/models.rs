@@ -988,6 +988,15 @@ pub struct ChatDetectionHttpRequest {
 }
 
 impl ChatDetectionHttpRequest {
+    /// Validates for the "/api/v1/text/chat" endpoint.
+    pub fn validate_for_text(&self) -> Result<(), ValidationError> {
+        self.validate()?;
+        self.validate_messages()?;
+        validate_detector_params(&self.detectors)?;
+
+        Ok(())
+    }
+
     /// Upfront validation of user request
     pub fn validate(&self) -> Result<(), ValidationError> {
         // Validate required parameters
@@ -1001,24 +1010,18 @@ impl ChatDetectionHttpRequest {
         Ok(())
     }
 
-    /// Validates for the "/api/v1/text/chat" endpoint.
-    pub fn validate_for_text(&self) -> Result<(), ValidationError> {
-        self.validate()?;
-        self.validate_messages()?;
-        validate_detector_params(&self.detectors)?;
-
-        Ok(())
-    }
-
     /// Validates if message contents are either a string or a content type of type "text"
+    /// content can be empty if tool_calls is provided
     fn validate_messages(&self) -> Result<(), ValidationError> {
         for message in &self.messages {
             match &message.content {
                 Some(content) => self.validate_content_type(content)?,
                 None => {
-                    return Err(ValidationError::Invalid(
-                        "Message content cannot be empty".into(),
-                    ));
+                    if message.tool_calls.is_none() {
+                        return Err(ValidationError::Invalid(
+                            "Message content cannot be empty".into(),
+                        ));
+                    }
                 }
             }
         }
