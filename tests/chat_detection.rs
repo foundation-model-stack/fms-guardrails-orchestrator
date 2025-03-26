@@ -27,7 +27,7 @@ use common::{
 use fms_guardrails_orchestr8::{
     clients::{
         detector::ChatDetectionRequest,
-        openai::{Content, Message, Role},
+        openai::{Content, Message, Role, Tool, ToolFunction},
     },
     models::{ChatDetectionHttpRequest, ChatDetectionResult, DetectionResult, DetectorParams},
 };
@@ -55,6 +55,16 @@ async fn no_detections() -> Result<(), anyhow::Error> {
             ..Default::default()
         },
     ];
+    // tools are just passed through to the detector
+    let tools = vec![Tool {
+        r#type: "function".into(),
+        function: ToolFunction {
+            name: "tool-function".into(),
+            description: None,
+            parameters: None,
+            strict: None,
+        },
+    }];
     let detection = DetectionResult {
         detection_type: "pii".into(),
         detection: "is_pii".into(),
@@ -70,7 +80,7 @@ async fn no_detections() -> Result<(), anyhow::Error> {
             .path(CHAT_DETECTOR_ENDPOINT)
             .json(ChatDetectionRequest {
                 messages: messages.clone(),
-                tools: None,
+                tools: Some(tools.clone()),
                 detector_params: DetectorParams::new(),
             });
         then.json(vec![detection.clone()]);
@@ -91,7 +101,7 @@ async fn no_detections() -> Result<(), anyhow::Error> {
         .json(&ChatDetectionHttpRequest {
             detectors: HashMap::from([(detector_name.into(), DetectorParams::new())]),
             messages,
-            tools: None,
+            tools: Some(tools),
         })
         .send()
         .await?;
@@ -347,6 +357,28 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     debug!("{response:#?}");
     assert_eq!(response.code, 422);
     assert!(response.details.contains("`detectors` is required"));
+
+    // Asserts requests with no `content` or `tool_calls` return 422
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_CHAT_DETECTION_ENDPOINT)
+        .json(&json!({
+            "messages": [
+                {
+                  "role": "user",
+                },
+                {
+                  "content": "It's making sure requests with extra fields are not accepted.",
+                  "role": "assistant",
+                }
+            ],
+            "detectors": {detector_name: {}}
+        }))
+        .send()
+        .await?;
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    let response = response.json::<OrchestratorError>().await?;
+    assert_eq!(response.code, 422);
+    assert!(response.details.contains("Message content cannot be empty"));
 
     Ok(())
 }
