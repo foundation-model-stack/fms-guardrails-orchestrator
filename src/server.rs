@@ -455,10 +455,12 @@ async fn stream_content_detection(
 
     // Create input stream
     let input_stream = json_lines
-        .map(|result| {
-            let message = result.unwrap();
-            message.validate()?;
-            Ok(message)
+        .map(|result| match result {
+            Ok(message) => {
+                message.validate()?;
+                Ok(message)
+            }
+            Err(error) => Err(orchestrator::errors::Error::Validation(error.to_string())),
         })
         .boxed();
 
