@@ -247,7 +247,7 @@ pub struct ChatCompletionsRequest {
     pub top_p: Option<f32>,
     /// A list of tools the model may call.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub tools: Option<Tool>,
+    pub tools: Option<Vec<Tool>>,
     /// Controls which (if any) tool is called by the model.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_choice: Option<ToolChoice>,

@@ -39,7 +39,7 @@ use crate::{
             TextChatDetectorClient, TextContentsDetectorClient, TextContextDocDetectorClient,
             TextGenerationDetectorClient,
         },
-        openai::Message,
+        openai::{Message, Tool},
     },
     models::{
         ChatDetectionResult, ClassifiedGeneratedTextResult, ContextDocsResult,
@@ -493,6 +493,7 @@ impl Orchestrator {
                             let detector_id = detector_id.clone();
                             let detector_params = detector_params.clone();
                             let messages = task.messages.clone();
+                            let tools = task.tools.clone();
                             let headers = headers.clone();
                             async {
                                 detect_for_chat(
@@ -500,6 +501,7 @@ impl Orchestrator {
                                     detector_id,
                                     detector_params,
                                     messages,
+                                    tools,
                                     headers,
                                 )
                                 .await
@@ -828,6 +830,7 @@ pub async fn detect_for_chat(
     detector_id: String,
     mut detector_params: DetectorParams,
     messages: Vec<Message>,
+    tools: Option<Vec<Tool>>,
     headers: HeaderMap,
 ) -> Result<Vec<DetectionResult>, Error> {
     let detector_id = detector_id.clone();
@@ -840,7 +843,7 @@ pub async fn detect_for_chat(
                 .default_threshold,
         ),
     );
-    let request = ChatDetectionRequest::new(messages.clone(), detector_params);
+    let request = ChatDetectionRequest::new(messages.clone(), tools.clone(), detector_params);
     debug!(%detector_id, ?request, "sending chat detector request");
     let client = ctx
         .clients

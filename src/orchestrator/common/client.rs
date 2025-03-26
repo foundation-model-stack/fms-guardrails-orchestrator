@@ -157,9 +157,10 @@ pub async fn detect_text_chat(
     detector_id: DetectorId,
     params: DetectorParams,
     messages: Vec<openai::Message>,
+    tools: Option<Vec<openai::Tool>>,
 ) -> Result<Detections, Error> {
     let detector_id = detector_id.clone();
-    let request = ChatDetectionRequest::new(messages, params);
+    let request = ChatDetectionRequest::new(messages, tools, params);
     debug!(%detector_id, ?request, "sending detector request");
     let response = client
         .text_chat(&detector_id, request, headers)

@@ -979,8 +979,12 @@ pub struct ChatDetectionHttpRequest {
     /// The map of detectors to be used, along with their respective parameters, e.g. thresholds.
     pub detectors: HashMap<String, DetectorParams>,
 
-    // The list of messages to run detections on.
+    /// The list of messages to run detections on.
     pub messages: Vec<clients::openai::Message>,
+
+    /// An optional list of tools definitions to analyze with messages
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tools: Option<Vec<clients::openai::Tool>>,
 }
 
 impl ChatDetectionHttpRequest {

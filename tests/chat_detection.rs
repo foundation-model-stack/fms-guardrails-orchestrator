@@ -70,6 +70,7 @@ async fn no_detections() -> Result<(), anyhow::Error> {
             .path(CHAT_DETECTOR_ENDPOINT)
             .json(ChatDetectionRequest {
                 messages: messages.clone(),
+                tools: None,
                 detector_params: DetectorParams::new(),
             });
         then.json(vec![detection.clone()]);
@@ -90,6 +91,7 @@ async fn no_detections() -> Result<(), anyhow::Error> {
         .json(&ChatDetectionHttpRequest {
             detectors: HashMap::from([(detector_name.into(), DetectorParams::new())]),
             messages,
+            tools: None,
         })
         .send()
         .await?;
@@ -137,6 +139,7 @@ async fn detections() -> Result<(), anyhow::Error> {
             .path(CHAT_DETECTOR_ENDPOINT)
             .json(ChatDetectionRequest {
                 messages: messages.clone(),
+                tools: None,
                 detector_params: DetectorParams::new(),
             });
         then.json(vec![detection.clone()]);
@@ -156,6 +159,7 @@ async fn detections() -> Result<(), anyhow::Error> {
         .json(&ChatDetectionHttpRequest {
             detectors: HashMap::from([(detector_name.into(), DetectorParams::new())]),
             messages,
+            tools: None,
         })
         .send()
         .await?;
@@ -202,6 +206,7 @@ async fn client_errors() -> Result<(), anyhow::Error> {
             .path(CHAT_DETECTOR_ENDPOINT)
             .json(ChatDetectionRequest {
                 messages: messages.clone(),
+                tools: None,
                 detector_params: DetectorParams::new(),
             });
         then.json(&detector_error).internal_server_error();
@@ -221,6 +226,7 @@ async fn client_errors() -> Result<(), anyhow::Error> {
         .json(&ChatDetectionHttpRequest {
             detectors: HashMap::from([(detector_name.into(), DetectorParams::new())]),
             messages,
+            tools: None,
         })
         .send()
         .await?;
