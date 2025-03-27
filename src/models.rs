@@ -1012,6 +1012,7 @@ impl ChatDetectionHttpRequest {
 
     /// Validates if message contents are either a string or a content type of type "text"
     /// content can be empty if tool_calls is provided
+    // ref. https://platform.openai.com/docs/api-reference/chat/create
     fn validate_messages(&self) -> Result<(), ValidationError> {
         for message in &self.messages {
             match &message.content {
