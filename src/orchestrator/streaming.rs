@@ -26,7 +26,7 @@ use tokio::sync::{broadcast, mpsc};
 use tokio_stream::wrappers::{BroadcastStream, ReceiverStream};
 use tracing::{Instrument, Span, debug, error, info, instrument, warn};
 
-use super::{Context, Error, Orchestrator, StreamingClassificationWithGenTask};
+use super::{Context, Error, Orchestrator, handlers::StreamingClassificationWithGenTask};
 use crate::{
     clients::{
         GenerationClient, TextContentsDetectorClient,
