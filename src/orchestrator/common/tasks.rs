@@ -377,7 +377,7 @@ pub async fn text_chat_detections(
     detectors: &HashMap<DetectorId, DetectorParams>,
     input_id: InputId,
     messages: Vec<openai::Message>,
-    tools: Option<Vec<openai::Tool>>,
+    tools: Vec<openai::Tool>,
 ) -> Result<(InputId, Detections), Error> {
     let inputs = detectors
         .iter()

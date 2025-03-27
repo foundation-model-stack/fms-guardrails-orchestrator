@@ -111,18 +111,14 @@ pub struct ChatDetectionRequest {
     pub messages: Vec<Message>,
 
     /// Optional list of tool definitions
-    pub tools: Option<Vec<Tool>>,
+    pub tools: Vec<Tool>,
 
     /// Detector parameters (available parameters depend on the detector)
     pub detector_params: DetectorParams,
 }
 
 impl ChatDetectionRequest {
-    pub fn new(
-        messages: Vec<Message>,
-        tools: Option<Vec<Tool>>,
-        detector_params: DetectorParams,
-    ) -> Self {
+    pub fn new(messages: Vec<Message>, tools: Vec<Tool>, detector_params: DetectorParams) -> Self {
         Self {
             messages,
             tools,

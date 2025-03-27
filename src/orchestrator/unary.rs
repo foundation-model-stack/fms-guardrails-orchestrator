@@ -830,7 +830,7 @@ pub async fn detect_for_chat(
     detector_id: String,
     mut detector_params: DetectorParams,
     messages: Vec<Message>,
-    tools: Option<Vec<Tool>>,
+    tools: Vec<Tool>,
     headers: HeaderMap,
 ) -> Result<Vec<DetectionResult>, Error> {
     let detector_id = detector_id.clone();

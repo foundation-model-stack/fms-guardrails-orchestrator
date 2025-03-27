@@ -362,7 +362,7 @@ pub struct ChatDetectionTask {
     pub messages: Vec<clients::openai::Message>,
 
     // Tools definitions, optional
-    pub tools: Option<Vec<clients::openai::Tool>>,
+    pub tools: Vec<clients::openai::Tool>,
 
     // Headermap
     pub headers: HeaderMap,

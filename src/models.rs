@@ -983,8 +983,8 @@ pub struct ChatDetectionHttpRequest {
     pub messages: Vec<clients::openai::Message>,
 
     /// An optional list of tools definitions to analyze with messages
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tools: Option<Vec<clients::openai::Tool>>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tools: Vec<clients::openai::Tool>,
 }
 
 impl ChatDetectionHttpRequest {

@@ -80,7 +80,7 @@ async fn no_detections() -> Result<(), anyhow::Error> {
             .path(CHAT_DETECTOR_ENDPOINT)
             .json(ChatDetectionRequest {
                 messages: messages.clone(),
-                tools: Some(tools.clone()),
+                tools: tools.clone(),
                 detector_params: DetectorParams::new(),
             });
         then.json(vec![detection.clone()]);
@@ -101,7 +101,7 @@ async fn no_detections() -> Result<(), anyhow::Error> {
         .json(&ChatDetectionHttpRequest {
             detectors: HashMap::from([(detector_name.into(), DetectorParams::new())]),
             messages,
-            tools: Some(tools),
+            tools,
         })
         .send()
         .await?;
@@ -149,7 +149,7 @@ async fn detections() -> Result<(), anyhow::Error> {
             .path(CHAT_DETECTOR_ENDPOINT)
             .json(ChatDetectionRequest {
                 messages: messages.clone(),
-                tools: None,
+                tools: vec![],
                 detector_params: DetectorParams::new(),
             });
         then.json(vec![detection.clone()]);
@@ -169,7 +169,7 @@ async fn detections() -> Result<(), anyhow::Error> {
         .json(&ChatDetectionHttpRequest {
             detectors: HashMap::from([(detector_name.into(), DetectorParams::new())]),
             messages,
-            tools: None,
+            tools: vec![],
         })
         .send()
         .await?;
@@ -216,7 +216,7 @@ async fn client_errors() -> Result<(), anyhow::Error> {
             .path(CHAT_DETECTOR_ENDPOINT)
             .json(ChatDetectionRequest {
                 messages: messages.clone(),
-                tools: None,
+                tools: vec![],
                 detector_params: DetectorParams::new(),
             });
         then.json(&detector_error).internal_server_error();
@@ -236,7 +236,7 @@ async fn client_errors() -> Result<(), anyhow::Error> {
         .json(&ChatDetectionHttpRequest {
             detectors: HashMap::from([(detector_name.into(), DetectorParams::new())]),
             messages,
-            tools: None,
+            tools: vec![],
         })
         .send()
         .await?;
