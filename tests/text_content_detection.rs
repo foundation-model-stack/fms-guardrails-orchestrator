@@ -223,6 +223,7 @@ async fn detections() -> Result<(), anyhow::Error> {
                 detector_id: Some(sentence_detector.into()),
                 score: 1.0,
                 evidence: None,
+                metadata: None,
             }],
         ]);
     });
@@ -244,6 +245,7 @@ async fn detections() -> Result<(), anyhow::Error> {
             detector_id: Some(sentence_detector.into()),
             score: 1.0,
             evidence: None,
+            metadata: None,
         }]]);
     });
 
@@ -293,6 +295,7 @@ async fn detections() -> Result<(), anyhow::Error> {
                 detector_id: Some(whole_doc_detector.into()),
                 score: 1.0,
                 evidence: None,
+                metadata: None,
             }],
         },
         "error on whole doc detector response body assertion"
@@ -328,6 +331,7 @@ async fn detections() -> Result<(), anyhow::Error> {
                 detector_id: Some(sentence_detector.into()),
                 score: 1.0,
                 evidence: None,
+                metadata: None,
             }],
         },
         "error on sentence detector response body assertion"

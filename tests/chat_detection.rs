@@ -61,6 +61,7 @@ async fn no_detections() -> Result<(), anyhow::Error> {
         detector_id: Some(detector_name.into()),
         score: 0.01,
         evidence: None,
+        metadata: None,
     };
 
     // Add detector mock
@@ -128,6 +129,7 @@ async fn detections() -> Result<(), anyhow::Error> {
         detector_id: Some(detector_name.into()),
         score: 0.97,
         evidence: None,
+        metadata: None,
     };
 
     // Add detector mock

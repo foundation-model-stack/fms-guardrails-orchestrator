@@ -25,7 +25,7 @@ use crate::{
     clients::{Client, Error, HttpClient, create_http_client, http::HttpClientExt},
     config::ServiceConfig,
     health::HealthCheckResult,
-    models::{DetectorParams, EvidenceObj},
+    models::{DetectorParams, EvidenceObj, MetadataObj},
 };
 
 const CONTENTS_DETECTOR_ENDPOINT: &str = "/api/v1/text/contents";
@@ -139,6 +139,9 @@ pub struct ContentAnalysisResponse {
     /// Optional, any applicable evidence for detection
     #[serde(skip_serializing_if = "Option::is_none")]
     pub evidence: Option<Vec<EvidenceObj>>,
+    // Optional metadata block
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<MetadataObj>,
 }
 
 impl From<ContentAnalysisResponse> for crate::models::TokenClassificationResult {

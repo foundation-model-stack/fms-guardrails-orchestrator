@@ -161,6 +161,7 @@ impl AggregationActor {
                             detector_id: r.detector_id,
                             score: r.score,
                             evidence: None,
+                            metadata: None,
                         })
                         .collect(),
                 };

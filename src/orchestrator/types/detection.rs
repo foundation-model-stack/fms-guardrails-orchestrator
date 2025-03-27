@@ -35,6 +35,8 @@ pub struct Detection {
     pub score: f64,
     /// Detection evidence
     pub evidence: Vec<DetectionEvidence>,
+    /// Detection metadata
+    pub metadata: Option<models::MetadataObj>,
 }
 
 /// Detection evidence.
@@ -123,6 +125,7 @@ impl From<detector::ContentAnalysisResponse> for Detection {
                 .evidence
                 .map(|vs| vs.into_iter().map(Into::into).collect())
                 .unwrap_or_default(),
+            metadata: value.metadata,
         }
     }
 }
@@ -198,6 +201,7 @@ impl From<models::DetectionResult> for Detection {
                 .evidence
                 .map(|vs| vs.into_iter().map(Into::into).collect())
                 .unwrap_or_default(),
+            metadata: value.metadata,
         }
     }
 }
@@ -242,6 +246,7 @@ impl From<Detection> for detector::ContentAnalysisResponse {
             detector_id: value.detector_id,
             score: value.score,
             evidence,
+            metadata: value.metadata,
         }
     }
 }

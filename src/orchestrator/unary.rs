@@ -1173,6 +1173,7 @@ mod tests {
                 detector_id: Some(detector_id.to_string()),
                 score: 0.1,
                 evidence: Some(vec![]),
+                metadata: None,
             }],
             vec![ContentAnalysisResponse {
                 start: 0,
@@ -1183,6 +1184,7 @@ mod tests {
                 detector_id: Some(detector_id.to_string()),
                 score: 0.9,
                 evidence: Some(vec![]),
+                metadata: None,
             }],
         ]));
 
@@ -1332,6 +1334,7 @@ mod tests {
                 }]
                 .to_vec(),
             ),
+            metadata: None,
         }];
 
         faux::when!(detector_client.text_generation(
@@ -1358,6 +1361,7 @@ mod tests {
                 }]
                 .to_vec(),
             ),
+            metadata: None,
         }]));
 
         let mut clients = ClientMap::new();
@@ -1419,6 +1423,7 @@ mod tests {
             detector_id: Some(detector_id.to_string()),
             score: 0.1,
             evidence: None,
+            metadata: None,
         }]));
 
         let mut clients = ClientMap::new();
