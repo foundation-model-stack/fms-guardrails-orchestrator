@@ -139,7 +139,7 @@ pub struct ContentAnalysisResponse {
     /// Optional, any applicable evidence for detection
     #[serde(skip_serializing_if = "Option::is_none")]
     pub evidence: Option<Vec<EvidenceObj>>,
-    // Optional metadata block
+    /// Optional metadata block
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metadata: Option<MetadataObj>,
 }
