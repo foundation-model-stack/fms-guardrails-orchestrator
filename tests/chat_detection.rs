@@ -55,14 +55,15 @@ async fn no_detections() -> Result<(), anyhow::Error> {
             ..Default::default()
         },
     ];
+    let parameters = HashMap::from([("id".into(), "a".into()), ("type".into(), "b".into())]);
     // tools are just passed through to the detector
     let tools = vec![Tool {
         r#type: "function".into(),
         function: ToolFunction {
             name: "tool-function".into(),
             description: None,
-            parameters: None,
             strict: None,
+            parameters,
         },
     }];
     let detection = DetectionResult {

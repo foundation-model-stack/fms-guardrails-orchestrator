@@ -308,23 +308,8 @@ pub struct ResponseFormat {
     /// The type of response format being defined.
     #[serde(rename = "type")]
     pub r#type: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub json_schema: Option<JsonSchema>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct JsonSchema {
-    /// The name of the response format.
-    pub name: String,
-    /// A description of what the response format is for, used by the model to determine how to respond in the format.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
-    /// The schema for the response format, described as a JSON Schema object.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub schema: Option<JsonSchemaObject>,
-    /// Whether to enable strict schema adherence when generating the output.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub strict: Option<bool>,
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub json_schema: HashMap<String, serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -343,8 +328,9 @@ pub struct ToolFunction {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     /// The parameters the functions accepts, described as a JSON Schema object.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub parameters: Option<HashMap<String, serde_json::Value>>,
+    // JSON Schema is not strictly defined here since parameters are passed through
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub parameters: HashMap<String, serde_json::Value>,
     /// Whether to enable strict schema adherence when generating the function call.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub strict: Option<bool>,
@@ -377,18 +363,6 @@ pub struct StreamOptions {
     /// will also include a usage field, but with a null value.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub include_usage: Option<bool>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct JsonSchemaObject {
-    pub id: String,
-    pub schema: String,
-    pub title: String,
-    pub description: Option<String>,
-    #[serde(rename = "type")]
-    pub r#type: String,
-    pub properties: Option<HashMap<String, serde_json::Value>>,
-    pub required: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
