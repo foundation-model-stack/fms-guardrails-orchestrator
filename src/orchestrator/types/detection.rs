@@ -36,7 +36,7 @@ pub struct Detection {
     /// Detection evidence
     pub evidence: Vec<DetectionEvidence>,
     /// Detection metadata
-    pub metadata: Option<models::MetadataObj>,
+    pub metadata: models::Metadata,
 }
 
 /// Detection evidence.

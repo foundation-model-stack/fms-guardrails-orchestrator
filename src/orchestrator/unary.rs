@@ -1173,7 +1173,7 @@ mod tests {
                 detector_id: Some(detector_id.to_string()),
                 score: 0.1,
                 evidence: Some(vec![]),
-                metadata: None,
+                metadata: HashMap::new(),
             }],
             vec![ContentAnalysisResponse {
                 start: 0,
@@ -1184,7 +1184,7 @@ mod tests {
                 detector_id: Some(detector_id.to_string()),
                 score: 0.9,
                 evidence: Some(vec![]),
-                metadata: None,
+                metadata: HashMap::new(),
             }],
         ]));
 
@@ -1334,7 +1334,7 @@ mod tests {
                 }]
                 .to_vec(),
             ),
-            metadata: None,
+            metadata: HashMap::new(),
         }];
 
         faux::when!(detector_client.text_generation(
@@ -1361,7 +1361,7 @@ mod tests {
                 }]
                 .to_vec(),
             ),
-            metadata: None,
+            metadata: HashMap::new(),
         }]));
 
         let mut clients = ClientMap::new();
@@ -1423,7 +1423,7 @@ mod tests {
             detector_id: Some(detector_id.to_string()),
             score: 0.1,
             evidence: None,
-            metadata: None,
+            metadata: HashMap::new(),
         }]));
 
         let mut clients = ClientMap::new();

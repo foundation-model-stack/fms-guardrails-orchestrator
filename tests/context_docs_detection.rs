@@ -48,7 +48,7 @@ async fn no_detections() -> Result<(), anyhow::Error> {
         detector_id: Some(detector_name.into()),
         score: 0.23,
         evidence: None,
-        metadata: None,
+        metadata: HashMap::new(),
     };
 
     // Add detector mock
@@ -109,7 +109,7 @@ async fn detections() -> Result<(), anyhow::Error> {
         detector_id: Some(detector_name.into()),
         score: 0.91,
         evidence: None,
-        metadata: None,
+        metadata: HashMap::new(),
     };
 
     // Add detector mock
