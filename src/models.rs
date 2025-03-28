@@ -988,15 +988,6 @@ pub struct ChatDetectionHttpRequest {
 }
 
 impl ChatDetectionHttpRequest {
-    /// Validates for the "/api/v1/text/chat" endpoint.
-    pub fn validate_for_text(&self) -> Result<(), ValidationError> {
-        self.validate()?;
-        self.validate_messages()?;
-        validate_detector_params(&self.detectors)?;
-
-        Ok(())
-    }
-
     /// Upfront validation of user request
     pub fn validate(&self) -> Result<(), ValidationError> {
         // Validate required parameters
@@ -1006,6 +997,15 @@ impl ChatDetectionHttpRequest {
         if self.messages.is_empty() {
             return Err(ValidationError::Required("messages".into()));
         }
+
+        Ok(())
+    }
+
+    /// Validates for the "/api/v1/text/chat" endpoint.
+    pub fn validate_for_text(&self) -> Result<(), ValidationError> {
+        self.validate()?;
+        self.validate_messages()?;
+        validate_detector_params(&self.detectors)?;
 
         Ok(())
     }

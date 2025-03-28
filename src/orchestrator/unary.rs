@@ -843,7 +843,7 @@ pub async fn detect_for_chat(
                 .default_threshold,
         ),
     );
-    let request = ChatDetectionRequest::new(messages.clone(), tools.clone(), detector_params);
+    let request = ChatDetectionRequest::new(messages, tools, detector_params);
     debug!(%detector_id, ?request, "sending chat detector request");
     let client = ctx
         .clients
