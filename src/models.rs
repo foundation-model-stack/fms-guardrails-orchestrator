@@ -979,8 +979,12 @@ pub struct ChatDetectionHttpRequest {
     /// The map of detectors to be used, along with their respective parameters, e.g. thresholds.
     pub detectors: HashMap<String, DetectorParams>,
 
-    // The list of messages to run detections on.
+    /// The list of messages to run detections on.
     pub messages: Vec<clients::openai::Message>,
+
+    /// An optional list of tools definitions to analyze with messages
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tools: Vec<clients::openai::Tool>,
 }
 
 impl ChatDetectionHttpRequest {
@@ -1007,14 +1011,18 @@ impl ChatDetectionHttpRequest {
     }
 
     /// Validates if message contents are either a string or a content type of type "text"
+    /// content can be empty if tool_calls is provided
+    // ref. https://platform.openai.com/docs/api-reference/chat/create
     fn validate_messages(&self) -> Result<(), ValidationError> {
         for message in &self.messages {
             match &message.content {
                 Some(content) => self.validate_content_type(content)?,
                 None => {
-                    return Err(ValidationError::Invalid(
-                        "Message content cannot be empty".into(),
-                    ));
+                    if message.tool_calls.is_none() {
+                        return Err(ValidationError::Invalid(
+                            "Message content cannot be empty".into(),
+                        ));
+                    }
                 }
             }
         }

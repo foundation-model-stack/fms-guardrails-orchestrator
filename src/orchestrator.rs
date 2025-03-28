@@ -361,6 +361,9 @@ pub struct ChatDetectionTask {
     // Messages to run detection on
     pub messages: Vec<clients::openai::Message>,
 
+    // Tools definitions, optional
+    pub tools: Vec<clients::openai::Tool>,
+
     // Headermap
     pub headers: HeaderMap,
 }
@@ -371,6 +374,7 @@ impl ChatDetectionTask {
             trace_id,
             detectors: request.detectors,
             messages: request.messages,
+            tools: request.tools,
             headers,
         }
     }

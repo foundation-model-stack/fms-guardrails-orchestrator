@@ -377,16 +377,22 @@ pub async fn text_chat_detections(
     detectors: &HashMap<DetectorId, DetectorParams>,
     input_id: InputId,
     messages: Vec<openai::Message>,
+    tools: Vec<openai::Tool>,
 ) -> Result<(InputId, Detections), Error> {
     let inputs = detectors
         .iter()
         .map(|(detector_id, params)| {
-            Ok::<_, Error>((detector_id.clone(), params.clone(), messages.clone()))
+            Ok::<_, Error>((
+                detector_id.clone(),
+                params.clone(),
+                messages.clone(),
+                tools.clone(),
+            ))
         })
         .collect::<Result<Vec<_>, Error>>()?;
     // Send concurrent requests for inputs
     let results = stream::iter(inputs)
-        .map(|(detector_id, mut params, messages)| {
+        .map(|(detector_id, mut params, messages, tools)| {
             let ctx = ctx.clone();
             let headers = headers.clone();
             let threshold = params.pop_threshold().unwrap_or_default();
@@ -395,16 +401,22 @@ pub async fn text_chat_detections(
                     .clients
                     .get_as::<TextChatDetectorClient>(&detector_id)
                     .unwrap();
-                let detections =
-                    detect_text_chat(client, headers, detector_id.clone(), params, messages)
-                        .await?
-                        .into_iter()
-                        .filter(|detection| detection.score >= threshold)
-                        .map(|mut detection| {
-                            detection.detector_id = Some(detector_id.clone());
-                            detection
-                        })
-                        .collect::<Detections>();
+                let detections = detect_text_chat(
+                    client,
+                    headers,
+                    detector_id.clone(),
+                    params,
+                    messages,
+                    tools,
+                )
+                .await?
+                .into_iter()
+                .filter(|detection| detection.score >= threshold)
+                .map(|mut detection| {
+                    detection.detector_id = Some(detector_id.clone());
+                    detection
+                })
+                .collect::<Detections>();
                 Ok::<_, Error>(detections)
             }
         })
