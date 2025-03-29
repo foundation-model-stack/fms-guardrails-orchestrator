@@ -662,6 +662,7 @@ mod test {
                 detector_id: None,
                 score: 0.2,
                 evidence: None,
+                metadata: HashMap::new(),
             }]]);
         });
         mocks.mock(|when, then| {
@@ -682,6 +683,7 @@ mod test {
                 detector_id: None,
                 score: 0.2,
                 evidence: None,
+                metadata: HashMap::new(),
             }]]);
         });
 

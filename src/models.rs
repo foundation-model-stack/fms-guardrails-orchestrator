@@ -49,6 +49,8 @@ pub struct InfoParams {
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct DetectorParams(HashMap<String, serde_json::Value>);
 
+pub type Metadata = HashMap<String, serde_json::Value>;
+
 impl DetectorParams {
     #[allow(dead_code)]
     pub fn new() -> Self {
@@ -919,6 +921,10 @@ pub struct DetectionResult {
     // Optional evidence block
     #[serde(skip_serializing_if = "Option::is_none")]
     pub evidence: Option<Vec<EvidenceObj>>,
+
+    // Optional metadata block
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub metadata: Metadata,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -27,7 +27,7 @@
 // duplicating these very similar methods.                                          //
 //////////////////////////////////////////////////////////////////////////////////////
 #![allow(dead_code)]
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use tokio::sync::mpsc;
 use tracing::instrument;
@@ -161,6 +161,7 @@ impl AggregationActor {
                             detector_id: r.detector_id,
                             score: r.score,
                             evidence: None,
+                            metadata: HashMap::new(),
                         })
                         .collect(),
                 };

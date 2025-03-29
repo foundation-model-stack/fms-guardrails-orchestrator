@@ -297,6 +297,7 @@ async fn input_detector_detections() -> Result<(), anyhow::Error> {
             detector_id: Some(DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE.into()),
             score: 1.0,
             evidence: None,
+            metadata: HashMap::new(),
         },
         ContentAnalysisResponse {
             start: 6,
@@ -307,6 +308,7 @@ async fn input_detector_detections() -> Result<(), anyhow::Error> {
             detector_id: Some(DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE.into()),
             score: 1.0,
             evidence: None,
+            metadata: HashMap::new(),
         },
     ];
 
@@ -706,6 +708,7 @@ async fn output_detector_detections() -> Result<(), anyhow::Error> {
             detector_id: Some(DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE.into()),
             score: 1.0,
             evidence: None,
+            metadata: HashMap::new(),
         },
         ContentAnalysisResponse {
             start: 6,
@@ -716,6 +719,7 @@ async fn output_detector_detections() -> Result<(), anyhow::Error> {
             detector_id: Some(DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE.into()),
             score: 1.0,
             evidence: None,
+            metadata: HashMap::new(),
         },
     ];
 

@@ -15,6 +15,8 @@
 
 */
 
+use std::collections::HashMap;
+
 use async_trait::async_trait;
 use hyper::HeaderMap;
 use serde::{Deserialize, Serialize};
@@ -25,7 +27,7 @@ use crate::{
     clients::{Client, Error, HttpClient, create_http_client, http::HttpClientExt},
     config::ServiceConfig,
     health::HealthCheckResult,
-    models::{DetectorParams, EvidenceObj},
+    models::{DetectorParams, EvidenceObj, Metadata},
 };
 
 const CONTENTS_DETECTOR_ENDPOINT: &str = "/api/v1/text/contents";
@@ -139,6 +141,9 @@ pub struct ContentAnalysisResponse {
     /// Optional, any applicable evidence for detection
     #[serde(skip_serializing_if = "Option::is_none")]
     pub evidence: Option<Vec<EvidenceObj>>,
+    // Optional metadata block
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub metadata: Metadata,
 }
 
 impl From<ContentAnalysisResponse> for crate::models::TokenClassificationResult {
