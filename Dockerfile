@@ -65,6 +65,8 @@ RUN groupadd --system orchestr8 --gid 1001 && \
 
 USER orchestr8
 
+HEALTHCHECK NONE
+
 ENV ORCHESTRATOR_CONFIG=/app/config/config.yaml
 
 CMD ["/app/bin/fms-guardrails-orchestr8"]
