@@ -92,16 +92,14 @@ async fn handle_input_detection(
     detectors: HashMap<String, DetectorParams>,
 ) -> Result<Option<ClassifiedGeneratedTextResult>, Error> {
     let trace_id = task.trace_id;
-    let headers = &task.headers;
     let model_id = task.model_id.clone();
     let input_text = task.inputs.clone();
-    let input_id = 0;
     let inputs = common::apply_masks(input_text.clone(), task.guardrails_config.input_masks());
     let detections = match common::text_contents_detections(
         ctx.clone(),
-        headers.clone(),
+        task.headers.clone(),
         detectors.clone(),
-        input_id,
+        0,
         inputs,
     )
     .await
@@ -119,7 +117,7 @@ async fn handle_input_detection(
             .get_as::<GenerationClient>("generation")
             .unwrap();
         let input_token_count =
-            match common::tokenize(client, headers.clone(), model_id, input_text).await {
+            match common::tokenize(client, task.headers.clone(), model_id, input_text).await {
                 Ok((token_count, _tokens)) => token_count,
                 Err(error) => {
                     error!(%trace_id, %error, "task failed: error tokenizing input text");
@@ -150,16 +148,13 @@ async fn handle_output_detection(
     generation: ClassifiedGeneratedTextResult,
 ) -> Result<ClassifiedGeneratedTextResult, Error> {
     let trace_id = task.trace_id;
-    let headers = task.headers;
     let generated_text = generation.generated_text.clone().unwrap_or_default();
-    let input_id = 0;
-    let inputs = vec![(0, generated_text)];
     let detections = match common::text_contents_detections(
         ctx,
-        headers.clone(),
-        detectors.clone(),
-        input_id,
-        inputs,
+        task.headers,
+        detectors,
+        0,
+        vec![(0, generated_text)],
     )
     .await
     {

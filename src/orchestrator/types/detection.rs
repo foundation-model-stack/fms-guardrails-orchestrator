@@ -206,6 +206,27 @@ impl From<models::DetectionResult> for Detection {
     }
 }
 
+impl From<Detection> for models::DetectionResult {
+    fn from(value: Detection) -> Self {
+        let evidence = (!value.evidence.is_empty())
+            .then_some(value.evidence.into_iter().map(Into::into).collect());
+        Self {
+            detection_type: value.detection_type,
+            detection: value.detection,
+            detector_id: value.detector_id,
+            score: value.score,
+            evidence,
+            metadata: value.metadata,
+        }
+    }
+}
+
+impl From<Detections> for Vec<models::DetectionResult> {
+    fn from(value: Detections) -> Self {
+        value.into_iter().map(Into::into).collect()
+    }
+}
+
 impl From<Vec<models::DetectionResult>> for Detections {
     fn from(value: Vec<models::DetectionResult>) -> Self {
         value.into_iter().map(Into::into).collect()

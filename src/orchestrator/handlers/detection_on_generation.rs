@@ -18,10 +18,11 @@ use std::collections::HashMap;
 
 use http::HeaderMap;
 use opentelemetry::trace::TraceId;
+use tracing::info;
 
 use crate::{
     models::{DetectionOnGeneratedHttpRequest, DetectionOnGenerationResult, DetectorParams},
-    orchestrator::{Error, Orchestrator},
+    orchestrator::{Error, Orchestrator, common},
 };
 
 use super::Handle;
@@ -29,8 +30,26 @@ use super::Handle;
 impl Handle<DetectionOnGenerationTask> for Orchestrator {
     type Response = DetectionOnGenerationResult;
 
-    async fn handle(&self, _task: DetectionOnGenerationTask) -> Result<Self::Response, Error> {
-        todo!()
+    async fn handle(&self, task: DetectionOnGenerationTask) -> Result<Self::Response, Error> {
+        let ctx = self.ctx.clone();
+        let trace_id = task.trace_id;
+        info!(%trace_id, "task started");
+
+        // TODO: validate requested guardrails
+
+        // Handle detection
+        let detections = common::text_generation_detections(
+            ctx,
+            task.headers,
+            task.detectors,
+            task.prompt,
+            task.generated_text,
+        )
+        .await?;
+
+        Ok(DetectionOnGenerationResult {
+            detections: detections.into(),
+        })
     }
 }
 

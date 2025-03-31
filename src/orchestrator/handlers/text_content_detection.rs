@@ -18,10 +18,11 @@ use std::collections::HashMap;
 
 use http::HeaderMap;
 use opentelemetry::trace::TraceId;
+use tracing::info;
 
 use crate::{
     models::{DetectorParams, TextContentDetectionHttpRequest, TextContentDetectionResult},
-    orchestrator::{Error, Orchestrator},
+    orchestrator::{Error, Orchestrator, common},
 };
 
 use super::Handle;
@@ -29,8 +30,26 @@ use super::Handle;
 impl Handle<TextContentDetectionTask> for Orchestrator {
     type Response = TextContentDetectionResult;
 
-    async fn handle(&self, _task: TextContentDetectionTask) -> Result<Self::Response, Error> {
-        todo!()
+    async fn handle(&self, task: TextContentDetectionTask) -> Result<Self::Response, Error> {
+        let ctx = self.ctx.clone();
+        let trace_id = task.trace_id;
+        info!(%trace_id, "task started");
+
+        // TODO: validate requested guardrails
+
+        // Handle detection
+        let (_, detections) = common::text_contents_detections(
+            ctx,
+            task.headers,
+            task.detectors,
+            0,
+            vec![(0, task.content)],
+        )
+        .await?;
+
+        Ok(TextContentDetectionResult {
+            detections: detections.into(),
+        })
     }
 }
 

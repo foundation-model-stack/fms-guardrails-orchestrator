@@ -18,13 +18,15 @@ use std::collections::HashMap;
 
 use http::HeaderMap;
 use opentelemetry::trace::TraceId;
+use tracing::info;
 
 use crate::{
+    clients::GenerationClient,
     models::{
         DetectorParams, GenerationWithDetectionHttpRequest, GenerationWithDetectionResult,
         GuardrailsTextGenerationParameters,
     },
-    orchestrator::{Error, Orchestrator},
+    orchestrator::{Error, Orchestrator, common},
 };
 
 use super::Handle;
@@ -32,8 +34,43 @@ use super::Handle;
 impl Handle<GenerationWithDetectionTask> for Orchestrator {
     type Response = GenerationWithDetectionResult;
 
-    async fn handle(&self, _task: GenerationWithDetectionTask) -> Result<Self::Response, Error> {
-        todo!()
+    async fn handle(&self, task: GenerationWithDetectionTask) -> Result<Self::Response, Error> {
+        let ctx = self.ctx.clone();
+        let trace_id = task.trace_id;
+        info!(%trace_id, "task started");
+
+        // TODO: validate requested guardrails
+
+        // Handle generation
+        let client = ctx
+            .clients
+            .get_as::<GenerationClient>("generation")
+            .unwrap();
+        let generation = common::generate(
+            client,
+            task.headers.clone(),
+            task.model_id.clone(),
+            task.prompt.clone(),
+            task.text_gen_parameters.clone(),
+        )
+        .await?;
+        let generated_text = generation.generated_text.clone().unwrap_or_default();
+
+        // Handle detection
+        let detections = common::text_generation_detections(
+            ctx,
+            task.headers,
+            task.detectors,
+            task.prompt,
+            generated_text,
+        )
+        .await?;
+
+        Ok(GenerationWithDetectionResult {
+            generated_text: generation.generated_text.unwrap_or_default(),
+            input_token_count: generation.input_token_count,
+            detections: detections.into(),
+        })
     }
 }
 
