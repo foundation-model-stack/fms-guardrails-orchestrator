@@ -283,11 +283,7 @@ pub struct ChatCompletionsRequest {
     pub skip_special_tokens: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub spaces_between_special_tokens: Option<bool>,
-
     // Detectors
-    // Note: We are making it optional, since this structure also gets used to
-    // form request for chat completions. And downstream server, might choose to
-    // reject extra parameters.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub detectors: Option<DetectorConfig>,
 }
@@ -296,11 +292,11 @@ pub struct ChatCompletionsRequest {
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DetectorConfig {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub input: Option<HashMap<String, DetectorParams>>,
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub input: HashMap<String, DetectorParams>,
 
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub output: Option<HashMap<String, DetectorParams>>,
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub output: HashMap<String, DetectorParams>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

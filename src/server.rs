@@ -58,10 +58,8 @@ use crate::{
     clients::openai::{ChatCompletionsRequest, ChatCompletionsResponse},
     models::{self, InfoParams, InfoResponse, StreamingContentDetectionRequest},
     orchestrator::{
-        self, ChatCompletionsDetectionTask, ChatDetectionTask, ContextDocsDetectionTask,
-        DetectionOnGenerationTask, GenerationWithDetectionTask, Orchestrator,
-        StreamingContentDetectionTask, TextContentDetectionTask,
-        handlers::{ClassificationWithGenTask, Handle, StreamingClassificationWithGenTask},
+        self, Orchestrator,
+        handlers::{chat_completions_detection::ChatCompletionsDetectionTask, *},
     },
     utils,
 };
@@ -371,11 +369,7 @@ async fn generation_with_detection(
     request.validate()?;
     let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
     let task = GenerationWithDetectionTask::new(trace_id, request, headers);
-    match state
-        .orchestrator
-        .handle_generation_with_detection(task)
-        .await
-    {
+    match state.orchestrator.handle(task).await {
         Ok(response) => Ok(Json(response).into_response()),
         Err(error) => Err(error.into()),
     }
@@ -459,10 +453,7 @@ async fn stream_content_detection(
 
     // Create task and submit to handler
     let task = StreamingContentDetectionTask::new(trace_id, headers, input_stream);
-    let mut response_stream = state
-        .orchestrator
-        .handle_streaming_content_detection(task)
-        .await;
+    let mut response_stream = state.orchestrator.handle(task).await?;
 
     // Create output stream
     // This stream returns ND-JSON formatted messages to the client
@@ -506,7 +497,7 @@ async fn detection_content(
     request.validate()?;
     let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
     let task = TextContentDetectionTask::new(trace_id, request, headers);
-    match state.orchestrator.handle_text_content_detection(task).await {
+    match state.orchestrator.handle(task).await {
         Ok(response) => Ok(Json(response).into_response()),
         Err(error) => Err(error.into()),
     }
@@ -523,11 +514,7 @@ async fn detect_context_documents(
     request.validate()?;
     let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
     let task = ContextDocsDetectionTask::new(trace_id, request, headers);
-    match state
-        .orchestrator
-        .handle_context_documents_detection(task)
-        .await
-    {
+    match state.orchestrator.handle(task).await {
         Ok(response) => Ok(Json(response).into_response()),
         Err(error) => Err(error.into()),
     }
@@ -543,7 +530,7 @@ async fn detect_chat(
     request.validate_for_text()?;
     let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
     let task = ChatDetectionTask::new(trace_id, request, headers);
-    match state.orchestrator.handle_chat_detection(task).await {
+    match state.orchestrator.handle(task).await {
         Ok(response) => Ok(Json(response).into_response()),
         Err(error) => Err(error.into()),
     }
@@ -563,11 +550,7 @@ async fn detect_generated(
     request.validate()?;
     let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
     let task = DetectionOnGenerationTask::new(trace_id, request, headers);
-    match state
-        .orchestrator
-        .handle_generated_text_detection(task)
-        .await
-    {
+    match state.orchestrator.handle(task).await {
         Ok(response) => Ok(Json(response).into_response()),
         Err(error) => Err(error.into()),
     }
@@ -584,11 +567,7 @@ async fn chat_completions_detection(
     info!(?trace_id, "handling request");
     let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
     let task = ChatCompletionsDetectionTask::new(trace_id, request, headers);
-    match state
-        .orchestrator
-        .handle_chat_completions_detection(task)
-        .await
-    {
+    match state.orchestrator.handle(task).await {
         Ok(response) => match response {
             Unary(response) => Ok(Json(response).into_response()),
             Streaming(response_rx) => {
