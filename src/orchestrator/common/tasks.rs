@@ -314,11 +314,10 @@ pub async fn text_contents_detection_streams(
 pub async fn text_generation_detections(
     ctx: Arc<Context>,
     headers: HeaderMap,
-    detectors: &HashMap<DetectorId, DetectorParams>,
-    input_id: InputId,
+    detectors: HashMap<DetectorId, DetectorParams>,
     prompt: String,
     generated_text: String,
-) -> Result<(InputId, Detections), Error> {
+) -> Result<Detections, Error> {
     let inputs = detectors
         .iter()
         .map(|(detector_id, params)| {
@@ -360,7 +359,7 @@ pub async fn text_generation_detections(
         .try_collect::<Vec<_>>()
         .await?;
     let detections = results.into_iter().flatten().collect::<Detections>();
-    Ok((input_id, detections))
+    Ok(detections)
 }
 
 /// Spawns text chat detection tasks.
@@ -369,11 +368,10 @@ pub async fn text_generation_detections(
 pub async fn text_chat_detections(
     ctx: Arc<Context>,
     headers: HeaderMap,
-    detectors: &HashMap<DetectorId, DetectorParams>,
-    input_id: InputId,
+    detectors: HashMap<DetectorId, DetectorParams>,
     messages: Vec<openai::Message>,
     tools: Vec<openai::Tool>,
-) -> Result<(InputId, Detections), Error> {
+) -> Result<Detections, Error> {
     let inputs = detectors
         .iter()
         .map(|(detector_id, params)| {
@@ -407,10 +405,6 @@ pub async fn text_chat_detections(
                 .await?
                 .into_iter()
                 .filter(|detection| detection.score >= threshold)
-                .map(|mut detection| {
-                    detection.detector_id = Some(detector_id.clone());
-                    detection
-                })
                 .collect::<Detections>();
                 Ok::<_, Error>(detections)
             }
@@ -419,7 +413,7 @@ pub async fn text_chat_detections(
         .try_collect::<Vec<_>>()
         .await?;
     let detections = results.into_iter().flatten().collect::<Detections>();
-    Ok((input_id, detections))
+    Ok(detections)
 }
 
 /// Spawns text context detection tasks.
@@ -428,12 +422,11 @@ pub async fn text_chat_detections(
 pub async fn text_context_detections(
     ctx: Arc<Context>,
     headers: HeaderMap,
-    detectors: &HashMap<DetectorId, DetectorParams>,
-    input_id: InputId,
+    detectors: HashMap<DetectorId, DetectorParams>,
     content: String,
     context_type: ContextType,
     context: Vec<String>,
-) -> Result<(InputId, Detections), Error> {
+) -> Result<Detections, Error> {
     let inputs = detectors
         .iter()
         .map(|(detector_id, params)| {
@@ -479,7 +472,7 @@ pub async fn text_context_detections(
         .try_collect::<Vec<_>>()
         .await?;
     let detections = results.into_iter().flatten().collect::<Detections>();
-    Ok((input_id, detections))
+    Ok(detections)
 }
 
 /// Fans-out a stream to a broadcast channel.

@@ -130,18 +130,14 @@ async fn handle_input_detection(
     detectors: HashMap<String, DetectorParams>,
 ) -> Result<Option<ClassifiedGeneratedTextStreamResult>, Error> {
     let trace_id = task.trace_id;
-    let headers = &task.headers;
     let guardrails = &task.guardrails_config;
-    let model_id = task.model_id.clone();
     let input_text = task.inputs.clone();
-
-    let input_id = 0;
     let inputs = common::apply_masks(input_text.clone(), guardrails.input_masks());
     let detections = match common::text_contents_detections(
         ctx.clone(),
-        headers.clone(),
+        task.headers.clone(),
         detectors.clone(),
-        input_id,
+        0,
         inputs,
     )
     .await
@@ -158,14 +154,20 @@ async fn handle_input_detection(
             .clients
             .get_as::<GenerationClient>("generation")
             .unwrap();
-        let input_token_count =
-            match common::tokenize(client, headers.clone(), model_id, input_text).await {
-                Ok((token_count, _tokens)) => token_count,
-                Err(error) => {
-                    error!(%trace_id, %error, "task failed: error tokenizing input text");
-                    return Err(error);
-                }
-            };
+        let input_token_count = match common::tokenize(
+            client,
+            task.headers.clone(),
+            task.model_id.clone(),
+            input_text,
+        )
+        .await
+        {
+            Ok((token_count, _tokens)) => token_count,
+            Err(error) => {
+                error!(%trace_id, %error, "task failed: error tokenizing input text");
+                return Err(error);
+            }
+        };
         // Build response with input detections
         let response = ClassifiedGeneratedTextStreamResult {
             input_token_count,
@@ -200,12 +202,11 @@ async fn handle_output_detection(
         Arc::new(RwLock::new(Vec::new()));
 
     // Create detection streams
-    let input_id = 0;
     let detection_streams = common::text_contents_detection_streams(
         ctx,
         task.headers.clone(),
         detectors.clone(),
-        input_id,
+        0,
         input_rx,
     )
     .await;

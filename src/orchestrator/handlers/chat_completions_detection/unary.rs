@@ -74,7 +74,7 @@ pub async fn handle_unary(
     if !output_detectors.is_empty() {
         // Handle output detection
         let chat_completion =
-            handle_output_detection(ctx.clone(), &task, output_detectors, chat_completion).await?;
+            handle_output_detection(ctx.clone(), task, output_detectors, chat_completion).await?;
         Ok(chat_completion.into())
     } else {
         // No output detectors, send chat completion response
@@ -88,7 +88,6 @@ async fn handle_input_detection(
     detectors: HashMap<String, DetectorParams>,
 ) -> Result<Option<ChatCompletion>, Error> {
     let trace_id = task.trace_id;
-    let headers = &task.headers;
     let model_id = task.request.model.clone();
 
     // Input detectors are only applied to the last message
@@ -110,14 +109,12 @@ async fn handle_input_detection(
     }
     let input_id = message.index;
     let input_text = message.text.map(|s| s.to_string()).unwrap_or_default();
-    let inputs = vec![(0, input_text)];
-
     let detections = match common::text_contents_detections(
         ctx.clone(),
-        headers.clone(),
+        task.headers.clone(),
         detectors.clone(),
         input_id,
-        inputs,
+        vec![(0, input_text)],
     )
     .await
     {
@@ -155,23 +152,20 @@ async fn handle_input_detection(
 
 async fn handle_output_detection(
     ctx: Arc<Context>,
-    task: &ChatCompletionsDetectionTask,
+    task: ChatCompletionsDetectionTask,
     detectors: HashMap<String, DetectorParams>,
     mut chat_completion: ChatCompletion,
 ) -> Result<ChatCompletion, Error> {
-    let headers = &task.headers;
     let mut tasks = Vec::with_capacity(chat_completion.choices.len());
     for choice in &chat_completion.choices {
-        let detectors = detectors.clone();
         let input_id = choice.index;
         let input_text = choice.message.content.clone().unwrap_or_default();
-        let inputs = vec![(0, input_text)];
         tasks.push(tokio::spawn(common::text_contents_detections(
             ctx.clone(),
-            headers.clone(),
-            detectors,
+            task.headers.clone(),
+            detectors.clone(),
             input_id,
-            inputs,
+            vec![(0, input_text)],
         )));
     }
     let detections = try_join_all(tasks)

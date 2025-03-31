@@ -248,6 +248,8 @@ pub struct ChatCompletionsRequest {
     /// A list of tools the model may call.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tools: Vec<Tool>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tools: Vec<Tool>,
     /// Controls which (if any) tool is called by the model.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_choice: Option<ToolChoice>,

@@ -18,11 +18,12 @@ use std::collections::HashMap;
 
 use http::HeaderMap;
 use opentelemetry::trace::TraceId;
+use tracing::info;
 
 use crate::{
     clients::openai,
     models::{ChatDetectionHttpRequest, ChatDetectionResult, DetectorParams},
-    orchestrator::{Error, Orchestrator},
+    orchestrator::{Error, Orchestrator, common},
 };
 
 use super::Handle;
@@ -30,8 +31,26 @@ use super::Handle;
 impl Handle<ChatDetectionTask> for Orchestrator {
     type Response = ChatDetectionResult;
 
-    async fn handle(&self, _task: ChatDetectionTask) -> Result<Self::Response, Error> {
-        todo!()
+    async fn handle(&self, task: ChatDetectionTask) -> Result<Self::Response, Error> {
+        let ctx = self.ctx.clone();
+        let trace_id = task.trace_id;
+        info!(%trace_id, "task started");
+
+        // TODO: validate requested guardrails
+
+        // Handle detection
+        let detections = common::text_chat_detections(
+            ctx,
+            task.headers,
+            task.detectors,
+            task.messages,
+            task.tools,
+        )
+        .await?;
+
+        Ok(ChatDetectionResult {
+            detections: detections.into(),
+        })
     }
 }
 
@@ -41,9 +60,11 @@ pub struct ChatDetectionTask {
     pub trace_id: TraceId,
     /// Detectors configuration
     pub detectors: HashMap<String, DetectorParams>,
-    // Messages to run detection on
+    /// Messages to run detection on
     pub messages: Vec<openai::Message>,
-    // Headermap
+    /// Tools definitions, optional
+    pub tools: Vec<openai::Tool>,
+    /// Headermap
     pub headers: HeaderMap,
 }
 
@@ -53,6 +74,7 @@ impl ChatDetectionTask {
             trace_id,
             detectors: request.detectors,
             messages: request.messages,
+            tools: request.tools,
             headers,
         }
     }

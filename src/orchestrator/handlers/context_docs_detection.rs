@@ -18,11 +18,12 @@ use std::collections::HashMap;
 
 use http::HeaderMap;
 use opentelemetry::trace::TraceId;
+use tracing::info;
 
 use crate::{
     clients::detector::ContextType,
     models::{ContextDocsHttpRequest, ContextDocsResult, DetectorParams},
-    orchestrator::{Error, Orchestrator},
+    orchestrator::{Error, Orchestrator, common},
 };
 
 use super::Handle;
@@ -30,8 +31,27 @@ use super::Handle;
 impl Handle<ContextDocsDetectionTask> for Orchestrator {
     type Response = ContextDocsResult;
 
-    async fn handle(&self, _task: ContextDocsDetectionTask) -> Result<Self::Response, Error> {
-        todo!()
+    async fn handle(&self, task: ContextDocsDetectionTask) -> Result<Self::Response, Error> {
+        let ctx = self.ctx.clone();
+        let trace_id = task.trace_id;
+        info!(%trace_id, "task started");
+
+        // TODO: validate requested guardrails
+
+        // Handle detection
+        let detections = common::text_context_detections(
+            ctx,
+            task.headers,
+            task.detectors,
+            task.content,
+            task.context_type,
+            task.context,
+        )
+        .await?;
+
+        Ok(ContextDocsResult {
+            detections: detections.into(),
+        })
     }
 }
 
