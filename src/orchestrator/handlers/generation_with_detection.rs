@@ -54,7 +54,7 @@ impl Handle<GenerationWithDetectionTask> for Orchestrator {
             task.text_gen_parameters.clone(),
         )
         .await?;
-        let generated_text = generation.generated_text.clone().unwrap_or_default();
+        let generated_text = generation.generated_text.unwrap_or_default();
 
         // Handle detection
         let detections = common::text_generation_detections(
@@ -62,12 +62,12 @@ impl Handle<GenerationWithDetectionTask> for Orchestrator {
             task.headers,
             task.detectors,
             task.prompt,
-            generated_text,
+            generated_text.clone(),
         )
         .await?;
 
         Ok(GenerationWithDetectionResult {
-            generated_text: generation.generated_text.unwrap_or_default(),
+            generated_text,
             input_token_count: generation.input_token_count,
             detections: detections.into(),
         })

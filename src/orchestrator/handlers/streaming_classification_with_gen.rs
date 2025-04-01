@@ -109,7 +109,7 @@ impl Handle<StreamingClassificationWithGenTask> for Orchestrator {
                 handle_output_detection(
                     ctx.clone(),
                     task,
-                    detectors.clone(),
+                    detectors,
                     generation_stream,
                     response_tx,
                 )
@@ -130,9 +130,7 @@ async fn handle_input_detection(
     detectors: HashMap<String, DetectorParams>,
 ) -> Result<Option<ClassifiedGeneratedTextStreamResult>, Error> {
     let trace_id = task.trace_id;
-    let guardrails = &task.guardrails_config;
-    let input_text = task.inputs.clone();
-    let inputs = common::apply_masks(input_text.clone(), guardrails.input_masks());
+    let inputs = common::apply_masks(task.inputs.clone(), task.guardrails_config.input_masks());
     let detections = match common::text_contents_detections(
         ctx.clone(),
         task.headers.clone(),
@@ -158,7 +156,7 @@ async fn handle_input_detection(
             client,
             task.headers.clone(),
             task.model_id.clone(),
-            input_text,
+            task.inputs.clone(),
         )
         .await
         {
@@ -193,14 +191,11 @@ async fn handle_output_detection(
     response_tx: mpsc::Sender<Result<ClassifiedGeneratedTextStreamResult, Error>>,
 ) {
     let trace_id = task.trace_id;
-
     // Create input channel for detection pipeline
     let (input_tx, input_rx) = mpsc::channel(32);
-
     // Create shared generations
     let generations: Arc<RwLock<Vec<ClassifiedGeneratedTextStreamResult>>> =
         Arc::new(RwLock::new(Vec::new()));
-
     // Create detection streams
     let detection_streams = common::text_contents_detection_streams(
         ctx,
@@ -301,7 +296,7 @@ async fn process_detection_stream(
 ) {
     while let Some(result) = detection_stream.next().await {
         match result {
-            Ok((_input_id, _detector_id, chunk, detections)) => {
+            Ok((_, _detector_id, chunk, detections)) => {
                 // Create response for this batch with output detections
                 let response = output_detection_response(&generations, chunk, detections).unwrap();
                 // Send message to response channel

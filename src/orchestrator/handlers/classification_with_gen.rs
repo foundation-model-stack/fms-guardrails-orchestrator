@@ -92,9 +92,7 @@ async fn handle_input_detection(
     detectors: HashMap<String, DetectorParams>,
 ) -> Result<Option<ClassifiedGeneratedTextResult>, Error> {
     let trace_id = task.trace_id;
-    let model_id = task.model_id.clone();
-    let input_text = task.inputs.clone();
-    let inputs = common::apply_masks(input_text.clone(), task.guardrails_config.input_masks());
+    let inputs = common::apply_masks(task.inputs.clone(), task.guardrails_config.input_masks());
     let detections = match common::text_contents_detections(
         ctx.clone(),
         task.headers.clone(),
@@ -104,7 +102,7 @@ async fn handle_input_detection(
     )
     .await
     {
-        Ok((_input_id, detections)) => detections,
+        Ok((_, detections)) => detections,
         Err(error) => {
             error!(%trace_id, %error, "task failed: error processing input detections");
             return Err(error);
@@ -116,14 +114,20 @@ async fn handle_input_detection(
             .clients
             .get_as::<GenerationClient>("generation")
             .unwrap();
-        let input_token_count =
-            match common::tokenize(client, task.headers.clone(), model_id, input_text).await {
-                Ok((token_count, _tokens)) => token_count,
-                Err(error) => {
-                    error!(%trace_id, %error, "task failed: error tokenizing input text");
-                    return Err(error);
-                }
-            };
+        let input_token_count = match common::tokenize(
+            client,
+            task.headers.clone(),
+            task.model_id.clone(),
+            task.inputs.clone(),
+        )
+        .await
+        {
+            Ok((token_count, _tokens)) => token_count,
+            Err(error) => {
+                error!(%trace_id, %error, "task failed: error tokenizing input text");
+                return Err(error);
+            }
+        };
         // Build response with input detections
         let response = ClassifiedGeneratedTextResult {
             input_token_count,
@@ -158,7 +162,7 @@ async fn handle_output_detection(
     )
     .await
     {
-        Ok((_input_id, detections)) => detections,
+        Ok((_, detections)) => detections,
         Err(error) => {
             error!(%trace_id, %error, "task failed: error processing input detections");
             return Err(error);
