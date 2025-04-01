@@ -206,7 +206,8 @@ pub async fn text_contents_detections(
         .map(|(detector_id, mut params, chunks)| {
             let ctx = ctx.clone();
             let headers = headers.clone();
-            let threshold = params.pop_threshold().unwrap_or_default();
+            let default_threshold = ctx.config.detector(&detector_id).unwrap().default_threshold;
+            let threshold = params.pop_threshold().unwrap_or(default_threshold);
             async move {
                 let client = ctx
                     .clients
@@ -334,7 +335,8 @@ pub async fn text_generation_detections(
         .map(|(detector_id, mut params, prompt, generated_text)| {
             let ctx = ctx.clone();
             let headers = headers.clone();
-            let threshold = params.pop_threshold().unwrap_or_default();
+            let default_threshold = ctx.config.detector(&detector_id).unwrap().default_threshold;
+            let threshold = params.pop_threshold().unwrap_or(default_threshold);
             async move {
                 let client = ctx
                     .clients
@@ -388,7 +390,8 @@ pub async fn text_chat_detections(
         .map(|(detector_id, mut params, messages, tools)| {
             let ctx = ctx.clone();
             let headers = headers.clone();
-            let threshold = params.pop_threshold().unwrap_or_default();
+            let default_threshold = ctx.config.detector(&detector_id).unwrap().default_threshold;
+            let threshold = params.pop_threshold().unwrap_or(default_threshold);
             async move {
                 let client = ctx
                     .clients
@@ -445,7 +448,9 @@ pub async fn text_context_detections(
             |(detector_id, mut params, content, context_type, context)| {
                 let ctx = ctx.clone();
                 let headers = headers.clone();
-                let threshold = params.pop_threshold().unwrap_or_default();
+                let default_threshold =
+                    ctx.config.detector(&detector_id).unwrap().default_threshold;
+                let threshold = params.pop_threshold().unwrap_or(default_threshold);
                 async move {
                     let client = ctx
                         .clients
