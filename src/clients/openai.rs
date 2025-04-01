@@ -15,7 +15,7 @@
 
 */
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use async_trait::async_trait;
 use eventsource_stream::Eventsource;
@@ -329,8 +329,8 @@ pub struct ToolFunction {
     pub description: Option<String>,
     /// The parameters the functions accepts, described as a JSON Schema object.
     // JSON Schema is not strictly defined here since parameters are passed through
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    pub parameters: HashMap<String, serde_json::Value>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub parameters: BTreeMap<String, serde_json::Value>,
     /// Whether to enable strict schema adherence when generating the function call.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub strict: Option<bool>,

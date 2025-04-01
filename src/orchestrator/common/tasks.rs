@@ -518,6 +518,7 @@ mod test {
     use crate::{
         clients::detector::{ContentAnalysisRequest, ContentAnalysisResponse},
         config::OrchestratorConfig,
+        models::Metadata,
         orchestrator::create_clients,
         pb::{
             caikit::runtime::chunkers::{
@@ -662,7 +663,7 @@ mod test {
                 detector_id: None,
                 score: 0.2,
                 evidence: None,
-                metadata: HashMap::new(),
+                metadata: Metadata::new(),
             }]]);
         });
         mocks.mock(|when, then| {
@@ -683,7 +684,7 @@ mod test {
                 detector_id: None,
                 score: 0.2,
                 evidence: None,
-                metadata: HashMap::new(),
+                metadata: Metadata::new(),
             }]]);
         });
 

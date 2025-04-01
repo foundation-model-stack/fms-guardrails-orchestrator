@@ -1049,7 +1049,7 @@ mod tests {
             detector::{ContentAnalysisResponse, GenerationDetectionRequest},
         },
         config::{DetectorConfig, OrchestratorConfig},
-        models::{DetectionResult, EvidenceObj, FinishReason, THRESHOLD_PARAM},
+        models::{DetectionResult, EvidenceObj, FinishReason, Metadata, THRESHOLD_PARAM},
         pb::fmaas::{
             BatchedGenerationRequest, BatchedGenerationResponse, GenerationRequest,
             GenerationResponse, StopReason,
@@ -1176,7 +1176,7 @@ mod tests {
                 detector_id: Some(detector_id.to_string()),
                 score: 0.1,
                 evidence: Some(vec![]),
-                metadata: HashMap::new(),
+                metadata: Metadata::new(),
             }],
             vec![ContentAnalysisResponse {
                 start: 0,
@@ -1187,7 +1187,7 @@ mod tests {
                 detector_id: Some(detector_id.to_string()),
                 score: 0.9,
                 evidence: Some(vec![]),
-                metadata: HashMap::new(),
+                metadata: Metadata::new(),
             }],
         ]));
 
@@ -1337,7 +1337,7 @@ mod tests {
                 }]
                 .to_vec(),
             ),
-            metadata: HashMap::new(),
+            metadata: Metadata::new(),
         }];
 
         faux::when!(detector_client.text_generation(
@@ -1364,7 +1364,7 @@ mod tests {
                 }]
                 .to_vec(),
             ),
-            metadata: HashMap::new(),
+            metadata: Metadata::new(),
         }]));
 
         let mut clients = ClientMap::new();
@@ -1426,7 +1426,7 @@ mod tests {
             detector_id: Some(detector_id.to_string()),
             score: 0.1,
             evidence: None,
-            metadata: HashMap::new(),
+            metadata: Metadata::new(),
         }]));
 
         let mut clients = ClientMap::new();

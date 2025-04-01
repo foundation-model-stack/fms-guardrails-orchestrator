@@ -42,7 +42,7 @@ use fms_guardrails_orchestr8::{
     clients::detector::{ContentAnalysisRequest, ContentAnalysisResponse},
     models::{
         ClassifiedGeneratedTextStreamResult, DetectionWarning, DetectorParams, GuardrailsConfig,
-        GuardrailsConfigInput, GuardrailsConfigOutput, GuardrailsHttpRequest,
+        GuardrailsConfigInput, GuardrailsConfigOutput, GuardrailsHttpRequest, Metadata,
         TextGenTokenClassificationResults, TokenClassificationResult,
     },
     pb::{
@@ -321,7 +321,7 @@ async fn input_detector_detections() -> Result<(), anyhow::Error> {
         detector_id: Some(detector_name.into()),
         score: 1.0,
         evidence: None,
-        metadata: HashMap::new(),
+        metadata: Metadata::new(),
     };
     let mut detection_mocks = MockSet::new();
     detection_mocks.mock(|when, then| {
@@ -1020,7 +1020,7 @@ async fn output_detectors_detections() -> Result<(), anyhow::Error> {
             detector_id: Some(angle_brackets_detector.into()),
             score: 1.0,
             evidence: None,
-            metadata: HashMap::new(),
+            metadata: Metadata::new(),
         }]]);
     });
 
@@ -1042,7 +1042,7 @@ async fn output_detectors_detections() -> Result<(), anyhow::Error> {
             detector_id: Some(parenthesis_detector.into()),
             score: 1.0,
             evidence: None,
-            metadata: HashMap::new(),
+            metadata: Metadata::new(),
         }]]);
     });
     parenthesis_mocks.mock(|when, then| {

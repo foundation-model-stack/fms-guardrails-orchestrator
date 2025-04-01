@@ -14,7 +14,7 @@
  limitations under the License.
 
 */
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use common::{
     detectors::{CHAT_DETECTOR_ENDPOINT, PII_DETECTOR},
@@ -29,7 +29,9 @@ use fms_guardrails_orchestr8::{
         detector::ChatDetectionRequest,
         openai::{Content, Message, Role, Tool, ToolFunction},
     },
-    models::{ChatDetectionHttpRequest, ChatDetectionResult, DetectionResult, DetectorParams},
+    models::{
+        ChatDetectionHttpRequest, ChatDetectionResult, DetectionResult, DetectorParams, Metadata,
+    },
 };
 use hyper::StatusCode;
 use mocktail::prelude::*;
@@ -55,7 +57,7 @@ async fn no_detections() -> Result<(), anyhow::Error> {
             ..Default::default()
         },
     ];
-    let parameters = HashMap::from([("id".into(), "a".into()), ("type".into(), "b".into())]);
+    let parameters = BTreeMap::from([("id".into(), "a".into()), ("type".into(), "b".into())]);
     // tools are just passed through to the detector
     let tools = vec![Tool {
         r#type: "function".into(),
@@ -72,7 +74,7 @@ async fn no_detections() -> Result<(), anyhow::Error> {
         detector_id: Some(detector_name.into()),
         score: 0.01,
         evidence: None,
-        metadata: HashMap::new(),
+        metadata: Metadata::new(),
     };
 
     // Add detector mock
@@ -142,7 +144,7 @@ async fn detections() -> Result<(), anyhow::Error> {
         detector_id: Some(detector_name.into()),
         score: 0.97,
         evidence: None,
-        metadata: HashMap::new(),
+        metadata: Metadata::new(),
     };
 
     // Add detector mock

@@ -17,7 +17,7 @@
 
 #![allow(unused_qualifications)]
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use serde::{Deserialize, Serialize};
 
@@ -47,14 +47,14 @@ pub struct InfoParams {
 
 /// Parameters relevant to each detector
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-pub struct DetectorParams(HashMap<String, serde_json::Value>);
+pub struct DetectorParams(BTreeMap<String, serde_json::Value>);
 
-pub type Metadata = HashMap<String, serde_json::Value>;
+pub type Metadata = BTreeMap<String, serde_json::Value>;
 
 impl DetectorParams {
     #[allow(dead_code)]
     pub fn new() -> Self {
-        Self(HashMap::new())
+        Self(BTreeMap::new())
     }
 
     /// Threshold to filter detector results by score.
@@ -64,7 +64,7 @@ impl DetectorParams {
 }
 
 impl std::ops::Deref for DetectorParams {
-    type Target = HashMap<String, serde_json::Value>;
+    type Target = BTreeMap<String, serde_json::Value>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -923,7 +923,7 @@ pub struct DetectionResult {
     pub evidence: Option<Vec<EvidenceObj>>,
 
     // Optional metadata block
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub metadata: Metadata,
 }
 

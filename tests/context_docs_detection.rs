@@ -26,7 +26,9 @@ use common::{
 };
 use fms_guardrails_orchestr8::{
     clients::detector::{ContextDocsDetectionRequest, ContextType},
-    models::{ContextDocsHttpRequest, ContextDocsResult, DetectionResult, DetectorParams},
+    models::{
+        ContextDocsHttpRequest, ContextDocsResult, DetectionResult, DetectorParams, Metadata,
+    },
 };
 use hyper::StatusCode;
 use mocktail::prelude::*;
@@ -48,7 +50,7 @@ async fn no_detections() -> Result<(), anyhow::Error> {
         detector_id: Some(detector_name.into()),
         score: 0.23,
         evidence: None,
-        metadata: HashMap::new(),
+        metadata: Metadata::new(),
     };
 
     // Add detector mock
@@ -109,7 +111,7 @@ async fn detections() -> Result<(), anyhow::Error> {
         detector_id: Some(detector_name.into()),
         score: 0.91,
         evidence: None,
-        metadata: HashMap::new(),
+        metadata: Metadata::new(),
     };
 
     // Add detector mock

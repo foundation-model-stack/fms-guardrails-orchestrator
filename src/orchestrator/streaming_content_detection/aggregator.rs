@@ -27,14 +27,14 @@
 // duplicating these very similar methods.                                          //
 //////////////////////////////////////////////////////////////////////////////////////
 #![allow(dead_code)]
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
 use tokio::sync::mpsc;
 use tracing::instrument;
 
 use crate::{
     clients::detector::ContentAnalysisResponse,
-    models::StreamingContentDetectionResponse,
+    models::{Metadata, StreamingContentDetectionResponse},
     orchestrator::{
         Error,
         streaming::{
@@ -161,7 +161,7 @@ impl AggregationActor {
                             detector_id: r.detector_id,
                             score: r.score,
                             evidence: None,
-                            metadata: HashMap::new(),
+                            metadata: Metadata::new(),
                         })
                         .collect(),
                 };
