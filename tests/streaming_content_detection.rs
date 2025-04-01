@@ -27,7 +27,10 @@ use common::{
 };
 use fms_guardrails_orchestr8::{
     clients::detector::{ContentAnalysisRequest, ContentAnalysisResponse},
-    models::{DetectorParams, StreamingContentDetectionRequest, StreamingContentDetectionResponse},
+    models::{
+        DetectorParams, Metadata, StreamingContentDetectionRequest,
+        StreamingContentDetectionResponse,
+    },
     pb::{
         caikit::runtime::chunkers::BidiStreamingChunkerTokenizationTaskRequest,
         caikit_data_model::nlp::{ChunkerTokenizationStreamResult, Token},
@@ -262,7 +265,7 @@ async fn detections() -> Result<(), anyhow::Error> {
             detector_id: Some(detector_name.into()),
             score: 1.0,
             evidence: None,
-            metadata: HashMap::new(),
+            metadata: Metadata::new(),
         }]]);
     });
 
@@ -317,7 +320,7 @@ async fn detections() -> Result<(), anyhow::Error> {
                 detector_id: Some(detector_name.into()),
                 score: 1.0,
                 evidence: None,
-                metadata: HashMap::new(),
+                metadata: Metadata::new(),
             }],
             start_index: 9,
             processed_index: 24,
