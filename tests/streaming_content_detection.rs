@@ -262,6 +262,7 @@ async fn detections() -> Result<(), anyhow::Error> {
             detector_id: Some(detector_name.into()),
             score: 1.0,
             evidence: None,
+            metadata: HashMap::new(),
         }]]);
     });
 
@@ -316,6 +317,7 @@ async fn detections() -> Result<(), anyhow::Error> {
                 detector_id: Some(detector_name.into()),
                 score: 1.0,
                 evidence: None,
+                metadata: HashMap::new(),
             }],
             start_index: 9,
             processed_index: 24,
