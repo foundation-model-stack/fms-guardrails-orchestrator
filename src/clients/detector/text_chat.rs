@@ -23,11 +23,8 @@ use tracing::{info, instrument};
 use super::{DEFAULT_PORT, DetectorClient, DetectorClientExt};
 use crate::{
     clients::{
-        Client, Client, Error, Error, HttpClient, HttpClient, create_http_client,
-        create_http_client,
+        Client, Error, HttpClient, create_http_client,
         http::HttpClientExt,
-        http::HttpClientExt,
-        openai::{Message, Tool},
         openai::{Message, Tool},
     },
     config::ServiceConfig,

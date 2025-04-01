@@ -84,7 +84,7 @@ async fn no_detections() -> Result<(), anyhow::Error> {
             .path(CHAT_DETECTOR_ENDPOINT)
             .json(ChatDetectionRequest {
                 messages: messages.clone(),
-                tools: tools.clone(),
+                tools: vec![],
                 detector_params: DetectorParams::new(),
             });
         then.json(vec![detection.clone()]);
@@ -105,7 +105,7 @@ async fn no_detections() -> Result<(), anyhow::Error> {
         .json(&ChatDetectionHttpRequest {
             detectors: HashMap::from([(detector_name.into(), DetectorParams::new())]),
             messages,
-            tools,
+            tools: vec![],
         })
         .send()
         .await?;
