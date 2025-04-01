@@ -15,7 +15,7 @@
 
 */
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use async_trait::async_trait;
 use hyper::HeaderMap;
@@ -142,7 +142,7 @@ pub struct ContentAnalysisResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub evidence: Option<Vec<EvidenceObj>>,
     // Optional metadata block
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub metadata: Metadata,
 }
 

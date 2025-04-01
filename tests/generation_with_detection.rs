@@ -29,7 +29,7 @@ use fms_guardrails_orchestr8::{
     clients::detector::GenerationDetectionRequest,
     models::{
         DetectionResult, DetectorParams, GenerationWithDetectionHttpRequest,
-        GenerationWithDetectionResult,
+        GenerationWithDetectionResult, Metadata,
     },
     pb::{
         caikit::runtime::nlp::TextGenerationTaskRequest,
@@ -56,7 +56,7 @@ async fn no_detections() -> Result<(), anyhow::Error> {
         detector_id: Some(detector_name.into()),
         score: 0.49,
         evidence: None,
-        metadata: HashMap::new(),
+        metadata: Metadata::new(),
     };
 
     // Add generation mock
@@ -138,7 +138,7 @@ async fn detections() -> Result<(), anyhow::Error> {
         detector_id: Some(detector_name.into()),
         score: 0.89,
         evidence: None,
-        metadata: HashMap::new(),
+        metadata: Metadata::new(),
     };
 
     // Add generation mock

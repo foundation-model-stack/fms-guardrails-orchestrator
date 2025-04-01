@@ -34,7 +34,9 @@ use fms_guardrails_orchestr8::{
         chunker::MODEL_ID_HEADER_NAME as CHUNKER_MODEL_ID_HEADER_NAME,
         detector::{ContentAnalysisRequest, ContentAnalysisResponse},
     },
-    models::{DetectorParams, TextContentDetectionHttpRequest, TextContentDetectionResult},
+    models::{
+        DetectorParams, Metadata, TextContentDetectionHttpRequest, TextContentDetectionResult,
+    },
     pb::{
         caikit::runtime::chunkers::ChunkerTokenizationTaskRequest,
         caikit_data_model::nlp::{Token, TokenizationResults},
@@ -223,7 +225,7 @@ async fn detections() -> Result<(), anyhow::Error> {
                 detector_id: Some(sentence_detector.into()),
                 score: 1.0,
                 evidence: None,
-                metadata: HashMap::new(),
+                metadata: Metadata::new(),
             }],
         ]);
     });
@@ -245,7 +247,7 @@ async fn detections() -> Result<(), anyhow::Error> {
             detector_id: Some(sentence_detector.into()),
             score: 1.0,
             evidence: None,
-            metadata: HashMap::new(),
+            metadata: Metadata::new(),
         }]]);
     });
 
@@ -295,7 +297,7 @@ async fn detections() -> Result<(), anyhow::Error> {
                 detector_id: Some(whole_doc_detector.into()),
                 score: 1.0,
                 evidence: None,
-                metadata: HashMap::new(),
+                metadata: Metadata::new(),
             }],
         },
         "error on whole doc detector response body assertion"
@@ -331,7 +333,7 @@ async fn detections() -> Result<(), anyhow::Error> {
                 detector_id: Some(sentence_detector.into()),
                 score: 1.0,
                 evidence: None,
-                metadata: HashMap::new(),
+                metadata: Metadata::new(),
             }],
         },
         "error on sentence detector response body assertion"
