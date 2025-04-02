@@ -44,7 +44,7 @@ impl Handle<StreamingContentDetectionTask> for Orchestrator {
 
         // Create response channel
         let (response_tx, response_rx) =
-            mpsc::channel::<Result<StreamingContentDetectionResponse, Error>>(32);
+            mpsc::channel::<Result<StreamingContentDetectionResponse, Error>>(128);
 
         tokio::spawn(async move {
             let trace_id = task.trace_id;
@@ -105,7 +105,7 @@ async fn handle_detection(
     response_tx: mpsc::Sender<Result<StreamingContentDetectionResponse, Error>>,
 ) {
     // Create input channel for detection pipeline
-    let (input_tx, input_rx) = mpsc::channel(32);
+    let (input_tx, input_rx) = mpsc::channel(128);
     // Create detection streams
     let detection_streams =
         common::text_contents_detection_streams(ctx, headers, detectors.clone(), 0, input_rx).await;

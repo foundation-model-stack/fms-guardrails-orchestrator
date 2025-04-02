@@ -38,7 +38,7 @@ pub async fn handle_streaming(
 
     // Create response channel
     let (response_tx, response_rx) =
-        mpsc::channel::<Result<Option<ChatCompletionChunk>, Error>>(32);
+        mpsc::channel::<Result<Option<ChatCompletionChunk>, Error>>(128);
 
     tokio::spawn(async move {
         // TODO
