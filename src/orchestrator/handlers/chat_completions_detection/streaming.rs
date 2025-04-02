@@ -37,10 +37,17 @@ pub async fn handle_streaming(
     info!(%trace_id, "task started");
 
     // Create response channel
-    let (_response_tx, response_rx) =
+    let (response_tx, response_rx) =
         mpsc::channel::<Result<Option<ChatCompletionChunk>, Error>>(32);
 
-    tokio::spawn(async move { todo!() });
+    tokio::spawn(async move {
+        // TODO
+        let _ = response_tx
+            .send(Err(Error::Validation(
+                "streaming is not yet supported".into(),
+            )))
+            .await;
+    });
 
     Ok(ChatCompletionsResponse::Streaming(response_rx))
 }
