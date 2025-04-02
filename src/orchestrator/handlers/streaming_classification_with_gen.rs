@@ -52,7 +52,7 @@ impl Handle<StreamingClassificationWithGenTask> for Orchestrator {
 
         // Create response channel
         let (response_tx, response_rx) =
-            mpsc::channel::<Result<ClassifiedGeneratedTextStreamResult, Error>>(32);
+            mpsc::channel::<Result<ClassifiedGeneratedTextStreamResult, Error>>(128);
 
         tokio::spawn(async move {
             let trace_id = task.trace_id;
@@ -192,7 +192,7 @@ async fn handle_output_detection(
 ) {
     let trace_id = task.trace_id;
     // Create input channel for detection pipeline
-    let (input_tx, input_rx) = mpsc::channel(32);
+    let (input_tx, input_rx) = mpsc::channel(128);
     // Create shared generations
     let generations: Arc<RwLock<Vec<ClassifiedGeneratedTextStreamResult>>> =
         Arc::new(RwLock::new(Vec::new()));

@@ -260,7 +260,7 @@ pub async fn text_contents_detection_streams(
         // Subscribe to chunk broadcast channel
         let mut chunk_rx = chunk_stream_map.get(&chunker_id).unwrap().subscribe();
         // Create detection channel
-        let (detection_tx, detection_rx) = mpsc::channel(32);
+        let (detection_tx, detection_rx) = mpsc::channel(128);
         // Spawn detection task
         tokio::spawn(async move {
             while let Ok(result) = chunk_rx.recv().await {
@@ -486,7 +486,7 @@ pub fn broadcast_stream<T>(mut stream: BoxStream<T>) -> broadcast::Sender<T>
 where
     T: Clone + Send + 'static,
 {
-    let (broadcast_tx, _) = broadcast::channel(32);
+    let (broadcast_tx, _) = broadcast::channel(128);
     tokio::spawn({
         let broadcast_tx = broadcast_tx.clone();
         async move {

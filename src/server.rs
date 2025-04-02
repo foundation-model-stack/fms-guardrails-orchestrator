@@ -459,7 +459,7 @@ async fn stream_content_detection(
     // Create output stream
     // This stream returns ND-JSON formatted messages to the client
     // StreamingContentDetectionResponse / server::Error
-    let (output_tx, output_rx) = mpsc::channel::<Result<String, Infallible>>(32);
+    let (output_tx, output_rx) = mpsc::channel::<Result<String, Infallible>>(128);
     let output_stream = ReceiverStream::new(output_rx);
 
     // Spawn task to consume response stream (typed) and send to output stream (json)
