@@ -254,7 +254,8 @@ pub async fn text_contents_detection_streams(
     for (detector_id, mut params) in detectors {
         let ctx = ctx.clone();
         let headers = headers.clone();
-        let threshold = params.pop_threshold().unwrap_or_default();
+        let default_threshold = ctx.config.detector(&detector_id).unwrap().default_threshold;
+        let threshold = params.pop_threshold().unwrap_or(default_threshold);
         let chunker_id = ctx.config.get_chunker_id(&detector_id).unwrap();
         // Subscribe to chunk broadcast channel
         let mut chunk_rx = chunk_stream_map.get(&chunker_id).unwrap().subscribe();
