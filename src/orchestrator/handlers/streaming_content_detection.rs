@@ -14,39 +14,219 @@
  limitations under the License.
 
 */
-use std::collections::HashMap;
+use std::{collections::HashMap, pin::Pin, sync::Arc};
 
+use futures::{Stream, StreamExt, stream::Peekable};
 use http::HeaderMap;
 use opentelemetry::trace::TraceId;
+use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
+use tracing::{error, info};
 
 use crate::{
     models::{DetectorParams, StreamingContentDetectionRequest, StreamingContentDetectionResponse},
-    orchestrator::{Error, Orchestrator, types::BoxStream},
+    orchestrator::{
+        Context, Error, Orchestrator, common,
+        types::{BoxStream, DetectionBatchStream, DetectionStream, MaxProcessedIndexBatcher},
+    },
 };
 
 use super::Handle;
 
+type InputStream =
+    Pin<Box<dyn Stream<Item = (usize, Result<StreamingContentDetectionRequest, Error>)> + Send>>;
+
 impl Handle<StreamingContentDetectionTask> for Orchestrator {
     type Response = ReceiverStream<Result<StreamingContentDetectionResponse, Error>>;
 
-    async fn handle(&self, _task: StreamingContentDetectionTask) -> Result<Self::Response, Error> {
-        todo!()
+    async fn handle(&self, task: StreamingContentDetectionTask) -> Result<Self::Response, Error> {
+        let ctx = self.ctx.clone();
+
+        // Create response channel
+        let (response_tx, response_rx) =
+            mpsc::channel::<Result<StreamingContentDetectionResponse, Error>>(32);
+
+        tokio::spawn(async move {
+            let trace_id = task.trace_id;
+            info!(%trace_id, "task started");
+            let headers = task.headers;
+
+            let mut input_stream = Box::pin(task.input_stream.peekable());
+            let detectors = match extract_detectors(&mut input_stream).await {
+                Ok(detectors) => detectors,
+                Err(error) => {
+                    error!(%error, "error extracting detectors from first message");
+                    let _ = response_tx.send(Err(error)).await;
+                    return;
+                }
+            };
+            // TODO: validate requested guardrails
+
+            handle_detection(ctx, trace_id, headers, detectors, input_stream, response_tx).await;
+        });
+
+        Ok(ReceiverStream::new(response_rx))
     }
+}
+
+/// Extracts detectors config from first message.
+async fn extract_detectors(
+    input_stream: &mut Peekable<InputStream>,
+) -> Result<HashMap<String, DetectorParams>, Error> {
+    // We can use Peekable to get a reference to it instead of consuming the message here
+    // Peekable::peek() takes self: Pin<&mut Peekable<_>>, which is why we need to pin it
+    // https://docs.rs/futures/latest/futures/stream/struct.Peekable.html
+    if let Some((_index, result)) = Pin::new(input_stream).peek().await {
+        match result {
+            Ok(msg) => {
+                if let Some(detectors) = &msg.detectors {
+                    if detectors.is_empty() {
+                        return Err(Error::Validation(
+                            "`detectors` must not be empty".to_string(),
+                        ));
+                    }
+                    return Ok(detectors.clone());
+                }
+            }
+            Err(error) => return Err(error.clone()),
+        }
+    }
+    Err(Error::Validation(
+        "`detectors` is required for the first message".into(),
+    ))
+}
+
+async fn handle_detection(
+    ctx: Arc<Context>,
+    trace_id: TraceId,
+    headers: HeaderMap,
+    detectors: HashMap<String, DetectorParams>,
+    mut input_stream: InputStream,
+    response_tx: mpsc::Sender<Result<StreamingContentDetectionResponse, Error>>,
+) {
+    // Create input channel for detection pipeline
+    let (input_tx, input_rx) = mpsc::channel(32);
+    // Create detection streams
+    let detection_streams =
+        common::text_contents_detection_streams(ctx, headers, detectors.clone(), 0, input_rx).await;
+
+    // Spawn task to process detection streams
+    tokio::spawn(async move {
+        match detection_streams {
+            Ok(mut detection_streams) if detection_streams.len() == 1 => {
+                // Process single detection stream, batching not applicable
+                let detection_stream = detection_streams.swap_remove(0);
+                process_detection_stream(trace_id, detection_stream, response_tx).await;
+            }
+            Ok(detection_streams) => {
+                // Create detection batch stream
+                let detection_batch_stream = DetectionBatchStream::new(
+                    MaxProcessedIndexBatcher::new(detectors.len()),
+                    detection_streams,
+                );
+                process_detection_batch_stream(trace_id, detection_batch_stream, response_tx).await;
+            }
+            Err(error) => {
+                error!(%trace_id, %error, "task failed: error creating detection streams");
+                // Send error to response channel and terminate
+                let _ = response_tx.send(Err(error)).await;
+            }
+        }
+    });
+
+    // Spawn task to consume input stream
+    tokio::spawn(async move {
+        while let Some((index, result)) = input_stream.next().await {
+            match result {
+                Ok(message) => {
+                    // Send content text to input channel
+                    let _ = input_tx.send(Ok((index, message.content))).await;
+                }
+                Err(error) => {
+                    // Send error to input channel
+                    let _ = input_tx.send(Err(error)).await;
+                }
+            }
+        }
+    });
+}
+
+/// Consumes a detection stream, builds responses, and sends them to a response channel.
+async fn process_detection_stream(
+    trace_id: TraceId,
+    mut detection_stream: DetectionStream,
+    response_tx: mpsc::Sender<Result<StreamingContentDetectionResponse, Error>>,
+) {
+    while let Some(result) = detection_stream.next().await {
+        match result {
+            Ok((_, _detector_id, chunk, detections)) => {
+                // Create response for this batch with output detections
+                let response = StreamingContentDetectionResponse {
+                    start_index: chunk.start as u32,
+                    processed_index: chunk.end as u32,
+                    detections: detections.into(),
+                };
+                // Send message to response channel
+                if response_tx.send(Ok(response)).await.is_err() {
+                    info!(%trace_id, "task completed: client disconnected");
+                    return;
+                }
+            }
+            Err(error) => {
+                error!(%trace_id, %error, "task failed: error received from detection stream");
+                // Send error to response channel and terminate
+                let _ = response_tx.send(Err(error)).await;
+                return;
+            }
+        }
+    }
+    info!(%trace_id, "task completed: detection stream closed");
+}
+
+/// Consumes a detection batch stream, builds responses, and sends them to a response channel.
+async fn process_detection_batch_stream(
+    trace_id: TraceId,
+    mut detection_batch_stream: DetectionBatchStream<MaxProcessedIndexBatcher>,
+    response_tx: mpsc::Sender<Result<StreamingContentDetectionResponse, Error>>,
+) {
+    while let Some(result) = detection_batch_stream.next().await {
+        match result {
+            Ok((chunk, detections)) => {
+                // Create response for this batch with output detections
+                let response = StreamingContentDetectionResponse {
+                    start_index: chunk.start as u32,
+                    processed_index: chunk.end as u32,
+                    detections: detections.into(),
+                };
+                // Send message to response channel
+                if response_tx.send(Ok(response)).await.is_err() {
+                    info!(%trace_id, "task completed: client disconnected");
+                    return;
+                }
+            }
+            Err(error) => {
+                error!(%trace_id, %error, "task failed: error received from detection batch stream");
+                // Send error to response channel and terminate
+                let _ = response_tx.send(Err(error)).await;
+                return;
+            }
+        }
+    }
+    info!(%trace_id, "task completed: detection batch stream closed");
 }
 
 pub struct StreamingContentDetectionTask {
     pub trace_id: TraceId,
     pub headers: HeaderMap,
     pub detectors: HashMap<String, DetectorParams>,
-    pub input_stream: BoxStream<Result<StreamingContentDetectionRequest, Error>>,
+    pub input_stream: BoxStream<(usize, Result<StreamingContentDetectionRequest, Error>)>,
 }
 
 impl StreamingContentDetectionTask {
     pub fn new(
         trace_id: TraceId,
         headers: HeaderMap,
-        input_stream: BoxStream<Result<StreamingContentDetectionRequest, Error>>,
+        input_stream: BoxStream<(usize, Result<StreamingContentDetectionRequest, Error>)>,
     ) -> Self {
         Self {
             trace_id,

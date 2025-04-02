@@ -449,6 +449,7 @@ async fn stream_content_detection(
             }
             Err(error) => Err(orchestrator::errors::Error::Validation(error.to_string())),
         })
+        .enumerate()
         .boxed();
 
     // Create task and submit to handler
