@@ -58,6 +58,13 @@ pub fn get_chunker_ids(
         .collect::<Result<Vec<_>, Error>>()
 }
 
+/// Returns the current unix timestamp.
+pub fn current_timestamp() -> std::time::Duration {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+}
+
 /// Updates an orchestrator config, adding entries for mock servers.
 /// TODO: move this to the test crate, once created.
 #[cfg(test)]
