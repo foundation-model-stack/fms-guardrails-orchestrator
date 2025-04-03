@@ -772,6 +772,8 @@ async fn output_detectors_no_detections() -> Result<(), anyhow::Error> {
     });
 
     // Add output detection mock
+    // TODO: Simply clone mocks instead of create two exact MockSets when/if
+    // this gets merged: https://github.com/IBM/mocktail/pull/41
     let mut angle_brackets_mocks = MockSet::new();
     angle_brackets_mocks.mock(|when, then| {
         when.post()
