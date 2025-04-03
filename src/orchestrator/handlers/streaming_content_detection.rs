@@ -160,7 +160,6 @@ async fn process_detection_stream(
     while let Some(result) = detection_stream.next().await {
         match result {
             Ok((_, _detector_id, chunk, detections)) => {
-                // Create response for this batch with output detections
                 let response = StreamingContentDetectionResponse {
                     start_index: chunk.start as u32,
                     processed_index: chunk.end as u32,
@@ -192,7 +191,6 @@ async fn process_detection_batch_stream(
     while let Some(result) = detection_batch_stream.next().await {
         match result {
             Ok((chunk, detections)) => {
-                // Create response for this batch with output detections
                 let response = StreamingContentDetectionResponse {
                     start_index: chunk.start as u32,
                     processed_index: chunk.end as u32,
