@@ -14,9 +14,6 @@
  limitations under the License.
 
 */
-pub mod chat_completions;
-pub mod chunker;
-pub mod detectors;
-pub mod errors;
-pub mod generation;
-pub mod orchestrator;
+
+// Chat completions server endpoint
+pub const CHAT_COMPLETIONS_ENDPOINT: &str = "/v1/chat/completions";

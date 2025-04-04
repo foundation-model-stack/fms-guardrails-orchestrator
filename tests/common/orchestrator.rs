@@ -56,6 +56,9 @@ pub const ORCHESTRATOR_DETECTION_ON_GENERATION_ENDPOINT: &str = "/api/v2/text/de
 pub const ORCHESTRATOR_CONTEXT_DOCS_DETECTION_ENDPOINT: &str = "/api/v2/text/detection/context";
 pub const ORCHESTRATOR_CHAT_DETECTION_ENDPOINT: &str = "/api/v2/text/detection/chat";
 
+pub const ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT: &str =
+    "/api/v2/chat/completions-detection";
+
 // Messages
 pub const ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE: &str =
     "unexpected error occurred while processing request";
