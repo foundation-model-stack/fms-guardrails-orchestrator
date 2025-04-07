@@ -833,7 +833,7 @@ async fn output_detectors_no_detections() -> Result<(), anyhow::Error> {
         .build()
         .await?;
 
-    // Example orchestrator request with streaming response
+    // Single-detector scenario
     let response = orchestrator_server
         .post(ORCHESTRATOR_STREAMING_ENDPOINT)
         .json(&GuardrailsHttpRequest {
@@ -852,10 +852,56 @@ async fn output_detectors_no_detections() -> Result<(), anyhow::Error> {
         })
         .send()
         .await?;
-
     debug!("{response:#?}");
 
-    // Test custom SseStream wrapper
+    let sse_stream: SseStream<ClassifiedGeneratedTextStreamResult> =
+        SseStream::new(response.bytes_stream());
+    let messages = sse_stream
+        .collect::<Vec<_>>()
+        .await
+        .into_iter()
+        .collect::<Result<Vec<_>, anyhow::Error>>()?;
+    debug!("{messages:#?}");
+
+    assert_eq!(messages.len(), 2);
+
+    assert_eq!(messages[0].generated_text, Some("I am great!".into()));
+    assert_eq!(
+        messages[0].token_classification_results.output,
+        Some(vec![])
+    );
+    assert_eq!(messages[0].start_index, Some(0));
+    assert_eq!(messages[0].processed_index, Some(11));
+
+    assert_eq!(messages[1].generated_text, Some(" What about you?".into()));
+    assert_eq!(
+        messages[1].token_classification_results.output,
+        Some(vec![])
+    );
+    assert_eq!(messages[1].start_index, Some(11));
+    assert_eq!(messages[1].processed_index, Some(27));
+
+    // Multi-detector scenario
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_STREAMING_ENDPOINT)
+        .json(&GuardrailsHttpRequest {
+            model_id: model_id.into(),
+            inputs: "Hi there! How are you?".into(),
+            guardrail_config: Some(GuardrailsConfig {
+                input: None,
+                output: Some(GuardrailsConfigOutput {
+                    models: HashMap::from([
+                        (angle_brackets_detector.into(), DetectorParams::new()),
+                        (parenthesis_detector.into(), DetectorParams::new()),
+                    ]),
+                }),
+            }),
+            text_gen_parameters: None,
+        })
+        .send()
+        .await?;
+    debug!("{response:#?}");
+
     let sse_stream: SseStream<ClassifiedGeneratedTextStreamResult> =
         SseStream::new(response.bytes_stream());
     let messages = sse_stream
@@ -1076,7 +1122,79 @@ async fn output_detectors_detections() -> Result<(), anyhow::Error> {
         .build()
         .await?;
 
-    // Example orchestrator request with streaming response
+    // Single-detector scenario
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_STREAMING_ENDPOINT)
+        .json(&GuardrailsHttpRequest {
+            model_id: model_id.into(),
+            inputs: "Hi there! How are you?".into(),
+            guardrail_config: Some(GuardrailsConfig {
+                input: None,
+                output: Some(GuardrailsConfigOutput {
+                    models: HashMap::from([(
+                        angle_brackets_detector.into(),
+                        DetectorParams::new(),
+                    )]),
+                }),
+            }),
+            text_gen_parameters: None,
+        })
+        .send()
+        .await?;
+    debug!("{response:#?}");
+
+    let sse_stream: SseStream<ClassifiedGeneratedTextStreamResult> =
+        SseStream::new(response.bytes_stream());
+    let messages = sse_stream
+        .collect::<Vec<_>>()
+        .await
+        .into_iter()
+        .collect::<Result<Vec<_>, anyhow::Error>>()?;
+    debug!("{messages:#?}");
+
+    let expected_messages = vec![
+        ClassifiedGeneratedTextStreamResult {
+            generated_text: Some("I (am) great!".into()),
+            token_classification_results: TextGenTokenClassificationResults {
+                input: None,
+                output: Some(vec![]),
+            },
+            processed_index: Some(13),
+            start_index: Some(0),
+            tokens: Some(vec![]),
+            input_tokens: Some(vec![]),
+            ..Default::default()
+        },
+        ClassifiedGeneratedTextStreamResult {
+            generated_text: Some(" What about <you>?".into()),
+            token_classification_results: TextGenTokenClassificationResults {
+                input: None,
+                output: Some(vec![TokenClassificationResult {
+                    start: 13,
+                    end: 16,
+                    word: "you".into(),
+                    entity: "has_angle_brackets".into(),
+                    entity_group: "angle_brackets".into(),
+                    detector_id: Some(angle_brackets_detector.into()),
+                    score: 1.0,
+                    token_count: None,
+                }]),
+            },
+            processed_index: Some(31),
+            start_index: Some(13),
+            tokens: Some(vec![]),
+            input_tokens: Some(vec![]),
+            ..Default::default()
+        },
+    ];
+
+    assert_eq!(messages.len(), 2);
+    assert_eq!(
+        messages, expected_messages,
+        "failed on single-detector scenario"
+    );
+
+    // Multi-detector scenario
     let response = orchestrator_server
         .post(ORCHESTRATOR_STREAMING_ENDPOINT)
         .json(&GuardrailsHttpRequest {
@@ -1095,10 +1213,8 @@ async fn output_detectors_detections() -> Result<(), anyhow::Error> {
         })
         .send()
         .await?;
-
     debug!("{response:#?}");
 
-    // Test custom SseStream wrapper
     let sse_stream: SseStream<ClassifiedGeneratedTextStreamResult> =
         SseStream::new(response.bytes_stream());
     let messages = sse_stream
@@ -1154,7 +1270,10 @@ async fn output_detectors_detections() -> Result<(), anyhow::Error> {
     ];
 
     assert_eq!(messages.len(), 2);
-    assert_eq!(messages, expected_messages);
+    assert_eq!(
+        messages, expected_messages,
+        "failed on multi-detector scenario"
+    );
 
     Ok(())
 }
