@@ -19,12 +19,11 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 use tracing::info;
 
+use super::ChatCompletionsDetectionTask;
 use crate::{
     clients::openai::*,
     orchestrator::{Context, Error},
 };
-
-use super::ChatCompletionsDetectionTask;
 
 pub async fn handle_streaming(
     _ctx: Arc<Context>,

@@ -20,6 +20,7 @@ use futures::future::try_join_all;
 use tracing::{error, info};
 use uuid::Uuid;
 
+use super::ChatCompletionsDetectionTask;
 use crate::{
     clients::openai::*,
     models::{
@@ -27,8 +28,6 @@ use crate::{
     },
     orchestrator::{Context, Error, common, types::ChatMessageIterator},
 };
-
-use super::ChatCompletionsDetectionTask;
 
 pub async fn handle_unary(
     ctx: Arc<Context>,

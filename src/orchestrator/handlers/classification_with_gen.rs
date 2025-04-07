@@ -21,6 +21,7 @@ use http::HeaderMap;
 use opentelemetry::trace::TraceId;
 use tracing::{error, info};
 
+use super::Handle;
 use crate::{
     clients::GenerationClient,
     models::{
@@ -30,8 +31,6 @@ use crate::{
     },
     orchestrator::{Context, Error, Orchestrator, common},
 };
-
-use super::Handle;
 
 impl Handle<ClassificationWithGenTask> for Orchestrator {
     type Response = ClassifiedGeneratedTextResult;

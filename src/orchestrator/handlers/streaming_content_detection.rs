@@ -23,6 +23,7 @@ use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{error, info};
 
+use super::Handle;
 use crate::{
     models::{DetectorParams, StreamingContentDetectionRequest, StreamingContentDetectionResponse},
     orchestrator::{
@@ -30,8 +31,6 @@ use crate::{
         types::{BoxStream, DetectionBatchStream, DetectionStream, MaxProcessedIndexBatcher},
     },
 };
-
-use super::Handle;
 
 type InputStream =
     Pin<Box<dyn Stream<Item = (usize, Result<StreamingContentDetectionRequest, Error>)> + Send>>;

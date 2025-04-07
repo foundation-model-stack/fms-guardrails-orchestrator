@@ -20,12 +20,11 @@ use http::HeaderMap;
 use opentelemetry::trace::TraceId;
 use tracing::info;
 
+use super::Handle;
 use crate::{
     models::{DetectorParams, TextContentDetectionHttpRequest, TextContentDetectionResult},
     orchestrator::{Error, Orchestrator, common},
 };
-
-use super::Handle;
 
 impl Handle<TextContentDetectionTask> for Orchestrator {
     type Response = TextContentDetectionResult;

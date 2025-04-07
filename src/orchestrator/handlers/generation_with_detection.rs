@@ -20,6 +20,7 @@ use http::HeaderMap;
 use opentelemetry::trace::TraceId;
 use tracing::info;
 
+use super::Handle;
 use crate::{
     clients::GenerationClient,
     models::{
@@ -28,8 +29,6 @@ use crate::{
     },
     orchestrator::{Error, Orchestrator, common},
 };
-
-use super::Handle;
 
 impl Handle<GenerationWithDetectionTask> for Orchestrator {
     type Response = GenerationWithDetectionResult;

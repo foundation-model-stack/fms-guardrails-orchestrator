@@ -20,13 +20,12 @@ use http::HeaderMap;
 use opentelemetry::trace::TraceId;
 use tracing::info;
 
+use super::Handle;
 use crate::{
     clients::openai,
     models::{ChatDetectionHttpRequest, ChatDetectionResult, DetectorParams},
     orchestrator::{Error, Orchestrator, common},
 };
-
-use super::Handle;
 
 impl Handle<ChatDetectionTask> for Orchestrator {
     type Response = ChatDetectionResult;

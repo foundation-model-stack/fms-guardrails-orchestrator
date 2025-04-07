@@ -20,13 +20,12 @@ use http::HeaderMap;
 use opentelemetry::trace::TraceId;
 use tracing::info;
 
+use super::Handle;
 use crate::{
     clients::detector::ContextType,
     models::{ContextDocsHttpRequest, ContextDocsResult, DetectorParams},
     orchestrator::{Error, Orchestrator, common},
 };
-
-use super::Handle;
 
 impl Handle<ContextDocsDetectionTask> for Orchestrator {
     type Response = ContextDocsResult;

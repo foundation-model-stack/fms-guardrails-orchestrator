@@ -17,12 +17,11 @@
 use http::HeaderMap;
 use opentelemetry::trace::TraceId;
 
+use super::Handle;
 use crate::{
     clients::openai::{ChatCompletionsRequest, ChatCompletionsResponse},
     orchestrator::{Error, Orchestrator},
 };
-
-use super::Handle;
 
 pub mod streaming;
 pub mod unary;

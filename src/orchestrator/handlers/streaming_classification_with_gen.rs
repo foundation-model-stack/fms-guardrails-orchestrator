@@ -15,8 +15,10 @@
 
 */
 
-use std::sync::RwLock;
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::HashMap,
+    sync::{Arc, RwLock},
+};
 
 use futures::StreamExt;
 use http::HeaderMap;
@@ -25,10 +27,7 @@ use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{error, info};
 
-use crate::orchestrator::types::{
-    Chunk, DetectionBatchStream, DetectionStream, Detections, GenerationStream,
-    MaxProcessedIndexBatcher,
-};
+use super::Handle;
 use crate::{
     clients::GenerationClient,
     models::{
@@ -36,10 +35,14 @@ use crate::{
         GuardrailsHttpRequest, GuardrailsTextGenerationParameters,
         TextGenTokenClassificationResults,
     },
-    orchestrator::{Context, Error, Orchestrator, common},
+    orchestrator::{
+        Context, Error, Orchestrator, common,
+        types::{
+            Chunk, DetectionBatchStream, DetectionStream, Detections, GenerationStream,
+            MaxProcessedIndexBatcher,
+        },
+    },
 };
-
-use super::Handle;
 
 impl Handle<StreamingClassificationWithGenTask> for Orchestrator {
     type Response = ReceiverStream<Result<ClassifiedGeneratedTextStreamResult, Error>>;
