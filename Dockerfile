@@ -5,7 +5,7 @@ ARG CONFIG_FILE=config/config.yaml
 
 ## Rust builder ################################################################
 # Specific debian version so that compatible glibc version is used
-FROM rust:1.85.1-bullseye AS rust-builder
+FROM rust:1.86.0-bullseye AS rust-builder
 ARG PROTOC_VERSION
 
 ENV CARGO_REGISTRIES_CRATES_IO_PROTOCOL=sparse
