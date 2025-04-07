@@ -109,8 +109,10 @@ impl HttpClientExt for TextChatDetectorClient {
 pub struct ChatDetectionRequest {
     /// Chat messages to run detection on
     pub messages: Vec<Message>,
+
     /// Optional list of tool definitions
     pub tools: Vec<Tool>,
+
     /// Detector parameters (available parameters depend on the detector)
     pub detector_params: DetectorParams,
 }
