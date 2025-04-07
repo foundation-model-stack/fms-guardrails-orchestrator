@@ -107,19 +107,10 @@ async fn no_detections() -> Result<(), anyhow::Error> {
             finish_reason: "EOS_TOKEN".to_string(),
         },
     ];
-
-    let expected_detections = Some(ChatDetections {
-        input: vec![],
-        output: vec![],
-    });
-
     let chat_completions_response = ChatCompletion {
         model: MODEL_ID.into(),
         choices: expected_choices.clone(),
-        detections: Some(ChatDetections {
-            input: vec![],
-            output: vec![],
-        }),
+        detections: None,
         warnings: vec![],
         ..Default::default()
     };
@@ -190,7 +181,7 @@ async fn no_detections() -> Result<(), anyhow::Error> {
     assert_eq!(results.choices[0], chat_completions_response.choices[0]);
     assert_eq!(results.choices[1], chat_completions_response.choices[1]);
     assert_eq!(results.warnings, vec![]);
-    assert_eq!(results.detections, expected_detections);
+    assert!(results.detections.is_none());
 
     Ok(())
 }

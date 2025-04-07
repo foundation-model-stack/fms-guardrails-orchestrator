@@ -183,15 +183,15 @@ async fn handle_output_detection(
             })
             .collect::<Vec<_>>();
         if !output.is_empty() {
+            chat_completion.detections = Some(ChatDetections {
+                output,
+                ..Default::default()
+            });
             chat_completion.warnings = vec![OrchestratorWarning::new(
                 DetectionWarningReason::UnsuitableOutput,
                 UNSUITABLE_OUTPUT_MESSAGE,
             )];
         }
-        chat_completion.detections = Some(ChatDetections {
-            output,
-            ..Default::default()
-        });
     }
     Ok(chat_completion)
 }
