@@ -118,7 +118,7 @@ async fn handle_input_detection(
     )
     .await
     {
-        Ok((_input_id, detections)) => detections,
+        Ok((_, detections)) => detections,
         Err(error) => {
             error!(%trace_id, %error, "task failed: error processing input detections");
             return Err(error);
@@ -132,7 +132,7 @@ async fn handle_input_detection(
             created: common::current_timestamp().as_secs() as i64,
             detections: Some(ChatDetections {
                 input: vec![InputDetectionResult {
-                    message_index: 0,
+                    message_index: message.index,
                     results: detections.into(),
                 }],
                 ..Default::default()
@@ -176,20 +176,22 @@ async fn handle_output_detection(
         // Update chat completion with detections
         let output = detections
             .into_iter()
+            .filter(|(_, detections)| !detections.is_empty())
             .map(|(input_id, detections)| OutputDetectionResult {
                 choice_index: input_id,
                 results: detections.into(),
             })
             .collect::<Vec<_>>();
+        if !output.is_empty() {
+            chat_completion.warnings = vec![OrchestratorWarning::new(
+                DetectionWarningReason::UnsuitableOutput,
+                UNSUITABLE_OUTPUT_MESSAGE,
+            )];
+        }
         chat_completion.detections = Some(ChatDetections {
             output,
             ..Default::default()
         });
-        chat_completion.warnings = vec![OrchestratorWarning::new(
-            DetectionWarningReason::UnsuitableOutput,
-            UNSUITABLE_OUTPUT_MESSAGE,
-        )];
     }
-
     Ok(chat_completion)
 }
