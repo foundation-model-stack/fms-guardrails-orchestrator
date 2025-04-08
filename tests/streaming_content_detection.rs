@@ -168,7 +168,63 @@ async fn no_detections() -> Result<(), anyhow::Error> {
         .build()
         .await?;
 
-    // Example orchestrator request with streaming response
+    // Single-detector scenario
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_STREAM_CONTENT_DETECTION_ENDPOINT)
+        .header("content-type", "application/x-ndjson")
+        .body(reqwest::Body::wrap_stream(json_lines_stream([
+            StreamingContentDetectionRequest {
+                detectors: Some(HashMap::from([(
+                    angle_brackets_detector.into(),
+                    DetectorParams::new(),
+                )])),
+                content: "Hi".into(),
+            },
+            StreamingContentDetectionRequest {
+                detectors: None,
+                content: " there!".into(),
+            },
+            StreamingContentDetectionRequest {
+                detectors: None,
+                content: " How".into(),
+            },
+            StreamingContentDetectionRequest {
+                detectors: None,
+                content: " are".into(),
+            },
+            StreamingContentDetectionRequest {
+                detectors: None,
+                content: " you?".into(),
+            },
+        ])))
+        .send()
+        .await?;
+
+    let mut messages = Vec::<StreamingContentDetectionResponse>::with_capacity(1);
+    let mut stream = response.bytes_stream();
+    while let Some(Ok(msg)) = stream.next().await {
+        debug!("recv: {msg:?}");
+        messages.push(serde_json::from_slice(&msg[..]).unwrap());
+    }
+
+    let expected_messages = [
+        StreamingContentDetectionResponse {
+            detections: vec![],
+            start_index: 0,
+            processed_index: 9,
+        },
+        StreamingContentDetectionResponse {
+            detections: vec![],
+            start_index: 9,
+            processed_index: 22,
+        },
+    ];
+    assert_eq!(
+        messages, expected_messages,
+        "failed on single-detector scenario"
+    );
+
+    // Multi-detector scenario
     let response = orchestrator_server
         .post(ORCHESTRATOR_STREAM_CONTENT_DETECTION_ENDPOINT)
         .header("content-type", "application/x-ndjson")
@@ -200,7 +256,6 @@ async fn no_detections() -> Result<(), anyhow::Error> {
         .send()
         .await?;
 
-    // Collects stream results
     let mut messages = Vec::<StreamingContentDetectionResponse>::with_capacity(1);
     let mut stream = response.bytes_stream();
     while let Some(Ok(msg)) = stream.next().await {
@@ -208,7 +263,6 @@ async fn no_detections() -> Result<(), anyhow::Error> {
         messages.push(serde_json::from_slice(&msg[..]).unwrap());
     }
 
-    // assertions
     let expected_messages = [
         StreamingContentDetectionResponse {
             detections: vec![],
@@ -221,7 +275,10 @@ async fn no_detections() -> Result<(), anyhow::Error> {
             processed_index: 22,
         },
     ];
-    assert_eq!(messages, expected_messages);
+    assert_eq!(
+        messages, expected_messages,
+        "failed on multi-detector scenario"
+    );
 
     Ok(())
 }
@@ -347,7 +404,57 @@ async fn detections() -> Result<(), anyhow::Error> {
         .build()
         .await?;
 
-    // Example orchestrator request with streaming response
+    // Single-detector scenario
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_STREAM_CONTENT_DETECTION_ENDPOINT)
+        .header("content-type", "application/x-ndjson")
+        .body(reqwest::Body::wrap_stream(json_lines_stream([
+            StreamingContentDetectionRequest {
+                detectors: Some(HashMap::from([(
+                    angle_brackets_detector.into(),
+                    DetectorParams::new(),
+                )])),
+                content: "Hi (there)! How are <you>?".into(),
+            },
+        ])))
+        .send()
+        .await?;
+
+    let mut messages = Vec::<StreamingContentDetectionResponse>::with_capacity(1);
+    let mut stream = response.bytes_stream();
+    while let Some(Ok(msg)) = stream.next().await {
+        debug!("recv: {msg:?}");
+        messages.push(serde_json::from_slice(&msg[..]).unwrap());
+    }
+
+    let expected_messages = [
+        StreamingContentDetectionResponse {
+            detections: vec![],
+            start_index: 0,
+            processed_index: 11,
+        },
+        StreamingContentDetectionResponse {
+            detections: vec![ContentAnalysisResponse {
+                start: 10,
+                end: 13,
+                text: "you".into(),
+                detection: "has_angle_brackets".into(),
+                detection_type: "angle_brackets".into(),
+                detector_id: Some(angle_brackets_detector.into()),
+                score: 1.0,
+                evidence: None,
+                metadata: Metadata::new(),
+            }],
+            start_index: 11,
+            processed_index: 26,
+        },
+    ];
+    assert_eq!(
+        messages, expected_messages,
+        "failed on single-detector scenario"
+    );
+
+    // Multi-detector scenario
     let response = orchestrator_server
         .post(ORCHESTRATOR_STREAM_CONTENT_DETECTION_ENDPOINT)
         .header("content-type", "application/x-ndjson")
@@ -363,7 +470,6 @@ async fn detections() -> Result<(), anyhow::Error> {
         .send()
         .await?;
 
-    // Collects stream results
     let mut messages = Vec::<StreamingContentDetectionResponse>::with_capacity(1);
     let mut stream = response.bytes_stream();
     while let Some(Ok(msg)) = stream.next().await {
@@ -371,7 +477,6 @@ async fn detections() -> Result<(), anyhow::Error> {
         messages.push(serde_json::from_slice(&msg[..]).unwrap());
     }
 
-    // assertions
     let expected_messages = [
         StreamingContentDetectionResponse {
             detections: vec![ContentAnalysisResponse {
@@ -404,7 +509,10 @@ async fn detections() -> Result<(), anyhow::Error> {
             processed_index: 26,
         },
     ];
-    assert_eq!(messages, expected_messages);
+    assert_eq!(
+        messages, expected_messages,
+        "failed on multi-detector scenario"
+    );
 
     Ok(())
 }
