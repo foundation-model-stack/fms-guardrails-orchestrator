@@ -16,6 +16,7 @@
 */
 use http::HeaderMap;
 use opentelemetry::trace::TraceId;
+use tracing::instrument;
 
 use super::Handle;
 use crate::{
@@ -29,6 +30,10 @@ pub mod unary;
 impl Handle<ChatCompletionsDetectionTask> for Orchestrator {
     type Response = ChatCompletionsResponse;
 
+    #[instrument(
+        skip_all,
+        fields(trace_id = ?task.trace_id, headers = ?task.headers)
+    )]
     async fn handle(&self, task: ChatCompletionsDetectionTask) -> Result<Self::Response, Error> {
         let ctx = self.ctx.clone();
         match task.request.stream {

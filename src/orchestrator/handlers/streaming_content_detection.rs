@@ -21,7 +21,7 @@ use http::HeaderMap;
 use opentelemetry::trace::TraceId;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
-use tracing::{error, info};
+use tracing::{Instrument, error, info, instrument};
 
 use super::Handle;
 use crate::{
@@ -38,6 +38,10 @@ type InputStream =
 impl Handle<StreamingContentDetectionTask> for Orchestrator {
     type Response = ReceiverStream<Result<StreamingContentDetectionResponse, Error>>;
 
+    #[instrument(
+        skip_all,
+        fields(trace_id = task.trace_id.to_string(), headers = ?task.headers)
+    )]
     async fn handle(&self, task: StreamingContentDetectionTask) -> Result<Self::Response, Error> {
         let ctx = self.ctx.clone();
 
@@ -45,24 +49,28 @@ impl Handle<StreamingContentDetectionTask> for Orchestrator {
         let (response_tx, response_rx) =
             mpsc::channel::<Result<StreamingContentDetectionResponse, Error>>(128);
 
-        tokio::spawn(async move {
-            let trace_id = task.trace_id;
-            info!(%trace_id, "task started");
-            let headers = task.headers;
+        tokio::spawn(
+            async move {
+                let trace_id = task.trace_id;
+                info!(%trace_id, "task started");
+                let headers = task.headers;
 
-            let mut input_stream = Box::pin(task.input_stream.peekable());
-            let detectors = match extract_detectors(&mut input_stream).await {
-                Ok(detectors) => detectors,
-                Err(error) => {
-                    error!(%error, "error extracting detectors from first message");
-                    let _ = response_tx.send(Err(error)).await;
-                    return;
-                }
-            };
-            // TODO: validate requested guardrails
+                let mut input_stream = Box::pin(task.input_stream.peekable());
+                let detectors = match extract_detectors(&mut input_stream).await {
+                    Ok(detectors) => detectors,
+                    Err(error) => {
+                        error!(%error, "error extracting detectors from first message");
+                        let _ = response_tx.send(Err(error)).await;
+                        return;
+                    }
+                };
+                // TODO: validate requested guardrails
 
-            handle_detection(ctx, trace_id, headers, detectors, input_stream, response_tx).await;
-        });
+                handle_detection(ctx, trace_id, headers, detectors, input_stream, response_tx)
+                    .await;
+            }
+            .in_current_span(),
+        );
 
         Ok(ReceiverStream::new(response_rx))
     }
@@ -95,6 +103,7 @@ async fn extract_detectors(
     ))
 }
 
+#[instrument(skip_all)]
 async fn handle_detection(
     ctx: Arc<Context>,
     trace_id: TraceId,
@@ -110,47 +119,55 @@ async fn handle_detection(
         common::text_contents_detection_streams(ctx, headers, detectors.clone(), 0, input_rx).await;
 
     // Spawn task to process detection streams
-    tokio::spawn(async move {
-        match detection_streams {
-            Ok(mut detection_streams) if detection_streams.len() == 1 => {
-                // Process single detection stream, batching not applicable
-                let detection_stream = detection_streams.swap_remove(0);
-                process_detection_stream(trace_id, detection_stream, response_tx).await;
-            }
-            Ok(detection_streams) => {
-                // Create detection batch stream
-                let detection_batch_stream = DetectionBatchStream::new(
-                    MaxProcessedIndexBatcher::new(detectors.len()),
-                    detection_streams,
-                );
-                process_detection_batch_stream(trace_id, detection_batch_stream, response_tx).await;
-            }
-            Err(error) => {
-                error!(%trace_id, %error, "task failed: error creating detection streams");
-                // Send error to response channel and terminate
-                let _ = response_tx.send(Err(error)).await;
-            }
-        }
-    });
-
-    // Spawn task to consume input stream
-    tokio::spawn(async move {
-        while let Some((index, result)) = input_stream.next().await {
-            match result {
-                Ok(message) => {
-                    // Send content text to input channel
-                    let _ = input_tx.send(Ok((index, message.content))).await;
+    tokio::spawn(
+        async move {
+            match detection_streams {
+                Ok(mut detection_streams) if detection_streams.len() == 1 => {
+                    // Process single detection stream, batching not applicable
+                    let detection_stream = detection_streams.swap_remove(0);
+                    process_detection_stream(trace_id, detection_stream, response_tx).await;
+                }
+                Ok(detection_streams) => {
+                    // Create detection batch stream
+                    let detection_batch_stream = DetectionBatchStream::new(
+                        MaxProcessedIndexBatcher::new(detectors.len()),
+                        detection_streams,
+                    );
+                    process_detection_batch_stream(trace_id, detection_batch_stream, response_tx)
+                        .await;
                 }
                 Err(error) => {
-                    // Send error to input channel
-                    let _ = input_tx.send(Err(error)).await;
+                    error!(%trace_id, %error, "task failed: error creating detection streams");
+                    // Send error to response channel and terminate
+                    let _ = response_tx.send(Err(error)).await;
                 }
             }
         }
-    });
+        .in_current_span(),
+    );
+
+    // Spawn task to consume input stream
+    tokio::spawn(
+        async move {
+            while let Some((index, result)) = input_stream.next().await {
+                match result {
+                    Ok(message) => {
+                        // Send content text to input channel
+                        let _ = input_tx.send(Ok((index, message.content))).await;
+                    }
+                    Err(error) => {
+                        // Send error to input channel
+                        let _ = input_tx.send(Err(error)).await;
+                    }
+                }
+            }
+        }
+        .in_current_span(),
+    );
 }
 
 /// Consumes a detection stream, builds responses, and sends them to a response channel.
+#[instrument(skip_all)]
 async fn process_detection_stream(
     trace_id: TraceId,
     mut detection_stream: DetectionStream,
@@ -182,6 +199,7 @@ async fn process_detection_stream(
 }
 
 /// Consumes a detection batch stream, builds responses, and sends them to a response channel.
+#[instrument(skip_all)]
 async fn process_detection_batch_stream(
     trace_id: TraceId,
     mut detection_batch_stream: DetectionBatchStream<MaxProcessedIndexBatcher>,

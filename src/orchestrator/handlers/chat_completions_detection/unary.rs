@@ -17,7 +17,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use futures::future::try_join_all;
-use tracing::{error, info};
+use tracing::{Instrument, error, info, instrument};
 use uuid::Uuid;
 
 use super::ChatCompletionsDetectionTask;
@@ -29,6 +29,10 @@ use crate::{
     orchestrator::{Context, Error, common, types::ChatMessageIterator},
 };
 
+#[instrument(
+    skip_all,
+    fields(trace_id = ?task.trace_id, headers = ?task.headers)
+)]
 pub async fn handle_unary(
     ctx: Arc<Context>,
     task: ChatCompletionsDetectionTask,
@@ -81,6 +85,7 @@ pub async fn handle_unary(
     }
 }
 
+#[instrument(skip_all)]
 async fn handle_input_detection(
     ctx: Arc<Context>,
     task: &ChatCompletionsDetectionTask,
@@ -149,6 +154,7 @@ async fn handle_input_detection(
     }
 }
 
+#[instrument(skip_all)]
 async fn handle_output_detection(
     ctx: Arc<Context>,
     task: ChatCompletionsDetectionTask,
@@ -159,13 +165,16 @@ async fn handle_output_detection(
     for choice in &chat_completion.choices {
         let input_id = choice.index;
         let input_text = choice.message.content.clone().unwrap_or_default();
-        tasks.push(tokio::spawn(common::text_contents_detections(
-            ctx.clone(),
-            task.headers.clone(),
-            detectors.clone(),
-            input_id,
-            vec![(0, input_text)],
-        )));
+        tasks.push(tokio::spawn(
+            common::text_contents_detections(
+                ctx.clone(),
+                task.headers.clone(),
+                detectors.clone(),
+                input_id,
+                vec![(0, input_text)],
+            )
+            .in_current_span(),
+        ));
     }
     let detections = try_join_all(tasks)
         .await?

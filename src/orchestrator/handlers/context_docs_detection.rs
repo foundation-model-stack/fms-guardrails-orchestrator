@@ -18,7 +18,7 @@ use std::collections::HashMap;
 
 use http::HeaderMap;
 use opentelemetry::trace::TraceId;
-use tracing::info;
+use tracing::{info, instrument};
 
 use super::Handle;
 use crate::{
@@ -30,6 +30,10 @@ use crate::{
 impl Handle<ContextDocsDetectionTask> for Orchestrator {
     type Response = ContextDocsResult;
 
+    #[instrument(
+        skip_all,
+        fields(trace_id = ?task.trace_id, headers = ?task.headers)
+    )]
     async fn handle(&self, task: ContextDocsDetectionTask) -> Result<Self::Response, Error> {
         let ctx = self.ctx.clone();
         let trace_id = task.trace_id;

@@ -25,7 +25,7 @@ use http::HeaderMap;
 use opentelemetry::trace::TraceId;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
-use tracing::{error, info};
+use tracing::{Instrument, error, info, instrument};
 
 use super::Handle;
 use crate::{
@@ -47,6 +47,14 @@ use crate::{
 impl Handle<StreamingClassificationWithGenTask> for Orchestrator {
     type Response = ReceiverStream<Result<ClassifiedGeneratedTextStreamResult, Error>>;
 
+    #[instrument(
+        skip_all,
+        fields(
+            trace_id = task.trace_id.to_string(),
+            model_id = task.model_id,
+            headers = ?task.headers
+        )
+    )]
     async fn handle(
         &self,
         task: StreamingClassificationWithGenTask,
@@ -121,12 +129,13 @@ impl Handle<StreamingClassificationWithGenTask> for Orchestrator {
                 // No output detectors, forward generation stream to response stream
                 forward_generation_stream(trace_id, generation_stream, response_tx).await;
             }
-        });
+        }.in_current_span());
 
         Ok(ReceiverStream::new(response_rx))
     }
 }
 
+#[instrument(skip_all)]
 async fn handle_input_detection(
     ctx: Arc<Context>,
     task: &StreamingClassificationWithGenTask,
@@ -186,6 +195,7 @@ async fn handle_input_detection(
     }
 }
 
+#[instrument(skip_all)]
 async fn handle_output_detection(
     ctx: Arc<Context>,
     task: StreamingClassificationWithGenTask,
@@ -241,30 +251,35 @@ async fn handle_output_detection(
                 }
             }
         }
+        .in_current_span()
     });
 
     // Spawn task to consume generations
-    tokio::spawn(async move {
-        while let Some((index, result)) = generation_stream.next().await {
-            match result {
-                Ok(generation) => {
-                    // Send generated text to input channel
-                    let input = (index, generation.generated_text.clone().unwrap_or_default());
-                    let _ = input_tx.send(Ok(input)).await;
-                    // Update shared generations
-                    generations.write().unwrap().push(generation);
-                }
-                Err(error) => {
-                    // Send error to input channel
-                    let _ = input_tx.send(Err(error)).await;
-                    // TODO: catch generation errors here to terminate all tasks?
+    tokio::spawn(
+        async move {
+            while let Some((index, result)) = generation_stream.next().await {
+                match result {
+                    Ok(generation) => {
+                        // Send generated text to input channel
+                        let input = (index, generation.generated_text.clone().unwrap_or_default());
+                        let _ = input_tx.send(Ok(input)).await;
+                        // Update shared generations
+                        generations.write().unwrap().push(generation);
+                    }
+                    Err(error) => {
+                        // Send error to input channel
+                        let _ = input_tx.send(Err(error)).await;
+                        // TODO: catch generation errors here to terminate all tasks?
+                    }
                 }
             }
         }
-    });
+        .in_current_span(),
+    );
 }
 
 /// Consumes a generation stream, forwarding messages to a response channel.
+#[instrument(skip_all)]
 async fn forward_generation_stream(
     trace_id: TraceId,
     mut generation_stream: GenerationStream,
@@ -291,6 +306,7 @@ async fn forward_generation_stream(
 }
 
 /// Consumes a detection stream, builds responses, and sends them to a response channel.
+#[instrument(skip_all)]
 async fn process_detection_stream(
     trace_id: TraceId,
     generations: Arc<RwLock<Vec<ClassifiedGeneratedTextStreamResult>>>,
@@ -320,6 +336,7 @@ async fn process_detection_stream(
 }
 
 /// Consumes a detection batch stream, builds responses, and sends them to a response channel.
+#[instrument(skip_all)]
 async fn process_detection_batch_stream(
     trace_id: TraceId,
     generations: Arc<RwLock<Vec<ClassifiedGeneratedTextStreamResult>>>,
@@ -349,6 +366,7 @@ async fn process_detection_batch_stream(
 }
 
 /// Builds a response with output detections.
+#[instrument(skip_all)]
 fn output_detection_response(
     generations: &Arc<RwLock<Vec<ClassifiedGeneratedTextStreamResult>>>,
     chunk: Chunk,

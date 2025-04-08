@@ -17,7 +17,7 @@
 use std::sync::Arc;
 
 use tokio::sync::mpsc;
-use tracing::info;
+use tracing::{Instrument, info, instrument};
 
 use super::ChatCompletionsDetectionTask;
 use crate::{
@@ -25,6 +25,10 @@ use crate::{
     orchestrator::{Context, Error},
 };
 
+#[instrument(
+    skip_all,
+    fields(trace_id = ?task.trace_id, headers = ?task.headers)
+)]
 pub async fn handle_streaming(
     _ctx: Arc<Context>,
     task: ChatCompletionsDetectionTask,
@@ -39,14 +43,17 @@ pub async fn handle_streaming(
     let (response_tx, response_rx) =
         mpsc::channel::<Result<Option<ChatCompletionChunk>, Error>>(128);
 
-    tokio::spawn(async move {
-        // TODO
-        let _ = response_tx
-            .send(Err(Error::Validation(
-                "streaming is not yet supported".into(),
-            )))
-            .await;
-    });
+    tokio::spawn(
+        async move {
+            // TODO
+            let _ = response_tx
+                .send(Err(Error::Validation(
+                    "streaming is not yet supported".into(),
+                )))
+                .await;
+        }
+        .in_current_span(),
+    );
 
     Ok(ChatCompletionsResponse::Streaming(response_rx))
 }

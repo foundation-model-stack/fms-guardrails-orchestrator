@@ -19,7 +19,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use http::HeaderMap;
 use opentelemetry::trace::TraceId;
-use tracing::{error, info};
+use tracing::{error, info, instrument};
 
 use super::Handle;
 use crate::{
@@ -35,6 +35,10 @@ use crate::{
 impl Handle<ClassificationWithGenTask> for Orchestrator {
     type Response = ClassifiedGeneratedTextResult;
 
+    #[instrument(
+        skip_all,
+        fields(trace_id = ?task.trace_id, model_id = task.model_id, headers = ?task.headers)
+    )]
     async fn handle(&self, task: ClassificationWithGenTask) -> Result<Self::Response, Error> {
         let ctx = self.ctx.clone();
         let trace_id = task.trace_id;
@@ -85,6 +89,7 @@ impl Handle<ClassificationWithGenTask> for Orchestrator {
     }
 }
 
+#[instrument(skip_all)]
 async fn handle_input_detection(
     ctx: Arc<Context>,
     task: &ClassificationWithGenTask,
@@ -144,6 +149,7 @@ async fn handle_input_detection(
     }
 }
 
+#[instrument(skip_all)]
 async fn handle_output_detection(
     ctx: Arc<Context>,
     task: ClassificationWithGenTask,
