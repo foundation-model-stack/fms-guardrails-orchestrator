@@ -56,9 +56,9 @@ impl Handle<ContextDocsDetectionTask> for Orchestrator {
 
 #[derive(Debug)]
 pub struct ContextDocsDetectionTask {
-    /// Unique identifier of request trace
+    /// Trace ID
     pub trace_id: TraceId,
-    /// Content to run detection on
+    /// Content text
     pub content: String,
     /// Context type
     pub context_type: ContextType,
@@ -66,7 +66,7 @@ pub struct ContextDocsDetectionTask {
     pub context: Vec<String>,
     /// Detectors configuration
     pub detectors: HashMap<String, DetectorParams>,
-    // Headermap
+    /// Headers
     pub headers: HeaderMap,
 }
 

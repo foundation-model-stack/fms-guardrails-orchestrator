@@ -40,11 +40,11 @@ impl Handle<ChatCompletionsDetectionTask> for Orchestrator {
 
 #[derive(Debug)]
 pub struct ChatCompletionsDetectionTask {
-    /// Unique identifier of request trace
+    /// Trace ID
     pub trace_id: TraceId,
-    /// Chat completion request
+    /// Request
     pub request: ChatCompletionsRequest,
-    // Headermap
+    /// Headers
     pub headers: HeaderMap,
 }
 

@@ -54,13 +54,13 @@ impl Handle<TextContentDetectionTask> for Orchestrator {
 
 #[derive(Debug)]
 pub struct TextContentDetectionTask {
-    /// Unique identifier of request trace
+    /// Trace ID
     pub trace_id: TraceId,
-    /// Content to run detection on
+    /// Content text
     pub content: String,
     /// Detectors configuration
     pub detectors: HashMap<String, DetectorParams>,
-    // Headermap
+    /// Headers
     pub headers: HeaderMap,
 }
 

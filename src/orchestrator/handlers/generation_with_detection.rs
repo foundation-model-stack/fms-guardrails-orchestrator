@@ -75,17 +75,17 @@ impl Handle<GenerationWithDetectionTask> for Orchestrator {
 
 #[derive(Debug)]
 pub struct GenerationWithDetectionTask {
-    /// Unique identifier of request trace
+    /// Trace ID
     pub trace_id: TraceId,
-    /// Model ID of the LLM
+    /// Model ID
     pub model_id: String,
-    /// User prompt to be sent to the LLM
+    /// Prompt text
     pub prompt: String,
     /// Detectors configuration
     pub detectors: HashMap<String, DetectorParams>,
-    /// LLM Parameters
+    /// Text generation parameters
     pub text_gen_parameters: Option<GuardrailsTextGenerationParameters>,
-    // Headermap
+    /// Headers
     pub headers: HeaderMap,
 }
 

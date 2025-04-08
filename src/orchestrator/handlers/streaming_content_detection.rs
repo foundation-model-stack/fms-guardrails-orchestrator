@@ -213,9 +213,13 @@ async fn process_detection_batch_stream(
 }
 
 pub struct StreamingContentDetectionTask {
+    /// Trace ID
     pub trace_id: TraceId,
+    /// Headers
     pub headers: HeaderMap,
+    /// Detectors configuration
     pub detectors: HashMap<String, DetectorParams>,
+    /// Input stream to run detections on
     pub input_stream: BoxStream<(usize, Result<StreamingContentDetectionRequest, Error>)>,
 }
 

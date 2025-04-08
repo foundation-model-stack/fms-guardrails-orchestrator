@@ -46,11 +46,11 @@ pub trait Handle<Task> {
 
 /// A task.
 pub struct Task<R> {
-    /// Request trace ID.
+    /// Trace ID
     pub trace_id: TraceId,
-    /// Request headers.
+    /// Headers
     pub headers: HeaderMap,
-    /// Request.
+    /// Request
     pub request: R,
 }
 

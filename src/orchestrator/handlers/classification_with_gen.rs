@@ -178,11 +178,17 @@ async fn handle_output_detection(
 
 #[derive(Debug)]
 pub struct ClassificationWithGenTask {
+    /// Trace ID
     pub trace_id: TraceId,
+    /// Model ID
     pub model_id: String,
+    /// Input text
     pub inputs: String,
+    /// Guardrails config
     pub guardrails_config: GuardrailsConfig,
+    /// Text generation parameters
     pub text_gen_parameters: Option<GuardrailsTextGenerationParameters>,
+    /// Headers
     pub headers: HeaderMap,
 }
 

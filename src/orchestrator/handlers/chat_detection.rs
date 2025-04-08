@@ -55,15 +55,15 @@ impl Handle<ChatDetectionTask> for Orchestrator {
 
 #[derive(Debug)]
 pub struct ChatDetectionTask {
-    /// Request unique identifier
+    /// Trace ID
     pub trace_id: TraceId,
     /// Detectors configuration
     pub detectors: HashMap<String, DetectorParams>,
     /// Messages to run detection on
     pub messages: Vec<openai::Message>,
-    /// Tools definitions, optional
+    /// Tools
     pub tools: Vec<openai::Tool>,
-    /// Headermap
+    /// Headers
     pub headers: HeaderMap,
 }
 
