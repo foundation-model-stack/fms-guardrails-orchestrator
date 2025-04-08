@@ -163,7 +163,7 @@ async fn handle_output_detection(
     {
         Ok((_, detections)) => detections,
         Err(error) => {
-            error!(%trace_id, %error, "task failed: error processing input detections");
+            error!(%trace_id, %error, "task failed: error processing output detections");
             return Err(error);
         }
     };
