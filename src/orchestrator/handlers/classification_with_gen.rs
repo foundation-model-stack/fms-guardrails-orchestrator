@@ -42,15 +42,15 @@ impl Handle<ClassificationWithGenTask> for Orchestrator {
     async fn handle(&self, task: ClassificationWithGenTask) -> Result<Self::Response, Error> {
         let ctx = self.ctx.clone();
         let trace_id = task.trace_id;
-        let input_detectors = task.guardrails_config.input_detectors().cloned();
-        let output_detectors = task.guardrails_config.output_detectors().cloned();
+        let input_detectors = task.guardrails_config.input_detectors();
+        let output_detectors = task.guardrails_config.output_detectors();
         info!(%trace_id, "task started");
 
         // TODO: validate requested guardrails
 
-        if let Some(detectors) = input_detectors {
+        if !input_detectors.is_empty() {
             // Handle input detection
-            match handle_input_detection(ctx.clone(), &task, detectors).await {
+            match handle_input_detection(ctx.clone(), &task, input_detectors).await {
                 Ok(Some(response)) => {
                     info!(%trace_id, "task completed: returning response with input detections");
                     // Return response with input detections and terminate
@@ -78,9 +78,9 @@ impl Handle<ClassificationWithGenTask> for Orchestrator {
         )
         .await?;
 
-        if let Some(detectors) = output_detectors {
+        if !output_detectors.is_empty() {
             // Handle output detection
-            handle_output_detection(ctx.clone(), task, detectors, generation).await
+            handle_output_detection(ctx.clone(), task, output_detectors, generation).await
         } else {
             // No output detectors, return generation
             info!(%trace_id, "task completed: returning generation response");
