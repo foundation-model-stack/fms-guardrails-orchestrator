@@ -32,7 +32,7 @@ use hyper_timeout::TimeoutConnector;
 use hyper_util::rt::TokioExecutor;
 use tonic::{Request, metadata::MetadataMap};
 use tower::{ServiceBuilder, timeout::TimeoutLayer};
-use tracing::{Span, debug, instrument};
+use tracing::Span;
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 use url::Url;
 
@@ -205,7 +205,6 @@ impl ClientMap {
     }
 }
 
-#[instrument(skip_all, fields(hostname = service_config.hostname))]
 pub async fn create_http_client(
     default_port: u16,
     service_config: &ServiceConfig,
@@ -220,7 +219,6 @@ pub async fn create_http_client(
     base_url
         .set_port(Some(port))
         .unwrap_or_else(|_| panic!("error setting port: {}", port));
-    debug!(%base_url, "creating HTTP client");
 
     let connect_timeout = Duration::from_secs(DEFAULT_CONNECT_TIMEOUT_SEC);
     let request_timeout = Duration::from_secs(
@@ -257,7 +255,6 @@ pub async fn create_http_client(
     Ok(HttpClient::new(base_url, client))
 }
 
-#[instrument(skip_all, fields(hostname = service_config.hostname))]
 pub async fn create_grpc_client<C: Debug + Clone>(
     default_port: u16,
     service_config: &ServiceConfig,
@@ -270,7 +267,6 @@ pub async fn create_grpc_client<C: Debug + Clone>(
     };
     let mut base_url = Url::parse(&format!("{}://{}", protocol, &service_config.hostname)).unwrap();
     base_url.set_port(Some(port)).unwrap();
-    debug!(%base_url, "creating gRPC client");
     let connect_timeout = Duration::from_secs(DEFAULT_CONNECT_TIMEOUT_SEC);
     let request_timeout = Duration::from_secs(
         service_config

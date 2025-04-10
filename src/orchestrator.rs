@@ -14,43 +14,28 @@
  limitations under the License.
 
 */
-
 pub mod errors;
 pub use errors::Error;
-use futures::Stream;
-pub mod chat_completions_detection;
 pub mod common;
-pub mod detector_processing;
-pub mod streaming;
-pub mod streaming_content_detection;
+pub mod handlers;
 pub mod types;
-pub mod unary;
 
-use std::{collections::HashMap, pin::Pin, sync::Arc};
+use std::sync::Arc;
 
-use axum::http::header::HeaderMap;
-use opentelemetry::trace::TraceId;
 use tokio::{sync::RwLock, time::Instant};
 use tracing::{debug, info};
 
 use crate::{
     clients::{
-        self, ClientMap, GenerationClient, NlpClient, TextContentsDetectorClient, TgisClient,
+        ClientMap, GenerationClient, NlpClient, TextContentsDetectorClient, TgisClient,
         chunker::ChunkerClient,
         detector::{
             TextChatDetectorClient, TextContextDocDetectorClient, TextGenerationDetectorClient,
-            text_context_doc::ContextType,
         },
-        openai::{ChatCompletionsRequest, OpenAiClient},
+        openai::OpenAiClient,
     },
     config::{DetectorType, GenerationProvider, OrchestratorConfig},
     health::HealthCheckCache,
-    models::{
-        ChatDetectionHttpRequest, ContextDocsHttpRequest, DetectionOnGeneratedHttpRequest,
-        DetectorParams, GenerationWithDetectionHttpRequest, GuardrailsConfig,
-        GuardrailsHttpRequest, GuardrailsTextGenerationParameters,
-        StreamingContentDetectionRequest, TextContentDetectionHttpRequest,
-    },
 };
 
 #[cfg_attr(test, derive(Default))]
@@ -213,273 +198,4 @@ async fn create_clients(config: &OrchestratorConfig) -> Result<ClientMap, Error>
         }
     }
     Ok(clients)
-}
-
-#[derive(Debug, Clone)]
-pub struct Chunk {
-    pub offset: usize,
-    pub text: String,
-}
-
-#[derive(Debug)]
-pub struct ClassificationWithGenTask {
-    pub trace_id: TraceId,
-    pub model_id: String,
-    pub inputs: String,
-    pub guardrails_config: GuardrailsConfig,
-    pub text_gen_parameters: Option<GuardrailsTextGenerationParameters>,
-    pub headers: HeaderMap,
-}
-
-impl ClassificationWithGenTask {
-    pub fn new(trace_id: TraceId, request: GuardrailsHttpRequest, headers: HeaderMap) -> Self {
-        Self {
-            trace_id,
-            model_id: request.model_id,
-            inputs: request.inputs,
-            guardrails_config: request.guardrail_config.unwrap_or_default(),
-            text_gen_parameters: request.text_gen_parameters,
-            headers,
-        }
-    }
-}
-
-/// Task for the /api/v2/text/detection/content endpoint
-#[derive(Debug)]
-pub struct GenerationWithDetectionTask {
-    /// Unique identifier of request trace
-    pub trace_id: TraceId,
-
-    /// Model ID of the LLM
-    pub model_id: String,
-
-    /// User prompt to be sent to the LLM
-    pub prompt: String,
-
-    /// Detectors configuration
-    pub detectors: HashMap<String, DetectorParams>,
-
-    /// LLM Parameters
-    pub text_gen_parameters: Option<GuardrailsTextGenerationParameters>,
-
-    // Headermap
-    pub headers: HeaderMap,
-}
-
-impl GenerationWithDetectionTask {
-    pub fn new(
-        trace_id: TraceId,
-        request: GenerationWithDetectionHttpRequest,
-        headers: HeaderMap,
-    ) -> Self {
-        Self {
-            trace_id,
-            model_id: request.model_id,
-            prompt: request.prompt,
-            detectors: request.detectors,
-            text_gen_parameters: request.text_gen_parameters,
-            headers,
-        }
-    }
-}
-
-/// Task for the /api/v2/text/detection/content endpoint
-#[derive(Debug)]
-pub struct TextContentDetectionTask {
-    /// Unique identifier of request trace
-    pub trace_id: TraceId,
-
-    /// Content to run detection on
-    pub content: String,
-
-    /// Detectors configuration
-    pub detectors: HashMap<String, DetectorParams>,
-
-    // Headermap
-    pub headers: HeaderMap,
-}
-
-impl TextContentDetectionTask {
-    pub fn new(
-        trace_id: TraceId,
-        request: TextContentDetectionHttpRequest,
-        headers: HeaderMap,
-    ) -> Self {
-        Self {
-            trace_id,
-            content: request.content,
-            detectors: request.detectors,
-            headers,
-        }
-    }
-}
-
-/// Task for the /api/v1/text/task/detection/context endpoint
-#[derive(Debug)]
-pub struct ContextDocsDetectionTask {
-    /// Unique identifier of request trace
-    pub trace_id: TraceId,
-
-    /// Content to run detection on
-    pub content: String,
-
-    /// Context type
-    pub context_type: ContextType,
-
-    /// Context
-    pub context: Vec<String>,
-
-    /// Detectors configuration
-    pub detectors: HashMap<String, DetectorParams>,
-
-    // Headermap
-    pub headers: HeaderMap,
-}
-
-impl ContextDocsDetectionTask {
-    pub fn new(trace_id: TraceId, request: ContextDocsHttpRequest, headers: HeaderMap) -> Self {
-        Self {
-            trace_id,
-            content: request.content,
-            context_type: request.context_type,
-            context: request.context,
-            detectors: request.detectors,
-            headers,
-        }
-    }
-}
-
-/// Task for the /api/v2/text/detection/chat endpoint
-#[derive(Debug)]
-pub struct ChatDetectionTask {
-    /// Request unique identifier
-    pub trace_id: TraceId,
-
-    /// Detectors configuration
-    pub detectors: HashMap<String, DetectorParams>,
-
-    // Messages to run detection on
-    pub messages: Vec<clients::openai::Message>,
-
-    // Tools definitions, optional
-    pub tools: Vec<clients::openai::Tool>,
-
-    // Headermap
-    pub headers: HeaderMap,
-}
-
-impl ChatDetectionTask {
-    pub fn new(trace_id: TraceId, request: ChatDetectionHttpRequest, headers: HeaderMap) -> Self {
-        Self {
-            trace_id,
-            detectors: request.detectors,
-            messages: request.messages,
-            tools: request.tools,
-            headers,
-        }
-    }
-}
-
-/// Task for the /api/v2/text/detection/generated endpoint
-#[derive(Debug)]
-pub struct DetectionOnGenerationTask {
-    /// Unique identifier of request trace
-    pub trace_id: TraceId,
-
-    /// User prompt to be sent to the LLM
-    pub prompt: String,
-
-    /// Text generated by the LLM
-    pub generated_text: String,
-
-    /// Detectors configuration
-    pub detectors: HashMap<String, DetectorParams>,
-
-    // Headermap
-    pub headers: HeaderMap,
-}
-
-impl DetectionOnGenerationTask {
-    pub fn new(
-        trace_id: TraceId,
-        request: DetectionOnGeneratedHttpRequest,
-        headers: HeaderMap,
-    ) -> Self {
-        Self {
-            trace_id,
-            prompt: request.prompt,
-            generated_text: request.generated_text,
-            detectors: request.detectors,
-            headers,
-        }
-    }
-}
-
-#[allow(dead_code)]
-#[derive(Debug)]
-pub struct StreamingClassificationWithGenTask {
-    pub trace_id: TraceId,
-    pub model_id: String,
-    pub inputs: String,
-    pub guardrails_config: GuardrailsConfig,
-    pub text_gen_parameters: Option<GuardrailsTextGenerationParameters>,
-    pub headers: HeaderMap,
-}
-
-impl StreamingClassificationWithGenTask {
-    pub fn new(trace_id: TraceId, request: GuardrailsHttpRequest, headers: HeaderMap) -> Self {
-        Self {
-            trace_id,
-            model_id: request.model_id,
-            inputs: request.inputs,
-            guardrails_config: request.guardrail_config.unwrap_or_default(),
-            text_gen_parameters: request.text_gen_parameters,
-            headers,
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct ChatCompletionsDetectionTask {
-    /// Unique identifier of request trace
-    pub trace_id: TraceId,
-    /// Chat completion request
-    pub request: ChatCompletionsRequest,
-    // Headermap
-    pub headers: HeaderMap,
-}
-
-impl ChatCompletionsDetectionTask {
-    pub fn new(trace_id: TraceId, request: ChatCompletionsRequest, headers: HeaderMap) -> Self {
-        Self {
-            trace_id,
-            request,
-            headers,
-        }
-    }
-}
-
-pub struct StreamingContentDetectionTask {
-    pub trace_id: TraceId,
-    pub headers: HeaderMap,
-    pub detectors: HashMap<String, DetectorParams>,
-    pub input_stream:
-        Pin<Box<dyn Stream<Item = Result<StreamingContentDetectionRequest, Error>> + Send>>,
-}
-
-impl StreamingContentDetectionTask {
-    pub fn new(
-        trace_id: TraceId,
-        headers: HeaderMap,
-        input_stream: Pin<
-            Box<dyn Stream<Item = Result<StreamingContentDetectionRequest, Error>> + Send>,
-        >,
-    ) -> Self {
-        Self {
-            trace_id,
-            headers,
-            detectors: HashMap::default(),
-            input_stream,
-        }
-    }
 }

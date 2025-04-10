@@ -50,7 +50,7 @@ use tokio_rustls::TlsAcceptor;
 use tokio_stream::wrappers::ReceiverStream;
 use tower::Service;
 use tower_http::trace::TraceLayer;
-use tracing::{Span, debug, error, info, instrument, warn};
+use tracing::{Span, debug, error, info, warn};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 use webpki::types::{CertificateDer, PrivateKeyDer};
 
@@ -58,10 +58,8 @@ use crate::{
     clients::openai::{ChatCompletionsRequest, ChatCompletionsResponse},
     models::{self, InfoParams, InfoResponse, StreamingContentDetectionRequest},
     orchestrator::{
-        self, ChatCompletionsDetectionTask, ChatDetectionTask, ClassificationWithGenTask,
-        ContextDocsDetectionTask, DetectionOnGenerationTask, GenerationWithDetectionTask,
-        Orchestrator, StreamingClassificationWithGenTask, StreamingContentDetectionTask,
-        TextContentDetectionTask,
+        self, Orchestrator,
+        handlers::{chat_completions_detection::ChatCompletionsDetectionTask, *},
     },
     utils,
 };
@@ -340,28 +338,21 @@ async fn info(
     Ok(Json(InfoResponse { services }))
 }
 
-#[instrument(skip_all, fields(model_id = ?request.model_id))]
 async fn classification_with_gen(
     State(state): State<Arc<ServerState>>,
     headers: HeaderMap,
     WithRejection(Json(request), _): WithRejection<Json<models::GuardrailsHttpRequest>, Error>,
 ) -> Result<impl IntoResponse, Error> {
     let trace_id = Span::current().context().span().span_context().trace_id();
-    info!(?trace_id, "handling request");
     request.validate()?;
     let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
     let task = ClassificationWithGenTask::new(trace_id, request, headers);
-    match state
-        .orchestrator
-        .handle_classification_with_gen(task)
-        .await
-    {
+    match state.orchestrator.handle(task).await {
         Ok(response) => Ok(Json(response).into_response()),
         Err(error) => Err(error.into()),
     }
 }
 
-#[instrument(skip_all, fields(model_id = ?request.model_id))]
 async fn generation_with_detection(
     State(state): State<Arc<ServerState>>,
     headers: HeaderMap,
@@ -371,28 +362,21 @@ async fn generation_with_detection(
     >,
 ) -> Result<impl IntoResponse, Error> {
     let trace_id = Span::current().context().span().span_context().trace_id();
-    info!(?trace_id, "handling request");
     request.validate()?;
     let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
     let task = GenerationWithDetectionTask::new(trace_id, request, headers);
-    match state
-        .orchestrator
-        .handle_generation_with_detection(task)
-        .await
-    {
+    match state.orchestrator.handle(task).await {
         Ok(response) => Ok(Json(response).into_response()),
         Err(error) => Err(error.into()),
     }
 }
 
-#[instrument(skip_all, fields(model_id = ?request.model_id))]
 async fn stream_classification_with_gen(
     State(state): State<Arc<ServerState>>,
     headers: HeaderMap,
     WithRejection(Json(request), _): WithRejection<Json<models::GuardrailsHttpRequest>, Error>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
     let trace_id = Span::current().context().span().span_context().trace_id();
-    info!(?trace_id, "handling request");
     if let Err(error) = request.validate() {
         // Request validation failed, return stream with single error SSE event
         let error: Error = error.into();
@@ -406,10 +390,7 @@ async fn stream_classification_with_gen(
     }
     let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
     let task = StreamingClassificationWithGenTask::new(trace_id, request, headers);
-    let response_stream = state
-        .orchestrator
-        .handle_streaming_classification_with_gen(task)
-        .await;
+    let response_stream = state.orchestrator.handle(task).await.unwrap();
     // Convert response stream to a stream of SSE events
     let event_stream = response_stream
         .map(|message| match message {
@@ -429,15 +410,12 @@ async fn stream_classification_with_gen(
     Sse::new(event_stream).keep_alive(KeepAlive::default())
 }
 
-#[instrument(skip_all)]
 async fn stream_content_detection(
     State(state): State<Arc<ServerState>>,
     headers: HeaderMap,
     json_lines: JsonLines<StreamingContentDetectionRequest>,
 ) -> Result<impl IntoResponse, Error> {
     let trace_id = Span::current().context().span().span_context().trace_id();
-    info!(?trace_id, "handling content detection streaming request");
-
     // Validate the content-type from the header and ensure it is application/x-ndjson
     // If it's not, return a UnsupportedContentType error with the appropriate message
     let content_type = headers
@@ -462,19 +440,17 @@ async fn stream_content_detection(
             }
             Err(error) => Err(orchestrator::errors::Error::Validation(error.to_string())),
         })
+        .enumerate()
         .boxed();
 
     // Create task and submit to handler
     let task = StreamingContentDetectionTask::new(trace_id, headers, input_stream);
-    let mut response_stream = state
-        .orchestrator
-        .handle_streaming_content_detection(task)
-        .await;
+    let mut response_stream = state.orchestrator.handle(task).await?;
 
     // Create output stream
     // This stream returns ND-JSON formatted messages to the client
     // StreamingContentDetectionResponse / server::Error
-    let (output_tx, output_rx) = mpsc::channel::<Result<String, Infallible>>(32);
+    let (output_tx, output_rx) = mpsc::channel::<Result<String, Infallible>>(128);
     let output_stream = ReceiverStream::new(output_rx);
 
     // Spawn task to consume response stream (typed) and send to output stream (json)
@@ -499,7 +475,6 @@ async fn stream_content_detection(
     Ok(Response::new(axum::body::Body::from_stream(output_stream)))
 }
 
-#[instrument(skip_all)]
 async fn detection_content(
     State(state): State<Arc<ServerState>>,
     headers: HeaderMap,
@@ -509,38 +484,30 @@ async fn detection_content(
     >,
 ) -> Result<impl IntoResponse, Error> {
     let trace_id = Span::current().context().span().span_context().trace_id();
-    info!(?trace_id, "handling request");
     request.validate()?;
     let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
     let task = TextContentDetectionTask::new(trace_id, request, headers);
-    match state.orchestrator.handle_text_content_detection(task).await {
+    match state.orchestrator.handle(task).await {
         Ok(response) => Ok(Json(response).into_response()),
         Err(error) => Err(error.into()),
     }
 }
 
-#[instrument(skip_all)]
 async fn detect_context_documents(
     State(state): State<Arc<ServerState>>,
     headers: HeaderMap,
     WithRejection(Json(request), _): WithRejection<Json<models::ContextDocsHttpRequest>, Error>,
 ) -> Result<impl IntoResponse, Error> {
     let trace_id = Span::current().context().span().span_context().trace_id();
-    info!(?trace_id, "handling request");
     request.validate()?;
     let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
     let task = ContextDocsDetectionTask::new(trace_id, request, headers);
-    match state
-        .orchestrator
-        .handle_context_documents_detection(task)
-        .await
-    {
+    match state.orchestrator.handle(task).await {
         Ok(response) => Ok(Json(response).into_response()),
         Err(error) => Err(error.into()),
     }
 }
 
-#[instrument(skip_all)]
 async fn detect_chat(
     State(state): State<Arc<ServerState>>,
     headers: HeaderMap,
@@ -550,13 +517,12 @@ async fn detect_chat(
     request.validate_for_text()?;
     let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
     let task = ChatDetectionTask::new(trace_id, request, headers);
-    match state.orchestrator.handle_chat_detection(task).await {
+    match state.orchestrator.handle(task).await {
         Ok(response) => Ok(Json(response).into_response()),
         Err(error) => Err(error.into()),
     }
 }
 
-#[instrument(skip_all)]
 async fn detect_generated(
     State(state): State<Arc<ServerState>>,
     headers: HeaderMap,
@@ -566,21 +532,15 @@ async fn detect_generated(
     >,
 ) -> Result<impl IntoResponse, Error> {
     let trace_id = Span::current().context().span().span_context().trace_id();
-    info!(?trace_id, "handling request");
     request.validate()?;
     let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
     let task = DetectionOnGenerationTask::new(trace_id, request, headers);
-    match state
-        .orchestrator
-        .handle_generated_text_detection(task)
-        .await
-    {
+    match state.orchestrator.handle(task).await {
         Ok(response) => Ok(Json(response).into_response()),
         Err(error) => Err(error.into()),
     }
 }
 
-#[instrument(skip_all)]
 async fn chat_completions_detection(
     State(state): State<Arc<ServerState>>,
     headers: HeaderMap,
@@ -588,14 +548,9 @@ async fn chat_completions_detection(
 ) -> Result<impl IntoResponse, Error> {
     use ChatCompletionsResponse::*;
     let trace_id = Span::current().context().span().span_context().trace_id();
-    info!(?trace_id, "handling request");
     let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
     let task = ChatCompletionsDetectionTask::new(trace_id, request, headers);
-    match state
-        .orchestrator
-        .handle_chat_completions_detection(task)
-        .await
-    {
+    match state.orchestrator.handle(task).await {
         Ok(response) => match response {
             Unary(response) => Ok(Json(response).into_response()),
             Streaming(response_rx) => {

@@ -22,7 +22,7 @@ use axum::http::HeaderMap;
 use futures::{Future, Stream, StreamExt, TryStreamExt};
 use ginepro::LoadBalancedChannel;
 use tonic::{Code, Request, Response, Status, Streaming};
-use tracing::{Span, debug, info, instrument};
+use tracing::{Span, instrument};
 
 use super::{
     BoxStream, Client, Error, create_grpc_client, errors::grpc_to_http_code,
@@ -68,7 +68,6 @@ impl ChunkerClient {
         }
     }
 
-    #[instrument(skip_all, fields(model_id))]
     pub async fn tokenization_task_predict(
         &self,
         model_id: &str,
@@ -76,20 +75,17 @@ impl ChunkerClient {
     ) -> Result<TokenizationResults, Error> {
         let mut client = self.client.clone();
         let request = request_with_headers(request, model_id);
-        debug!(?request, "sending client request");
         let response = client.chunker_tokenization_task_predict(request).await?;
         let span = Span::current();
         trace_context_from_grpc_response(&span, &response);
         Ok(response.into_inner())
     }
 
-    #[instrument(skip_all, fields(model_id))]
     pub async fn bidi_streaming_tokenization_task_predict(
         &self,
         model_id: &str,
         request_stream: BoxStream<BidiStreamingChunkerTokenizationTaskRequest>,
     ) -> Result<BoxStream<Result<ChunkerTokenizationStreamResult, Error>>, Error> {
-        info!("sending client stream request");
         let mut client = self.client.clone();
         let request = request_with_headers(request_stream, model_id);
         // NOTE: this is an ugly workaround to avoid bogus higher-ranked lifetime errors.

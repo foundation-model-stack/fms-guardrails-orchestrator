@@ -58,7 +58,6 @@ async fn no_detections() -> Result<(), anyhow::Error> {
         },
     ];
     let parameters = BTreeMap::from([("id".into(), "a".into()), ("type".into(), "b".into())]);
-    // tools are just passed through to the detector
     let tools = vec![Tool {
         r#type: "function".into(),
         function: ToolFunction {

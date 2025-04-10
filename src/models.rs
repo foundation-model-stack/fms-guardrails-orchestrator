@@ -135,10 +135,12 @@ impl GuardrailsHttpRequest {
 
         // Validate detector params
         if let Some(config) = guardrail_config {
-            if let Some(input_detectors) = config.input_detectors() {
+            let input_detectors = config.input.as_ref().map(|input| &input.models);
+            let output_detectors = config.output.as_ref().map(|output| &output.models);
+            if let Some(input_detectors) = input_detectors {
                 validate_detector_params(input_detectors)?;
             }
-            if let Some(output_detectors) = config.output_detectors() {
+            if let Some(output_detectors) = output_detectors {
                 validate_detector_params(output_detectors)?;
             }
         }
@@ -165,12 +167,18 @@ impl GuardrailsConfig {
         self.input.as_ref().and_then(|input| input.masks.as_deref())
     }
 
-    pub fn input_detectors(&self) -> Option<&HashMap<String, DetectorParams>> {
-        self.input.as_ref().map(|input| &input.models)
+    pub fn input_detectors(&self) -> HashMap<String, DetectorParams> {
+        self.input
+            .as_ref()
+            .map(|input| input.models.clone())
+            .unwrap_or_default()
     }
 
-    pub fn output_detectors(&self) -> Option<&HashMap<String, DetectorParams>> {
-        self.output.as_ref().map(|output| &output.models)
+    pub fn output_detectors(&self) -> HashMap<String, DetectorParams> {
+        self.output
+            .as_ref()
+            .map(|output| output.models.clone())
+            .unwrap_or_default()
     }
 }
 
@@ -514,6 +522,22 @@ pub struct DetectionWarning {
     /// Warning message
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message: Option<String>,
+}
+
+impl DetectionWarning {
+    pub fn unsuitable_input() -> Self {
+        DetectionWarning {
+            id: Some(DetectionWarningReason::UnsuitableInput),
+            message: Some(UNSUITABLE_INPUT_MESSAGE.to_string()),
+        }
+    }
+
+    pub fn unsuitable_output() -> Self {
+        DetectionWarning {
+            id: Some(DetectionWarningReason::UnsuitableOutput),
+            message: Some(UNSUITABLE_OUTPUT_MESSAGE.to_string()),
+        }
+    }
 }
 
 /// Enumeration of warning reasons on input detection

@@ -20,7 +20,6 @@ use std::collections::BTreeMap;
 use async_trait::async_trait;
 use hyper::HeaderMap;
 use serde::{Deserialize, Serialize};
-use tracing::{info, instrument};
 
 use super::{DEFAULT_PORT, DetectorClient, DetectorClientExt};
 use crate::{
@@ -61,7 +60,6 @@ impl TextContentsDetectorClient {
         &self.client
     }
 
-    #[instrument(skip_all, fields(model_id))]
     pub async fn text_contents(
         &self,
         model_id: &str,
@@ -69,7 +67,6 @@ impl TextContentsDetectorClient {
         headers: HeaderMap,
     ) -> Result<Vec<Vec<ContentAnalysisResponse>>, Error> {
         let url = self.endpoint(CONTENTS_DETECTOR_ENDPOINT);
-        info!("sending text content detector request to {}", url);
         self.post_to_detector(model_id, url, headers, request).await
     }
 }
