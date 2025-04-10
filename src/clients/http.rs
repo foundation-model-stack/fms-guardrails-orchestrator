@@ -169,12 +169,6 @@ impl HttpClient {
             .uri(url.as_uri());
         match builder.headers_mut() {
             Some(headers_mut) => {
-                // debug!(
-                //     ?url,
-                //     ?headers,
-                //     ?body,
-                //     "sending client request"
-                // );
                 headers_mut.extend(headers);
                 let body =
                     Full::new(Bytes::from(serde_json::to_vec(&body).map_err(|e| {
@@ -208,13 +202,6 @@ impl HttpClient {
                             message: format!("client request timeout: {}", e),
                         }),
                 }?;
-
-                // debug!(
-                //     status = ?response.status(),
-                //     headers = ?response.headers(),
-                //     size = ?response.size_hint(),
-                //     "incoming client response"
-                // );
                 let span = Span::current();
                 trace::trace_context_from_http_response(&span, &response);
                 Ok(response.into())

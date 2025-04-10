@@ -141,8 +141,8 @@ impl OtlpProtocol {
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub enum LogFormat {
     #[default]
-    Full,
     Compact,
+    Full,
     Pretty,
     JSON,
 }
