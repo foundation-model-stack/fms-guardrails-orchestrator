@@ -65,10 +65,10 @@ impl Handle<StreamingContentDetectionTask> for Orchestrator {
                         return;
                     }
                 };
+
                 // TODO: validate requested guardrails
 
-                handle_detection(ctx, trace_id, headers, detectors, input_stream, response_tx)
-                    .await;
+                input_detection(ctx, trace_id, headers, detectors, input_stream, response_tx).await;
             }
             .in_current_span(),
         );
@@ -105,7 +105,7 @@ async fn extract_detectors(
 }
 
 #[instrument(skip_all)]
-async fn handle_detection(
+async fn input_detection(
     ctx: Arc<Context>,
     trace_id: TraceId,
     headers: HeaderMap,

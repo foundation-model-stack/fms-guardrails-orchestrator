@@ -43,7 +43,7 @@ pub async fn handle_unary(
 
     if !input_detectors.is_empty() {
         // Handle input detection
-        match handle_input_detection(ctx.clone(), &task, input_detectors).await {
+        match input_detection(ctx.clone(), &task, input_detectors).await {
             Ok(Some(completion)) => {
                 info!(%trace_id, "task completed: returning response with input detections");
                 // Return response with input detections and terminate
@@ -73,7 +73,7 @@ pub async fn handle_unary(
     if !output_detectors.is_empty() {
         // Handle output detection
         let chat_completion =
-            handle_output_detection(ctx.clone(), task, output_detectors, chat_completion).await?;
+            output_detection(ctx.clone(), task, output_detectors, chat_completion).await?;
         Ok(chat_completion.into())
     } else {
         // No output detectors, send chat completion response
@@ -82,7 +82,7 @@ pub async fn handle_unary(
 }
 
 #[instrument(skip_all)]
-async fn handle_input_detection(
+async fn input_detection(
     ctx: Arc<Context>,
     task: &ChatCompletionsDetectionTask,
     detectors: HashMap<String, DetectorParams>,
@@ -151,7 +151,7 @@ async fn handle_input_detection(
 }
 
 #[instrument(skip_all)]
-async fn handle_output_detection(
+async fn output_detection(
     ctx: Arc<Context>,
     task: ChatCompletionsDetectionTask,
     detectors: HashMap<String, DetectorParams>,
