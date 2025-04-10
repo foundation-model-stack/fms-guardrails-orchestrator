@@ -48,6 +48,7 @@ impl Handle<StreamingClassificationWithGenTask> for Orchestrator {
     type Response = ReceiverStream<Result<ClassifiedGeneratedTextStreamResult, Error>>;
 
     #[instrument(
+        name = "streaming_classification_with_gen",
         skip_all,
         fields(
             trace_id = task.trace_id.to_string(),

@@ -29,10 +29,6 @@ use crate::{
     orchestrator::{Context, Error, common, types::ChatMessageIterator},
 };
 
-#[instrument(
-    skip_all,
-    fields(trace_id = ?task.trace_id, headers = ?task.headers)
-)]
 pub async fn handle_unary(
     ctx: Arc<Context>,
     task: ChatCompletionsDetectionTask,

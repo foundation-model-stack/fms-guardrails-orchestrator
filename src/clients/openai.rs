@@ -24,7 +24,6 @@ use http_body_util::BodyExt;
 use hyper::{HeaderMap, StatusCode};
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
-use tracing::{info, instrument};
 
 use super::{
     Client, Error, HttpClient, create_http_client, detector::ContentAnalysisResponse,
@@ -70,14 +69,12 @@ impl OpenAiClient {
         &self.client
     }
 
-    #[instrument(skip_all, fields(request.model))]
     pub async fn chat_completions(
         &self,
         request: ChatCompletionsRequest,
         headers: HeaderMap,
     ) -> Result<ChatCompletionsResponse, Error> {
         let url = self.inner().endpoint(CHAT_COMPLETIONS_ENDPOINT);
-        info!("sending Open AI chat completion request to {}", url);
         if request.stream {
             let (tx, rx) = mpsc::channel(32);
             let mut event_stream = self

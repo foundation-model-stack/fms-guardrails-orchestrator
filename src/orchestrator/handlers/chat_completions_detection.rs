@@ -31,6 +31,7 @@ impl Handle<ChatCompletionsDetectionTask> for Orchestrator {
     type Response = ChatCompletionsResponse;
 
     #[instrument(
+        name = "chat_completions_detection",
         skip_all,
         fields(trace_id = ?task.trace_id, headers = ?task.headers)
     )]

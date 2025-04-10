@@ -39,6 +39,7 @@ impl Handle<StreamingContentDetectionTask> for Orchestrator {
     type Response = ReceiverStream<Result<StreamingContentDetectionResponse, Error>>;
 
     #[instrument(
+        name = "streaming_content_detection",
         skip_all,
         fields(trace_id = task.trace_id.to_string(), headers = ?task.headers)
     )]

@@ -230,7 +230,7 @@ pub fn init_tracing(
 
 pub fn incoming_request_span(request: &Request) -> Span {
     info_span!(
-        "incoming_orchestrator_http_request",
+        "request",
         request_method = request.method().to_string(),
         request_path = request.uri().path().to_string(),
         response_status_code = tracing::field::Empty,
@@ -249,7 +249,7 @@ pub fn on_incoming_request(request: &Request, span: &Span) {
         method = %request.method(),
         path = %request.uri().path(),
         monotonic_counter.incoming_request_count = 1,
-        "started processing orchestrator request",
+        "started processing request",
     );
 }
 
@@ -266,7 +266,7 @@ pub fn on_outgoing_response(response: &Response, latency: Duration, span: &Span)
         duration_ms = %latency.as_millis(),
         monotonic_counter.handled_request_count = 1,
         histogram.service_request_duration = latency.as_millis() as u64,
-        "finished processing orchestrator request"
+        "finished processing request"
     );
 
     if response.status().is_server_error() {
@@ -299,7 +299,7 @@ pub fn on_outgoing_eos(_trailers: Option<&HeaderMap>, stream_duration: Duration,
         monotonic_counter.service_stream_response_count = 1,
         histogram.service_stream_response_duration = stream_duration.as_millis() as u64,
         stream_duration = stream_duration.as_millis(),
-        "end of orchestrator stream"
+        "end of stream"
     );
 }
 

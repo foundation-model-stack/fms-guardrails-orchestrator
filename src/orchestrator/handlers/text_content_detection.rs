@@ -30,6 +30,7 @@ impl Handle<TextContentDetectionTask> for Orchestrator {
     type Response = TextContentDetectionResult;
 
     #[instrument(
+        name = "text_content_detection",
         skip_all,
         fields(trace_id = ?task.trace_id, headers = ?task.headers)
     )]

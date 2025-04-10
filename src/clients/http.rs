@@ -20,7 +20,7 @@ use std::{fmt::Debug, ops::Deref, time::Duration};
 use http_body_util::{BodyExt, Full, combinators::BoxBody};
 use hyper::{
     HeaderMap, Method, Request, StatusCode,
-    body::{Body, Bytes, Incoming},
+    body::{Bytes, Incoming},
 };
 use hyper_rustls::HttpsConnector;
 use hyper_timeout::TimeoutConnector;
@@ -36,7 +36,7 @@ use tower_http::{
         Trace, TraceLayer,
     },
 };
-use tracing::{Span, debug, error, info, info_span, instrument};
+use tracing::{Span, error, info, info_span};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 use url::Url;
 
@@ -137,7 +137,6 @@ impl HttpClient {
         self.base_url.join(path).unwrap()
     }
 
-    #[instrument(skip_all, fields(url))]
     pub async fn get(
         &self,
         url: Url,
@@ -147,7 +146,6 @@ impl HttpClient {
         self.send(url, Method::GET, headers, body).await
     }
 
-    #[instrument(skip_all, fields(url))]
     pub async fn post(
         &self,
         url: Url,
@@ -157,7 +155,6 @@ impl HttpClient {
         self.send(url, Method::POST, headers, body).await
     }
 
-    #[instrument(skip_all, fields(url))]
     pub async fn send(
         &self,
         url: Url,
@@ -172,12 +169,12 @@ impl HttpClient {
             .uri(url.as_uri());
         match builder.headers_mut() {
             Some(headers_mut) => {
-                debug!(
-                    ?url,
-                    ?headers,
-                    ?body,
-                    "sending client request"
-                );
+                // debug!(
+                //     ?url,
+                //     ?headers,
+                //     ?body,
+                //     "sending client request"
+                // );
                 headers_mut.extend(headers);
                 let body =
                     Full::new(Bytes::from(serde_json::to_vec(&body).map_err(|e| {
@@ -212,12 +209,12 @@ impl HttpClient {
                         }),
                 }?;
 
-                debug!(
-                    status = ?response.status(),
-                    headers = ?response.headers(),
-                    size = ?response.size_hint(),
-                    "incoming client response"
-                );
+                // debug!(
+                //     status = ?response.status(),
+                //     headers = ?response.headers(),
+                //     size = ?response.size_hint(),
+                //     "incoming client response"
+                // );
                 let span = Span::current();
                 trace::trace_context_from_http_response(&span, &response);
                 Ok(response.into())

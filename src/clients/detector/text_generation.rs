@@ -18,7 +18,6 @@
 use async_trait::async_trait;
 use hyper::HeaderMap;
 use serde::Serialize;
-use tracing::{info, instrument};
 
 use super::{DEFAULT_PORT, DetectorClient, DetectorClientExt};
 use crate::{
@@ -59,7 +58,6 @@ impl TextGenerationDetectorClient {
         &self.client
     }
 
-    #[instrument(skip_all, fields(model_id))]
     pub async fn text_generation(
         &self,
         model_id: &str,
@@ -67,7 +65,6 @@ impl TextGenerationDetectorClient {
         headers: HeaderMap,
     ) -> Result<Vec<DetectionResult>, Error> {
         let url = self.endpoint(GENERATION_DETECTOR_ENDPOINT);
-        info!("sending text generation detector request to {}", url);
         self.post_to_detector(model_id, url, headers, request).await
     }
 }

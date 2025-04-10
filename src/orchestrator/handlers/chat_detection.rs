@@ -31,6 +31,7 @@ impl Handle<ChatDetectionTask> for Orchestrator {
     type Response = ChatDetectionResult;
 
     #[instrument(
+        name = "chat_detection",
         skip_all,
         fields(trace_id = ?task.trace_id, headers = ?task.headers)
     )]

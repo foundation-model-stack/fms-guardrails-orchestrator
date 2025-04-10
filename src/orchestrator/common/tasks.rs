@@ -39,7 +39,6 @@ use crate::{
 };
 
 /// Spawns chunk tasks. Returns a map of chunks.
-#[instrument(skip_all)]
 pub async fn chunks(
     ctx: Arc<Context>,
     chunkers: Vec<ChunkerId>,
@@ -106,7 +105,6 @@ pub async fn chunks(
 
 /// Spawns chunk streaming tasks.
 /// Returns a map of chunk broadcast channels.
-#[instrument(skip_all)]
 pub async fn chunk_streams(
     ctx: Arc<Context>,
     chunkers: Vec<ChunkerId>,
@@ -152,7 +150,6 @@ fn whole_doc_chunk(offset: usize, text: String) -> Chunks {
     .into()
 }
 
-#[instrument(skip_all)]
 fn whole_doc_chunk_stream(
     mut input_broadcast_rx: broadcast::Receiver<Result<(usize, String), Error>>,
 ) -> Result<ChunkStream, Error> {
@@ -502,7 +499,6 @@ pub async fn text_context_detections(
 }
 
 /// Fans-out a stream to a broadcast channel.
-#[instrument(skip_all)]
 pub fn broadcast_stream<T>(mut stream: BoxStream<T>) -> broadcast::Sender<T>
 where
     T: Clone + Send + 'static,
@@ -515,7 +511,6 @@ where
                 let _ = broadcast_tx.send(msg);
             }
         }
-        .in_current_span()
     });
     broadcast_tx
 }

@@ -31,6 +31,7 @@ impl Handle<ContextDocsDetectionTask> for Orchestrator {
     type Response = ContextDocsResult;
 
     #[instrument(
+        name = "context_docs_detection",
         skip_all,
         fields(trace_id = ?task.trace_id, headers = ?task.headers)
     )]

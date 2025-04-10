@@ -36,6 +36,7 @@ impl Handle<ClassificationWithGenTask> for Orchestrator {
     type Response = ClassifiedGeneratedTextResult;
 
     #[instrument(
+        name = "classification_with_gen",
         skip_all,
         fields(trace_id = ?task.trace_id, model_id = task.model_id, headers = ?task.headers)
     )]

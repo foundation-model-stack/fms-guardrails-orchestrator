@@ -30,6 +30,7 @@ impl Handle<DetectionOnGenerationTask> for Orchestrator {
     type Response = DetectionOnGenerationResult;
 
     #[instrument(
+        name = "detection_on_generation",
         skip_all,
         fields(trace_id = ?task.trace_id, headers = ?task.headers)
     )]
