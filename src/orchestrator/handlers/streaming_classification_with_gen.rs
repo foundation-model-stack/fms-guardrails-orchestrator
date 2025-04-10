@@ -367,7 +367,6 @@ async fn process_detection_batch_stream(
 }
 
 /// Builds a response with output detections.
-#[instrument(skip_all)]
 fn output_detection_response(
     generations: &Arc<RwLock<Vec<ClassifiedGeneratedTextStreamResult>>>,
     chunk: Chunk,
