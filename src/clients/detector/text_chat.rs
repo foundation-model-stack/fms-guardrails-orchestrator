@@ -18,6 +18,7 @@
 use async_trait::async_trait;
 use hyper::HeaderMap;
 use serde::Serialize;
+use tracing::info;
 
 use super::{DEFAULT_PORT, DetectorClient, DetectorClientExt};
 use crate::{
@@ -69,6 +70,7 @@ impl TextChatDetectorClient {
         headers: HeaderMap,
     ) -> Result<Vec<DetectionResult>, Error> {
         let url = self.endpoint(CHAT_DETECTOR_ENDPOINT);
+        info!("sending text chat detector request to {}", url);
         self.post_to_detector(model_id, url, headers, request).await
     }
 }
