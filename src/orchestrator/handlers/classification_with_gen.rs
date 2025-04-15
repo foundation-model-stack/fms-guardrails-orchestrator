@@ -24,12 +24,14 @@ use tracing::{error, info, instrument};
 use super::Handle;
 use crate::{
     clients::GenerationClient,
+    config::DetectorType,
     models::{
         ClassifiedGeneratedTextResult, DetectionWarning, DetectorParams, GuardrailsConfig,
         GuardrailsHttpRequest, GuardrailsTextGenerationParameters,
         TextGenTokenClassificationResults,
     },
     orchestrator::{Context, Error, Orchestrator, common},
+    utils::validate_guardrails,
 };
 
 impl Handle<ClassificationWithGenTask> for Orchestrator {
@@ -47,7 +49,24 @@ impl Handle<ClassificationWithGenTask> for Orchestrator {
         let input_detectors = task.guardrails_config.input_detectors();
         let output_detectors = task.guardrails_config.output_detectors();
 
-        // TODO: validate requested guardrails
+        // input detectors validation
+        if !input_detectors.is_empty() {
+            validate_guardrails(
+                &input_detectors,
+                &ctx.config.detectors,
+                vec![DetectorType::TextContents],
+                true,
+            )?;
+        }
+        // output detectors validation
+        if !output_detectors.is_empty() {
+            validate_guardrails(
+                &output_detectors,
+                &ctx.config.detectors,
+                vec![DetectorType::TextContents],
+                true,
+            )?;
+        }
 
         if !input_detectors.is_empty() {
             // Handle input detection
