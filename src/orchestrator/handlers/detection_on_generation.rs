@@ -22,8 +22,10 @@ use tracing::{info, instrument};
 
 use super::Handle;
 use crate::{
+    config::DetectorType,
     models::{DetectionOnGeneratedHttpRequest, DetectionOnGenerationResult, DetectorParams},
     orchestrator::{Error, Orchestrator, common},
+    utils::validate_guardrails,
 };
 
 impl Handle<DetectionOnGenerationTask> for Orchestrator {
@@ -39,7 +41,12 @@ impl Handle<DetectionOnGenerationTask> for Orchestrator {
         let trace_id = task.trace_id;
         info!(%trace_id, config = ?task.detectors, "task started");
 
-        // TODO: validate requested guardrails
+        validate_guardrails(
+            &task.detectors,
+            &ctx.config.detectors,
+            vec![DetectorType::TextGeneration],
+            true,
+        )?;
 
         // Handle detection
         let detections = common::text_generation_detections(

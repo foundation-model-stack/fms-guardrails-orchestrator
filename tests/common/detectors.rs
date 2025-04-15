@@ -22,7 +22,9 @@ pub const DETECTOR_NAME_PARENTHESIS_SENTENCE: &str = "parenthesis_detector_sente
 pub const ANSWER_RELEVANCE_DETECTOR: &str = "answer_relevance_detector";
 pub const ANSWER_RELEVANCE_DETECTOR_SENTENCE: &str = "answer_relevance_detector_sentence";
 pub const FACT_CHECKING_DETECTOR: &str = "fact_checking_detector";
+pub const FACT_CHECKING_DETECTOR_SENTENCE: &str = "fact_checking_detector_sentence";
 pub const PII_DETECTOR: &str = "pii_detector";
+pub const NON_EXISTING_DETECTOR: &str = "non_existing_detector";
 
 // Detector endpoints
 pub const TEXT_CONTENTS_DETECTOR_ENDPOINT: &str = "/api/v1/text/contents";
