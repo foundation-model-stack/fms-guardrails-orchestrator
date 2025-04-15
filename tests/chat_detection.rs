@@ -17,7 +17,7 @@
 use std::collections::{BTreeMap, HashMap};
 
 use common::{
-    detectors::{CHAT_DETECTOR_ENDPOINT, PII_DETECTOR},
+    detectors::{ANSWER_RELEVANCE_DETECTOR_SENTENCE, CHAT_DETECTOR_ENDPOINT, PII_DETECTOR},
     errors::{DetectorError, OrchestratorError},
     orchestrator::{
         ORCHESTRATOR_CHAT_DETECTION_ENDPOINT, ORCHESTRATOR_CONFIG_FILE_PATH,
@@ -383,6 +383,44 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     let response = response.json::<OrchestratorError>().await?;
     assert_eq!(response.code, 422);
     assert!(response.details.contains("Message content cannot be empty"));
+
+    // Asserts requests with detector with invalid type return 422
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_CHAT_DETECTION_ENDPOINT)
+        .json(&ChatDetectionHttpRequest {
+            detectors: HashMap::from([(
+                ANSWER_RELEVANCE_DETECTOR_SENTENCE.into(),
+                DetectorParams::new(),
+            )]),
+            messages: vec![
+                Message {
+                    role: Role::User,
+                    content: Some(Content::Text("Hi there!".into())),
+                    ..Default::default()
+                },
+                Message {
+                    role: Role::Assistant,
+                    content: Some(Content::Text("Hello!".into())),
+                    ..Default::default()
+                },
+            ],
+            tools: vec![],
+        })
+        .send()
+        .await?;
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    let response = response.json::<OrchestratorError>().await?;
+    assert_eq!(
+        response,
+        OrchestratorError {
+            code: 422,
+            details: format!(
+                "{}: detector is not supported on this endpoint",
+                ANSWER_RELEVANCE_DETECTOR_SENTENCE
+            )
+        },
+        "failed on detector with invalid type scenario"
+    );
 
     Ok(())
 }

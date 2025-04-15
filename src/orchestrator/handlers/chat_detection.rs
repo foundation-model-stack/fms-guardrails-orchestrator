@@ -23,8 +23,10 @@ use tracing::{info, instrument};
 use super::Handle;
 use crate::{
     clients::openai,
+    config::DetectorType,
     models::{ChatDetectionHttpRequest, ChatDetectionResult, DetectorParams},
     orchestrator::{Error, Orchestrator, common},
+    utils::validate_guardrails,
 };
 
 impl Handle<ChatDetectionTask> for Orchestrator {
@@ -40,7 +42,12 @@ impl Handle<ChatDetectionTask> for Orchestrator {
         let trace_id = task.trace_id;
         info!(%trace_id, config = ?task.detectors, "task started");
 
-        // TODO: validate requested guardrails
+        validate_guardrails(
+            &task.detectors,
+            &ctx.config.detectors,
+            vec![DetectorType::TextChat],
+            true,
+        )?;
 
         // Handle detection
         let detections = common::text_chat_detections(
