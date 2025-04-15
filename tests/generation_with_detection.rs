@@ -17,7 +17,10 @@
 use std::collections::HashMap;
 
 use common::{
-    detectors::{ANSWER_RELEVANCE_DETECTOR, DETECTION_ON_GENERATION_DETECTOR_ENDPOINT},
+    detectors::{
+        ANSWER_RELEVANCE_DETECTOR, DETECTION_ON_GENERATION_DETECTOR_ENDPOINT,
+        FACT_CHECKING_DETECTOR_SENTENCE, NON_EXISTING_DETECTOR,
+    },
     errors::{DetectorError, OrchestratorError},
     generation::{GENERATION_NLP_MODEL_ID_HEADER_NAME, GENERATION_NLP_UNARY_ENDPOINT},
     orchestrator::{
@@ -418,8 +421,69 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
     let response = response.json::<OrchestratorError>().await?;
     debug!("{response:#?}");
-    assert_eq!(response.code, 422);
-    assert_eq!(response.details, "`detectors` is required");
+    assert_eq!(
+        response,
+        OrchestratorError {
+            code: 422,
+            details: "`detectors` is required".into()
+        },
+    );
+
+    // assert request with invalid type detectors
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_GENERATION_WITH_DETECTION_ENDPOINT)
+        .json(&GenerationWithDetectionHttpRequest {
+            model_id: model_id.into(),
+            prompt: prompt.into(),
+            detectors: HashMap::from([(
+                FACT_CHECKING_DETECTOR_SENTENCE.into(),
+                DetectorParams::new(),
+            )]),
+            text_gen_parameters: None,
+        })
+        .send()
+        .await?;
+    debug!("{response:#?}");
+
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    let response = response.json::<OrchestratorError>().await?;
+    debug!("{response:#?}");
+    assert_eq!(
+        response,
+        OrchestratorError {
+            code: 422,
+            details: format!(
+                "{}: detector is not supported on this endpoint",
+                FACT_CHECKING_DETECTOR_SENTENCE
+            )
+        },
+        "failed at invalid detector scenario"
+    );
+
+    // assert request with non-existing detector
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_GENERATION_WITH_DETECTION_ENDPOINT)
+        .json(&GenerationWithDetectionHttpRequest {
+            model_id: model_id.into(),
+            prompt: prompt.into(),
+            detectors: HashMap::from([(NON_EXISTING_DETECTOR.into(), DetectorParams::new())]),
+            text_gen_parameters: None,
+        })
+        .send()
+        .await?;
+    debug!("{response:#?}");
+
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    let response = response.json::<OrchestratorError>().await?;
+    debug!("{response:#?}");
+    assert_eq!(
+        response,
+        OrchestratorError {
+            code: 404,
+            details: format!("detector `{}` not found", NON_EXISTING_DETECTOR)
+        },
+        "failed at invalid detector scenario"
+    );
 
     Ok(())
 }
