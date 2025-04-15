@@ -17,7 +17,10 @@
 use std::collections::{BTreeMap, HashMap};
 
 use common::{
-    detectors::{ANSWER_RELEVANCE_DETECTOR_SENTENCE, CHAT_DETECTOR_ENDPOINT, PII_DETECTOR},
+    detectors::{
+        ANSWER_RELEVANCE_DETECTOR_SENTENCE, CHAT_DETECTOR_ENDPOINT, NON_EXISTING_DETECTOR,
+        PII_DETECTOR,
+    },
     errors::{DetectorError, OrchestratorError},
     orchestrator::{
         ORCHESTRATOR_CHAT_DETECTION_ENDPOINT, ORCHESTRATOR_CONFIG_FILE_PATH,
@@ -429,12 +432,10 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     );
 
     // Asserts requests with non-existing detector return 422
-    let non_existing_detector = "non_existing_detector";
-
     let response = orchestrator_server
         .post(ORCHESTRATOR_CHAT_DETECTION_ENDPOINT)
         .json(&ChatDetectionHttpRequest {
-            detectors: HashMap::from([(non_existing_detector.into(), DetectorParams::new())]),
+            detectors: HashMap::from([(NON_EXISTING_DETECTOR.into(), DetectorParams::new())]),
             messages: messages.clone(),
             tools: vec![],
         })
@@ -448,7 +449,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
         response,
         OrchestratorError {
             code: 404,
-            details: format!("detector `{}` not found", non_existing_detector)
+            details: format!("detector `{}` not found", NON_EXISTING_DETECTOR)
         },
         "failed on non-existing detector scenario"
     );

@@ -23,7 +23,8 @@ use common::{
     chunker::CHUNKER_UNARY_ENDPOINT,
     detectors::{
         ANSWER_RELEVANCE_DETECTOR, DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE,
-        DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC, TEXT_CONTENTS_DETECTOR_ENDPOINT,
+        DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC, NON_EXISTING_DETECTOR,
+        TEXT_CONTENTS_DETECTOR_ENDPOINT,
     },
     errors::{DetectorError, OrchestratorError},
     orchestrator::{
@@ -931,7 +932,6 @@ async fn output_client_error() -> Result<(), anyhow::Error> {
 #[test(tokio::test)]
 async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE;
-    let non_existing_detector = "non_existing_detector";
 
     // Start orchestrator server and its dependencies
     let orchestrator_server = TestOrchestratorServer::builder()
@@ -1010,7 +1010,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
         .json(&ChatCompletionsRequest {
             model: MODEL_ID.into(),
             detectors: Some(DetectorConfig {
-                input: HashMap::from([(non_existing_detector.into(), DetectorParams::new())]),
+                input: HashMap::from([(NON_EXISTING_DETECTOR.into(), DetectorParams::new())]),
                 output: HashMap::new(),
             }),
             messages: messages.clone(),
@@ -1025,7 +1025,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
         results,
         OrchestratorError {
             code: 404,
-            details: format!("detector `{}` not found", non_existing_detector)
+            details: format!("detector `{}` not found", NON_EXISTING_DETECTOR)
         },
         "failed on non-existing input detector scenario"
     );
@@ -1066,7 +1066,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
             model: MODEL_ID.into(),
             detectors: Some(DetectorConfig {
                 input: HashMap::new(),
-                output: HashMap::from([(non_existing_detector.into(), DetectorParams::new())]),
+                output: HashMap::from([(NON_EXISTING_DETECTOR.into(), DetectorParams::new())]),
             }),
             messages: messages.clone(),
             ..Default::default()
@@ -1080,7 +1080,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
         results,
         OrchestratorError {
             code: 404,
-            details: format!("detector `{}` not found", non_existing_detector)
+            details: format!("detector `{}` not found", NON_EXISTING_DETECTOR)
         },
         "failed on non-existing input detector scenario"
     );

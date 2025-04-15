@@ -22,7 +22,8 @@ use common::{
     chunker::CHUNKER_UNARY_ENDPOINT,
     detectors::{
         ANSWER_RELEVANCE_DETECTOR_SENTENCE, DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE,
-        DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC, TEXT_CONTENTS_DETECTOR_ENDPOINT,
+        DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC, NON_EXISTING_DETECTOR,
+        TEXT_CONTENTS_DETECTOR_ENDPOINT,
     },
     errors::{DetectorError, OrchestratorError},
     generation::{
@@ -1201,8 +1202,6 @@ async fn output_detector_client_error() -> Result<(), anyhow::Error> {
 // Validate that invalid orchestrator requests returns 422 error
 #[test(tokio::test)]
 async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
-    let non_existing_detector = "non_existing_detector";
-
     // Start orchestrator server and its dependencies
     let orchestrator_server = TestOrchestratorServer::builder()
         .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
@@ -1274,7 +1273,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
             inputs: "This should return a 404".into(),
             guardrail_config: Some(GuardrailsConfig {
                 input: Some(GuardrailsConfigInput {
-                    models: HashMap::from([(non_existing_detector.into(), DetectorParams::new())]),
+                    models: HashMap::from([(NON_EXISTING_DETECTOR.into(), DetectorParams::new())]),
                     masks: None,
                 }),
                 output: None,
@@ -1290,7 +1289,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
         results,
         OrchestratorError {
             code: 404,
-            details: format!("detector `{}` not found", non_existing_detector)
+            details: format!("detector `{}` not found", NON_EXISTING_DETECTOR)
         },
         "failed on non-existing input detector scenario"
     );
@@ -1338,7 +1337,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
             guardrail_config: Some(GuardrailsConfig {
                 input: None,
                 output: Some(GuardrailsConfigOutput {
-                    models: HashMap::from([(non_existing_detector.into(), DetectorParams::new())]),
+                    models: HashMap::from([(NON_EXISTING_DETECTOR.into(), DetectorParams::new())]),
                 }),
             }),
             text_gen_parameters: None,
@@ -1352,7 +1351,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
         results,
         OrchestratorError {
             code: 404,
-            details: format!("detector `{}` not found", non_existing_detector)
+            details: format!("detector `{}` not found", NON_EXISTING_DETECTOR)
         },
         "failed on non-existing output detector scenario"
     );

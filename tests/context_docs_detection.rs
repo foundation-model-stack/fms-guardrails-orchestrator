@@ -19,6 +19,7 @@ use std::collections::HashMap;
 use common::{
     detectors::{
         ANSWER_RELEVANCE_DETECTOR_SENTENCE, CONTEXT_DOC_DETECTOR_ENDPOINT, FACT_CHECKING_DETECTOR,
+        NON_EXISTING_DETECTOR,
     },
     errors::{DetectorError, OrchestratorError},
     orchestrator::{
@@ -414,11 +415,10 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     );
 
     // Asserts requests with non-existing detectors return 404.
-    let non_existing_detector = "non_existing_detector";
     let response = orchestrator_server
         .post(ORCHESTRATOR_CONTEXT_DOCS_DETECTION_ENDPOINT)
         .json(&ContextDocsHttpRequest {
-            detectors: HashMap::from([(non_existing_detector.into(), DetectorParams::new())]),
+            detectors: HashMap::from([(NON_EXISTING_DETECTOR.into(), DetectorParams::new())]),
             content: content.into(),
             context_type: ContextType::Url,
             context,
@@ -434,7 +434,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
         response,
         OrchestratorError {
             code: 404,
-            details: format!("detector `{}` not found", non_existing_detector)
+            details: format!("detector `{}` not found", NON_EXISTING_DETECTOR)
         },
         "failed on non-existing detector scenario"
     );
