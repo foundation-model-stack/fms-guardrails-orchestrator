@@ -931,6 +931,8 @@ async fn output_client_error() -> Result<(), anyhow::Error> {
 #[test(tokio::test)]
 async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE;
+    let non_existing_detector = "non_existing_detector";
+
     // Start orchestrator server and its dependencies
     let orchestrator_server = TestOrchestratorServer::builder()
         .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
@@ -1002,6 +1004,32 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
         "failed on invalid input detector scenario"
     );
 
+    // Non-existing input detector scenario
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
+        .json(&ChatCompletionsRequest {
+            model: MODEL_ID.into(),
+            detectors: Some(DetectorConfig {
+                input: HashMap::from([(non_existing_detector.into(), DetectorParams::new())]),
+                output: HashMap::new(),
+            }),
+            messages: messages.clone(),
+            ..Default::default()
+        })
+        .send()
+        .await?;
+
+    let results = response.json::<OrchestratorError>().await?;
+    debug!("{results:#?}");
+    assert_eq!(
+        results,
+        OrchestratorError {
+            code: 404,
+            details: format!("detector `{}` not found", non_existing_detector)
+        },
+        "failed on non-existing input detector scenario"
+    );
+
     // Invalid output detector scenario
     let response = orchestrator_server
         .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
@@ -1029,6 +1057,32 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
             )
         },
         "failed on invalid output detector scenario"
+    );
+
+    // Non-existing output detector scenario
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
+        .json(&ChatCompletionsRequest {
+            model: MODEL_ID.into(),
+            detectors: Some(DetectorConfig {
+                input: HashMap::new(),
+                output: HashMap::from([(non_existing_detector.into(), DetectorParams::new())]),
+            }),
+            messages: messages.clone(),
+            ..Default::default()
+        })
+        .send()
+        .await?;
+
+    let results = response.json::<OrchestratorError>().await?;
+    debug!("{results:#?}");
+    assert_eq!(
+        results,
+        OrchestratorError {
+            code: 404,
+            details: format!("detector `{}` not found", non_existing_detector)
+        },
+        "failed on non-existing input detector scenario"
     );
 
     Ok(())
