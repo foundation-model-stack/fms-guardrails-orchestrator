@@ -43,9 +43,9 @@ impl Handle<ClassificationWithGenTask> for Orchestrator {
     async fn handle(&self, task: ClassificationWithGenTask) -> Result<Self::Response, Error> {
         let ctx = self.ctx.clone();
         let trace_id = task.trace_id;
+        info!(%trace_id, config = ?task.guardrails_config, "task started");
         let input_detectors = task.guardrails_config.input_detectors();
         let output_detectors = task.guardrails_config.output_detectors();
-        info!(%trace_id, "task started");
 
         // TODO: validate requested guardrails
 

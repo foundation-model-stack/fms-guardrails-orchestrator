@@ -31,9 +31,9 @@ pub async fn handle_streaming(
 ) -> Result<ChatCompletionsResponse, Error> {
     let trace_id = task.trace_id;
     let detectors = task.request.detectors.clone().unwrap_or_default();
+    info!(%trace_id, config = ?detectors, "task started");
     let _input_detectors = detectors.input;
     let _output_detectors = detectors.output;
-    info!(%trace_id, "task started");
 
     // Create response channel
     let (response_tx, response_rx) =

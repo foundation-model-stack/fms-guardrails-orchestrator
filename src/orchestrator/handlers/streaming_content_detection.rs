@@ -53,9 +53,7 @@ impl Handle<StreamingContentDetectionTask> for Orchestrator {
         tokio::spawn(
             async move {
                 let trace_id = task.trace_id;
-                info!(%trace_id, "task started");
                 let headers = task.headers;
-
                 let mut input_stream = Box::pin(task.input_stream.peekable());
                 let detectors = match extract_detectors(&mut input_stream).await {
                     Ok(detectors) => detectors,
@@ -65,6 +63,8 @@ impl Handle<StreamingContentDetectionTask> for Orchestrator {
                         return;
                     }
                 };
+                info!(%trace_id, config = ?detectors, "task started");
+
                 // TODO: validate requested guardrails
 
                 handle_detection(ctx, trace_id, headers, detectors, input_stream, response_tx)

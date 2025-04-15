@@ -37,7 +37,7 @@ impl Handle<TextContentDetectionTask> for Orchestrator {
     async fn handle(&self, task: TextContentDetectionTask) -> Result<Self::Response, Error> {
         let ctx = self.ctx.clone();
         let trace_id = task.trace_id;
-        info!(%trace_id, "task started");
+        info!(%trace_id, config = ?task.detectors, "task started");
 
         // TODO: validate requested guardrails
 
