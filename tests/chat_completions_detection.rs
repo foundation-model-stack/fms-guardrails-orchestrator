@@ -22,8 +22,8 @@ use common::{
     chat_completions::CHAT_COMPLETIONS_ENDPOINT,
     chunker::CHUNKER_UNARY_ENDPOINT,
     detectors::{
-        DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE, DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC,
-        TEXT_CONTENTS_DETECTOR_ENDPOINT,
+        ANSWER_RELEVANCE_DETECTOR, DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE,
+        DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC, TEXT_CONTENTS_DETECTOR_ENDPOINT,
     },
     errors::{DetectorError, OrchestratorError},
     orchestrator::{
@@ -53,6 +53,7 @@ use fms_guardrails_orchestr8::{
 use hyper::StatusCode;
 use mocktail::prelude::*;
 use test_log::test;
+use tracing::debug;
 
 pub mod common;
 
@@ -936,7 +937,13 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
         .build()
         .await?;
 
-    // Orchestrator request with non existing field
+    let messages = vec![Message {
+        content: Some(Content::Text("Hi there!".to_string())),
+        role: Role::User,
+        ..Default::default()
+    }];
+
+    // Extra request field scenario
     let response = orchestrator_server
         .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
         .json(&serde_json::json!({
@@ -947,23 +954,81 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
                     detector_name: {}
                 }
             },
-            "messages": vec![Message {
-                content: Some(Content::Text("Hi there!".to_string())),
-                role: Role::User,
-                ..Default::default()
-            }],
+            "messages": &messages,
             "some_extra_field": "random value"
         }))
         .send()
         .await?;
 
-    // Assertions for invalid request
     let results = response.json::<OrchestratorError>().await?;
-    assert_eq!(results.code, StatusCode::UNPROCESSABLE_ENTITY);
+    debug!("{results:#?}");
+    assert_eq!(
+        results.code,
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "failed on extra request field scenario"
+    );
     assert!(
         results
             .details
             .starts_with("some_extra_field: unknown field `some_extra_field`")
+    );
+
+    // Invalid input detector scenario
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
+        .json(&ChatCompletionsRequest {
+            model: MODEL_ID.into(),
+            detectors: Some(DetectorConfig {
+                input: HashMap::from([(ANSWER_RELEVANCE_DETECTOR.into(), DetectorParams::new())]),
+                output: HashMap::new(),
+            }),
+            messages: messages.clone(),
+            ..Default::default()
+        })
+        .send()
+        .await?;
+
+    let results = response.json::<OrchestratorError>().await?;
+    debug!("{results:#?}");
+    assert_eq!(
+        results,
+        OrchestratorError {
+            code: 422,
+            details: format!(
+                "{}: detector is not supported on this endpoint",
+                ANSWER_RELEVANCE_DETECTOR
+            )
+        },
+        "failed on invalid input detector scenario"
+    );
+
+    // Invalid output detector scenario
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
+        .json(&ChatCompletionsRequest {
+            model: MODEL_ID.into(),
+            detectors: Some(DetectorConfig {
+                input: HashMap::new(),
+                output: HashMap::from([(ANSWER_RELEVANCE_DETECTOR.into(), DetectorParams::new())]),
+            }),
+            messages: messages.clone(),
+            ..Default::default()
+        })
+        .send()
+        .await?;
+
+    let results = response.json::<OrchestratorError>().await?;
+    debug!("{results:#?}");
+    assert_eq!(
+        results,
+        OrchestratorError {
+            code: 422,
+            details: format!(
+                "{}: detector is not supported on this endpoint",
+                ANSWER_RELEVANCE_DETECTOR
+            )
+        },
+        "failed on invalid output detector scenario"
     );
 
     Ok(())
