@@ -107,19 +107,10 @@ async fn no_detections() -> Result<(), anyhow::Error> {
             finish_reason: "EOS_TOKEN".to_string(),
         },
     ];
-
-    let expected_detections = Some(ChatDetections {
-        input: vec![],
-        output: vec![],
-    });
-
     let chat_completions_response = ChatCompletion {
         model: MODEL_ID.into(),
         choices: expected_choices.clone(),
-        detections: Some(ChatDetections {
-            input: vec![],
-            output: vec![],
-        }),
+        detections: None,
         warnings: vec![],
         ..Default::default()
     };
@@ -175,14 +166,8 @@ async fn no_detections() -> Result<(), anyhow::Error> {
         .json(&ChatCompletionsRequest {
             model: MODEL_ID.into(),
             detectors: Some(DetectorConfig {
-                input: Some(HashMap::from([(
-                    detector_name.into(),
-                    DetectorParams::new(),
-                )])),
-                output: Some(HashMap::from([(
-                    detector_name.into(),
-                    DetectorParams::new(),
-                )])),
+                input: HashMap::from([(detector_name.into(), DetectorParams::new())]),
+                output: HashMap::from([(detector_name.into(), DetectorParams::new())]),
             }),
             messages,
             ..Default::default()
@@ -196,7 +181,7 @@ async fn no_detections() -> Result<(), anyhow::Error> {
     assert_eq!(results.choices[0], chat_completions_response.choices[0]);
     assert_eq!(results.choices[1], chat_completions_response.choices[1]);
     assert_eq!(results.warnings, vec![]);
-    assert_eq!(results.detections, expected_detections);
+    assert!(results.detections.is_none());
 
     Ok(())
 }
@@ -310,11 +295,8 @@ async fn input_detections() -> Result<(), anyhow::Error> {
         .json(&ChatCompletionsRequest {
             model: MODEL_ID.into(),
             detectors: Some(DetectorConfig {
-                input: Some(HashMap::from([(
-                    detector_name.into(),
-                    DetectorParams::new(),
-                )])),
-                output: None,
+                input: HashMap::from([(detector_name.into(), DetectorParams::new())]),
+                output: HashMap::new(),
             }),
             messages,
             ..Default::default()
@@ -475,11 +457,8 @@ async fn input_client_error() -> Result<(), anyhow::Error> {
         .json(&ChatCompletionsRequest {
             model: MODEL_ID.into(),
             detectors: Some(DetectorConfig {
-                input: Some(HashMap::from([(
-                    detector_name.into(),
-                    DetectorParams::new(),
-                )])),
-                output: None,
+                input: HashMap::from([(detector_name.into(), DetectorParams::new())]),
+                output: HashMap::new(),
             }),
             messages: messages_chunker_error.clone(),
             ..Default::default()
@@ -497,11 +476,8 @@ async fn input_client_error() -> Result<(), anyhow::Error> {
         .json(&ChatCompletionsRequest {
             model: MODEL_ID.into(),
             detectors: Some(DetectorConfig {
-                input: Some(HashMap::from([(
-                    detector_name.into(),
-                    DetectorParams::new(),
-                )])),
-                output: None,
+                input: HashMap::from([(detector_name.into(), DetectorParams::new())]),
+                output: HashMap::new(),
             }),
             messages: messages_detector_error.clone(),
             ..Default::default()
@@ -519,11 +495,8 @@ async fn input_client_error() -> Result<(), anyhow::Error> {
         .json(&ChatCompletionsRequest {
             model: MODEL_ID.into(),
             detectors: Some(DetectorConfig {
-                input: Some(HashMap::from([(
-                    detector_name.into(),
-                    DetectorParams::new(),
-                )])),
-                output: None,
+                input: HashMap::from([(detector_name.into(), DetectorParams::new())]),
+                output: HashMap::new(),
             }),
             messages: messages_chat_completions_error.clone(),
             ..Default::default()
@@ -710,11 +683,8 @@ async fn output_detections() -> Result<(), anyhow::Error> {
         .json(&ChatCompletionsRequest {
             model: MODEL_ID.into(),
             detectors: Some(DetectorConfig {
-                input: None,
-                output: Some(HashMap::from([(
-                    detector_name.into(),
-                    DetectorParams::new(),
-                )])),
+                input: HashMap::new(),
+                output: HashMap::from([(detector_name.into(), DetectorParams::new())]),
             }),
             messages,
             ..Default::default()
@@ -902,11 +872,8 @@ async fn output_client_error() -> Result<(), anyhow::Error> {
         .json(&ChatCompletionsRequest {
             model: MODEL_ID.into(),
             detectors: Some(DetectorConfig {
-                input: None,
-                output: Some(HashMap::from([(
-                    detector_name.into(),
-                    DetectorParams::new(),
-                )])),
+                input: HashMap::new(),
+                output: HashMap::from([(detector_name.into(), DetectorParams::new())]),
             }),
             messages: messages_chunker_error.clone(),
             ..Default::default()
@@ -924,11 +891,8 @@ async fn output_client_error() -> Result<(), anyhow::Error> {
         .json(&ChatCompletionsRequest {
             model: MODEL_ID.into(),
             detectors: Some(DetectorConfig {
-                input: None,
-                output: Some(HashMap::from([(
-                    detector_name.into(),
-                    DetectorParams::new(),
-                )])),
+                input: HashMap::new(),
+                output: HashMap::from([(detector_name.into(), DetectorParams::new())]),
             }),
             messages: messages_detector_error.clone(),
             ..Default::default()
@@ -946,11 +910,8 @@ async fn output_client_error() -> Result<(), anyhow::Error> {
         .json(&ChatCompletionsRequest {
             model: MODEL_ID.into(),
             detectors: Some(DetectorConfig {
-                input: None,
-                output: Some(HashMap::from([(
-                    detector_name.into(),
-                    DetectorParams::new(),
-                )])),
+                input: HashMap::new(),
+                output: HashMap::from([(detector_name.into(), DetectorParams::new())]),
             }),
             messages: messages_chat_completions_error.clone(),
             ..Default::default()

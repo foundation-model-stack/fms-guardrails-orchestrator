@@ -20,7 +20,7 @@ use axum::http::HeaderMap;
 use futures::{StreamExt, TryStreamExt};
 use ginepro::LoadBalancedChannel;
 use tonic::Code;
-use tracing::{Span, debug, instrument};
+use tracing::Span;
 
 use super::{
     BoxStream, Client, Error, create_grpc_client, errors::grpc_to_http_code,
@@ -52,14 +52,12 @@ impl TgisClient {
         Self { client }
     }
 
-    #[instrument(skip_all, fields(model_id = request.model_id))]
     pub async fn generate(
         &self,
         request: BatchedGenerationRequest,
         headers: HeaderMap,
     ) -> Result<BatchedGenerationResponse, Error> {
         let request = grpc_request_with_headers(request, headers);
-        debug!(?request, "sending request to TGIS gRPC service");
         let mut client = self.client.clone();
         let response = client.generate(request).await?;
         let span = Span::current();
@@ -67,14 +65,12 @@ impl TgisClient {
         Ok(response.into_inner())
     }
 
-    #[instrument(skip_all, fields(model_id = request.model_id))]
     pub async fn generate_stream(
         &self,
         request: SingleGenerationRequest,
         headers: HeaderMap,
     ) -> Result<BoxStream<Result<GenerationResponse, Error>>, Error> {
         let request = grpc_request_with_headers(request, headers);
-        debug!(?request, "sending request to TGIS gRPC service");
         let mut client = self.client.clone();
         let response = client.generate_stream(request).await?;
         let span = Span::current();
@@ -82,7 +78,6 @@ impl TgisClient {
         Ok(response.into_inner().map_err(Into::into).boxed())
     }
 
-    #[instrument(skip_all, fields(model_id = request.model_id))]
     pub async fn tokenize(
         &self,
         request: BatchedTokenizeRequest,
@@ -90,7 +85,6 @@ impl TgisClient {
     ) -> Result<BatchedTokenizeResponse, Error> {
         let mut client = self.client.clone();
         let request = grpc_request_with_headers(request, headers);
-        debug!(?request, "sending request to TGIS gRPC service");
         let response = client.tokenize(request).await?;
         let span = Span::current();
         trace_context_from_grpc_response(&span, &response);
@@ -98,7 +92,6 @@ impl TgisClient {
     }
 
     pub async fn model_info(&self, request: ModelInfoRequest) -> Result<ModelInfoResponse, Error> {
-        debug!(?request, "sending request to TGIS gRPC service");
         let request = grpc_request_with_headers(request, HeaderMap::new());
         let mut client = self.client.clone();
         let response = client.model_info(request).await?;

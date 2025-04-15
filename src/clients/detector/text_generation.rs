@@ -18,7 +18,7 @@
 use async_trait::async_trait;
 use hyper::HeaderMap;
 use serde::Serialize;
-use tracing::{info, instrument};
+use tracing::info;
 
 use super::{DEFAULT_PORT, DetectorClient, DetectorClientExt};
 use crate::{
@@ -59,7 +59,6 @@ impl TextGenerationDetectorClient {
         &self.client
     }
 
-    #[instrument(skip_all, fields(model_id))]
     pub async fn text_generation(
         &self,
         model_id: &str,

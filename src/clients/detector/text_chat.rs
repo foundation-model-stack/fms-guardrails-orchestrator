@@ -18,7 +18,7 @@
 use async_trait::async_trait;
 use hyper::HeaderMap;
 use serde::Serialize;
-use tracing::{info, instrument};
+use tracing::info;
 
 use super::{DEFAULT_PORT, DetectorClient, DetectorClientExt};
 use crate::{
@@ -63,7 +63,6 @@ impl TextChatDetectorClient {
         &self.client
     }
 
-    #[instrument(skip_all, fields(model_id, ?headers))]
     pub async fn text_chat(
         &self,
         model_id: &str,
