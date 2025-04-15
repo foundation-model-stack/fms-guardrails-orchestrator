@@ -482,7 +482,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
             code: 404,
             details: format!("detector `{}` not found", NON_EXISTING_DETECTOR)
         },
-        "failed at invalid detector scenario"
+        "failed on non-existing detector scenario"
     );
 
     Ok(())

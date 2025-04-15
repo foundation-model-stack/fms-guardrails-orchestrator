@@ -21,7 +21,7 @@ use common::{
     chunker::{CHUNKER_NAME_SENTENCE, CHUNKER_UNARY_ENDPOINT},
     detectors::{
         DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE, DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC,
-        TEXT_CONTENTS_DETECTOR_ENDPOINT,
+        FACT_CHECKING_DETECTOR_SENTENCE, NON_EXISTING_DETECTOR, TEXT_CONTENTS_DETECTOR_ENDPOINT,
     },
     errors::{DetectorError, OrchestratorError},
     orchestrator::{
@@ -468,8 +468,63 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
     let response: OrchestratorError = response.json().await?;
     debug!("orchestrator json response body:\n{response:#?}");
-    assert_eq!(response.code, 422);
-    assert_eq!(response.details, "`detectors` is required");
+    assert_eq!(
+        response,
+        OrchestratorError {
+            code: 422,
+            details: "`detectors` is required".into()
+        },
+        "failed on empty `detectors` scenario"
+    );
+
+    // assert detector with invalid type
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_CONTENT_DETECTION_ENDPOINT)
+        .json(&json!({
+            "content": "This sentence has no detections.",
+            "detectors": {FACT_CHECKING_DETECTOR_SENTENCE: {}},
+        }))
+        .send()
+        .await?;
+    debug!("{response:#?}");
+
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    let response: OrchestratorError = response.json().await?;
+    debug!("orchestrator json response body:\n{response:#?}");
+    assert_eq!(
+        response,
+        OrchestratorError {
+            code: 422,
+            details: format!(
+                "{}: detector is not supported on this endpoint",
+                FACT_CHECKING_DETECTOR_SENTENCE
+            )
+        },
+        "failed on invalid detector type scenario"
+    );
+
+    // assert detector with invalid type
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_CONTENT_DETECTION_ENDPOINT)
+        .json(&json!({
+            "content": "This sentence has no detections.",
+            "detectors": {NON_EXISTING_DETECTOR: {}},
+        }))
+        .send()
+        .await?;
+    debug!("{response:#?}");
+
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    let response: OrchestratorError = response.json().await?;
+    debug!("orchestrator json response body:\n{response:#?}");
+    assert_eq!(
+        response,
+        OrchestratorError {
+            code: 404,
+            details: format!("detector `{}` not found", NON_EXISTING_DETECTOR)
+        },
+        "failed on non-existing detector scenario"
+    );
 
     Ok(())
 }

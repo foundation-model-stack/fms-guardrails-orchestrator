@@ -22,8 +22,10 @@ use tracing::{info, instrument};
 
 use super::Handle;
 use crate::{
+    config::DetectorType,
     models::{DetectorParams, TextContentDetectionHttpRequest, TextContentDetectionResult},
     orchestrator::{Error, Orchestrator, common},
+    utils::validate_guardrails,
 };
 
 impl Handle<TextContentDetectionTask> for Orchestrator {
@@ -39,7 +41,12 @@ impl Handle<TextContentDetectionTask> for Orchestrator {
         let trace_id = task.trace_id;
         info!(%trace_id, config = ?task.detectors, "task started");
 
-        // TODO: validate requested guardrails
+        validate_guardrails(
+            &task.detectors,
+            &ctx.config.detectors,
+            vec![DetectorType::TextContents],
+            true,
+        )?;
 
         // Handle detection
         let (_, detections) = common::text_contents_detections(
