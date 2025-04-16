@@ -19,7 +19,8 @@ use std::collections::HashMap;
 use common::{
     chunker::{CHUNKER_MODEL_ID_HEADER_NAME, CHUNKER_NAME_SENTENCE, CHUNKER_STREAMING_ENDPOINT},
     detectors::{
-        DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE, DETECTOR_NAME_PARENTHESIS_SENTENCE,
+        DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE, DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC,
+        DETECTOR_NAME_PARENTHESIS_SENTENCE, FACT_CHECKING_DETECTOR_SENTENCE, NON_EXISTING_DETECTOR,
         TEXT_CONTENTS_DETECTOR_ENDPOINT,
     },
     errors::{DetectorError, OrchestratorError},
@@ -742,6 +743,114 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     assert_eq!(
         messages, expected_messages,
         "failed on empty `detectors` scenario"
+    );
+
+    // assert detector with invalid type on first frame
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_STREAM_CONTENT_DETECTION_ENDPOINT)
+        .header("content-type", "application/x-ndjson")
+        .body(reqwest::Body::wrap_stream(json_lines_stream([
+            StreamingContentDetectionRequest {
+                detectors: Some(HashMap::from([(
+                    FACT_CHECKING_DETECTOR_SENTENCE.into(),
+                    DetectorParams::new(),
+                )])),
+                content: "Hi".into(),
+            },
+        ])))
+        .send()
+        .await?;
+
+    assert_eq!(response.status(), 200);
+    let mut messages = Vec::<OrchestratorError>::with_capacity(1);
+    let mut stream = response.bytes_stream();
+    while let Some(Ok(msg)) = stream.next().await {
+        debug!("recv: {msg:?}");
+        messages.push(serde_json::from_slice(&msg[..]).unwrap());
+    }
+
+    assert_eq!(messages.len(), 1);
+    assert_eq!(
+        messages[0],
+        OrchestratorError {
+            code: 422,
+            details: format!(
+                "{}: detector is not supported on this endpoint",
+                FACT_CHECKING_DETECTOR_SENTENCE
+            )
+        },
+        "failed at invalid input detector scenario"
+    );
+
+    // assert detector with invalid chunker on first frame
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_STREAM_CONTENT_DETECTION_ENDPOINT)
+        .header("content-type", "application/x-ndjson")
+        .body(reqwest::Body::wrap_stream(json_lines_stream([
+            StreamingContentDetectionRequest {
+                detectors: Some(HashMap::from([(
+                    DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC.into(),
+                    DetectorParams::new(),
+                )])),
+                content: "Hi".into(),
+            },
+        ])))
+        .send()
+        .await?;
+
+    assert_eq!(response.status(), 200);
+    let mut messages = Vec::<OrchestratorError>::with_capacity(1);
+    let mut stream = response.bytes_stream();
+    while let Some(Ok(msg)) = stream.next().await {
+        debug!("recv: {msg:?}");
+        messages.push(serde_json::from_slice(&msg[..]).unwrap());
+    }
+
+    assert_eq!(messages.len(), 1);
+    assert_eq!(
+        messages[0],
+        OrchestratorError {
+            code: 422,
+            details: format!(
+                "{}: detector is associated with whole_doc_chunker, which is not supported on this endpoint",
+                DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC
+            )
+        },
+        "failed at detector with invalid chunker scenario"
+    );
+
+    // assert non-existing detector on first frame
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_STREAM_CONTENT_DETECTION_ENDPOINT)
+        .header("content-type", "application/x-ndjson")
+        .body(reqwest::Body::wrap_stream(json_lines_stream([
+            StreamingContentDetectionRequest {
+                detectors: Some(HashMap::from([(
+                    NON_EXISTING_DETECTOR.into(),
+                    DetectorParams::new(),
+                )])),
+                content: "Hi".into(),
+            },
+        ])))
+        .send()
+        .await?;
+
+    assert_eq!(response.status(), 200);
+    let mut messages = Vec::<OrchestratorError>::with_capacity(1);
+    let mut stream = response.bytes_stream();
+    while let Some(Ok(msg)) = stream.next().await {
+        debug!("recv: {msg:?}");
+        messages.push(serde_json::from_slice(&msg[..]).unwrap());
+    }
+
+    assert_eq!(messages.len(), 1);
+    assert_eq!(
+        messages[0],
+        OrchestratorError {
+            code: 404,
+            details: format!("detector `{}` not found", NON_EXISTING_DETECTOR)
+        },
+        "failed at non-existing input detector scenario"
     );
 
     Ok(())
