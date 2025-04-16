@@ -28,8 +28,10 @@ use crate::{
         DetectorParams, GenerationWithDetectionHttpRequest, GenerationWithDetectionResult,
         GuardrailsTextGenerationParameters,
     },
-    orchestrator::{Error, Orchestrator, common},
-    utils::validate_guardrails,
+    orchestrator::{
+        Error, Orchestrator,
+        common::{self, validate_detectors},
+    },
 };
 
 impl Handle<GenerationWithDetectionTask> for Orchestrator {
@@ -45,10 +47,10 @@ impl Handle<GenerationWithDetectionTask> for Orchestrator {
         let trace_id = task.trace_id;
         info!(%trace_id, config = ?task.detectors, "task started");
 
-        validate_guardrails(
+        validate_detectors(
             &task.detectors,
             &ctx.config.detectors,
-            vec![DetectorType::TextGeneration],
+            &[DetectorType::TextGeneration],
             true,
         )?;
 

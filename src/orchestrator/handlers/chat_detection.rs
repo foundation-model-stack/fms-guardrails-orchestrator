@@ -25,8 +25,10 @@ use crate::{
     clients::openai,
     config::DetectorType,
     models::{ChatDetectionHttpRequest, ChatDetectionResult, DetectorParams},
-    orchestrator::{Error, Orchestrator, common},
-    utils::validate_guardrails,
+    orchestrator::{
+        Error, Orchestrator,
+        common::{self, validate_detectors},
+    },
 };
 
 impl Handle<ChatDetectionTask> for Orchestrator {
@@ -42,10 +44,10 @@ impl Handle<ChatDetectionTask> for Orchestrator {
         let trace_id = task.trace_id;
         info!(%trace_id, config = ?task.detectors, "task started");
 
-        validate_guardrails(
+        validate_detectors(
             &task.detectors,
             &ctx.config.detectors,
-            vec![DetectorType::TextChat],
+            &[DetectorType::TextChat],
             true,
         )?;
 

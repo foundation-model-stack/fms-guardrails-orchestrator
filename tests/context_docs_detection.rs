@@ -407,7 +407,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
         OrchestratorError {
             code: 422,
             details: format!(
-                "{}: detector is not supported on this endpoint",
+                "detector `{}` is not supported by this endpoint",
                 ANSWER_RELEVANCE_DETECTOR_SENTENCE
             )
         },

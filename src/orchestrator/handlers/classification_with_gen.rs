@@ -30,8 +30,10 @@ use crate::{
         GuardrailsHttpRequest, GuardrailsTextGenerationParameters,
         TextGenTokenClassificationResults,
     },
-    orchestrator::{Context, Error, Orchestrator, common},
-    utils::validate_guardrails,
+    orchestrator::{
+        Context, Error, Orchestrator,
+        common::{self, validate_detectors},
+    },
 };
 
 impl Handle<ClassificationWithGenTask> for Orchestrator {
@@ -51,19 +53,19 @@ impl Handle<ClassificationWithGenTask> for Orchestrator {
 
         // input detectors validation
         if !input_detectors.is_empty() {
-            validate_guardrails(
+            validate_detectors(
                 &input_detectors,
                 &ctx.config.detectors,
-                vec![DetectorType::TextContents],
+                &[DetectorType::TextContents],
                 true,
             )?;
         }
         // output detectors validation
         if !output_detectors.is_empty() {
-            validate_guardrails(
+            validate_detectors(
                 &output_detectors,
                 &ctx.config.detectors,
-                vec![DetectorType::TextContents],
+                &[DetectorType::TextContents],
                 true,
             )?;
         }

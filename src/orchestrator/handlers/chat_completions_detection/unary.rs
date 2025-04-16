@@ -27,8 +27,11 @@ use crate::{
     models::{
         DetectionWarningReason, DetectorParams, UNSUITABLE_INPUT_MESSAGE, UNSUITABLE_OUTPUT_MESSAGE,
     },
-    orchestrator::{Context, Error, common, types::ChatMessageIterator},
-    utils::validate_guardrails,
+    orchestrator::{
+        Context, Error,
+        common::{self, validate_detectors},
+        types::ChatMessageIterator,
+    },
 };
 
 pub async fn handle_unary(
@@ -41,17 +44,17 @@ pub async fn handle_unary(
     let input_detectors = detectors.input;
     let output_detectors = detectors.output;
 
-    validate_guardrails(
+    validate_detectors(
         &input_detectors,
         &ctx.config.detectors,
-        vec![DetectorType::TextContents],
+        &[DetectorType::TextContents],
         true,
     )?;
 
-    validate_guardrails(
+    validate_detectors(
         &output_detectors,
         &ctx.config.detectors,
-        vec![DetectorType::TextContents],
+        &[DetectorType::TextContents],
         true,
     )?;
 

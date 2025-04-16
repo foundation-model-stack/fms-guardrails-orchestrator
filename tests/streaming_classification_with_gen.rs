@@ -690,7 +690,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
         OrchestratorError {
             code: 422,
             details: format!(
-                "{}: detector is not supported on this endpoint",
+                "detector `{}` is not supported by this endpoint",
                 FACT_CHECKING_DETECTOR_SENTENCE
             )
         },
@@ -729,7 +729,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
         OrchestratorError {
             code: 422,
             details: format!(
-                "{}: detector is associated with whole_doc_chunker, which is not supported on this endpoint",
+                "detector `{}` uses chunker `whole_doc_chunker`, which is not supported by this endpoint",
                 DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC
             )
         },
@@ -800,7 +800,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
         OrchestratorError {
             code: 422,
             details: format!(
-                "{}: detector is not supported on this endpoint",
+                "detector `{}` is not supported by this endpoint",
                 FACT_CHECKING_DETECTOR_SENTENCE
             )
         },
@@ -838,7 +838,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
         OrchestratorError {
             code: 422,
             details: format!(
-                "{}: detector is associated with whole_doc_chunker, which is not supported on this endpoint",
+                "detector `{}` uses chunker `whole_doc_chunker`, which is not supported by this endpoint",
                 DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC
             )
         },

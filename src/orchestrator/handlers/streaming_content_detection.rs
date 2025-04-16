@@ -28,10 +28,10 @@ use crate::{
     config::DetectorType,
     models::{DetectorParams, StreamingContentDetectionRequest, StreamingContentDetectionResponse},
     orchestrator::{
-        Context, Error, Orchestrator, common,
+        Context, Error, Orchestrator,
+        common::{self, validate_detectors},
         types::{BoxStream, DetectionBatchStream, DetectionStream, MaxProcessedIndexBatcher},
     },
-    utils::validate_guardrails,
 };
 
 type InputStream =
@@ -68,10 +68,10 @@ impl Handle<StreamingContentDetectionTask> for Orchestrator {
                 info!(%trace_id, config = ?detectors, "task started");
 
                 if !detectors.is_empty() {
-                    if let Err(error) = validate_guardrails(
+                    if let Err(error) = validate_detectors(
                         &detectors,
                         &ctx.config.detectors,
-                        vec![DetectorType::TextContents],
+                        &[DetectorType::TextContents],
                         false,
                     ) {
                         let _ = response_tx.send(Err(error)).await;

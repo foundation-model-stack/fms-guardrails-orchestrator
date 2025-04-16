@@ -37,13 +37,13 @@ use crate::{
         TextGenTokenClassificationResults,
     },
     orchestrator::{
-        Context, Error, Orchestrator, common,
+        Context, Error, Orchestrator,
+        common::{self, validate_detectors},
         types::{
             Chunk, DetectionBatchStream, DetectionStream, Detections, GenerationStream,
             MaxProcessedIndexBatcher,
         },
     },
-    utils::validate_guardrails,
 };
 
 impl Handle<StreamingClassificationWithGenTask> for Orchestrator {
@@ -76,10 +76,10 @@ impl Handle<StreamingClassificationWithGenTask> for Orchestrator {
 
             // input detectors validation
             if !input_detectors.is_empty() {
-                if let Err(error) = validate_guardrails(
+                if let Err(error) = validate_detectors(
                     &input_detectors,
                     &ctx.config.detectors,
-                    vec![DetectorType::TextContents],
+                    &[DetectorType::TextContents],
                     false,
                 ) {
                     let _ = response_tx.send(Err(error)).await;
@@ -89,10 +89,10 @@ impl Handle<StreamingClassificationWithGenTask> for Orchestrator {
 
             // output detectors validation
             if !output_detectors.is_empty() {
-                if let Err(error) = validate_guardrails(
+                if let Err(error) = validate_detectors(
                     &output_detectors,
                     &ctx.config.detectors,
-                    vec![DetectorType::TextContents],
+                    &[DetectorType::TextContents],
                     false,
                 ) {
                     let _ = response_tx.send(Err(error)).await;
