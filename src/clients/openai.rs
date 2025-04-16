@@ -212,19 +212,24 @@ impl TryFrom<Map<String, Value>> for ChatCompletionsRequest {
             .and_then(|v| v.as_bool())
             .unwrap_or_default();
         let model = if let Some(Value::String(model)) = value.get("model") {
-            if model.is_empty() {
-                return Err(ValidationError::Invalid("`model` must not be empty".into()));
-            }
             Ok(model.clone())
         } else {
             Err(ValidationError::Required("model".into()))
         }?;
+        if model.is_empty() {
+            return Err(ValidationError::Invalid("`model` must not be empty".into()));
+        }
         let messages = if let Some(messages) = value.get("messages") {
             Vec::<Message>::deserialize(messages)
                 .map_err(|_| ValidationError::Invalid("error deserializing `messages`".into()))
         } else {
             Err(ValidationError::Required("messages".into()))
         }?;
+        if messages.is_empty() {
+            return Err(ValidationError::Invalid(
+                "`messages` must not be empty".into(),
+            ));
+        }
         Ok(ChatCompletionsRequest {
             detectors,
             stream,
