@@ -41,8 +41,7 @@ pub fn validate_guardrails(
             Some(detector_config) => {
                 if !allowed_detector_types.contains(&detector_config.r#type) {
                     let error = Error::Validation(format!(
-                        "{}: detector is not supported on this endpoint",
-                        detector_id
+                        "detector `{detector_id}` is not supported by this endpoint"
                     ));
                     error!(%error, "invalid detector on request");
                     return Err(error);
