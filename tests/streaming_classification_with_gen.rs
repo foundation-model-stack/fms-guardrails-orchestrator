@@ -23,7 +23,8 @@ use common::{
         CHUNKER_UNARY_ENDPOINT,
     },
     detectors::{
-        DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE, DETECTOR_NAME_PARENTHESIS_SENTENCE,
+        DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE, DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC,
+        DETECTOR_NAME_PARENTHESIS_SENTENCE, FACT_CHECKING_DETECTOR_SENTENCE, NON_EXISTING_DETECTOR,
         TEXT_CONTENTS_DETECTOR_ENDPOINT,
     },
     errors::{DetectorError, OrchestratorError},
@@ -626,13 +627,12 @@ async fn input_detector_client_error() -> Result<(), anyhow::Error> {
 async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     let model_id = "my-super-model-8B";
 
-    // Run test orchestrator server
     let orchestrator_server = TestOrchestratorServer::builder()
         .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
         .build()
         .await?;
 
-    // Example orchestrator request with streaming response
+    // Request with extra fields scenario
     let response = orchestrator_server
         .post(ORCHESTRATOR_STREAMING_ENDPOINT)
         .json(&serde_json::json!({
@@ -649,15 +649,232 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
 
     debug!(?response);
 
-    // assertions
     assert_eq!(response.status(), 422);
-
     let response_body = response.json::<OrchestratorError>().await?;
     assert_eq!(response_body.code, 422);
     assert!(
         response_body
             .details
             .starts_with("non_existing_field: unknown field `non_existing_field`")
+    );
+
+    // Invalid input detector scenario
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_STREAMING_ENDPOINT)
+        .json(&GuardrailsHttpRequest {
+            model_id: model_id.into(),
+            inputs: "This request contains a detector with invalid type".into(),
+            guardrail_config: Some(GuardrailsConfig {
+                input: Some(GuardrailsConfigInput {
+                    models: HashMap::from([(
+                        FACT_CHECKING_DETECTOR_SENTENCE.into(),
+                        DetectorParams::new(),
+                    )]),
+                    masks: None,
+                }),
+                output: None,
+            }),
+            text_gen_parameters: None,
+        })
+        .send()
+        .await?;
+    debug!(?response);
+
+    assert_eq!(response.status(), 200);
+    let sse_stream: SseStream<OrchestratorError> = SseStream::new(response.bytes_stream());
+    let messages = sse_stream.try_collect::<Vec<_>>().await?;
+    debug!("{messages:#?}");
+    assert_eq!(messages.len(), 1);
+    assert_eq!(
+        messages[0],
+        OrchestratorError {
+            code: 422,
+            details: format!(
+                "{}: detector is not supported on this endpoint",
+                FACT_CHECKING_DETECTOR_SENTENCE
+            )
+        },
+        "failed at invalid input detector scenario"
+    );
+
+    // Invalid chunker on input detector scenario
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_STREAMING_ENDPOINT)
+        .json(&GuardrailsHttpRequest {
+            model_id: model_id.into(),
+            inputs: "This request contains a detector with an invalid chunker".into(),
+            guardrail_config: Some(GuardrailsConfig {
+                input: Some(GuardrailsConfigInput {
+                    models: HashMap::from([(
+                        DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC.into(),
+                        DetectorParams::new(),
+                    )]),
+                    masks: None,
+                }),
+                output: None,
+            }),
+            text_gen_parameters: None,
+        })
+        .send()
+        .await?;
+    debug!("{response:#?}");
+
+    assert_eq!(response.status(), 200);
+    let sse_stream: SseStream<OrchestratorError> = SseStream::new(response.bytes_stream());
+    let messages = sse_stream.try_collect::<Vec<_>>().await?;
+    debug!("{messages:#?}");
+    assert_eq!(messages.len(), 1);
+    assert_eq!(
+        messages[0],
+        OrchestratorError {
+            code: 422,
+            details: format!(
+                "{}: detector is associated with whole_doc_chunker, which is not supported on this endpoint",
+                DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC
+            )
+        },
+        "failed on input detector with invalid chunker scenario"
+    );
+
+    // Non-existing input detector scenario
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_STREAMING_ENDPOINT)
+        .json(&GuardrailsHttpRequest {
+            model_id: model_id.into(),
+            inputs: "This request contains a detector with invalid type".into(),
+            guardrail_config: Some(GuardrailsConfig {
+                input: Some(GuardrailsConfigInput {
+                    models: HashMap::from([(NON_EXISTING_DETECTOR.into(), DetectorParams::new())]),
+                    masks: None,
+                }),
+                output: None,
+            }),
+            text_gen_parameters: None,
+        })
+        .send()
+        .await?;
+    debug!(?response);
+
+    assert_eq!(response.status(), 200);
+    let sse_stream: SseStream<OrchestratorError> = SseStream::new(response.bytes_stream());
+    let messages = sse_stream.try_collect::<Vec<_>>().await?;
+    debug!("{messages:#?}");
+    assert_eq!(messages.len(), 1);
+    assert_eq!(
+        messages[0],
+        OrchestratorError {
+            code: 404,
+            details: format!("detector `{}` not found", NON_EXISTING_DETECTOR)
+        },
+        "failed at non-existing input detector scenario"
+    );
+
+    // Invalid output detector scenario
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_STREAMING_ENDPOINT)
+        .json(&GuardrailsHttpRequest {
+            model_id: model_id.into(),
+            inputs: "This request contains a detector with invalid type".into(),
+            guardrail_config: Some(GuardrailsConfig {
+                input: None,
+                output: Some(GuardrailsConfigOutput {
+                    models: HashMap::from([(
+                        FACT_CHECKING_DETECTOR_SENTENCE.into(),
+                        DetectorParams::new(),
+                    )]),
+                }),
+            }),
+            text_gen_parameters: None,
+        })
+        .send()
+        .await?;
+    debug!(?response);
+
+    assert_eq!(response.status(), 200);
+    let sse_stream: SseStream<OrchestratorError> = SseStream::new(response.bytes_stream());
+    let messages = sse_stream.try_collect::<Vec<_>>().await?;
+    debug!("{messages:#?}");
+    assert_eq!(messages.len(), 1);
+    assert_eq!(
+        messages[0],
+        OrchestratorError {
+            code: 422,
+            details: format!(
+                "{}: detector is not supported on this endpoint",
+                FACT_CHECKING_DETECTOR_SENTENCE
+            )
+        },
+        "failed at invalid output detector scenario"
+    );
+
+    // Invalid chunker on output detector scenario
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_STREAMING_ENDPOINT)
+        .json(&GuardrailsHttpRequest {
+            model_id: model_id.into(),
+            inputs: "This request contains a detector with an invalid chunker".into(),
+            guardrail_config: Some(GuardrailsConfig {
+                input: None,
+                output: Some(GuardrailsConfigOutput {
+                    models: HashMap::from([(
+                        DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC.into(),
+                        DetectorParams::new(),
+                    )]),
+                }),
+            }),
+            text_gen_parameters: None,
+        })
+        .send()
+        .await?;
+    debug!("{response:#?}");
+
+    assert_eq!(response.status(), 200);
+    let sse_stream: SseStream<OrchestratorError> = SseStream::new(response.bytes_stream());
+    let messages = sse_stream.try_collect::<Vec<_>>().await?;
+    debug!("{messages:#?}");
+    assert_eq!(messages.len(), 1);
+    assert_eq!(
+        messages[0],
+        OrchestratorError {
+            code: 422,
+            details: format!(
+                "{}: detector is associated with whole_doc_chunker, which is not supported on this endpoint",
+                DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC
+            )
+        },
+        "failed on output detector with invalid chunker scenario"
+    );
+
+    // Non-existing output detector scenario
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_STREAMING_ENDPOINT)
+        .json(&GuardrailsHttpRequest {
+            model_id: model_id.into(),
+            inputs: "This request contains a detector with invalid type".into(),
+            guardrail_config: Some(GuardrailsConfig {
+                input: None,
+                output: Some(GuardrailsConfigOutput {
+                    models: HashMap::from([(NON_EXISTING_DETECTOR.into(), DetectorParams::new())]),
+                }),
+            }),
+            text_gen_parameters: None,
+        })
+        .send()
+        .await?;
+    debug!(?response);
+
+    assert_eq!(response.status(), 200);
+    let sse_stream: SseStream<OrchestratorError> = SseStream::new(response.bytes_stream());
+    let messages = sse_stream.try_collect::<Vec<_>>().await?;
+    debug!("{messages:#?}");
+    assert_eq!(messages.len(), 1);
+    assert_eq!(
+        messages[0],
+        OrchestratorError {
+            code: 404,
+            details: format!("detector `{}` not found", NON_EXISTING_DETECTOR)
+        },
+        "failed at non-existing output detector scenario"
     );
 
     Ok(())
