@@ -57,7 +57,7 @@ pub fn validate_guardrails(
             }
             None => {
                 let error = Error::DetectorNotFound(detector_id.clone());
-                error!(%error, "detector not found");
+                error!("{error}");
                 return Err(error);
             }
         }
