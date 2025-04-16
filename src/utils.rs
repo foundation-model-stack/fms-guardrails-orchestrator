@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use hyper::Uri;
+use tracing::error;
 use url::Url;
 
 use crate::{
@@ -39,23 +40,26 @@ pub fn validate_guardrails(
         match orchestrator_detectors.get(detector_id) {
             Some(detector_config) => {
                 if !allowed_detector_types.contains(&detector_config.r#type) {
-                    tracing::error!("INVALID DETECTOR TYPE!");
-                    return Err(Error::Validation(format!(
+                    let error = Error::Validation(format!(
                         "{}: detector is not supported on this endpoint",
                         detector_id
-                    )));
+                    ));
+                    error!(%error, "invalid detector on request");
+                    return Err(error);
                 }
                 if !allows_whole_doc_chunker && detector_config.chunker_id == whole_doc_chunker_id {
-                    tracing::error!("INVALID CHUNKER TYPE!");
-                    return Err(Error::Validation(format!(
+                    let error = Error::Validation(format!(
                         "{}: detector is associated with whole_doc_chunker, which is not supported on this endpoint",
                         detector_id
-                    )));
+                    ));
+                    error!(%error, "detector with invalid chunker on request");
+                    return Err(error);
                 }
             }
             None => {
-                tracing::error!("DETECTOR NOT FOUND!");
-                return Err(Error::DetectorNotFound(detector_id.clone()));
+                let error = Error::DetectorNotFound(detector_id.clone());
+                error!(%error, "detector not found");
+                return Err(error);
             }
         }
     }

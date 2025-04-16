@@ -82,7 +82,6 @@ impl Handle<StreamingClassificationWithGenTask> for Orchestrator {
                     vec![DetectorType::TextContents],
                     false,
                 ) {
-                    error!("{error:#?}");
                     let _ = response_tx.send(Err(error)).await;
                     return;
                 }
