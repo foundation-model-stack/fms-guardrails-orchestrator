@@ -40,14 +40,12 @@ const DEFAULT_PORT: u16 = 8080;
 
 const CHAT_COMPLETIONS_ENDPOINT: &str = "/v1/chat/completions";
 
-#[cfg_attr(test, faux::create)]
 #[derive(Clone)]
 pub struct OpenAiClient {
     client: HttpClient,
     health_client: Option<HttpClient>,
 }
 
-#[cfg_attr(test, faux::methods)]
 impl OpenAiClient {
     pub async fn new(
         config: &ServiceConfig,
@@ -136,7 +134,6 @@ impl OpenAiClient {
     }
 }
 
-#[cfg_attr(test, faux::methods)]
 #[async_trait]
 impl Client for OpenAiClient {
     fn name(&self) -> &str {
@@ -152,7 +149,6 @@ impl Client for OpenAiClient {
     }
 }
 
-#[cfg_attr(test, faux::methods)]
 impl HttpClientExt for OpenAiClient {
     fn inner(&self) -> &HttpClient {
         self.client()

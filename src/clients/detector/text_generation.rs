@@ -30,14 +30,12 @@ use crate::{
 
 const GENERATION_DETECTOR_ENDPOINT: &str = "/api/v1/text/generation";
 
-#[cfg_attr(test, faux::create)]
 #[derive(Clone)]
 pub struct TextGenerationDetectorClient {
     client: HttpClient,
     health_client: Option<HttpClient>,
 }
 
-#[cfg_attr(test, faux::methods)]
 impl TextGenerationDetectorClient {
     pub async fn new(
         config: &ServiceConfig,
@@ -71,7 +69,6 @@ impl TextGenerationDetectorClient {
     }
 }
 
-#[cfg_attr(test, faux::methods)]
 #[async_trait]
 impl Client for TextGenerationDetectorClient {
     fn name(&self) -> &str {
@@ -87,10 +84,8 @@ impl Client for TextGenerationDetectorClient {
     }
 }
 
-#[cfg_attr(test, faux::methods)]
 impl DetectorClient for TextGenerationDetectorClient {}
 
-#[cfg_attr(test, faux::methods)]
 impl HttpClientExt for TextGenerationDetectorClient {
     fn inner(&self) -> &HttpClient {
         self.client()

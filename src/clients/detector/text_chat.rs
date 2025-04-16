@@ -34,14 +34,12 @@ use crate::{
 
 const CHAT_DETECTOR_ENDPOINT: &str = "/api/v1/text/chat";
 
-#[cfg_attr(test, faux::create)]
 #[derive(Clone)]
 pub struct TextChatDetectorClient {
     client: HttpClient,
     health_client: Option<HttpClient>,
 }
 
-#[cfg_attr(test, faux::methods)]
 impl TextChatDetectorClient {
     pub async fn new(
         config: &ServiceConfig,
@@ -75,7 +73,6 @@ impl TextChatDetectorClient {
     }
 }
 
-#[cfg_attr(test, faux::methods)]
 #[async_trait]
 impl Client for TextChatDetectorClient {
     fn name(&self) -> &str {
@@ -91,10 +88,8 @@ impl Client for TextChatDetectorClient {
     }
 }
 
-#[cfg_attr(test, faux::methods)]
 impl DetectorClient for TextChatDetectorClient {}
 
-#[cfg_attr(test, faux::methods)]
 impl HttpClientExt for TextChatDetectorClient {
     fn inner(&self) -> &HttpClient {
         self.client()

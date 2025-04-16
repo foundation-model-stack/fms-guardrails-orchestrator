@@ -47,14 +47,12 @@ use crate::{
 const DEFAULT_PORT: u16 = 8085;
 const MODEL_ID_HEADER_NAME: &str = "mm-model-id";
 
-#[cfg_attr(test, faux::create)]
 #[derive(Clone)]
 pub struct NlpClient {
     client: NlpServiceClient<OtelGrpcService<LoadBalancedChannel>>,
     health_client: HealthClient<OtelGrpcService<LoadBalancedChannel>>,
 }
 
-#[cfg_attr(test, faux::methods)]
 impl NlpClient {
     pub async fn new(config: &ServiceConfig) -> Self {
         let client = create_grpc_client(DEFAULT_PORT, config, NlpServiceClient::new).await;
@@ -133,7 +131,6 @@ impl NlpClient {
     }
 }
 
-#[cfg_attr(test, faux::methods)]
 #[async_trait]
 impl Client for NlpClient {
     fn name(&self) -> &str {

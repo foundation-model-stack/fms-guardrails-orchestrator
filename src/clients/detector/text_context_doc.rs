@@ -30,14 +30,12 @@ use crate::{
 
 const CONTEXT_DOC_DETECTOR_ENDPOINT: &str = "/api/v1/text/context/doc";
 
-#[cfg_attr(test, faux::create)]
 #[derive(Clone)]
 pub struct TextContextDocDetectorClient {
     client: HttpClient,
     health_client: Option<HttpClient>,
 }
 
-#[cfg_attr(test, faux::methods)]
 impl TextContextDocDetectorClient {
     pub async fn new(
         config: &ServiceConfig,
@@ -71,7 +69,6 @@ impl TextContextDocDetectorClient {
     }
 }
 
-#[cfg_attr(test, faux::methods)]
 #[async_trait]
 impl Client for TextContextDocDetectorClient {
     fn name(&self) -> &str {
@@ -87,10 +84,8 @@ impl Client for TextContextDocDetectorClient {
     }
 }
 
-#[cfg_attr(test, faux::methods)]
 impl DetectorClient for TextContextDocDetectorClient {}
 
-#[cfg_attr(test, faux::methods)]
 impl HttpClientExt for TextContextDocDetectorClient {
     fn inner(&self) -> &HttpClient {
         self.client()
