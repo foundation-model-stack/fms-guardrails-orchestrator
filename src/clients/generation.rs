@@ -38,7 +38,6 @@ use crate::{
     },
 };
 
-#[cfg_attr(test, faux::create)]
 #[derive(Clone)]
 pub struct GenerationClient(Option<GenerationClientInner>);
 
@@ -48,7 +47,6 @@ enum GenerationClientInner {
     Nlp(NlpClient),
 }
 
-#[cfg_attr(test, faux::methods)]
 impl GenerationClient {
     pub fn tgis(client: TgisClient) -> Self {
         Self(Some(GenerationClientInner::Tgis(client)))
@@ -224,7 +222,6 @@ impl GenerationClient {
     }
 }
 
-#[cfg_attr(test, faux::methods)]
 #[async_trait]
 impl Client for GenerationClient {
     fn name(&self) -> &str {

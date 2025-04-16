@@ -39,13 +39,11 @@ use crate::{
 
 const DEFAULT_PORT: u16 = 8033;
 
-#[cfg_attr(test, faux::create)]
 #[derive(Clone)]
 pub struct TgisClient {
     client: GenerationServiceClient<OtelGrpcService<LoadBalancedChannel>>,
 }
 
-#[cfg_attr(test, faux::methods)]
 impl TgisClient {
     pub async fn new(config: &ServiceConfig) -> Self {
         let client = create_grpc_client(DEFAULT_PORT, config, GenerationServiceClient::new).await;
@@ -101,7 +99,6 @@ impl TgisClient {
     }
 }
 
-#[cfg_attr(test, faux::methods)]
 #[async_trait]
 impl Client for TgisClient {
     fn name(&self) -> &str {
@@ -132,38 +129,5 @@ impl Client for TgisClient {
             code: grpc_to_http_code(code),
             reason: None,
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::pb::fmaas::model_info_response;
-
-    #[tokio::test]
-    async fn test_model_info() {
-        // Initialize a mock object from `TgisClient`
-        let mut mock_client = TgisClient::faux();
-
-        let request = ModelInfoRequest {
-            model_id: "test-model-1".to_string(),
-        };
-
-        let expected_response = ModelInfoResponse {
-            max_sequence_length: 2,
-            max_new_tokens: 20,
-            max_beam_width: 3,
-            model_kind: model_info_response::ModelKind::DecoderOnly.into(),
-            max_beam_sequence_lengths: [].to_vec(),
-        };
-        // Construct a behavior for the mock object
-        faux::when!(mock_client.model_info(request.clone()))
-            .once()
-            .then_return(Ok(expected_response.clone()));
-        // Test the mock object's behaviour
-        assert_eq!(
-            mock_client.model_info(request).await.unwrap(),
-            expected_response
-        );
     }
 }

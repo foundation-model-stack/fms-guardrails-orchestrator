@@ -50,14 +50,12 @@ pub const DEFAULT_CHUNKER_ID: &str = "whole_doc_chunker";
 type StreamingTokenizationResult =
     Result<Response<Streaming<ChunkerTokenizationStreamResult>>, Status>;
 
-#[cfg_attr(test, faux::create)]
 #[derive(Clone)]
 pub struct ChunkerClient {
     client: ChunkersServiceClient<OtelGrpcService<LoadBalancedChannel>>,
     health_client: HealthClient<OtelGrpcService<LoadBalancedChannel>>,
 }
 
-#[cfg_attr(test, faux::methods)]
 impl ChunkerClient {
     pub async fn new(config: &ServiceConfig) -> Self {
         let client = create_grpc_client(DEFAULT_PORT, config, ChunkersServiceClient::new).await;
@@ -99,7 +97,6 @@ impl ChunkerClient {
     }
 }
 
-#[cfg_attr(test, faux::methods)]
 #[async_trait]
 impl Client for ChunkerClient {
     fn name(&self) -> &str {
