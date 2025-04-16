@@ -50,7 +50,7 @@ pub fn validate_guardrails(
                     let error = Error::Validation(format!(
                         "detector `{detector_id}` uses chunker `whole_doc_chunker`, which is not supported by this endpoint"
                     ));
-                    error!(%error, "detector with invalid chunker on request");
+                    error!("{error}");
                     return Err(error);
                 }
             }
