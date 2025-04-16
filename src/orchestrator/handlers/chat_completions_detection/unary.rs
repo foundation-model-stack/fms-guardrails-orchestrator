@@ -39,7 +39,7 @@ pub async fn handle_unary(
     task: ChatCompletionsDetectionTask,
 ) -> Result<ChatCompletionsResponse, Error> {
     let trace_id = task.trace_id;
-    let detectors = task.request.detectors.clone().unwrap_or_default();
+    let detectors = task.request.detectors.clone();
     info!(%trace_id, config = ?detectors, "task started");
     let input_detectors = detectors.input;
     let output_detectors = detectors.output;

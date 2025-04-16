@@ -53,6 +53,7 @@ use fms_guardrails_orchestr8::{
 };
 use hyper::StatusCode;
 use mocktail::prelude::*;
+use serde_json::json;
 use test_log::test;
 use tracing::debug;
 
@@ -167,10 +168,10 @@ async fn no_detections() -> Result<(), anyhow::Error> {
         .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
         .json(&ChatCompletionsRequest {
             model: MODEL_ID.into(),
-            detectors: Some(DetectorConfig {
+            detectors: DetectorConfig {
                 input: HashMap::from([(detector_name.into(), DetectorParams::new())]),
                 output: HashMap::from([(detector_name.into(), DetectorParams::new())]),
-            }),
+            },
             messages,
             ..Default::default()
         })
@@ -296,10 +297,10 @@ async fn input_detections() -> Result<(), anyhow::Error> {
         .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
         .json(&ChatCompletionsRequest {
             model: MODEL_ID.into(),
-            detectors: Some(DetectorConfig {
+            detectors: DetectorConfig {
                 input: HashMap::from([(detector_name.into(), DetectorParams::new())]),
                 output: HashMap::new(),
-            }),
+            },
             messages,
             ..Default::default()
         })
@@ -427,14 +428,10 @@ async fn input_client_error() -> Result<(), anyhow::Error> {
 
     // Add chat completions mock for chat completions error scenario
     chat_mocks.mock(|when, then| {
-        when.post()
-            .path(CHAT_COMPLETIONS_ENDPOINT)
-            .json(ChatCompletionsRequest {
-                messages: messages_chat_completions_error.clone(),
-                model: MODEL_ID.into(),
-                stream: false,
-                ..Default::default()
-            });
+        when.post().path(CHAT_COMPLETIONS_ENDPOINT).json(json!({
+            "messages": messages_chat_completions_error.clone(),
+            "model": MODEL_ID,
+        }));
         then.internal_server_error();
     });
 
@@ -456,15 +453,14 @@ async fn input_client_error() -> Result<(), anyhow::Error> {
     // Make orchestrator call for chunker error scenario
     let response = orchestrator_server
         .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
-        .json(&ChatCompletionsRequest {
-            model: MODEL_ID.into(),
-            detectors: Some(DetectorConfig {
+        .json(&json!({
+            "model": MODEL_ID,
+            "detectors": DetectorConfig {
                 input: HashMap::from([(detector_name.into(), DetectorParams::new())]),
                 output: HashMap::new(),
-            }),
-            messages: messages_chunker_error.clone(),
-            ..Default::default()
-        })
+            },
+            "messages": messages_chunker_error.clone(),
+        }))
         .send()
         .await?;
 
@@ -475,15 +471,14 @@ async fn input_client_error() -> Result<(), anyhow::Error> {
     // Make orchestrator call for detector error scenario
     let response = orchestrator_server
         .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
-        .json(&ChatCompletionsRequest {
-            model: MODEL_ID.into(),
-            detectors: Some(DetectorConfig {
+        .json(&json!({
+            "model": MODEL_ID,
+            "detectors": DetectorConfig {
                 input: HashMap::from([(detector_name.into(), DetectorParams::new())]),
                 output: HashMap::new(),
-            }),
-            messages: messages_detector_error.clone(),
-            ..Default::default()
-        })
+            },
+            "messages": messages_detector_error.clone(),
+        }))
         .send()
         .await?;
 
@@ -494,17 +489,17 @@ async fn input_client_error() -> Result<(), anyhow::Error> {
     // Make orchestrator call for chat completions error scenario
     let response = orchestrator_server
         .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
-        .json(&ChatCompletionsRequest {
-            model: MODEL_ID.into(),
-            detectors: Some(DetectorConfig {
+        .json(&json!({
+            "model": MODEL_ID,
+            "detectors": DetectorConfig {
                 input: HashMap::from([(detector_name.into(), DetectorParams::new())]),
                 output: HashMap::new(),
-            }),
-            messages: messages_chat_completions_error.clone(),
-            ..Default::default()
-        })
+            },
+            "messages": messages_chat_completions_error.clone(),
+        }))
         .send()
         .await?;
+    dbg!(&response);
 
     // Assertions for chat completions error scenario
     let results = response.json::<OrchestratorError>().await?;
@@ -684,10 +679,10 @@ async fn output_detections() -> Result<(), anyhow::Error> {
         .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
         .json(&ChatCompletionsRequest {
             model: MODEL_ID.into(),
-            detectors: Some(DetectorConfig {
+            detectors: DetectorConfig {
                 input: HashMap::new(),
                 output: HashMap::from([(detector_name.into(), DetectorParams::new())]),
-            }),
+            },
             messages,
             ..Default::default()
         })
@@ -873,10 +868,10 @@ async fn output_client_error() -> Result<(), anyhow::Error> {
         .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
         .json(&ChatCompletionsRequest {
             model: MODEL_ID.into(),
-            detectors: Some(DetectorConfig {
+            detectors: DetectorConfig {
                 input: HashMap::new(),
                 output: HashMap::from([(detector_name.into(), DetectorParams::new())]),
-            }),
+            },
             messages: messages_chunker_error.clone(),
             ..Default::default()
         })
@@ -892,10 +887,10 @@ async fn output_client_error() -> Result<(), anyhow::Error> {
         .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
         .json(&ChatCompletionsRequest {
             model: MODEL_ID.into(),
-            detectors: Some(DetectorConfig {
+            detectors: DetectorConfig {
                 input: HashMap::new(),
                 output: HashMap::from([(detector_name.into(), DetectorParams::new())]),
-            }),
+            },
             messages: messages_detector_error.clone(),
             ..Default::default()
         })
@@ -911,10 +906,10 @@ async fn output_client_error() -> Result<(), anyhow::Error> {
         .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
         .json(&ChatCompletionsRequest {
             model: MODEL_ID.into(),
-            detectors: Some(DetectorConfig {
+            detectors: DetectorConfig {
                 input: HashMap::new(),
                 output: HashMap::from([(detector_name.into(), DetectorParams::new())]),
-            }),
+            },
             messages: messages_chat_completions_error.clone(),
             ..Default::default()
         })

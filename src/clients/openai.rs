@@ -23,6 +23,7 @@ use futures::StreamExt;
 use http_body_util::BodyExt;
 use hyper::{HeaderMap, StatusCode};
 use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value};
 use tokio::sync::mpsc;
 
 use super::{
@@ -32,7 +33,7 @@ use super::{
 use crate::{
     config::ServiceConfig,
     health::HealthCheckResult,
-    models::{DetectionWarningReason, DetectorParams},
+    models::{DetectionWarningReason, DetectorParams, ValidationError},
     orchestrator,
 };
 
@@ -72,6 +73,8 @@ impl OpenAiClient {
         request: ChatCompletionsRequest,
         headers: HeaderMap,
     ) -> Result<ChatCompletionsResponse, Error> {
+        let request_json = serde_json::to_value(&request).unwrap();
+        dbg!(&request_json);
         let url = self.inner().endpoint(CHAT_COMPLETIONS_ENDPOINT);
         if request.stream {
             let (tx, rx) = mpsc::channel(32);
@@ -167,123 +170,197 @@ impl From<ChatCompletion> for ChatCompletionsResponse {
     }
 }
 
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+/// Represents a chat completions request.
+///
+/// As orchestrator is only concerned with a limited subset
+/// of request fields, we deserialize to an inner [`serde_json::Map`]
+/// and only validate and extract the fields used by this service.
+/// This type is then serialized to the inner [`serde_json::Map`].
+///
+/// This is to avoid tracking and updating OpenAI and vLLM
+/// parameter additions/changes. Full validation is delegated to
+/// the downstream server implementation.
+///
+/// Validated fields: detectors (internal), model, messages
+#[derive(Debug, Default, Clone, Deserialize)]
+#[serde(try_from = "Map<String, Value>")]
 pub struct ChatCompletionsRequest {
-    /// A list of messages comprising the conversation so far.
-    pub messages: Vec<Message>,
-    /// ID of the model to use.
-    pub model: String,
-    /// Whether or not to store the output of this chat completion request.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub store: Option<bool>,
-    /// Developer-defined tags and values.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub metadata: Option<serde_json::Value>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub frequency_penalty: Option<f32>,
-    /// Modify the likelihood of specified tokens appearing in the completion.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub logit_bias: Option<HashMap<String, f32>>,
-    /// Whether to return log probabilities of the output tokens or not.
-    /// If true, returns the log probabilities of each output token returned in the content of message.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub logprobs: Option<bool>,
-    /// An integer between 0 and 20 specifying the number of most likely tokens to return
-    /// at each token position, each with an associated log probability.
-    /// logprobs must be set to true if this parameter is used.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub top_logprobs: Option<u32>,
-    /// The maximum number of tokens that can be generated in the chat completion. (DEPRECATED)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub max_tokens: Option<u32>,
-    /// An upper bound for the number of tokens that can be generated for a completion, including visible output tokens and reasoning tokens.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub max_completion_tokens: Option<u32>,
-    /// How many chat completion choices to generate for each input message.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub n: Option<u32>,
-    /// Positive values penalize new tokens based on whether they appear in the text so far,
-    /// increasing the model's likelihood to talk about new topics.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub presence_penalty: Option<f32>,
-    /// An object specifying the format that the model must output.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub response_format: Option<ResponseFormat>,
-    /// If specified, our system will make a best effort to sample deterministically,
-    /// such that repeated requests with the same seed and parameters should return the same result.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub seed: Option<u64>,
-    /// Specifies the latency tier to use for processing the request.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub service_tier: Option<String>,
-    /// Up to 4 sequences where the API will stop generating further tokens.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub stop: Option<StopTokens>,
-    /// If set, partial message deltas will be sent, like in ChatGPT.
-    /// Tokens will be sent as data-only server-sent events as they become available,
-    /// with the stream terminated by a data: [DONE] message.
-    #[serde(default)]
+    /// Detector config.
+    pub detectors: DetectorConfig,
+    /// Stream parameter.
     pub stream: bool,
-    /// Options for streaming response. Only set this when you set stream: true.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub stream_options: Option<StreamOptions>,
-    /// What sampling temperature to use, between 0 and 2.
-    /// Higher values like 0.8 will make the output more random,
-    /// while lower values like 0.2 will make it more focused and deterministic.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub temperature: Option<f32>,
-    /// An alternative to sampling with temperature, called nucleus sampling,
-    /// where the model considers the results of the tokens with top_p probability mass.
-    /// So 0.1 means only the tokens comprising the top 10% probability mass are considered.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub top_p: Option<f32>,
-    /// A list of tools the model may call.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub tools: Vec<Tool>,
-    /// Controls which (if any) tool is called by the model.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tool_choice: Option<ToolChoice>,
-    /// Whether to enable parallel function calling during tool use.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub parallel_tool_calls: Option<bool>,
-    /// A unique identifier representing your end-user.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub user: Option<String>,
-
-    // Additional vllm params
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub best_of: Option<usize>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub use_beam_search: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub top_k: Option<isize>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub min_p: Option<f32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub repetition_penalty: Option<f32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub length_penalty: Option<f32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub early_stopping: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub ignore_eos: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub min_tokens: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub stop_token_ids: Option<Vec<usize>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub skip_special_tokens: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub spaces_between_special_tokens: Option<bool>,
-
-    // Detectors
-    // Note: We are making it optional, since this structure also gets used to
-    // form request for chat completions. And downstream server, might choose to
-    // reject extra parameters.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub detectors: Option<DetectorConfig>,
+    /// Model name.
+    pub model: String,
+    /// Messages.
+    pub messages: Vec<Message>,
+    /// Inner request.
+    pub inner: Map<String, Value>,
 }
+
+impl TryFrom<Map<String, Value>> for ChatCompletionsRequest {
+    type Error = ValidationError;
+
+    fn try_from(mut value: Map<String, Value>) -> Result<Self, Self::Error> {
+        let detectors = if let Some(detectors) = value.remove("detectors") {
+            DetectorConfig::deserialize(detectors)
+                .map_err(|_| ValidationError::Invalid("error deserializing `detectors`".into()))
+        } else {
+            Err(ValidationError::Required("detectors".into()))
+        }?;
+        let stream = value
+            .get("stream")
+            .and_then(|v| v.as_bool())
+            .unwrap_or_default();
+        let model = if let Some(Value::String(model)) = value.get("model") {
+            if model.is_empty() {
+                return Err(ValidationError::Invalid("`model` must not be empty".into()));
+            }
+            Ok(model.clone())
+        } else {
+            Err(ValidationError::Required("model".into()))
+        }?;
+        let messages = if let Some(messages) = value.get("messages") {
+            Vec::<Message>::deserialize(messages)
+                .map_err(|_| ValidationError::Invalid("error deserializing `messages`".into()))
+        } else {
+            Err(ValidationError::Required("messages".into()))
+        }?;
+        Ok(ChatCompletionsRequest {
+            detectors,
+            stream,
+            model,
+            messages,
+            inner: value,
+        })
+    }
+}
+
+impl Serialize for ChatCompletionsRequest {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.inner.serialize(serializer)
+    }
+}
+
+// #[derive(Debug, Default, Clone, Serialize, Deserialize)]
+// #[serde(deny_unknown_fields)]
+// pub struct ChatCompletionsRequest {
+//     /// A list of messages comprising the conversation so far.
+//     pub messages: Vec<Message>,
+//     /// ID of the model to use.
+//     pub model: String,
+//     /// Whether or not to store the output of this chat completion request.
+//     #[serde(skip_serializing_if = "Option::is_none")]
+//     pub store: Option<bool>,
+//     /// Developer-defined tags and values.
+//     #[serde(skip_serializing_if = "Option::is_none")]
+//     pub metadata: Option<serde_json::Value>,
+//     #[serde(skip_serializing_if = "Option::is_none")]
+//     pub frequency_penalty: Option<f32>,
+//     /// Modify the likelihood of specified tokens appearing in the completion.
+//     #[serde(skip_serializing_if = "Option::is_none")]
+//     pub logit_bias: Option<HashMap<String, f32>>,
+//     /// Whether to return log probabilities of the output tokens or not.
+//     /// If true, returns the log probabilities of each output token returned in the content of message.
+//     #[serde(skip_serializing_if = "Option::is_none")]
+//     pub logprobs: Option<bool>,
+//     /// An integer between 0 and 20 specifying the number of most likely tokens to return
+//     /// at each token position, each with an associated log probability.
+//     /// logprobs must be set to true if this parameter is used.
+//     #[serde(skip_serializing_if = "Option::is_none")]
+//     pub top_logprobs: Option<u32>,
+//     /// The maximum number of tokens that can be generated in the chat completion. (DEPRECATED)
+//     #[serde(skip_serializing_if = "Option::is_none")]
+//     pub max_tokens: Option<u32>,
+//     /// An upper bound for the number of tokens that can be generated for a completion, including visible output tokens and reasoning tokens.
+//     #[serde(skip_serializing_if = "Option::is_none")]
+//     pub max_completion_tokens: Option<u32>,
+//     /// How many chat completion choices to generate for each input message.
+//     #[serde(skip_serializing_if = "Option::is_none")]
+//     pub n: Option<u32>,
+//     /// Positive values penalize new tokens based on whether they appear in the text so far,
+//     /// increasing the model's likelihood to talk about new topics.
+//     #[serde(skip_serializing_if = "Option::is_none")]
+//     pub presence_penalty: Option<f32>,
+//     /// An object specifying the format that the model must output.
+//     #[serde(skip_serializing_if = "Option::is_none")]
+//     pub response_format: Option<ResponseFormat>,
+//     /// If specified, our system will make a best effort to sample deterministically,
+//     /// such that repeated requests with the same seed and parameters should return the same result.
+//     #[serde(skip_serializing_if = "Option::is_none")]
+//     pub seed: Option<u64>,
+//     /// Specifies the latency tier to use for processing the request.
+//     #[serde(skip_serializing_if = "Option::is_none")]
+//     pub service_tier: Option<String>,
+//     /// Up to 4 sequences where the API will stop generating further tokens.
+//     #[serde(skip_serializing_if = "Option::is_none")]
+//     pub stop: Option<StopTokens>,
+//     /// If set, partial message deltas will be sent, like in ChatGPT.
+//     /// Tokens will be sent as data-only server-sent events as they become available,
+//     /// with the stream terminated by a data: [DONE] message.
+//     #[serde(default)]
+//     pub stream: bool,
+//     /// Options for streaming response. Only set this when you set stream: true.
+//     #[serde(skip_serializing_if = "Option::is_none")]
+//     pub stream_options: Option<StreamOptions>,
+//     /// What sampling temperature to use, between 0 and 2.
+//     /// Higher values like 0.8 will make the output more random,
+//     /// while lower values like 0.2 will make it more focused and deterministic.
+//     #[serde(skip_serializing_if = "Option::is_none")]
+//     pub temperature: Option<f32>,
+//     /// An alternative to sampling with temperature, called nucleus sampling,
+//     /// where the model considers the results of the tokens with top_p probability mass.
+//     /// So 0.1 means only the tokens comprising the top 10% probability mass are considered.
+//     #[serde(skip_serializing_if = "Option::is_none")]
+//     pub top_p: Option<f32>,
+//     /// A list of tools the model may call.
+//     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+//     pub tools: Vec<Tool>,
+//     /// Controls which (if any) tool is called by the model.
+//     #[serde(skip_serializing_if = "Option::is_none")]
+//     pub tool_choice: Option<ToolChoice>,
+//     /// Whether to enable parallel function calling during tool use.
+//     #[serde(skip_serializing_if = "Option::is_none")]
+//     pub parallel_tool_calls: Option<bool>,
+//     /// A unique identifier representing your end-user.
+//     #[serde(skip_serializing_if = "Option::is_none")]
+//     pub user: Option<String>,
+
+//     // Additional vllm params
+//     #[serde(skip_serializing_if = "Option::is_none")]
+//     pub best_of: Option<usize>,
+//     #[serde(skip_serializing_if = "Option::is_none")]
+//     pub use_beam_search: Option<bool>,
+//     #[serde(skip_serializing_if = "Option::is_none")]
+//     pub top_k: Option<isize>,
+//     #[serde(skip_serializing_if = "Option::is_none")]
+//     pub min_p: Option<f32>,
+//     #[serde(skip_serializing_if = "Option::is_none")]
+//     pub repetition_penalty: Option<f32>,
+//     #[serde(skip_serializing_if = "Option::is_none")]
+//     pub length_penalty: Option<f32>,
+//     #[serde(skip_serializing_if = "Option::is_none")]
+//     pub early_stopping: Option<bool>,
+//     #[serde(skip_serializing_if = "Option::is_none")]
+//     pub ignore_eos: Option<bool>,
+//     #[serde(skip_serializing_if = "Option::is_none")]
+//     pub min_tokens: Option<u32>,
+//     #[serde(skip_serializing_if = "Option::is_none")]
+//     pub stop_token_ids: Option<Vec<usize>>,
+//     #[serde(skip_serializing_if = "Option::is_none")]
+//     pub skip_special_tokens: Option<bool>,
+//     #[serde(skip_serializing_if = "Option::is_none")]
+//     pub spaces_between_special_tokens: Option<bool>,
+
+//     // Detectors
+//     // Note: We are making it optional, since this structure also gets used to
+//     // form request for chat completions. And downstream server, might choose to
+//     // reject extra parameters.
+//     #[serde(skip_serializing_if = "Option::is_none")]
+//     pub detectors: Option<DetectorConfig>,
+// }
 
 /// Structure to contain parameters for detectors.
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
