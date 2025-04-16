@@ -43,7 +43,7 @@ pub fn validate_guardrails(
                     let error = Error::Validation(format!(
                         "detector `{detector_id}` is not supported by this endpoint"
                     ));
-                    error!(%error, "invalid detector on request");
+                    error!("{error}");
                     return Err(error);
                 }
                 if !allows_whole_doc_chunker && detector_config.chunker_id == whole_doc_chunker_id {
