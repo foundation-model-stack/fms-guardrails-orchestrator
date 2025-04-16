@@ -127,7 +127,7 @@ async fn no_detectors() -> Result<(), anyhow::Error> {
         .build()
         .await?;
 
-    // Example orchestrator request with streaming response
+    // Empty `guardrail_config` scenario
     let response = orchestrator_server
         .post(ORCHESTRATOR_STREAMING_ENDPOINT)
         .json(&GuardrailsHttpRequest {
@@ -139,13 +139,66 @@ async fn no_detectors() -> Result<(), anyhow::Error> {
         .send()
         .await?;
 
-    // Collects stream results
     let sse_stream: SseStream<ClassifiedGeneratedTextStreamResult> =
         SseStream::new(response.bytes_stream());
     let messages = sse_stream.try_collect::<Vec<_>>().await?;
     debug!("{messages:#?}");
 
-    // assertions
+    assert_eq!(messages.len(), 3);
+    assert_eq!(messages[0].generated_text, Some("I".into()));
+    assert_eq!(messages[1].generated_text, Some(" am".into()));
+    assert_eq!(messages[2].generated_text, Some(" great!".into()));
+
+    // `guardrail_config` with `input` and `output` set to None scenario
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_STREAMING_ENDPOINT)
+        .json(&GuardrailsHttpRequest {
+            model_id: model_id.into(),
+            inputs: "Hi there! How are you?".into(),
+            guardrail_config: Some(GuardrailsConfig {
+                input: None,
+                output: None,
+            }),
+            text_gen_parameters: None,
+        })
+        .send()
+        .await?;
+
+    let sse_stream: SseStream<ClassifiedGeneratedTextStreamResult> =
+        SseStream::new(response.bytes_stream());
+    let messages = sse_stream.try_collect::<Vec<_>>().await?;
+    debug!("{messages:#?}");
+
+    assert_eq!(messages.len(), 3);
+    assert_eq!(messages[0].generated_text, Some("I".into()));
+    assert_eq!(messages[1].generated_text, Some(" am".into()));
+    assert_eq!(messages[2].generated_text, Some(" great!".into()));
+
+    // `guardrail_config` with `input` and `output` set to empty map scenario
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_STREAMING_ENDPOINT)
+        .json(&GuardrailsHttpRequest {
+            model_id: model_id.into(),
+            inputs: "Hi there! How are you?".into(),
+            guardrail_config: Some(GuardrailsConfig {
+                input: Some(GuardrailsConfigInput {
+                    models: HashMap::new(),
+                    masks: None,
+                }),
+                output: Some(GuardrailsConfigOutput {
+                    models: HashMap::new(),
+                }),
+            }),
+            text_gen_parameters: None,
+        })
+        .send()
+        .await?;
+
+    let sse_stream: SseStream<ClassifiedGeneratedTextStreamResult> =
+        SseStream::new(response.bytes_stream());
+    let messages = sse_stream.try_collect::<Vec<_>>().await?;
+    debug!("{messages:#?}");
+
     assert_eq!(messages.len(), 3);
     assert_eq!(messages[0].generated_text, Some("I".into()));
     assert_eq!(messages[1].generated_text, Some(" am".into()));
