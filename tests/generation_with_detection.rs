@@ -89,7 +89,7 @@ async fn no_detections() -> Result<(), anyhow::Error> {
                 generated_text: generated_text.into(),
                 detector_params: DetectorParams::new(),
             });
-        then.json(vec![detection.clone()]);
+        then.json([&detection]);
     });
 
     // Start orchestrator server and its dependencies
@@ -171,7 +171,7 @@ async fn detections() -> Result<(), anyhow::Error> {
                 generated_text: generated_text.into(),
                 detector_params: DetectorParams::new(),
             });
-        then.json(vec![detection.clone()]);
+        then.json([&detection]);
     });
 
     // Start orchestrator server and its dependencies

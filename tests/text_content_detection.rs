@@ -92,7 +92,7 @@ async fn no_detections() -> Result<(), anyhow::Error> {
                 ],
                 detector_params: DetectorParams::new(),
             });
-        then.json(vec![
+        then.json([
             Vec::<ContentAnalysisResponse>::new(),
             Vec::<ContentAnalysisResponse>::new(),
         ]);
@@ -106,7 +106,7 @@ async fn no_detections() -> Result<(), anyhow::Error> {
                 contents: vec!["This sentence has no detections.".into()],
                 detector_params: DetectorParams::new(),
             });
-        then.json(vec![Vec::<ContentAnalysisResponse>::new()]);
+        then.json([Vec::<ContentAnalysisResponse>::new()]);
     });
 
     // Start orchestrator server and its dependencies
@@ -238,7 +238,7 @@ async fn detections() -> Result<(), anyhow::Error> {
                 contents: vec!["This sentence has <a detection here>.".into()],
                 detector_params: DetectorParams::new(),
             });
-        then.json(vec![vec![ContentAnalysisResponse {
+        then.json([[ContentAnalysisResponse {
             start: 18,
             end: 35,
             text: "a detection here".into(),

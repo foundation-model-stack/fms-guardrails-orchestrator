@@ -67,7 +67,7 @@ async fn no_detections() -> Result<(), anyhow::Error> {
                 context_type: ContextType::Url,
                 context: context.clone(),
             });
-        then.json(vec![detection.clone()]);
+        then.json([&detection]);
     });
 
     // Start orchestrator server and its dependencies
@@ -129,7 +129,7 @@ async fn detections() -> Result<(), anyhow::Error> {
                 context: context.clone(),
             });
 
-        then.json(vec![detection.clone()]);
+        then.json([&detection]);
     });
 
     // Start orchestrator server and its dependencies

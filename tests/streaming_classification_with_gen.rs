@@ -387,7 +387,7 @@ async fn input_detector_detections() -> Result<(), anyhow::Error> {
                 ],
                 detector_params: DetectorParams::new(),
             });
-        then.json(vec![vec![], vec![mock_detection_response.clone()]]);
+        then.json([vec![], vec![&mock_detection_response]]);
     });
 
     // Add generation mock for input token count

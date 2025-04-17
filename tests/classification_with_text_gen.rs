@@ -220,7 +220,7 @@ async fn no_detections() -> Result<(), anyhow::Error> {
                 contents: vec![text_mock_input.clone()],
                 detector_params: DetectorParams::new(),
             });
-        then.json(vec![Vec::<ContentAnalysisResponse>::new()]);
+        then.json([Vec::<ContentAnalysisResponse>::new()]);
     });
 
     // Add output detector mock
@@ -232,7 +232,7 @@ async fn no_detections() -> Result<(), anyhow::Error> {
                 contents: vec![expected_response.generated_text.clone()],
                 detector_params: DetectorParams::new(),
             });
-        then.json(vec![Vec::<ContentAnalysisResponse>::new()]);
+        then.json([Vec::<ContentAnalysisResponse>::new()]);
     });
 
     // Add chunker tokenization for input mock
@@ -491,7 +491,7 @@ async fn input_detector_detections() -> Result<(), anyhow::Error> {
                 ],
                 detector_params: DetectorParams::new(),
             });
-        then.json([vec![], vec![expected_detections[0].clone()]]);
+        then.json([vec![], vec![&expected_detections[0]]]);
     });
 
     // Add input detection mock for multiple detections
@@ -508,8 +508,8 @@ async fn input_detector_detections() -> Result<(), anyhow::Error> {
             });
         then.json([
             vec![],
-            vec![expected_detections[0].clone()],
-            vec![expected_detections[1].clone()],
+            vec![&expected_detections[0]],
+            vec![&expected_detections[1]],
         ]);
     });
 
@@ -674,8 +674,7 @@ async fn input_detector_client_error() -> Result<(), anyhow::Error> {
                 contents: vec![detector_error_input.into()],
                 detector_params: DetectorParams::new(),
             });
-        then.internal_server_error()
-            .message(expected_detector_error.message);
+        then.internal_server_error().json(&expected_detector_error);
     });
     // Add generation mock for generation internal server error scenario
     generation_mocks.mock(|when, then| {
@@ -975,7 +974,7 @@ async fn output_detector_detections() -> Result<(), anyhow::Error> {
                 ],
                 detector_params: DetectorParams::new(),
             });
-        then.json([vec![], vec![expected_detections[0].clone()]]);
+        then.json([vec![], vec![&expected_detections[0]]]);
     });
 
     // Add output detection mock for output multiple detections
@@ -992,8 +991,8 @@ async fn output_detector_detections() -> Result<(), anyhow::Error> {
             });
         then.json([
             vec![],
-            vec![expected_detections[0].clone()],
-            vec![expected_detections[1].clone()],
+            vec![&expected_detections[0]],
+            vec![&expected_detections[1]],
         ]);
     });
 
@@ -1141,7 +1140,7 @@ async fn output_detector_client_error() -> Result<(), anyhow::Error> {
                 contents: vec![generation_server_error_input.into()],
                 detector_params: DetectorParams::new(),
             });
-        then.json([vec![[Vec::<ContentAnalysisResponse>::new()]]]);
+        then.json([[[Vec::<ContentAnalysisResponse>::new()]]]);
     });
 
     // Add output detection mock for detector internal server error scenario
@@ -1152,8 +1151,7 @@ async fn output_detector_client_error() -> Result<(), anyhow::Error> {
                 contents: vec![detector_error_input.into()],
                 detector_params: DetectorParams::new(),
             });
-        then.internal_server_error()
-            .message(expected_detector_error.message);
+        then.internal_server_error().json(&expected_detector_error);
     });
 
     // Add generation mock for generation internal server error scenario

@@ -122,7 +122,7 @@ async fn no_detections() -> Result<(), anyhow::Error> {
                 contents: vec!["Hi there!".into()],
                 detector_params: DetectorParams::new(),
             });
-        then.json(vec![Vec::<ContentAnalysisResponse>::new()]);
+        then.json([Vec::<ContentAnalysisResponse>::new()]);
     });
     // Add detector output mock
     detector_mocks.mock(|when, then| {
@@ -132,7 +132,7 @@ async fn no_detections() -> Result<(), anyhow::Error> {
                 contents: vec!["Hello!".into()],
                 detector_params: DetectorParams::new(),
             });
-        then.json(vec![Vec::<ContentAnalysisResponse>::new()]);
+        then.json([Vec::<ContentAnalysisResponse>::new()]);
     });
 
     // Add chat completions mock
@@ -256,7 +256,7 @@ async fn input_detections() -> Result<(), anyhow::Error> {
                 contents: vec![input_text.into()],
                 detector_params: DetectorParams::new(),
             });
-        then.json(vec![&expected_detections]);
+        then.json([&expected_detections]);
     });
 
     // Add chat completions mock
@@ -404,7 +404,7 @@ async fn input_client_error() -> Result<(), anyhow::Error> {
                 contents: vec![chat_completions_error_input.into()],
                 detector_params: DetectorParams::new(),
             });
-        then.json(vec![Vec::<ContentAnalysisResponse>::new()]);
+        then.json([Vec::<ContentAnalysisResponse>::new()]);
     });
 
     // Add detector mock for detector error scenario
@@ -595,7 +595,7 @@ async fn output_detections() -> Result<(), anyhow::Error> {
                 contents: vec![input_text.into()],
                 detector_params: DetectorParams::new(),
             });
-        then.json(vec![Vec::<ContentAnalysisResponse>::new()]);
+        then.json([Vec::<ContentAnalysisResponse>::new()]);
     });
 
     // Add detector output mock for generated message
@@ -606,7 +606,7 @@ async fn output_detections() -> Result<(), anyhow::Error> {
                 contents: vec![output_text.into()],
                 detector_params: DetectorParams::new(),
             });
-        then.json(vec![&expected_detections]);
+        then.json([&expected_detections]);
     });
 
     // Add chunker tokenization mock for output detection user input
@@ -789,7 +789,7 @@ async fn output_client_error() -> Result<(), anyhow::Error> {
                 contents: vec![chat_completions_error_input.into()],
                 detector_params: DetectorParams::new(),
             });
-        then.json(vec![Vec::<ContentAnalysisResponse>::new()]);
+        then.json([Vec::<ContentAnalysisResponse>::new()]);
     });
 
     // Add detector mock for detector error scenario
