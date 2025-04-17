@@ -52,23 +52,19 @@ impl Handle<ClassificationWithGenTask> for Orchestrator {
         let output_detectors = task.guardrails_config.output_detectors();
 
         // input detectors validation
-        if !input_detectors.is_empty() {
-            validate_detectors(
-                &input_detectors,
-                &ctx.config.detectors,
-                &[DetectorType::TextContents],
-                true,
-            )?;
-        }
+        validate_detectors(
+            &input_detectors,
+            &ctx.config.detectors,
+            &[DetectorType::TextContents],
+            true,
+        )?;
         // output detectors validation
-        if !output_detectors.is_empty() {
-            validate_detectors(
-                &output_detectors,
-                &ctx.config.detectors,
-                &[DetectorType::TextContents],
-                true,
-            )?;
-        }
+        validate_detectors(
+            &output_detectors,
+            &ctx.config.detectors,
+            &[DetectorType::TextContents],
+            true,
+        )?;
 
         if !input_detectors.is_empty() {
             // Handle input detection

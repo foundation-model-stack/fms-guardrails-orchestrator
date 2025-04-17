@@ -75,29 +75,25 @@ impl Handle<StreamingClassificationWithGenTask> for Orchestrator {
             let output_detectors = task.guardrails_config.output_detectors();
 
             // input detectors validation
-            if !input_detectors.is_empty() {
-                if let Err(error) = validate_detectors(
-                    &input_detectors,
-                    &ctx.config.detectors,
-                    &[DetectorType::TextContents],
-                    false,
-                ) {
-                    let _ = response_tx.send(Err(error)).await;
-                    return;
-                }
+            if let Err(error) = validate_detectors(
+                &input_detectors,
+                &ctx.config.detectors,
+                &[DetectorType::TextContents],
+                false,
+            ) {
+                let _ = response_tx.send(Err(error)).await;
+                return;
             }
 
             // output detectors validation
-            if !output_detectors.is_empty() {
-                if let Err(error) = validate_detectors(
-                    &output_detectors,
-                    &ctx.config.detectors,
-                    &[DetectorType::TextContents],
-                    false,
-                ) {
-                    let _ = response_tx.send(Err(error)).await;
-                    return;
-                }
+            if let Err(error) = validate_detectors(
+                &output_detectors,
+                &ctx.config.detectors,
+                &[DetectorType::TextContents],
+                false,
+            ) {
+                let _ = response_tx.send(Err(error)).await;
+                return;
             }
 
             if !input_detectors.is_empty() {

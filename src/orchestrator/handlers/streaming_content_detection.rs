@@ -67,16 +67,14 @@ impl Handle<StreamingContentDetectionTask> for Orchestrator {
                 };
                 info!(%trace_id, config = ?detectors, "task started");
 
-                if !detectors.is_empty() {
-                    if let Err(error) = validate_detectors(
-                        &detectors,
-                        &ctx.config.detectors,
-                        &[DetectorType::TextContents],
-                        false,
-                    ) {
-                        let _ = response_tx.send(Err(error)).await;
-                        return;
-                    }
+                if let Err(error) = validate_detectors(
+                    &detectors,
+                    &ctx.config.detectors,
+                    &[DetectorType::TextContents],
+                    false,
+                ) {
+                    let _ = response_tx.send(Err(error)).await;
+                    return;
                 }
 
                 handle_detection(ctx, trace_id, headers, detectors, input_stream, response_tx)
