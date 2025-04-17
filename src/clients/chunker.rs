@@ -19,10 +19,10 @@ use std::pin::Pin;
 
 use async_trait::async_trait;
 use axum::http::HeaderMap;
-use futures::{Future, Stream, StreamExt, TryStreamExt};
+use futures::{Future, StreamExt, TryStreamExt};
 use ginepro::LoadBalancedChannel;
 use tonic::{Code, Request, Response, Status, Streaming};
-use tracing::{Span, instrument};
+use tracing::Span;
 
 use super::{
     BoxStream, Client, Error, create_grpc_client, errors::grpc_to_http_code,
@@ -36,7 +36,7 @@ use crate::{
             BidiStreamingChunkerTokenizationTaskRequest, ChunkerTokenizationTaskRequest,
             chunkers_service_client::ChunkersServiceClient,
         },
-        caikit_data_model::nlp::{ChunkerTokenizationStreamResult, Token, TokenizationResults},
+        caikit_data_model::nlp::{ChunkerTokenizationStreamResult, TokenizationResults},
         grpc::health::v1::{HealthCheckRequest, health_client::HealthClient},
     },
     utils::trace::trace_context_from_grpc_response,
@@ -136,109 +136,4 @@ fn request_with_headers<T>(request: T, model_id: &str) -> Request<T> {
         .metadata_mut()
         .insert(MODEL_ID_HEADER_NAME, model_id.parse().unwrap());
     request
-}
-
-/// Unary tokenization result of the entire doc
-#[instrument(skip_all)]
-pub fn tokenize_whole_doc(request: ChunkerTokenizationTaskRequest) -> TokenizationResults {
-    let codepoint_count = request.text.chars().count() as i64;
-    TokenizationResults {
-        results: vec![Token {
-            start: 0,
-            end: codepoint_count,
-            text: request.text,
-        }],
-        token_count: 1, // entire doc
-    }
-}
-
-/// Streaming tokenization result for the entire doc stream
-#[instrument(skip_all)]
-pub async fn tokenize_whole_doc_stream(
-    request: impl Stream<Item = BidiStreamingChunkerTokenizationTaskRequest>,
-) -> Result<ChunkerTokenizationStreamResult, Error> {
-    let (text, index_vec): (String, Vec<i64>) = request
-        .map(|r| (r.text_stream, r.input_index_stream))
-        .collect()
-        .await;
-    let codepoint_count = text.chars().count() as i64;
-    let input_end_index = index_vec.last().copied().unwrap_or_default();
-    Ok(ChunkerTokenizationStreamResult {
-        results: vec![Token {
-            start: 0,
-            end: codepoint_count,
-            text,
-        }],
-        token_count: 1, // entire doc/stream
-        processed_index: codepoint_count,
-        start_index: 0,
-        input_start_index: 0,
-        input_end_index,
-    })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_tokenize_whole_doc() {
-        let request = ChunkerTokenizationTaskRequest {
-            text: "Lorem ipsum dolor sit amet consectetur adipiscing \
-            elit sed do eiusmod tempor incididunt ut labore et dolore \
-            magna aliqua."
-                .into(),
-        };
-        let expected_response = TokenizationResults {
-            results: vec![Token {
-                start: 0,
-                end: 121,
-                text: "Lorem ipsum dolor sit amet consectetur \
-                    adipiscing elit sed do eiusmod tempor incididunt \
-                    ut labore et dolore magna aliqua."
-                    .into(),
-            }],
-            token_count: 1,
-        };
-        let response = tokenize_whole_doc(request);
-        assert_eq!(response, expected_response)
-    }
-
-    #[tokio::test]
-    async fn test_tokenize_whole_doc_stream() {
-        let request = futures::stream::iter(vec![
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: "Lorem ipsum dolor sit amet ".into(),
-                input_index_stream: 0,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: "consectetur adipiscing elit ".into(),
-                input_index_stream: 1,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: "sed do eiusmod tempor incididunt ".into(),
-                input_index_stream: 2,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: "ut labore et dolore magna aliqua.".into(),
-                input_index_stream: 3,
-            },
-        ]);
-        let expected_response = ChunkerTokenizationStreamResult {
-            results: vec![Token {
-                start: 0,
-                end: 121,
-                text: "Lorem ipsum dolor sit amet consectetur adipiscing elit \
-                    sed do eiusmod tempor incididunt ut labore et dolore magna aliqua."
-                    .into(),
-            }],
-            token_count: 1,
-            processed_index: 121,
-            start_index: 0,
-            input_start_index: 0,
-            input_end_index: 3,
-        };
-        let response = tokenize_whole_doc_stream(request).await.unwrap();
-        assert_eq!(response, expected_response);
-    }
 }
