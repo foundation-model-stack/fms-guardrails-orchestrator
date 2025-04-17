@@ -182,7 +182,7 @@ impl From<ChatCompletion> for ChatCompletionsResponse {
 /// the downstream server implementation.
 ///
 /// Validated fields: detectors (internal), model, messages
-#[derive(Debug, Default, Clone, Deserialize)]
+#[derive(Debug, Default, Clone, PartialEq, Deserialize)]
 #[serde(try_from = "Map<String, Value>")]
 pub struct ChatCompletionsRequest {
     /// Detector config.
@@ -332,7 +332,7 @@ pub enum Role {
     Tool,
 }
 
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Message {
     /// The role of the author of this message.
@@ -692,5 +692,97 @@ impl OrchestratorWarning {
             r#type: warning_type,
             message: message.to_string(),
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use serde_json::json;
+
+    use super::*;
+
+    #[test]
+    fn test_chat_completions_request() -> Result<(), serde_json::Error> {
+        // Test deserialize
+        let json_request = json!({
+            "model": "test",
+            "detectors": DetectorConfig::default(),
+            "messages": vec![Message {
+                content: Some(Content::Text("Hi there!".to_string())),
+                ..Default::default()
+            }],
+        });
+        let request = ChatCompletionsRequest::deserialize(&json_request)?;
+        let mut inner = json_request.as_object().unwrap().to_owned();
+        inner.remove("detectors").unwrap();
+        assert_eq!(
+            request,
+            ChatCompletionsRequest {
+                detectors: DetectorConfig::default(),
+                stream: false,
+                model: "test".into(),
+                messages: vec![Message {
+                    content: Some(Content::Text("Hi there!".to_string())),
+                    ..Default::default()
+                }],
+                inner,
+            }
+        );
+
+        // Test deserialize validation errors
+        let result = ChatCompletionsRequest::deserialize(json!({
+            "model": "test",
+            "messages": vec![Message {
+                content: Some(Content::Text("Hi there!".to_string())),
+                ..Default::default()
+            }],
+        }));
+        assert!(result.is_err_and(|error| error.to_string() == "`detectors` is required"));
+
+        let result = ChatCompletionsRequest::deserialize(json!({
+            "detectors": DetectorConfig::default(),
+            "messages": vec![Message {
+                content: Some(Content::Text("Hi there!".to_string())),
+                ..Default::default()
+            }],
+        }));
+        assert!(result.is_err_and(|error| error.to_string() == "`model` is required"));
+
+        let result = ChatCompletionsRequest::deserialize(json!({
+            "model": "",
+            "detectors": DetectorConfig::default(),
+            "messages": Vec::<Message>::default(),
+        }));
+        assert!(result.is_err_and(|error| error.to_string() == "`model` must not be empty"));
+
+        let result = ChatCompletionsRequest::deserialize(json!({
+            "model": "test",
+            "detectors": DetectorConfig::default(),
+            "messages": Vec::<Message>::default(),
+        }));
+        assert!(result.is_err_and(|error| error.to_string() == "`messages` must not be empty"));
+
+        let result = ChatCompletionsRequest::deserialize(json!({
+            "model": "test",
+            "detectors": DetectorConfig::default(),
+            "messages": vec!["invalid"],
+        }));
+        assert!(result.is_err_and(|error| error.to_string() == "error deserializing `messages`"));
+
+        // Test serialize
+        let serialized_request = serde_json::to_value(request)?;
+        assert_eq!(
+            serialized_request,
+            json!({
+                "model": "test",
+                "messages": vec![Message {
+                    content: Some(Content::Text("Hi there!".to_string())),
+                    role: Role::User,
+                    ..Default::default()
+                }],
+            })
+        );
+
+        Ok(())
     }
 }
