@@ -73,8 +73,6 @@ impl OpenAiClient {
         request: ChatCompletionsRequest,
         headers: HeaderMap,
     ) -> Result<ChatCompletionsResponse, Error> {
-        let request_json = serde_json::to_value(&request).unwrap();
-        dbg!(&request_json);
         let url = self.inner().endpoint(CHAT_COMPLETIONS_ENDPOINT);
         if request.stream {
             let (tx, rx) = mpsc::channel(32);
