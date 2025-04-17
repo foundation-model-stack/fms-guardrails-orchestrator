@@ -16,7 +16,7 @@
 */
 
 use common::{
-    chat_completions::CHAT_COMPLETIONS_ENDPOINT,
+    chat_generation::CHAT_COMPLETIONS_ENDPOINT,
     chunker::CHUNKER_UNARY_ENDPOINT,
     detectors::{
         ANSWER_RELEVANCE_DETECTOR, DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE,
