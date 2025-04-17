@@ -1516,8 +1516,7 @@ dependencies = [
 [[package]]
 name = "mocktail"
 version = "0.2.4-alpha"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1ca54227ec1ea1a7186f14d0e126e989f4db19a3d8cdf75352e4f99f69d78182"
+source = "git+https://github.com/IBM/mocktail#f21198017f92840b9c7b478763b0bf9d79cbb213"
 dependencies = [
  "bytes",
  "futures",
@@ -1536,6 +1535,7 @@ dependencies = [
  "tonic",
  "tracing",
  "url",
+ "uuid",
 ]
 
 [[package]]
@@ -3033,6 +3033,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "458f7a779bf54acc9f347480ac654f68407d3aab21269a6e3c9f922acd9e2da9"
 dependencies = [
  "getrandom 0.3.2",
+ "rand 0.9.0",
 ]
 
 [[package]]
