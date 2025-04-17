@@ -19,10 +19,10 @@ use std::pin::Pin;
 
 use async_trait::async_trait;
 use axum::http::HeaderMap;
-use futures::{Future, Stream, StreamExt, TryStreamExt};
+use futures::{Future, StreamExt, TryStreamExt};
 use ginepro::LoadBalancedChannel;
 use tonic::{Code, Request, Response, Status, Streaming};
-use tracing::{Span, instrument};
+use tracing::Span;
 
 use super::{
     BoxStream, Client, Error, create_grpc_client, errors::grpc_to_http_code,
@@ -36,7 +36,7 @@ use crate::{
             BidiStreamingChunkerTokenizationTaskRequest, ChunkerTokenizationTaskRequest,
             chunkers_service_client::ChunkersServiceClient,
         },
-        caikit_data_model::nlp::{ChunkerTokenizationStreamResult, Token, TokenizationResults},
+        caikit_data_model::nlp::{ChunkerTokenizationStreamResult, TokenizationResults},
         grpc::health::v1::{HealthCheckRequest, health_client::HealthClient},
     },
     utils::trace::trace_context_from_grpc_response,
