@@ -21,7 +21,8 @@ use anyhow::Ok;
 use common::{
     chunker::CHUNKER_UNARY_ENDPOINT,
     detectors::{
-        DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE, DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC,
+        ANSWER_RELEVANCE_DETECTOR_SENTENCE, DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE,
+        DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC, NON_EXISTING_DETECTOR,
         TEXT_CONTENTS_DETECTOR_ENDPOINT,
     },
     errors::{DetectorError, OrchestratorError},
@@ -55,6 +56,7 @@ use fms_guardrails_orchestr8::{
 use hyper::StatusCode;
 use mocktail::prelude::*;
 use test_log::test;
+use tracing::debug;
 
 pub mod common;
 
@@ -1206,7 +1208,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
         .build()
         .await?;
 
-    // Orchestrator request with non existing field
+    // Extra request parameter scenario
     let response = orchestrator_server
         .post(ORCHESTRATOR_UNARY_ENDPOINT)
         .json(&serde_json::json!({
@@ -1219,13 +1221,139 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
         .send()
         .await?;
 
-    // Assertions for invalid request
     let results = response.json::<OrchestratorError>().await?;
+    debug!("{results:#?}");
     assert_eq!(results.code, StatusCode::UNPROCESSABLE_ENTITY);
     assert!(
         results
             .details
             .starts_with("non_existing_field: unknown field `non_existing_field`")
+    );
+
+    // Invalid input detector scenario
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_UNARY_ENDPOINT)
+        .json(&GuardrailsHttpRequest {
+            model_id: MODEL_ID.into(),
+            inputs: "This should return a 422".into(),
+            guardrail_config: Some(GuardrailsConfig {
+                input: Some(GuardrailsConfigInput {
+                    models: HashMap::from([(
+                        ANSWER_RELEVANCE_DETECTOR_SENTENCE.into(),
+                        DetectorParams::new(),
+                    )]),
+                    masks: None,
+                }),
+                output: None,
+            }),
+            text_gen_parameters: None,
+        })
+        .send()
+        .await?;
+
+    let results = response.json::<OrchestratorError>().await?;
+    debug!("{results:#?}");
+    assert_eq!(
+        results,
+        OrchestratorError {
+            code: 422,
+            details: format!(
+                "detector `{}` is not supported by this endpoint",
+                ANSWER_RELEVANCE_DETECTOR_SENTENCE
+            )
+        },
+        "failed on input detector with invalid type scenario"
+    );
+
+    // non-existing input detector scenario
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_UNARY_ENDPOINT)
+        .json(&GuardrailsHttpRequest {
+            model_id: MODEL_ID.into(),
+            inputs: "This should return a 404".into(),
+            guardrail_config: Some(GuardrailsConfig {
+                input: Some(GuardrailsConfigInput {
+                    models: HashMap::from([(NON_EXISTING_DETECTOR.into(), DetectorParams::new())]),
+                    masks: None,
+                }),
+                output: None,
+            }),
+            text_gen_parameters: None,
+        })
+        .send()
+        .await?;
+
+    let results = response.json::<OrchestratorError>().await?;
+    debug!("{results:#?}");
+    assert_eq!(
+        results,
+        OrchestratorError {
+            code: 404,
+            details: format!("detector `{}` not found", NON_EXISTING_DETECTOR)
+        },
+        "failed on non-existing input detector scenario"
+    );
+
+    // Invalid output detector scenario
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_UNARY_ENDPOINT)
+        .json(&GuardrailsHttpRequest {
+            model_id: MODEL_ID.into(),
+            inputs: "This should return a 422".into(),
+            guardrail_config: Some(GuardrailsConfig {
+                input: None,
+                output: Some(GuardrailsConfigOutput {
+                    models: HashMap::from([(
+                        ANSWER_RELEVANCE_DETECTOR_SENTENCE.into(),
+                        DetectorParams::new(),
+                    )]),
+                }),
+            }),
+            text_gen_parameters: None,
+        })
+        .send()
+        .await?;
+
+    let results = response.json::<OrchestratorError>().await?;
+    debug!("{results:#?}");
+    assert_eq!(
+        results,
+        OrchestratorError {
+            code: 422,
+            details: format!(
+                "detector `{}` is not supported by this endpoint",
+                ANSWER_RELEVANCE_DETECTOR_SENTENCE
+            )
+        },
+        "failed on output detector with invalid type scenario"
+    );
+
+    // non-existing output detector scenario
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_UNARY_ENDPOINT)
+        .json(&GuardrailsHttpRequest {
+            model_id: MODEL_ID.into(),
+            inputs: "This should return a 404".into(),
+            guardrail_config: Some(GuardrailsConfig {
+                input: None,
+                output: Some(GuardrailsConfigOutput {
+                    models: HashMap::from([(NON_EXISTING_DETECTOR.into(), DetectorParams::new())]),
+                }),
+            }),
+            text_gen_parameters: None,
+        })
+        .send()
+        .await?;
+
+    let results = response.json::<OrchestratorError>().await?;
+    debug!("{results:#?}");
+    assert_eq!(
+        results,
+        OrchestratorError {
+            code: 404,
+            details: format!("detector `{}` not found", NON_EXISTING_DETECTOR)
+        },
+        "failed on non-existing output detector scenario"
     );
 
     Ok(())

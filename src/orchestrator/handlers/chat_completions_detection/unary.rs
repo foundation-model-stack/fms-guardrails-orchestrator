@@ -23,10 +23,15 @@ use uuid::Uuid;
 use super::ChatCompletionsDetectionTask;
 use crate::{
     clients::openai::*,
+    config::DetectorType,
     models::{
         DetectionWarningReason, DetectorParams, UNSUITABLE_INPUT_MESSAGE, UNSUITABLE_OUTPUT_MESSAGE,
     },
-    orchestrator::{Context, Error, common, types::ChatMessageIterator},
+    orchestrator::{
+        Context, Error,
+        common::{self, validate_detectors},
+        types::ChatMessageIterator,
+    },
 };
 
 pub async fn handle_unary(
@@ -39,7 +44,19 @@ pub async fn handle_unary(
     let input_detectors = detectors.input;
     let output_detectors = detectors.output;
 
-    // TODO: validate requested guardrails
+    validate_detectors(
+        &input_detectors,
+        &ctx.config.detectors,
+        &[DetectorType::TextContents],
+        true,
+    )?;
+
+    validate_detectors(
+        &output_detectors,
+        &ctx.config.detectors,
+        &[DetectorType::TextContents],
+        true,
+    )?;
 
     if !input_detectors.is_empty() {
         // Handle input detection

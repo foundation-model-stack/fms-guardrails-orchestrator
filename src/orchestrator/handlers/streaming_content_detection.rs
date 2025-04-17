@@ -25,9 +25,11 @@ use tracing::{Instrument, error, info, instrument};
 
 use super::Handle;
 use crate::{
+    config::DetectorType,
     models::{DetectorParams, StreamingContentDetectionRequest, StreamingContentDetectionResponse},
     orchestrator::{
-        Context, Error, Orchestrator, common,
+        Context, Error, Orchestrator,
+        common::{self, validate_detectors},
         types::{BoxStream, DetectionBatchStream, DetectionStream, MaxProcessedIndexBatcher},
     },
 };
@@ -65,7 +67,15 @@ impl Handle<StreamingContentDetectionTask> for Orchestrator {
                 };
                 info!(%trace_id, config = ?detectors, "task started");
 
-                // TODO: validate requested guardrails
+                if let Err(error) = validate_detectors(
+                    &detectors,
+                    &ctx.config.detectors,
+                    &[DetectorType::TextContents],
+                    false,
+                ) {
+                    let _ = response_tx.send(Err(error)).await;
+                    return;
+                }
 
                 handle_detection(ctx, trace_id, headers, detectors, input_stream, response_tx)
                     .await;

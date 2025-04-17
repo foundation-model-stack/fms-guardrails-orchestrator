@@ -41,12 +41,24 @@ detectors:
     service:
       hostname: localhost
     chunker_id: whole_doc_chunker
+    default_threshold: 0.5  
+  answer_relevance_detector_sentence:
+    type: text_generation
+    service:
+      hostname: localhost
+    chunker_id: sentence_chunker
     default_threshold: 0.5
   fact_checking_detector:
     type: text_context_doc
     service:
       hostname: localhost
     chunker_id: whole_doc_chunker
+    default_threshold: 0.5
+  fact_checking_detector_sentence:
+    type: text_context_doc
+    service:
+      hostname: localhost
+    chunker_id: sentence_chunker
     default_threshold: 0.5
   pii_detector:
     type: text_chat

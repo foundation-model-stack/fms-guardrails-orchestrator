@@ -30,13 +30,15 @@ use tracing::{Instrument, error, info, instrument};
 use super::Handle;
 use crate::{
     clients::GenerationClient,
+    config::DetectorType,
     models::{
         ClassifiedGeneratedTextStreamResult, DetectionWarning, DetectorParams, GuardrailsConfig,
         GuardrailsHttpRequest, GuardrailsTextGenerationParameters,
         TextGenTokenClassificationResults,
     },
     orchestrator::{
-        Context, Error, Orchestrator, common,
+        Context, Error, Orchestrator,
+        common::{self, validate_detectors},
         types::{
             Chunk, DetectionBatchStream, DetectionStream, Detections, GenerationStream,
             MaxProcessedIndexBatcher,
@@ -72,7 +74,27 @@ impl Handle<StreamingClassificationWithGenTask> for Orchestrator {
             let input_detectors = task.guardrails_config.input_detectors();
             let output_detectors = task.guardrails_config.output_detectors();
 
-            // TODO: validate requested guardrails
+            // input detectors validation
+            if let Err(error) = validate_detectors(
+                &input_detectors,
+                &ctx.config.detectors,
+                &[DetectorType::TextContents],
+                false,
+            ) {
+                let _ = response_tx.send(Err(error)).await;
+                return;
+            }
+
+            // output detectors validation
+            if let Err(error) = validate_detectors(
+                &output_detectors,
+                &ctx.config.detectors,
+                &[DetectorType::TextContents],
+                false,
+            ) {
+                let _ = response_tx.send(Err(error)).await;
+                return;
+            }
 
             if !input_detectors.is_empty() {
                 // Handle input detection
