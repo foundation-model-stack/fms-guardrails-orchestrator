@@ -1041,11 +1041,8 @@ async fn output_detectors_no_detections() -> Result<(), anyhow::Error> {
         ]);
     });
 
-    // Add output detection mock
-    // TODO: Simply clone mocks instead of create two exact MockSets when/if
-    // this gets merged: https://github.com/IBM/mocktail/pull/41
-    let mut angle_brackets_mocks = MockSet::new();
-    angle_brackets_mocks.mock(|when, then| {
+    let mut detection_mocks = MockSet::new();
+    detection_mocks.mock(|when, then| {
         when.post()
             .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
             .json(ContentAnalysisRequest {
@@ -1054,27 +1051,7 @@ async fn output_detectors_no_detections() -> Result<(), anyhow::Error> {
             });
         then.json([Vec::<ContentAnalysisResponse>::new()]);
     });
-    angle_brackets_mocks.mock(|when, then| {
-        when.post()
-            .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
-            .json(ContentAnalysisRequest {
-                contents: vec![" What about you?".into()],
-                detector_params: DetectorParams::new(),
-            });
-        then.json([Vec::<ContentAnalysisResponse>::new()]);
-    });
-
-    let mut parenthesis_mocks = MockSet::new();
-    parenthesis_mocks.mock(|when, then| {
-        when.post()
-            .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
-            .json(ContentAnalysisRequest {
-                contents: vec!["I am great!".into()],
-                detector_params: DetectorParams::new(),
-            });
-        then.json([Vec::<ContentAnalysisResponse>::new()]);
-    });
-    parenthesis_mocks.mock(|when, then| {
+    detection_mocks.mock(|when, then| {
         when.post()
             .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
             .json(ContentAnalysisRequest {
@@ -1087,9 +1064,9 @@ async fn output_detectors_no_detections() -> Result<(), anyhow::Error> {
     // Start orchestrator server and its dependencies
     let mock_chunker_server = MockServer::new(chunker_id).grpc().with_mocks(chunker_mocks);
     let mock_angle_brackets_detector_server =
-        MockServer::new(angle_brackets_detector).with_mocks(angle_brackets_mocks);
+        MockServer::new(angle_brackets_detector).with_mocks(detection_mocks.clone());
     let mock_parenthesis_detector_server =
-        MockServer::new(parenthesis_detector).with_mocks(parenthesis_mocks);
+        MockServer::new(parenthesis_detector).with_mocks(detection_mocks);
     let generation_server = MockServer::new("nlp").grpc().with_mocks(generation_mocks);
 
     let orchestrator_server = TestOrchestratorServer::builder()
