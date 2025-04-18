@@ -15,9 +15,6 @@
 
 */
 
-use std::{collections::HashMap, vec};
-
-use anyhow::Ok;
 use common::{
     chat_completions::CHAT_COMPLETIONS_ENDPOINT,
     chunker::CHUNKER_UNARY_ENDPOINT,
@@ -38,8 +35,7 @@ use fms_guardrails_orchestr8::{
         detector::{ContentAnalysisRequest, ContentAnalysisResponse},
         openai::{
             ChatCompletion, ChatCompletionChoice, ChatCompletionMessage, ChatDetections, Content,
-            DetectorConfig, InputDetectionResult, Message, OrchestratorWarning,
-            OutputDetectionResult, Role,
+            InputDetectionResult, Message, OrchestratorWarning, OutputDetectionResult, Role,
         },
     },
     models::{
@@ -164,9 +160,13 @@ async fn no_detections() -> Result<(), anyhow::Error> {
         .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
         .json(&json!({
             "model": MODEL_ID,
-            "detectors": DetectorConfig {
-                input: HashMap::from([(detector_name.into(), DetectorParams::new())]),
-                output: HashMap::from([(detector_name.into(), DetectorParams::new())]),
+            "detectors": {
+                "input": {
+                    detector_name: {},
+                },
+                "output": {
+                    detector_name: {},
+                },
             },
             "messages": messages,
         }))
@@ -288,9 +288,11 @@ async fn input_detections() -> Result<(), anyhow::Error> {
         .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
         .json(&json!({
             "model": MODEL_ID,
-            "detectors": DetectorConfig {
-                input: HashMap::from([(detector_name.into(), DetectorParams::new())]),
-                output: HashMap::new(),
+            "detectors": {
+                "input": {
+                    detector_name: {},
+                },
+                "output": {}
             },
             "messages": messages,
         }))
@@ -445,9 +447,11 @@ async fn input_client_error() -> Result<(), anyhow::Error> {
         .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
         .json(&json!({
             "model": MODEL_ID,
-            "detectors": DetectorConfig {
-                input: HashMap::from([(detector_name.into(), DetectorParams::new())]),
-                output: HashMap::new(),
+            "detectors": {
+                "input": {
+                    detector_name: {},
+                },
+                "output": {}
             },
             "messages": messages_chunker_error.clone(),
         }))
@@ -463,9 +467,11 @@ async fn input_client_error() -> Result<(), anyhow::Error> {
         .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
         .json(&json!({
             "model": MODEL_ID,
-            "detectors": DetectorConfig {
-                input: HashMap::from([(detector_name.into(), DetectorParams::new())]),
-                output: HashMap::new(),
+            "detectors": {
+                "input": {
+                    detector_name: {},
+                },
+                "output": {}
             },
             "messages": messages_detector_error.clone(),
         }))
@@ -481,9 +487,11 @@ async fn input_client_error() -> Result<(), anyhow::Error> {
         .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
         .json(&json!({
             "model": MODEL_ID,
-            "detectors": DetectorConfig {
-                input: HashMap::from([(detector_name.into(), DetectorParams::new())]),
-                output: HashMap::new(),
+            "detectors": {
+                "input": {
+                    detector_name: {},
+                },
+                "output": {}
             },
             "messages": messages_chat_completions_error.clone(),
         }))
@@ -664,9 +672,11 @@ async fn output_detections() -> Result<(), anyhow::Error> {
         .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
         .json(&json!({
             "model": MODEL_ID,
-            "detectors": DetectorConfig {
-                input: HashMap::new(),
-                output: HashMap::from([(detector_name.into(), DetectorParams::new())]),
+            "detectors": {
+                "input": {},
+                "output": {
+                    detector_name: {},
+                },
             },
             "messages": messages,
         }))
@@ -840,9 +850,11 @@ async fn output_client_error() -> Result<(), anyhow::Error> {
         .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
         .json(&json!({
             "model": MODEL_ID,
-            "detectors": DetectorConfig {
-                input: HashMap::new(),
-                output: HashMap::from([(detector_name.into(), DetectorParams::new())]),
+            "detectors": {
+                "input": {},
+                "output": {
+                    detector_name: {},
+                },
             },
             "messages": messages_chunker_error.clone(),
         }))
@@ -858,9 +870,11 @@ async fn output_client_error() -> Result<(), anyhow::Error> {
         .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
         .json(&json!({
             "model": MODEL_ID,
-            "detectors": DetectorConfig {
-                input: HashMap::new(),
-                output: HashMap::from([(detector_name.into(), DetectorParams::new())]),
+            "detectors": {
+                "input": {},
+                "output": {
+                    detector_name: {},
+                },
             },
             "messages": messages_detector_error.clone(),
         }))
@@ -876,9 +890,11 @@ async fn output_client_error() -> Result<(), anyhow::Error> {
         .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
         .json(&json!({
             "model": MODEL_ID,
-            "detectors": DetectorConfig {
-                input: HashMap::new(),
-                output: HashMap::from([(detector_name.into(), DetectorParams::new())]),
+            "detectors": {
+                "input": {},
+                "output": {
+                    detector_name: {},
+                },
             },
             "messages": messages_chat_completions_error.clone(),
         }))
@@ -888,6 +904,138 @@ async fn output_client_error() -> Result<(), anyhow::Error> {
     // Assertions for chat completions error scenario
     let results = response.json::<OrchestratorError>().await?;
     assert_eq!(results, expected_orchestrator_error);
+
+    Ok(())
+}
+
+// Validate that invalid orchestrator requests returns 422 error
+#[test(tokio::test)]
+async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
+    // Start orchestrator server and its dependencies
+    let orchestrator_server = TestOrchestratorServer::builder()
+        .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
+        .build()
+        .await?;
+
+    let messages = vec![Message {
+        content: Some(Content::Text("Hi there!".to_string())),
+        role: Role::User,
+        ..Default::default()
+    }];
+
+    // Invalid input detector scenario
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
+        .json(&json!({
+            "model": MODEL_ID,
+            "detectors": {
+                "input": {
+                    ANSWER_RELEVANCE_DETECTOR: {},
+                },
+                "output": {}
+            },
+            "messages": messages.clone(),
+        }))
+        .send()
+        .await?;
+
+    let results = response.json::<OrchestratorError>().await?;
+    debug!("{results:#?}");
+    assert_eq!(
+        results,
+        OrchestratorError {
+            code: 422,
+            details: format!(
+                "detector `{}` is not supported by this endpoint",
+                ANSWER_RELEVANCE_DETECTOR
+            )
+        },
+        "failed on invalid input detector scenario"
+    );
+
+    // Non-existing input detector scenario
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
+        .json(&json!({
+            "model": MODEL_ID,
+            "detectors": {
+                "input": {
+                    NON_EXISTING_DETECTOR: {},
+                },
+                "output": {}
+            },
+            "messages": messages.clone(),
+        }))
+        .send()
+        .await?;
+
+    let results = response.json::<OrchestratorError>().await?;
+    debug!("{results:#?}");
+    assert_eq!(
+        results,
+        OrchestratorError {
+            code: 404,
+            details: format!("detector `{}` not found", NON_EXISTING_DETECTOR)
+        },
+        "failed on non-existing input detector scenario"
+    );
+
+    // Invalid output detector scenario
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
+        .json(&json!({
+            "model": MODEL_ID,
+            "detectors": {
+                "input": {},
+                "output": {
+                    ANSWER_RELEVANCE_DETECTOR: {},
+                },
+            },
+            "messages": messages.clone(),
+        }))
+        .send()
+        .await?;
+
+    let results = response.json::<OrchestratorError>().await?;
+    debug!("{results:#?}");
+    assert_eq!(
+        results,
+        OrchestratorError {
+            code: 422,
+            details: format!(
+                "detector `{}` is not supported by this endpoint",
+                ANSWER_RELEVANCE_DETECTOR
+            )
+        },
+        "failed on invalid output detector scenario"
+    );
+
+    // Non-existing output detector scenario
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
+        .json(&json!({
+            "model": MODEL_ID,
+            "detectors": {
+                "input": {},
+                "output": {
+                    NON_EXISTING_DETECTOR: {},
+                }
+            },
+            "messages": messages.clone(),
+        }))
+        .send()
+        .await?;
+
+    let results = response.json::<OrchestratorError>().await?;
+    debug!("{results:#?}");
+    assert_eq!(
+        results,
+        OrchestratorError {
+            code: 404,
+            details: format!("detector `{}` not found", NON_EXISTING_DETECTOR)
+        },
+        "failed on non-existing input detector scenario"
+    );
 
     Ok(())
 }
