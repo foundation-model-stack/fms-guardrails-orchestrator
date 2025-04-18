@@ -705,7 +705,7 @@ mod test {
         let json_request = json!({
             "model": "test",
             "detectors": DetectorConfig::default(),
-            "messages": vec![Message {
+            "messages": [Message {
                 content: Some(Content::Text("Hi there!".to_string())),
                 ..Default::default()
             }],
