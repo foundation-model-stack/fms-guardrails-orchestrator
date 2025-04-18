@@ -453,7 +453,7 @@ async fn input_client_error() -> Result<(), anyhow::Error> {
                 },
                 "output": {}
             },
-            "messages": messages_chunker_error.clone(),
+            "messages": messages_chunker_error,
         }))
         .send()
         .await?;
