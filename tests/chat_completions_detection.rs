@@ -473,7 +473,7 @@ async fn input_client_error() -> Result<(), anyhow::Error> {
                 },
                 "output": {}
             },
-            "messages": messages_detector_error.clone(),
+            "messages": messages_detector_error,
         }))
         .send()
         .await?;
