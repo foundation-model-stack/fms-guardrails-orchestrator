@@ -773,7 +773,7 @@ mod test {
             serialized_request,
             json!({
                 "model": "test",
-                "messages": vec![Message {
+                "messages": [Message {
                     content: Some(Content::Text("Hi there!".to_string())),
                     role: Role::User,
                     ..Default::default()
