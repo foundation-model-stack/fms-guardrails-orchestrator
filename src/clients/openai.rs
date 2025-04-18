@@ -730,7 +730,7 @@ mod test {
         // Test deserialize validation errors
         let result = ChatCompletionsRequest::deserialize(json!({
             "model": "test",
-            "messages": vec![Message {
+            "messages": [Message {
                 content: Some(Content::Text("Hi there!".to_string())),
                 ..Default::default()
             }],
