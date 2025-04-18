@@ -201,10 +201,10 @@ impl TryFrom<Map<String, Value>> for ChatCompletionsRequest {
     fn try_from(mut value: Map<String, Value>) -> Result<Self, Self::Error> {
         let detectors = if let Some(detectors) = value.remove("detectors") {
             DetectorConfig::deserialize(detectors)
-                .map_err(|_| ValidationError::Invalid("error deserializing `detectors`".into()))
+                .map_err(|_| ValidationError::Invalid("error deserializing `detectors`".into()))?
         } else {
-            Err(ValidationError::Required("detectors".into()))
-        }?;
+            DetectorConfig::default()
+        };
         let stream = value
             .get("stream")
             .and_then(|v| v.as_bool())
@@ -702,13 +702,18 @@ mod test {
     #[test]
     fn test_chat_completions_request() -> Result<(), serde_json::Error> {
         // Test deserialize
+        let detectors = DetectorConfig {
+            input: HashMap::from([("some_detector".into(), DetectorParams::new())]),
+            output: HashMap::new(),
+        };
+        let messages = vec![Message {
+            content: Some(Content::Text("Hi there!".to_string())),
+            ..Default::default()
+        }];
         let json_request = json!({
             "model": "test",
-            "detectors": DetectorConfig::default(),
-            "messages": [Message {
-                content: Some(Content::Text("Hi there!".to_string())),
-                ..Default::default()
-            }],
+            "detectors": detectors,
+            "messages": messages,
         });
         let request = ChatCompletionsRequest::deserialize(&json_request)?;
         let mut inner = json_request.as_object().unwrap().to_owned();
@@ -716,33 +721,36 @@ mod test {
         assert_eq!(
             request,
             ChatCompletionsRequest {
+                detectors,
+                stream: false,
+                model: "test".into(),
+                messages: messages.clone(),
+                inner,
+            }
+        );
+
+        // Test deserialize with no detectors
+        let json_request = json!({
+            "model": "test",
+            "messages": messages,
+        });
+        let request = ChatCompletionsRequest::deserialize(&json_request)?;
+        let inner = json_request.as_object().unwrap().to_owned();
+        assert_eq!(
+            request,
+            ChatCompletionsRequest {
                 detectors: DetectorConfig::default(),
                 stream: false,
                 model: "test".into(),
-                messages: vec![Message {
-                    content: Some(Content::Text("Hi there!".to_string())),
-                    ..Default::default()
-                }],
+                messages: messages.clone(),
                 inner,
             }
         );
 
         // Test deserialize validation errors
         let result = ChatCompletionsRequest::deserialize(json!({
-            "model": "test",
-            "messages": [Message {
-                content: Some(Content::Text("Hi there!".to_string())),
-                ..Default::default()
-            }],
-        }));
-        assert!(result.is_err_and(|error| error.to_string() == "`detectors` is required"));
-
-        let result = ChatCompletionsRequest::deserialize(json!({
             "detectors": DetectorConfig::default(),
-            "messages": [Message {
-                content: Some(Content::Text("Hi there!".to_string())),
-                ..Default::default()
-            }],
+            "messages": messages,
         }));
         assert!(result.is_err_and(|error| error.to_string() == "`model` is required"));
 
