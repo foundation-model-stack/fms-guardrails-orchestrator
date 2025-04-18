@@ -40,8 +40,12 @@ use super::{Chunk, DetectionBatcher, Detections, DetectorId, InputId};
 /// do not require chunking with chunkers) will be handled separately.
 pub struct ChatCompletionBatcher {
     n_detectors: usize,
-    // (choice_index for chunk, Chunk), [chunk's detections]
-    state: BTreeMap<(u32, Chunk), Vec<Detections>>,
+    // (Chunk, choice_index for chunk), [chunk's detections]
+    // We place the chunk first so that ordering can be based
+    // on the chunk, and if chunks are the same for multiple choices,
+    // all of the chunks for the same choice will not be outputted
+    // before all of the chunks for the other choices.
+    state: BTreeMap<(Chunk, u32), Vec<Detections>>,
 }
 
 impl ChatCompletionBatcher {
@@ -54,7 +58,7 @@ impl ChatCompletionBatcher {
 }
 
 impl DetectionBatcher for ChatCompletionBatcher {
-    type Batch = (u32, Chunk, Detections); // (choice_index, chunk, corresponding detections)
+    type Batch = (Chunk, u32, Detections); // (chunk, choice_index, corresponding detections)
 
     fn push(
         &mut self,
@@ -63,7 +67,7 @@ impl DetectionBatcher for ChatCompletionBatcher {
         chunk: Chunk,
         detections: Detections,
     ) {
-        match self.state.entry((input_id, chunk)) {
+        match self.state.entry((chunk, input_id)) {
             btree_map::Entry::Vacant(entry) => {
                 // New chunk, insert entry
                 entry.insert(vec![detections]);
@@ -87,9 +91,9 @@ impl DetectionBatcher for ChatCompletionBatcher {
             .is_some_and(|(_, detections)| detections.len() == self.n_detectors)
         {
             // We have all detections for the chunk, remove and return it.
-            if let Some(((choice_index, chunk), detections)) = self.state.pop_first() {
+            if let Some(((chunk, choice_index), detections)) = self.state.pop_first() {
                 let detections = detections.into_iter().flatten().collect();
-                return Some((choice_index, chunk, detections));
+                return Some((chunk, choice_index, detections));
             }
         }
         None
@@ -126,8 +130,8 @@ mod test {
         };
 
         // Create a batcher that will process batches for 2 detectors
-        let n = 2;
-        let mut batcher = ChatCompletionBatcher::new(n);
+        let n_detectors = 2;
+        let mut batcher = ChatCompletionBatcher::new(n_detectors);
 
         // Push chunk detections for pii detector
         batcher.push(
@@ -178,99 +182,116 @@ mod test {
         // We have detections for 2 detectors
         // pop_batch() should return a batch containing 3 detections for the chunk
         let batch = batcher.pop_batch();
-        assert!(batch.is_some_and(|(choice_index, chunk, detections)| {
-            choice_index == input_id && chunk == chunk && detections.len() == 3
+        assert!(batch.is_some_and(|(chunk, choice_index, detections)| {
+            chunk == chunk && choice_index == input_id && detections.len() == 3
         }));
     }
 
-    // #[test]
-    // fn test_batcher_with_out_of_order_chunks() {
-    //     let input_id = 0;
-    //     let chunks = [
-    //         Chunk {
-    //             input_start_index: 0,
-    //             input_end_index: 10,
-    //             start: 0,
-    //             end: 56,
-    //             text: " a powerful tool for the development \
-    //                 of complex systems."
-    //                 .into(),
-    //         },
-    //         Chunk {
-    //             input_start_index: 11,
-    //             input_end_index: 26,
-    //             start: 56,
-    //             end: 135,
-    //             text: " It has been used in many fields, such as \
-    //                 computer vision and image processing."
-    //                 .into(),
-    //         },
-    //     ];
+    #[test]
+    fn test_batcher_with_out_of_order_chunks_same_per_choice() {
+        let choices = 2;
+        // Chunks here will be apply to both choices
+        let chunks = [
+            Chunk {
+                input_start_index: 0,
+                input_end_index: 10,
+                start: 0,
+                end: 56,
+                text: " a powerful tool for the development \
+                    of complex systems."
+                    .into(),
+            },
+            Chunk {
+                input_start_index: 11,
+                input_end_index: 26,
+                start: 56,
+                end: 135,
+                text: " It has been used in many fields, such as \
+                    computer vision and image processing."
+                    .into(),
+            },
+        ];
 
-    //     // Create a batcher that will process batches for 2 detectors
-    //     let n = 2;
-    //     let mut batcher = ChatCompletionBatcher::new(n);
+        // Create a batcher that will process batches for 2 detectors
+        let n_detectors = 2;
+        let mut batcher = ChatCompletionBatcher::new(n_detectors);
 
-    //     // Push chunk-2 detections for pii detector
-    //     batcher.push(
-    //         input_id,
-    //         "pii".into(),
-    //         chunks[1].clone(),
-    //         Detections::default(), // no detections
-    //     );
-    //     // Push chunk-2 detections for hap detector
-    //     batcher.push(
-    //         input_id,
-    //         "hap".into(),
-    //         chunks[1].clone(),
-    //         Detections::default(), // no detections
-    //     );
-    //     // Push chunk-1 detections for hap detector
-    //     batcher.push(
-    //         input_id,
-    //         "hap".into(),
-    //         chunks[0].clone(),
-    //         Detections::default(), // no detections
-    //     );
+        for choice_index in 0..choices {
+            // Push chunk-2 detections for pii detector
+            batcher.push(
+                choice_index,
+                "pii".into(),
+                chunks[1].clone(),
+                Detections::default(), // no detections
+            );
+            // Push chunk-2 detections for hap detector
+            batcher.push(
+                choice_index,
+                "hap".into(),
+                chunks[1].clone(),
+                Detections::default(), // no detections
+            );
+            // Push chunk-1 detections for hap detector
+            batcher.push(
+                choice_index,
+                "hap".into(),
+                chunks[0].clone(),
+                Detections::default(), // no detections
+            );
+        }
 
-    //     // We have all detections for chunk-2, but not chunk-1
-    //     // pop_batch() should return None
-    //     assert!(batcher.pop_batch().is_none());
+        // We have all detections for chunk-2, but not chunk-1
+        // pop_batch() should return None
+        assert!(batcher.pop_batch().is_none());
 
-    //     // Push chunk-1 detections for pii detector
-    //     batcher.push(
-    //         input_id,
-    //         "pii".into(),
-    //         chunks[0].clone(),
-    //         vec![Detection {
-    //             start: Some(10),
-    //             end: Some(20),
-    //             detector_id: Some("pii".into()),
-    //             detection_type: "pii".into(),
-    //             score: 0.4,
-    //             ..Default::default()
-    //         }]
-    //         .into(),
-    //     );
+        // Push chunk-1 detections for pii detector
+        for choice_index in 0..choices {
+            batcher.push(
+                choice_index,
+                "pii".into(),
+                chunks[0].clone(),
+                vec![Detection {
+                    start: Some(10),
+                    end: Some(20),
+                    detector_id: Some("pii".into()),
+                    detection_type: "pii".into(),
+                    score: 0.4,
+                    ..Default::default()
+                }]
+                .into(),
+            );
+        }
 
-    //     // We have all detections for chunk-1 and chunk-2
-    //     // pop_batch() should return chunk-1 with 1 pii detection
-    //     let batch = batcher.pop_batch();
-    //     assert!(
-    //         batch
-    //             .is_some_and(|(chunk, detections)| { chunk == chunks[0] && detections.len() == 1 })
-    //     );
+        // We have all detections for chunk-1 and chunk-2
+        // pop_batch() should return chunk-1 with 1 pii detection, for the first choice
+        let batch = batcher.pop_batch();
+        assert!(batch.is_some_and(|(chunk, choice_index, detections)| {
+            chunk == chunks[0] && choice_index == 0 && detections.len() == 1
+        }));
 
-    //     // pop_batch() should return chunk-2 with no detections
-    //     let batch = batcher.pop_batch();
-    //     assert!(
-    //         batch
-    //             .is_some_and(|(chunk, detections)| { chunk == chunks[1] && detections.is_empty() })
-    //     );
+        // return the same chunk-1 with 1 pii detection for the second choice
+        let batch = batcher.pop_batch();
+        assert!(batch.is_some_and(|(chunk, choice_index, detections)| {
+            chunk == chunks[0] && choice_index == 1 && detections.len() == 1
+        }));
 
-    //     // batcher state should be empty as all batches have been returned
-    //     assert!(batcher.state.is_empty());
-    // }
+        // pop_batch() should return chunk-2 with no detections, for the first choice
+        let batch = batcher.pop_batch();
+        assert!(batch.is_some_and(|(chunk, choice_index, detections)| {
+            chunk == chunks[1] && choice_index == 0 && detections.is_empty()
+        }));
+
+        // return the same chunk-2 with no detections for the second choice
+        let batch = batcher.pop_batch();
+        assert!(batch.is_some_and(|(chunk, choice_index, detections)| {
+            chunk == chunks[1] && choice_index == 1 && detections.is_empty()
+        }));
+
+        // batcher state should be empty as all batches have been returned
+        assert!(batcher.state.is_empty());
+    }
+
+    // TODO: Add another test for different choice chunks
 
     // #[tokio::test]
     // async fn test_detection_batch_stream() -> Result<(), Error> {
