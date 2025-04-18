@@ -807,7 +807,7 @@ async fn output_client_error() -> Result<(), anyhow::Error> {
     chat_mocks.mock(|when, then| {
         when.post().path(CHAT_COMPLETIONS_ENDPOINT).json(json!({
             "model": MODEL_ID,
-            "messages": messages_chunker_error.clone(),
+            "messages": messages_chunker_error,
         }));
         then.internal_server_error();
     });
