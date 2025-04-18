@@ -876,7 +876,7 @@ async fn output_client_error() -> Result<(), anyhow::Error> {
                     detector_name: {},
                 },
             },
-            "messages": messages_detector_error.clone(),
+            "messages": messages_detector_error,
         }))
         .send()
         .await?;
