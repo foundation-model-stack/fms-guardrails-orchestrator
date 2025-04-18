@@ -247,10 +247,8 @@ pub async fn detect_text_context(
 pub async fn chat_completion(
     client: &OpenAiClient,
     headers: HeaderMap,
-    mut request: openai::ChatCompletionsRequest,
+    request: openai::ChatCompletionsRequest,
 ) -> Result<openai::ChatCompletionsResponse, Error> {
-    request.stream = false;
-    request.detectors = None;
     let model_id = request.model.clone();
     debug!(%model_id, ?request, "sending chat completions request");
     let response = client
@@ -269,10 +267,8 @@ pub async fn chat_completion(
 pub async fn chat_completion_stream(
     client: &OpenAiClient,
     headers: HeaderMap,
-    mut request: openai::ChatCompletionsRequest,
+    request: openai::ChatCompletionsRequest,
 ) -> Result<ChatCompletionStream, Error> {
-    request.stream = true;
-    request.detectors = None;
     let model_id = request.model.clone();
     debug!(%model_id, ?request, "sending chat completions stream request");
     let response = client

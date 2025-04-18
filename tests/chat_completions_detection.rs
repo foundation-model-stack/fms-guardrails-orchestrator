@@ -15,9 +15,6 @@
 
 */
 
-use std::{collections::HashMap, vec};
-
-use anyhow::Ok;
 use common::{
     chat_completions::CHAT_COMPLETIONS_ENDPOINT,
     chunker::CHUNKER_UNARY_ENDPOINT,
@@ -37,9 +34,8 @@ use fms_guardrails_orchestr8::{
         chunker::MODEL_ID_HEADER_NAME as CHUNKER_MODEL_ID_HEADER_NAME,
         detector::{ContentAnalysisRequest, ContentAnalysisResponse},
         openai::{
-            ChatCompletion, ChatCompletionChoice, ChatCompletionMessage, ChatCompletionsRequest,
-            ChatDetections, Content, DetectorConfig, InputDetectionResult, Message,
-            OrchestratorWarning, OutputDetectionResult, Role,
+            ChatCompletion, ChatCompletionChoice, ChatCompletionMessage, ChatDetections, Content,
+            InputDetectionResult, Message, OrchestratorWarning, OutputDetectionResult, Role,
         },
     },
     models::{
@@ -53,6 +49,7 @@ use fms_guardrails_orchestr8::{
 };
 use hyper::StatusCode;
 use mocktail::prelude::*;
+use serde_json::json;
 use test_log::test;
 use tracing::debug;
 
@@ -140,14 +137,10 @@ async fn no_detections() -> Result<(), anyhow::Error> {
 
     // Add chat completions mock
     chat_mocks.mock(|when, then| {
-        when.post()
-            .path(CHAT_COMPLETIONS_ENDPOINT)
-            .json(ChatCompletionsRequest {
-                messages: messages.clone(),
-                model: MODEL_ID.into(),
-                stream: false,
-                ..Default::default()
-            });
+        when.post().path(CHAT_COMPLETIONS_ENDPOINT).json(json!({
+            "model": MODEL_ID,
+            "messages": messages,
+        }));
         then.json(&chat_completions_response);
     });
 
@@ -165,15 +158,18 @@ async fn no_detections() -> Result<(), anyhow::Error> {
     // Make orchestrator call for input/output no detections
     let response = orchestrator_server
         .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
-        .json(&ChatCompletionsRequest {
-            model: MODEL_ID.into(),
-            detectors: Some(DetectorConfig {
-                input: HashMap::from([(detector_name.into(), DetectorParams::new())]),
-                output: HashMap::from([(detector_name.into(), DetectorParams::new())]),
-            }),
-            messages,
-            ..Default::default()
-        })
+        .json(&json!({
+            "model": MODEL_ID,
+            "detectors": {
+                "input": {
+                    detector_name: {},
+                },
+                "output": {
+                    detector_name: {},
+                },
+            },
+            "messages": messages,
+        }))
         .send()
         .await?;
 
@@ -265,14 +261,10 @@ async fn input_detections() -> Result<(), anyhow::Error> {
 
     // Add chat completions mock
     chat_mocks.mock(|when, then| {
-        when.post()
-            .path(CHAT_COMPLETIONS_ENDPOINT)
-            .json(ChatCompletionsRequest {
-                messages: messages.clone(),
-                model: MODEL_ID.into(),
-                stream: false,
-                ..Default::default()
-            });
+        when.post().path(CHAT_COMPLETIONS_ENDPOINT).json(json!({
+            "model": MODEL_ID,
+            "messages": messages,
+        }));
         then.json(&chat_completions_response);
     });
 
@@ -294,15 +286,16 @@ async fn input_detections() -> Result<(), anyhow::Error> {
     // Make orchestrator call for input/output no detections
     let response = orchestrator_server
         .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
-        .json(&ChatCompletionsRequest {
-            model: MODEL_ID.into(),
-            detectors: Some(DetectorConfig {
-                input: HashMap::from([(detector_name.into(), DetectorParams::new())]),
-                output: HashMap::new(),
-            }),
-            messages,
-            ..Default::default()
-        })
+        .json(&json!({
+            "model": MODEL_ID,
+            "detectors": {
+                "input": {
+                    detector_name: {},
+                },
+                "output": {}
+            },
+            "messages": messages,
+        }))
         .send()
         .await?;
 
@@ -427,14 +420,10 @@ async fn input_client_error() -> Result<(), anyhow::Error> {
 
     // Add chat completions mock for chat completions error scenario
     chat_mocks.mock(|when, then| {
-        when.post()
-            .path(CHAT_COMPLETIONS_ENDPOINT)
-            .json(ChatCompletionsRequest {
-                messages: messages_chat_completions_error.clone(),
-                model: MODEL_ID.into(),
-                stream: false,
-                ..Default::default()
-            });
+        when.post().path(CHAT_COMPLETIONS_ENDPOINT).json(json!({
+            "model": MODEL_ID,
+            "messages": messages_chat_completions_error,
+        }));
         then.internal_server_error();
     });
 
@@ -456,15 +445,16 @@ async fn input_client_error() -> Result<(), anyhow::Error> {
     // Make orchestrator call for chunker error scenario
     let response = orchestrator_server
         .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
-        .json(&ChatCompletionsRequest {
-            model: MODEL_ID.into(),
-            detectors: Some(DetectorConfig {
-                input: HashMap::from([(detector_name.into(), DetectorParams::new())]),
-                output: HashMap::new(),
-            }),
-            messages: messages_chunker_error.clone(),
-            ..Default::default()
-        })
+        .json(&json!({
+            "model": MODEL_ID,
+            "detectors": {
+                "input": {
+                    detector_name: {},
+                },
+                "output": {}
+            },
+            "messages": messages_chunker_error,
+        }))
         .send()
         .await?;
 
@@ -475,15 +465,16 @@ async fn input_client_error() -> Result<(), anyhow::Error> {
     // Make orchestrator call for detector error scenario
     let response = orchestrator_server
         .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
-        .json(&ChatCompletionsRequest {
-            model: MODEL_ID.into(),
-            detectors: Some(DetectorConfig {
-                input: HashMap::from([(detector_name.into(), DetectorParams::new())]),
-                output: HashMap::new(),
-            }),
-            messages: messages_detector_error.clone(),
-            ..Default::default()
-        })
+        .json(&json!({
+            "model": MODEL_ID,
+            "detectors": {
+                "input": {
+                    detector_name: {},
+                },
+                "output": {}
+            },
+            "messages": messages_detector_error,
+        }))
         .send()
         .await?;
 
@@ -494,15 +485,16 @@ async fn input_client_error() -> Result<(), anyhow::Error> {
     // Make orchestrator call for chat completions error scenario
     let response = orchestrator_server
         .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
-        .json(&ChatCompletionsRequest {
-            model: MODEL_ID.into(),
-            detectors: Some(DetectorConfig {
-                input: HashMap::from([(detector_name.into(), DetectorParams::new())]),
-                output: HashMap::new(),
-            }),
-            messages: messages_chat_completions_error.clone(),
-            ..Default::default()
-        })
+        .json(&json!({
+            "model": MODEL_ID,
+            "detectors": {
+                "input": {
+                    detector_name: {},
+                },
+                "output": {}
+            },
+            "messages": messages_chat_completions_error,
+        }))
         .send()
         .await?;
 
@@ -653,14 +645,10 @@ async fn output_detections() -> Result<(), anyhow::Error> {
 
     // Add chat completions mock
     chat_mocks.mock(|when, then| {
-        when.post()
-            .path(CHAT_COMPLETIONS_ENDPOINT)
-            .json(ChatCompletionsRequest {
-                messages: messages.clone(),
-                model: MODEL_ID.into(),
-                stream: false,
-                ..Default::default()
-            });
+        when.post().path(CHAT_COMPLETIONS_ENDPOINT).json(json!({
+            "model": MODEL_ID,
+            "messages": messages,
+        }));
         then.json(&chat_completions_response);
     });
 
@@ -682,15 +670,16 @@ async fn output_detections() -> Result<(), anyhow::Error> {
     // Make orchestrator call for output detections
     let response = orchestrator_server
         .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
-        .json(&ChatCompletionsRequest {
-            model: MODEL_ID.into(),
-            detectors: Some(DetectorConfig {
-                input: HashMap::new(),
-                output: HashMap::from([(detector_name.into(), DetectorParams::new())]),
-            }),
-            messages,
-            ..Default::default()
-        })
+        .json(&json!({
+            "model": MODEL_ID,
+            "detectors": {
+                "input": {},
+                "output": {
+                    detector_name: {},
+                },
+            },
+            "messages": messages,
+        }))
         .send()
         .await?;
 
@@ -816,40 +805,28 @@ async fn output_client_error() -> Result<(), anyhow::Error> {
 
     // Add chat completions mock for chunker error scenario
     chat_mocks.mock(|when, then| {
-        when.post()
-            .path(CHAT_COMPLETIONS_ENDPOINT)
-            .json(ChatCompletionsRequest {
-                messages: messages_chunker_error.clone(),
-                model: MODEL_ID.into(),
-                stream: false,
-                ..Default::default()
-            });
+        when.post().path(CHAT_COMPLETIONS_ENDPOINT).json(json!({
+            "model": MODEL_ID,
+            "messages": messages_chunker_error,
+        }));
         then.internal_server_error();
     });
 
     // Add chat completions mock for detector error scenario
     chat_mocks.mock(|when, then| {
-        when.post()
-            .path(CHAT_COMPLETIONS_ENDPOINT)
-            .json(ChatCompletionsRequest {
-                messages: messages_detector_error.clone(),
-                model: MODEL_ID.into(),
-                stream: false,
-                ..Default::default()
-            });
+        when.post().path(CHAT_COMPLETIONS_ENDPOINT).json(json!({
+            "model": MODEL_ID,
+            "messages": messages_detector_error,
+        }));
         then.internal_server_error().json(&expected_detector_error);
     });
 
     // Add chat completions mock for chat completions error scenario
     chat_mocks.mock(|when, then| {
-        when.post()
-            .path(CHAT_COMPLETIONS_ENDPOINT)
-            .json(ChatCompletionsRequest {
-                messages: messages_chat_completions_error.clone(),
-                model: MODEL_ID.into(),
-                stream: false,
-                ..Default::default()
-            });
+        when.post().path(CHAT_COMPLETIONS_ENDPOINT).json(json!({
+            "model": MODEL_ID,
+            "messages": messages_chat_completions_error,
+        }));
         then.internal_server_error();
     });
 
@@ -871,15 +848,16 @@ async fn output_client_error() -> Result<(), anyhow::Error> {
     // Make orchestrator call for chunker error scenario
     let response = orchestrator_server
         .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
-        .json(&ChatCompletionsRequest {
-            model: MODEL_ID.into(),
-            detectors: Some(DetectorConfig {
-                input: HashMap::new(),
-                output: HashMap::from([(detector_name.into(), DetectorParams::new())]),
-            }),
-            messages: messages_chunker_error.clone(),
-            ..Default::default()
-        })
+        .json(&json!({
+            "model": MODEL_ID,
+            "detectors": {
+                "input": {},
+                "output": {
+                    detector_name: {},
+                },
+            },
+            "messages": messages_chunker_error,
+        }))
         .send()
         .await?;
 
@@ -890,15 +868,16 @@ async fn output_client_error() -> Result<(), anyhow::Error> {
     // Make orchestrator call for detector error scenario
     let response = orchestrator_server
         .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
-        .json(&ChatCompletionsRequest {
-            model: MODEL_ID.into(),
-            detectors: Some(DetectorConfig {
-                input: HashMap::new(),
-                output: HashMap::from([(detector_name.into(), DetectorParams::new())]),
-            }),
-            messages: messages_detector_error.clone(),
-            ..Default::default()
-        })
+        .json(&json!({
+            "model": MODEL_ID,
+            "detectors": {
+                "input": {},
+                "output": {
+                    detector_name: {},
+                },
+            },
+            "messages": messages_detector_error,
+        }))
         .send()
         .await?;
 
@@ -909,15 +888,16 @@ async fn output_client_error() -> Result<(), anyhow::Error> {
     // Make orchestrator call for chat completions error scenario
     let response = orchestrator_server
         .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
-        .json(&ChatCompletionsRequest {
-            model: MODEL_ID.into(),
-            detectors: Some(DetectorConfig {
-                input: HashMap::new(),
-                output: HashMap::from([(detector_name.into(), DetectorParams::new())]),
-            }),
-            messages: messages_chat_completions_error.clone(),
-            ..Default::default()
-        })
+        .json(&json!({
+            "model": MODEL_ID,
+            "detectors": {
+                "input": {},
+                "output": {
+                    detector_name: {},
+                },
+            },
+            "messages": messages_chat_completions_error,
+        }))
         .send()
         .await?;
 
@@ -931,8 +911,6 @@ async fn output_client_error() -> Result<(), anyhow::Error> {
 // Validate that invalid orchestrator requests returns 422 error
 #[test(tokio::test)]
 async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
-    let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE;
-
     // Start orchestrator server and its dependencies
     let orchestrator_server = TestOrchestratorServer::builder()
         .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
@@ -945,48 +923,19 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
         ..Default::default()
     }];
 
-    // Extra request field scenario
-    let response = orchestrator_server
-        .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
-        .json(&serde_json::json!({
-            "model": MODEL_ID,
-            "detectors":  {
-                "input": {},
-                "output": {
-                    detector_name: {}
-                }
-            },
-            "messages": &messages,
-            "some_extra_field": "random value"
-        }))
-        .send()
-        .await?;
-
-    let results = response.json::<OrchestratorError>().await?;
-    debug!("{results:#?}");
-    assert_eq!(
-        results.code,
-        StatusCode::UNPROCESSABLE_ENTITY,
-        "failed on extra request field scenario"
-    );
-    assert!(
-        results
-            .details
-            .starts_with("some_extra_field: unknown field `some_extra_field`")
-    );
-
     // Invalid input detector scenario
     let response = orchestrator_server
         .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
-        .json(&ChatCompletionsRequest {
-            model: MODEL_ID.into(),
-            detectors: Some(DetectorConfig {
-                input: HashMap::from([(ANSWER_RELEVANCE_DETECTOR.into(), DetectorParams::new())]),
-                output: HashMap::new(),
-            }),
-            messages: messages.clone(),
-            ..Default::default()
-        })
+        .json(&json!({
+            "model": MODEL_ID,
+            "detectors": {
+                "input": {
+                    ANSWER_RELEVANCE_DETECTOR: {},
+                },
+                "output": {}
+            },
+            "messages": messages,
+        }))
         .send()
         .await?;
 
@@ -1007,15 +956,16 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     // Non-existing input detector scenario
     let response = orchestrator_server
         .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
-        .json(&ChatCompletionsRequest {
-            model: MODEL_ID.into(),
-            detectors: Some(DetectorConfig {
-                input: HashMap::from([(NON_EXISTING_DETECTOR.into(), DetectorParams::new())]),
-                output: HashMap::new(),
-            }),
-            messages: messages.clone(),
-            ..Default::default()
-        })
+        .json(&json!({
+            "model": MODEL_ID,
+            "detectors": {
+                "input": {
+                    NON_EXISTING_DETECTOR: {},
+                },
+                "output": {}
+            },
+            "messages": messages,
+        }))
         .send()
         .await?;
 
@@ -1033,15 +983,16 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     // Invalid output detector scenario
     let response = orchestrator_server
         .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
-        .json(&ChatCompletionsRequest {
-            model: MODEL_ID.into(),
-            detectors: Some(DetectorConfig {
-                input: HashMap::new(),
-                output: HashMap::from([(ANSWER_RELEVANCE_DETECTOR.into(), DetectorParams::new())]),
-            }),
-            messages: messages.clone(),
-            ..Default::default()
-        })
+        .json(&json!({
+            "model": MODEL_ID,
+            "detectors": {
+                "input": {},
+                "output": {
+                    ANSWER_RELEVANCE_DETECTOR: {},
+                },
+            },
+            "messages": messages,
+        }))
         .send()
         .await?;
 
@@ -1062,15 +1013,16 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     // Non-existing output detector scenario
     let response = orchestrator_server
         .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
-        .json(&ChatCompletionsRequest {
-            model: MODEL_ID.into(),
-            detectors: Some(DetectorConfig {
-                input: HashMap::new(),
-                output: HashMap::from([(NON_EXISTING_DETECTOR.into(), DetectorParams::new())]),
-            }),
-            messages: messages.clone(),
-            ..Default::default()
-        })
+        .json(&json!({
+            "model": MODEL_ID,
+            "detectors": {
+                "input": {},
+                "output": {
+                    NON_EXISTING_DETECTOR: {},
+                }
+            },
+            "messages": messages,
+        }))
         .send()
         .await?;
 
