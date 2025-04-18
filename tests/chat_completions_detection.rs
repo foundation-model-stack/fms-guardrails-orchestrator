@@ -422,7 +422,7 @@ async fn input_client_error() -> Result<(), anyhow::Error> {
     chat_mocks.mock(|when, then| {
         when.post().path(CHAT_COMPLETIONS_ENDPOINT).json(json!({
             "model": MODEL_ID,
-            "messages": messages_chat_completions_error.clone(),
+            "messages": messages_chat_completions_error,
         }));
         then.internal_server_error();
     });
