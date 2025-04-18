@@ -763,7 +763,7 @@ mod test {
         let result = ChatCompletionsRequest::deserialize(json!({
             "model": "test",
             "detectors": DetectorConfig::default(),
-            "messages": vec!["invalid"],
+            "messages": ["invalid"],
         }));
         assert!(result.is_err_and(|error| error.to_string() == "error deserializing `messages`"));
 
