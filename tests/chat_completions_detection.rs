@@ -139,7 +139,7 @@ async fn no_detections() -> Result<(), anyhow::Error> {
     chat_mocks.mock(|when, then| {
         when.post().path(CHAT_COMPLETIONS_ENDPOINT).json(json!({
             "model": MODEL_ID,
-            "messages": messages.clone(),
+            "messages": messages,
         }));
         then.json(&chat_completions_response);
     });
@@ -263,7 +263,7 @@ async fn input_detections() -> Result<(), anyhow::Error> {
     chat_mocks.mock(|when, then| {
         when.post().path(CHAT_COMPLETIONS_ENDPOINT).json(json!({
             "model": MODEL_ID,
-            "messages": messages.clone(),
+            "messages": messages,
         }));
         then.json(&chat_completions_response);
     });
@@ -647,7 +647,7 @@ async fn output_detections() -> Result<(), anyhow::Error> {
     chat_mocks.mock(|when, then| {
         when.post().path(CHAT_COMPLETIONS_ENDPOINT).json(json!({
             "model": MODEL_ID,
-            "messages": messages.clone(),
+            "messages": messages,
         }));
         then.json(&chat_completions_response);
     });
@@ -934,7 +934,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
                 },
                 "output": {}
             },
-            "messages": messages.clone(),
+            "messages": messages,
         }))
         .send()
         .await?;
@@ -964,7 +964,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
                 },
                 "output": {}
             },
-            "messages": messages.clone(),
+            "messages": messages,
         }))
         .send()
         .await?;
@@ -991,7 +991,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
                     ANSWER_RELEVANCE_DETECTOR: {},
                 },
             },
-            "messages": messages.clone(),
+            "messages": messages,
         }))
         .send()
         .await?;
@@ -1021,7 +1021,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
                     NON_EXISTING_DETECTOR: {},
                 }
             },
-            "messages": messages.clone(),
+            "messages": messages,
         }))
         .send()
         .await?;
