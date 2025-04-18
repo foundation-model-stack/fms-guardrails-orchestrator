@@ -739,7 +739,7 @@ mod test {
 
         let result = ChatCompletionsRequest::deserialize(json!({
             "detectors": DetectorConfig::default(),
-            "messages": vec![Message {
+            "messages": [Message {
                 content: Some(Content::Text("Hi there!".to_string())),
                 ..Default::default()
             }],
