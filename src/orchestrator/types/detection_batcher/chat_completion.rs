@@ -20,13 +20,12 @@ use super::{Chunk, DetectionBatcher, Detections, DetectorId, InputId};
 
 /// A batcher for chat completions.
 ///
-/// A batch corresponds to a chunk. Batches are
-/// returned in-order as detections from all detectors
-/// are received for the chunk. For chat completions,
-/// each chunk will also correspond to a choice.
-/// Each streamed event for chat completions has a
-/// 'choices' field, but only contains one choice per
-/// event, e.g.
+/// A batch corresponds to a chunk. Batches are returned in-order
+/// as detections from all detectors are received for the chunk.
+/// For chat completions, each chunk will also correspond to a choice,
+/// where choices are independent of each other. Each streamed event
+/// for chat completions has a 'choices' field, but only contains
+/// one choice per event, e.g.
 /// data: {"id":"chat-", ..., "choices":[{"index":0, ...}]}
 /// data: {"id":"chat-", ..., "choices":[{"index":1, ...}]}
 /// data: {"id":"chat-", ..., "choices":[{"index":0, ...}]}
@@ -41,10 +40,8 @@ use super::{Chunk, DetectionBatcher, Detections, DetectorId, InputId};
 pub struct ChatCompletionBatcher {
     n_detectors: usize,
     // (Chunk, choice_index for chunk), [chunk's detections]
-    // We place the chunk first so that ordering can be based
-    // on the chunk, and if chunks are the same for multiple choices,
-    // all of the chunks for the same choice will not be outputted
-    // before all of the chunks for the other choices.
+    // We place the chunk first since chunk ordering includes where
+    // the chunk is in all the processed messages.
     state: BTreeMap<(Chunk, u32), Vec<Detections>>,
 }
 
@@ -291,7 +288,161 @@ mod test {
         assert!(batcher.state.is_empty());
     }
 
-    // TODO: Add another test for different choice chunks
+    #[test]
+    fn test_batcher_with_out_of_order_chunks_different_per_choice() {
+        // Chunks here will be apply to the first choice
+        let choice_1_index = 0;
+        let choice_1_chunks = [
+            Chunk {
+                input_start_index: 0,
+                input_end_index: 10,
+                start: 0,
+                end: 46,
+                text: " a tool for the development \
+                    of simple systems."
+                    .into(),
+            },
+            Chunk {
+                input_start_index: 11,
+                input_end_index: 26,
+                start: 46,
+                end: 125,
+                text: " It has been used in many fields, such as \
+                    computer vision and audio processing."
+                    .into(),
+            },
+        ];
+
+        // Chunks here will apply to the second choice
+        let choice_2_index = 1;
+        let choice_2_chunks = [
+            Chunk {
+                input_start_index: 0,
+                input_end_index: 10,
+                start: 0,
+                end: 56,
+                text: " a powerful tool for the development \
+                    of complex systems."
+                    .into(),
+            },
+            Chunk {
+                input_start_index: 11,
+                input_end_index: 26,
+                start: 56,
+                end: 135,
+                text: " It has been used in many fields, such as \
+                    computer vision and image processing."
+                    .into(),
+            },
+        ];
+
+        // Create a batcher that will process batches for 2 detectors
+        let n_detectors = 2;
+        let mut batcher = ChatCompletionBatcher::new(n_detectors);
+
+        // Intersperse choice detections
+        // Push chunk-2 detections for pii detector, choice 1
+        batcher.push(
+            choice_1_index,
+            "pii".into(),
+            choice_1_chunks[1].clone(),
+            Detections::default(), // no detections
+        );
+        // Same for choice 2
+        batcher.push(
+            choice_2_index,
+            "pii".into(),
+            choice_2_chunks[1].clone(),
+            Detections::default(), // no detections
+        );
+        // Push chunk-2 detections for hap detector, choice 2
+        batcher.push(
+            choice_2_index,
+            "hap".into(),
+            choice_2_chunks[1].clone(),
+            Detections::default(), // no detections
+        );
+        // Same for choice 1
+        batcher.push(
+            choice_1_index,
+            "hap".into(),
+            choice_1_chunks[1].clone(),
+            Detections::default(), // no detections
+        );
+        // Push chunk-1 detections for hap detector, choice 1
+        batcher.push(
+            choice_1_index,
+            "hap".into(),
+            choice_1_chunks[0].clone(),
+            Detections::default(), // no detections
+        );
+        // Same for choice 2
+        batcher.push(
+            choice_2_index,
+            "hap".into(),
+            choice_2_chunks[0].clone(),
+            Detections::default(), // no detections
+        );
+
+        // We have all detections for chunk-2, but not chunk-1, for both choices
+        // pop_batch() should return None
+        assert!(batcher.pop_batch().is_none());
+
+        // Push chunk-1 detections for pii detector, for first choice
+        batcher.push(
+            choice_1_index,
+            "pii".into(),
+            choice_1_chunks[0].clone(),
+            vec![Detection {
+                start: Some(10),
+                end: Some(20),
+                detector_id: Some("pii".into()),
+                detection_type: "pii".into(),
+                score: 0.4,
+                ..Default::default()
+            }]
+            .into(),
+        );
+        // Push chunk-1 detections for pii detector, for second choice
+        batcher.push(
+            choice_2_index,
+            "pii".into(),
+            choice_2_chunks[0].clone(),
+            vec![Detection {
+                start: Some(10),
+                end: Some(20),
+                detector_id: Some("pii".into()),
+                detection_type: "pii".into(),
+                score: 0.4,
+                ..Default::default()
+            }]
+            .into(),
+        );
+
+        // We have all detections for chunk-1 and chunk-2
+        // Expect 4 chunks, with those for the chunk-1 chunks first
+        let batch = batcher.pop_batch();
+        assert!(batch.is_some_and(|(chunk, choice_index, detections)| {
+            chunk == choice_1_chunks[0] && choice_index == choice_1_index && detections.len() == 1
+        }));
+        let batch = batcher.pop_batch();
+        assert!(batch.is_some_and(|(chunk, choice_index, detections)| {
+            chunk == choice_2_chunks[0] && choice_index == choice_2_index && detections.len() == 1
+        }));
+
+        // chunk-2 chunks
+        let batch = batcher.pop_batch();
+        assert!(batch.is_some_and(|(chunk, choice_index, detections)| {
+            chunk == choice_1_chunks[1] && choice_index == choice_1_index && detections.is_empty()
+        }));
+        let batch = batcher.pop_batch();
+        assert!(batch.is_some_and(|(chunk, choice_index, detections)| {
+            chunk == choice_2_chunks[1] && choice_index == choice_2_index && detections.is_empty()
+        }));
+
+        // batcher state should be empty as all batche (4 chunks) have been returned
+        assert!(batcher.state.is_empty());
+    }
 
     // #[tokio::test]
     // async fn test_detection_batch_stream() -> Result<(), Error> {
