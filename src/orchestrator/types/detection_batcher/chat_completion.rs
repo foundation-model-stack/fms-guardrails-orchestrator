@@ -358,6 +358,12 @@ mod test {
         let mut batcher = ChatCompletionBatcher::new(n_detectors);
 
         // Intersperse choice detections
+        // NOTE: There may be an edge case when chunk-2 (or later) detections are pushed
+        // for all detectors here before their respective earlier detections (e.g. chunk-1 here).
+        // At this batcher level, ordering will be expected but may present as an edge case
+        // at the stream level ref.
+        // https://github.com/foundation-model-stack/fms-guardrails-orchestrator/issues/377
+
         // Push chunk-2 detections for pii detector, choice 1
         batcher.push(
             choice_1_index,
