@@ -64,22 +64,36 @@ impl DetectionBatcher for ChatCompletionBatcher {
         chunk: Chunk,
         detections: Detections,
     ) {
+        // println!("TREE LEN ON PUSH CALL {:?}", self.state.len());
+        // println!("WHAT IS IN TREE PUSH - KEYS {:?}", self.state.keys());
+        // println!("WHAT IS IN TREE PUSH - VALUES {:?}", self.state.values());
+
         match self.state.entry((chunk, input_id)) {
             btree_map::Entry::Vacant(entry) => {
                 // New chunk, insert entry
+                // println!("CHUNK ENTRY IN VACANT {:?}", entry);
+                // println!("CHOICE INDEX in VACANT {:?}", input_id);
+                // println!("DETECTIONS in VACANT {:?}", detections);
                 entry.insert(vec![detections]);
             }
             btree_map::Entry::Occupied(mut entry) => {
                 // Existing chunk, push detections
+                // println!("CHUNK ENTRY IN OCCUPIED {:?}", entry);
+                // println!("CHOICE INDEX in OCCUPIED {:?}", input_id);
+                // println!("DETECTIONS in OCCUPIED {:?}", detections);
                 entry.get_mut().push(detections);
             }
         }
     }
 
     fn pop_batch(&mut self) -> Option<Self::Batch> {
-        // Batching logic here will only assume detections with the same chunker
+        // Batching logic here will only assume detections with the same chunker type
         // Requirements in https://github.com/foundation-model-stack/fms-guardrails-orchestrator/blob/main/docs/architecture/adrs/005-chat-completion-support.md#streaming-response
         // for detections on whole output will be handled outside of the batcher
+
+        // println!("TREE LEN ON POP BATCH CALL {:?}", self.state.len());
+        // println!("WHAT IS IN TREE POP - KEYS {:?}", self.state.keys());
+        // println!("WHAT IS IN TREE POP - VALUES {:?}", self.state.values());
 
         // Check if we have all detections for the next chunk
         if self
@@ -89,6 +103,9 @@ impl DetectionBatcher for ChatCompletionBatcher {
         {
             // We have all detections for the chunk, remove and return it.
             if let Some(((chunk, choice_index), detections)) = self.state.pop_first() {
+                // println!("POPPED CHUNK {:?}", chunk);
+                // println!("CHOICE {:?}", choice_index);
+                // println!("TREE LEN {:?}", self.state.len());
                 let detections = detections.into_iter().flatten().collect();
                 return Some((chunk, choice_index, detections));
             }
@@ -440,12 +457,12 @@ mod test {
             chunk == choice_2_chunks[1] && choice_index == choice_2_index && detections.is_empty()
         }));
 
-        // batcher state should be empty as all batche (4 chunks) have been returned
+        // batcher state should be empty as all batches (4 chunks) have been returned
         assert!(batcher.state.is_empty());
     }
 
     #[tokio::test]
-    async fn test_detection_batch_stream() -> Result<(), Error> {
+    async fn test_detection_batch_stream_chat() -> Result<(), Error> {
         let choices = 2;
         // Chunks here will be apply to both choices
         let chunks = [
@@ -485,12 +502,22 @@ mod test {
         let streams = vec![pii_detections_stream, hap_detections_stream];
         let mut detection_batch_stream = DetectionBatchStream::new(batcher, streams);
 
-        // Send chunk-2 detections for pii detector
         for choice_index in 0..choices {
+            // Send chunk-2 detections for pii detector
             let _ = pii_detections_tx
                 .send(Ok((
                     choice_index,
                     "pii".into(),
+                    chunks[1].clone(),
+                    Detections::default(), // no detections
+                )))
+                .await;
+
+            // Send chunk-2 detections for hap detector
+            let _ = hap_detections_tx
+                .send(Ok((
+                    choice_index,
+                    "hap".into(),
                     chunks[1].clone(),
                     Detections::default(), // no detections
                 )))
@@ -505,17 +532,8 @@ mod test {
                     Detections::default(), // no detections
                 )))
                 .await;
-
-            // Send chunk-2 detections for hap detector
-            let _ = hap_detections_tx
-                .send(Ok((
-                    choice_index,
-                    "hap".into(),
-                    chunks[1].clone(),
-                    Detections::default(), // no detections
-                )))
-                .await;
         }
+
         // We have all detections for chunk-2, but not chunk-1
         // detection_batch_stream.next() future should not be ready
         assert!(matches!(
@@ -546,6 +564,7 @@ mod test {
         // We have all detections for chunk-1 and chunk-2
         // detection_batch_stream.next() should be ready and return chunk-1 with 1 pii detection, for choice 1
         let batch = detection_batch_stream.next().await;
+        // println!("BATCH {:?}", batch);
         assert!(batch.is_some_and(|result| {
             result.is_ok_and(|(chunk, choice_index, detections)| {
                 chunk == chunks[0] && choice_index == 0 && detections.len() == 1
@@ -568,14 +587,13 @@ mod test {
             })
         }));
 
-        // where did this one go?
-        // // then choice 2
-        // let batch = detection_batch_stream.next().await;
-        // assert!(batch.is_some_and(|result| {
-        //     result.is_ok_and(|(chunk, choice_index, detections)| {
-        //         chunk == chunks[1] && choice_index == 1 && detections.is_empty()
-        //     })
-        // }));
+        // then choice 2
+        let batch = detection_batch_stream.next().await;
+        assert!(batch.is_some_and(|result| {
+            result.is_ok_and(|(chunk, choice_index, detections)| {
+                chunk == chunks[1] && choice_index == 1 && detections.is_empty()
+            })
+        }));
 
         // detection_batch_stream.next() future should not be ready
         // as detection senders have not been closed
