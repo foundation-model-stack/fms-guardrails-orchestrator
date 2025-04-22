@@ -18,7 +18,7 @@
 use async_trait::async_trait;
 use hyper::HeaderMap;
 use serde::Serialize;
-use tracing::{info, instrument};
+use tracing::info;
 
 use super::{DEFAULT_PORT, DetectorClient, DetectorClientExt};
 use crate::{
@@ -34,14 +34,12 @@ use crate::{
 
 const CHAT_DETECTOR_ENDPOINT: &str = "/api/v1/text/chat";
 
-#[cfg_attr(test, faux::create)]
 #[derive(Clone)]
 pub struct TextChatDetectorClient {
     client: HttpClient,
     health_client: Option<HttpClient>,
 }
 
-#[cfg_attr(test, faux::methods)]
 impl TextChatDetectorClient {
     pub async fn new(
         config: &ServiceConfig,
@@ -63,7 +61,6 @@ impl TextChatDetectorClient {
         &self.client
     }
 
-    #[instrument(skip_all, fields(model_id, ?headers))]
     pub async fn text_chat(
         &self,
         model_id: &str,
@@ -76,7 +73,6 @@ impl TextChatDetectorClient {
     }
 }
 
-#[cfg_attr(test, faux::methods)]
 #[async_trait]
 impl Client for TextChatDetectorClient {
     fn name(&self) -> &str {
@@ -92,10 +88,8 @@ impl Client for TextChatDetectorClient {
     }
 }
 
-#[cfg_attr(test, faux::methods)]
 impl DetectorClient for TextChatDetectorClient {}
 
-#[cfg_attr(test, faux::methods)]
 impl HttpClientExt for TextChatDetectorClient {
     fn inner(&self) -> &HttpClient {
         self.client()

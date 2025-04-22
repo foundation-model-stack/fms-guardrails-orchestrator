@@ -21,7 +21,6 @@ use axum::http::HeaderMap;
 use http::header::CONTENT_TYPE;
 use hyper::StatusCode;
 use serde::Deserialize;
-use tracing::instrument;
 use url::Url;
 
 use super::{
@@ -79,7 +78,6 @@ pub trait DetectorClientExt: HttpClientExt {
 }
 
 impl<C: DetectorClient + HttpClientExt> DetectorClientExt for C {
-    #[instrument(skip_all, fields(model_id, url))]
     async fn post_to_detector<U: ResponseBody>(
         &self,
         model_id: &str,

@@ -18,7 +18,6 @@
 use async_trait::async_trait;
 use futures::{StreamExt, TryStreamExt};
 use hyper::HeaderMap;
-use tracing::{debug, instrument};
 
 use super::{BoxStream, Client, Error, NlpClient, TgisClient};
 use crate::{
@@ -39,7 +38,6 @@ use crate::{
     },
 };
 
-#[cfg_attr(test, faux::create)]
 #[derive(Clone)]
 pub struct GenerationClient(Option<GenerationClientInner>);
 
@@ -49,7 +47,6 @@ enum GenerationClientInner {
     Nlp(NlpClient),
 }
 
-#[cfg_attr(test, faux::methods)]
 impl GenerationClient {
     pub fn tgis(client: TgisClient) -> Self {
         Self(Some(GenerationClientInner::Tgis(client)))
@@ -63,7 +60,6 @@ impl GenerationClient {
         Self(None)
     }
 
-    #[instrument(skip_all, fields(model_id))]
     pub async fn tokenize(
         &self,
         model_id: String,
@@ -79,19 +75,15 @@ impl GenerationClient {
                     return_offsets: false,
                     truncate_input_tokens: 0,
                 };
-                debug!(provider = "tgis", ?request, "sending tokenize request");
                 let mut response = client.tokenize(request, headers).await?;
-                debug!(provider = "tgis", ?response, "received tokenize response");
                 let response = response.responses.swap_remove(0);
                 Ok((response.token_count, response.tokens))
             }
             Some(GenerationClientInner::Nlp(client)) => {
                 let request = TokenizationTaskRequest { text };
-                debug!(provider = "nlp", ?request, "sending tokenize request");
                 let response = client
                     .tokenization_task_predict(&model_id, request, headers)
                     .await?;
-                debug!(provider = "nlp", ?response, "received tokenize response");
                 let tokens = response
                     .results
                     .into_iter()
@@ -103,7 +95,6 @@ impl GenerationClient {
         }
     }
 
-    #[instrument(skip_all, fields(model_id))]
     pub async fn generate(
         &self,
         model_id: String,
@@ -120,9 +111,7 @@ impl GenerationClient {
                     requests: vec![GenerationRequest { text }],
                     params,
                 };
-                debug!(provider = "tgis", ?request, "sending generate request");
                 let response = client.generate(request, headers).await?;
-                debug!(provider = "tgis", ?response, "received generate response");
                 Ok(response.into())
             }
             Some(GenerationClientInner::Nlp(client)) => {
@@ -157,18 +146,15 @@ impl GenerationClient {
                         ..Default::default()
                     }
                 };
-                debug!(provider = "nlp", ?request, "sending generate request");
                 let response = client
                     .text_generation_task_predict(&model_id, request, headers)
                     .await?;
-                debug!(provider = "nlp", ?response, "received generate response");
                 Ok(response.into())
             }
             None => Err(Error::ModelNotFound { model_id }),
         }
     }
 
-    #[instrument(skip_all, fields(model_id))]
     pub async fn generate_stream(
         &self,
         model_id: String,
@@ -185,11 +171,6 @@ impl GenerationClient {
                     request: Some(GenerationRequest { text }),
                     params,
                 };
-                debug!(
-                    provider = "tgis",
-                    ?request,
-                    "sending generate_stream request"
-                );
                 let response_stream = client
                     .generate_stream(request, headers)
                     .await?
@@ -229,11 +210,6 @@ impl GenerationClient {
                         ..Default::default()
                     }
                 };
-                debug!(
-                    provider = "nlp",
-                    ?request,
-                    "sending generate_stream request"
-                );
                 let response_stream = client
                     .server_streaming_text_generation_task_predict(&model_id, request, headers)
                     .await?
@@ -246,7 +222,6 @@ impl GenerationClient {
     }
 }
 
-#[cfg_attr(test, faux::methods)]
 #[async_trait]
 impl Client for GenerationClient {
     fn name(&self) -> &str {

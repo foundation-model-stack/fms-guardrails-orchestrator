@@ -18,7 +18,7 @@
 use async_trait::async_trait;
 use hyper::HeaderMap;
 use serde::Serialize;
-use tracing::{info, instrument};
+use tracing::info;
 
 use super::{DEFAULT_PORT, DetectorClient, DetectorClientExt};
 use crate::{
@@ -30,14 +30,12 @@ use crate::{
 
 const GENERATION_DETECTOR_ENDPOINT: &str = "/api/v1/text/generation";
 
-#[cfg_attr(test, faux::create)]
 #[derive(Clone)]
 pub struct TextGenerationDetectorClient {
     client: HttpClient,
     health_client: Option<HttpClient>,
 }
 
-#[cfg_attr(test, faux::methods)]
 impl TextGenerationDetectorClient {
     pub async fn new(
         config: &ServiceConfig,
@@ -59,7 +57,6 @@ impl TextGenerationDetectorClient {
         &self.client
     }
 
-    #[instrument(skip_all, fields(model_id))]
     pub async fn text_generation(
         &self,
         model_id: &str,
@@ -72,7 +69,6 @@ impl TextGenerationDetectorClient {
     }
 }
 
-#[cfg_attr(test, faux::methods)]
 #[async_trait]
 impl Client for TextGenerationDetectorClient {
     fn name(&self) -> &str {
@@ -88,10 +84,8 @@ impl Client for TextGenerationDetectorClient {
     }
 }
 
-#[cfg_attr(test, faux::methods)]
 impl DetectorClient for TextGenerationDetectorClient {}
 
-#[cfg_attr(test, faux::methods)]
 impl HttpClientExt for TextGenerationDetectorClient {
     fn inner(&self) -> &HttpClient {
         self.client()

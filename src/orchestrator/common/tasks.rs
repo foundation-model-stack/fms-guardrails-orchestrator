@@ -21,7 +21,7 @@ use futures::{StreamExt, TryStreamExt, future::try_join_all, stream};
 use http::HeaderMap;
 use tokio::sync::{broadcast, mpsc};
 use tokio_stream::wrappers::ReceiverStream;
-use tracing::{debug, instrument};
+use tracing::{Instrument, debug, instrument};
 
 use super::{client::*, utils::*};
 use crate::{
@@ -39,7 +39,6 @@ use crate::{
 };
 
 /// Spawns chunk tasks. Returns a map of chunks.
-#[instrument(skip_all)]
 pub async fn chunks(
     ctx: Arc<Context>,
     chunkers: Vec<ChunkerId>,
@@ -55,42 +54,46 @@ pub async fn chunks(
             let inputs = inputs.clone();
             // Spawn task for chunker
             // Chunkers are processed in-parallel
-            tokio::spawn(async move {
-                // Send concurrent requests for inputs
-                let chunks = stream::iter(inputs)
-                    .map(|(offset, text)| {
-                        let ctx = ctx.clone();
-                        let chunker_id = chunker_id.clone();
-                        async move {
-                            if chunker_id == DEFAULT_CHUNKER_ID {
-                                debug!("using whole doc chunker");
-                                // Return single chunk
-                                return Ok(whole_doc_chunk(offset, text));
+            tokio::spawn(
+                async move {
+                    // Send concurrent requests for inputs
+                    let chunks = stream::iter(inputs)
+                        .map(|(offset, text)| {
+                            let ctx = ctx.clone();
+                            let chunker_id = chunker_id.clone();
+                            async move {
+                                if chunker_id == DEFAULT_CHUNKER_ID {
+                                    debug!("using whole doc chunker");
+                                    // Return single chunk
+                                    return Ok(whole_doc_chunk(offset, text));
+                                }
+                                let client = ctx
+                                    .clients
+                                    .get_as::<ChunkerClient>(&chunker_id)
+                                    .ok_or_else(|| Error::ChunkerNotFound(chunker_id.clone()))?;
+                                let chunks = chunk(client, chunker_id.clone(), text)
+                                    .await?
+                                    .into_iter()
+                                    .map(|mut chunk| {
+                                        chunk.start += offset;
+                                        chunk.end += offset;
+                                        chunk
+                                    })
+                                    .collect::<Chunks>();
+                                Ok::<_, Error>(chunks)
                             }
-                            let client = ctx
-                                .clients
-                                .get_as::<ChunkerClient>(&chunker_id)
-                                .ok_or_else(|| Error::ChunkerNotFound(chunker_id.clone()))?;
-                            let chunks = chunk(client, chunker_id.clone(), text)
-                                .await?
-                                .into_iter()
-                                .map(|mut chunk| {
-                                    chunk.start += offset;
-                                    chunk.end += offset;
-                                    chunk
-                                })
-                                .collect::<Chunks>();
-                            Ok::<_, Error>(chunks)
-                        }
-                    })
-                    .buffer_unordered(ctx.config.chunker_concurrent_requests)
-                    .try_collect::<Vec<_>>()
-                    .await?
-                    .into_iter()
-                    .flatten()
-                    .collect::<Chunks>();
-                Ok::<(ChunkerId, Chunks), Error>((chunker_id, chunks))
-            })
+                            .in_current_span()
+                        })
+                        .buffer_unordered(ctx.config.chunker_concurrent_requests)
+                        .try_collect::<Vec<_>>()
+                        .await?
+                        .into_iter()
+                        .flatten()
+                        .collect::<Chunks>();
+                    Ok::<(ChunkerId, Chunks), Error>((chunker_id, chunks))
+                }
+                .in_current_span(),
+            )
         })
         .collect::<Vec<_>>();
     let chunk_map = try_join_all(tasks)
@@ -102,7 +105,6 @@ pub async fn chunks(
 
 /// Spawns chunk streaming tasks.
 /// Returns a map of chunk broadcast channels.
-#[instrument(skip_all)]
 pub async fn chunk_streams(
     ctx: Arc<Context>,
     chunkers: Vec<ChunkerId>,
@@ -154,26 +156,29 @@ fn whole_doc_chunk_stream(
     // Create output channel
     let (output_tx, output_rx) = mpsc::channel(1);
     // Spawn task to collect input channel
-    tokio::spawn(async move {
-        // Collect input channel
-        // Alternatively, wrap receiver in BroadcastStream and collect() via StreamExt
-        let mut inputs = Vec::new();
-        while let Ok(input) = input_broadcast_rx.recv().await.unwrap() {
-            inputs.push(input);
+    tokio::spawn(
+        async move {
+            // Collect input channel
+            // Alternatively, wrap receiver in BroadcastStream and collect() via StreamExt
+            let mut inputs = Vec::new();
+            while let Ok(input) = input_broadcast_rx.recv().await.unwrap() {
+                inputs.push(input);
+            }
+            // Build chunk
+            let (indices, text): (Vec<_>, Vec<_>) = inputs.into_iter().unzip();
+            let text = text.concat();
+            let chunk = Chunk {
+                input_start_index: 0,
+                input_end_index: indices.last().copied().unwrap_or_default(),
+                start: 0,
+                end: text.chars().count(),
+                text,
+            };
+            // Send chunk to output channel
+            let _ = output_tx.send(Ok::<_, Error>(chunk)).await;
         }
-        // Build chunk
-        let (indices, text): (Vec<_>, Vec<_>) = inputs.into_iter().unzip();
-        let text = text.concat();
-        let chunk = Chunk {
-            input_start_index: 0,
-            input_end_index: indices.last().copied().unwrap_or_default(),
-            start: 0,
-            end: text.chars().count(),
-            text,
-        };
-        // Send chunk to output channel
-        let _ = output_tx.send(Ok::<_, Error>(chunk)).await;
-    });
+        .in_current_span(),
+    );
 
     Ok::<_, Error>(ReceiverStream::new(output_rx).boxed())
 }
@@ -206,24 +211,28 @@ pub async fn text_contents_detections(
         .map(|(detector_id, mut params, chunks)| {
             let ctx = ctx.clone();
             let headers = headers.clone();
-            let threshold = params.pop_threshold().unwrap_or_default();
+            let default_threshold = ctx.config.detector(&detector_id).unwrap().default_threshold;
+            let threshold = params.pop_threshold().unwrap_or(default_threshold);
             async move {
                 let client = ctx
                     .clients
                     .get_as::<TextContentsDetectorClient>(&detector_id)
                     .unwrap();
-                let detections =
-                    detect_text_contents(client, headers, detector_id.clone(), params, chunks)
-                        .await?
-                        .into_iter()
-                        .filter(|detection| detection.score >= threshold)
-                        .map(|mut detection| {
-                            detection.detector_id = Some(detector_id.clone());
-                            detection
-                        })
-                        .collect::<Detections>();
+                let detections = detect_text_contents(
+                    client,
+                    headers,
+                    detector_id.clone(),
+                    params,
+                    chunks.clone(),
+                    true,
+                )
+                .await?
+                .into_iter()
+                .filter(|detection| detection.score >= threshold)
+                .collect::<Detections>();
                 Ok::<_, Error>(detections)
             }
+            .in_current_span()
         })
         .buffer_unordered(ctx.config.detector_concurrent_requests)
         .try_collect::<Vec<_>>()
@@ -251,58 +260,64 @@ pub async fn text_contents_detection_streams(
     for (detector_id, mut params) in detectors {
         let ctx = ctx.clone();
         let headers = headers.clone();
-        let threshold = params.pop_threshold().unwrap_or_default();
+        let default_threshold = ctx.config.detector(&detector_id).unwrap().default_threshold;
+        let threshold = params.pop_threshold().unwrap_or(default_threshold);
         let chunker_id = ctx.config.get_chunker_id(&detector_id).unwrap();
         // Subscribe to chunk broadcast channel
         let mut chunk_rx = chunk_stream_map.get(&chunker_id).unwrap().subscribe();
         // Create detection channel
-        let (detection_tx, detection_rx) = mpsc::channel(32);
+        let (detection_tx, detection_rx) = mpsc::channel(128);
         // Spawn detection task
-        tokio::spawn(async move {
-            while let Ok(result) = chunk_rx.recv().await {
-                match result {
-                    Ok(chunk) => {
-                        let client = ctx
-                            .clients
-                            .get_as::<TextContentsDetectorClient>(&detector_id)
-                            .unwrap();
-                        match detect_text_contents(
-                            client,
-                            headers.clone(),
-                            detector_id.clone(),
-                            params.clone(),
-                            vec![chunk.clone()].into(),
-                        )
-                        .await
-                        {
-                            Ok(detections) => {
-                                // Apply threshold and set detector_id
-                                let detections = detections
-                                    .into_iter()
-                                    .filter(|detection| detection.score >= threshold)
-                                    .map(|mut detection| {
-                                        detection.detector_id = Some(detector_id.clone());
-                                        detection
-                                    })
-                                    .collect::<Detections>();
-                                // Send to detection channel
-                                let _ = detection_tx
-                                    .send(Ok((input_id, detector_id.clone(), chunk, detections)))
-                                    .await;
-                            }
-                            Err(error) => {
-                                // Send error to detection channel
-                                let _ = detection_tx.send(Err(error)).await;
+        tokio::spawn(
+            async move {
+                while let Ok(result) = chunk_rx.recv().await {
+                    match result {
+                        Ok(chunk) => {
+                            let client = ctx
+                                .clients
+                                .get_as::<TextContentsDetectorClient>(&detector_id)
+                                .unwrap();
+                            match detect_text_contents(
+                                client,
+                                headers.clone(),
+                                detector_id.clone(),
+                                params.clone(),
+                                vec![chunk.clone()].into(),
+                                false,
+                            )
+                            .await
+                            {
+                                Ok(detections) => {
+                                    // Apply threshold
+                                    let detections = detections
+                                        .into_iter()
+                                        .filter(|detection| detection.score >= threshold)
+                                        .collect::<Detections>();
+                                    // Send to detection channel
+                                    let _ = detection_tx
+                                        .send(Ok((
+                                            input_id,
+                                            detector_id.clone(),
+                                            chunk,
+                                            detections,
+                                        )))
+                                        .await;
+                                }
+                                Err(error) => {
+                                    // Send error to detection channel
+                                    let _ = detection_tx.send(Err(error)).await;
+                                }
                             }
                         }
-                    }
-                    Err(error) => {
-                        // Send error to detection channel
-                        let _ = detection_tx.send(Err(error)).await;
+                        Err(error) => {
+                            // Send error to detection channel
+                            let _ = detection_tx.send(Err(error)).await;
+                        }
                     }
                 }
             }
-        });
+            .in_current_span(),
+        );
         let detection_stream = ReceiverStream::new(detection_rx).boxed();
         streams.push(detection_stream);
     }
@@ -315,11 +330,10 @@ pub async fn text_contents_detection_streams(
 pub async fn text_generation_detections(
     ctx: Arc<Context>,
     headers: HeaderMap,
-    detectors: &HashMap<DetectorId, DetectorParams>,
-    input_id: InputId,
+    detectors: HashMap<DetectorId, DetectorParams>,
     prompt: String,
     generated_text: String,
-) -> Result<(InputId, Detections), Error> {
+) -> Result<Detections, Error> {
     let inputs = detectors
         .iter()
         .map(|(detector_id, params)| {
@@ -336,7 +350,8 @@ pub async fn text_generation_detections(
         .map(|(detector_id, mut params, prompt, generated_text)| {
             let ctx = ctx.clone();
             let headers = headers.clone();
-            let threshold = params.pop_threshold().unwrap_or_default();
+            let default_threshold = ctx.config.detector(&detector_id).unwrap().default_threshold;
+            let threshold = params.pop_threshold().unwrap_or(default_threshold);
             async move {
                 let client = ctx
                     .clients
@@ -353,19 +368,16 @@ pub async fn text_generation_detections(
                 .await?
                 .into_iter()
                 .filter(|detection| detection.score >= threshold)
-                .map(|mut detection| {
-                    detection.detector_id = Some(detector_id.clone());
-                    detection
-                })
                 .collect::<Detections>();
                 Ok::<_, Error>(detections)
             }
+            .in_current_span()
         })
         .buffer_unordered(ctx.config.detector_concurrent_requests)
         .try_collect::<Vec<_>>()
         .await?;
     let detections = results.into_iter().flatten().collect::<Detections>();
-    Ok((input_id, detections))
+    Ok(detections)
 }
 
 /// Spawns text chat detection tasks.
@@ -374,11 +386,10 @@ pub async fn text_generation_detections(
 pub async fn text_chat_detections(
     ctx: Arc<Context>,
     headers: HeaderMap,
-    detectors: &HashMap<DetectorId, DetectorParams>,
-    input_id: InputId,
+    detectors: HashMap<DetectorId, DetectorParams>,
     messages: Vec<openai::Message>,
     tools: Vec<openai::Tool>,
-) -> Result<(InputId, Detections), Error> {
+) -> Result<Detections, Error> {
     let inputs = detectors
         .iter()
         .map(|(detector_id, params)| {
@@ -395,7 +406,8 @@ pub async fn text_chat_detections(
         .map(|(detector_id, mut params, messages, tools)| {
             let ctx = ctx.clone();
             let headers = headers.clone();
-            let threshold = params.pop_threshold().unwrap_or_default();
+            let default_threshold = ctx.config.detector(&detector_id).unwrap().default_threshold;
+            let threshold = params.pop_threshold().unwrap_or(default_threshold);
             async move {
                 let client = ctx
                     .clients
@@ -412,19 +424,16 @@ pub async fn text_chat_detections(
                 .await?
                 .into_iter()
                 .filter(|detection| detection.score >= threshold)
-                .map(|mut detection| {
-                    detection.detector_id = Some(detector_id.clone());
-                    detection
-                })
                 .collect::<Detections>();
                 Ok::<_, Error>(detections)
             }
+            .in_current_span()
         })
         .buffer_unordered(ctx.config.detector_concurrent_requests)
         .try_collect::<Vec<_>>()
         .await?;
     let detections = results.into_iter().flatten().collect::<Detections>();
-    Ok((input_id, detections))
+    Ok(detections)
 }
 
 /// Spawns text context detection tasks.
@@ -433,12 +442,11 @@ pub async fn text_chat_detections(
 pub async fn text_context_detections(
     ctx: Arc<Context>,
     headers: HeaderMap,
-    detectors: &HashMap<DetectorId, DetectorParams>,
-    input_id: InputId,
+    detectors: HashMap<DetectorId, DetectorParams>,
     content: String,
     context_type: ContextType,
     context: Vec<String>,
-) -> Result<(InputId, Detections), Error> {
+) -> Result<Detections, Error> {
     let inputs = detectors
         .iter()
         .map(|(detector_id, params)| {
@@ -457,7 +465,9 @@ pub async fn text_context_detections(
             |(detector_id, mut params, content, context_type, context)| {
                 let ctx = ctx.clone();
                 let headers = headers.clone();
-                let threshold = params.pop_threshold().unwrap_or_default();
+                let default_threshold =
+                    ctx.config.detector(&detector_id).unwrap().default_threshold;
+                let threshold = params.pop_threshold().unwrap_or(default_threshold);
                 async move {
                     let client = ctx
                         .clients
@@ -475,20 +485,17 @@ pub async fn text_context_detections(
                     .await?
                     .into_iter()
                     .filter(|detection| detection.score >= threshold)
-                    .map(|mut detection| {
-                        detection.detector_id = Some(detector_id.clone());
-                        detection
-                    })
                     .collect::<Detections>();
                     Ok::<_, Error>(detections)
                 }
+                .in_current_span()
             },
         )
         .buffer_unordered(ctx.config.detector_concurrent_requests)
         .try_collect::<Vec<_>>()
         .await?;
     let detections = results.into_iter().flatten().collect::<Detections>();
-    Ok((input_id, detections))
+    Ok(detections)
 }
 
 /// Fans-out a stream to a broadcast channel.
@@ -496,7 +503,7 @@ pub fn broadcast_stream<T>(mut stream: BoxStream<T>) -> broadcast::Sender<T>
 where
     T: Clone + Send + 'static,
 {
-    let (broadcast_tx, _) = broadcast::channel(32);
+    let (broadcast_tx, _) = broadcast::channel(128);
     tokio::spawn({
         let broadcast_tx = broadcast_tx.clone();
         async move {

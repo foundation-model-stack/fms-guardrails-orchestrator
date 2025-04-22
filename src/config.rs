@@ -169,7 +169,7 @@ pub struct DetectorConfig {
     pub r#type: DetectorType,
 }
 
-#[derive(Default, Clone, Debug, Deserialize)]
+#[derive(Default, Clone, Debug, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum DetectorType {

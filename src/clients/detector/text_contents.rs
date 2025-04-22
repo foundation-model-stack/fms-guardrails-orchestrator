@@ -20,7 +20,7 @@ use std::collections::BTreeMap;
 use async_trait::async_trait;
 use hyper::HeaderMap;
 use serde::{Deserialize, Serialize};
-use tracing::{info, instrument};
+use tracing::info;
 
 use super::{DEFAULT_PORT, DetectorClient, DetectorClientExt};
 use crate::{
@@ -32,14 +32,12 @@ use crate::{
 
 const CONTENTS_DETECTOR_ENDPOINT: &str = "/api/v1/text/contents";
 
-#[cfg_attr(test, faux::create)]
 #[derive(Clone)]
 pub struct TextContentsDetectorClient {
     client: HttpClient,
     health_client: Option<HttpClient>,
 }
 
-#[cfg_attr(test, faux::methods)]
 impl TextContentsDetectorClient {
     pub async fn new(
         config: &ServiceConfig,
@@ -61,7 +59,6 @@ impl TextContentsDetectorClient {
         &self.client
     }
 
-    #[instrument(skip_all, fields(model_id))]
     pub async fn text_contents(
         &self,
         model_id: &str,
@@ -74,7 +71,6 @@ impl TextContentsDetectorClient {
     }
 }
 
-#[cfg_attr(test, faux::methods)]
 #[async_trait]
 impl Client for TextContentsDetectorClient {
     fn name(&self) -> &str {
@@ -90,10 +86,8 @@ impl Client for TextContentsDetectorClient {
     }
 }
 
-#[cfg_attr(test, faux::methods)]
 impl DetectorClient for TextContentsDetectorClient {}
 
-#[cfg_attr(test, faux::methods)]
 impl HttpClientExt for TextContentsDetectorClient {
     fn inner(&self) -> &HttpClient {
         self.client()

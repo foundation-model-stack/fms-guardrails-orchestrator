@@ -103,11 +103,12 @@ pub async fn detect_text_contents(
     detector_id: DetectorId,
     params: DetectorParams,
     chunks: Chunks,
+    apply_chunk_offset: bool,
 ) -> Result<Detections, Error> {
     let detector_id = detector_id.clone();
     let contents = chunks
-        .into_iter()
-        .map(|chunk| chunk.text)
+        .iter()
+        .map(|chunk| chunk.text.clone())
         .collect::<Vec<_>>();
     if contents.is_empty() {
         return Ok(Detections::default());
@@ -122,7 +123,26 @@ pub async fn detect_text_contents(
             error,
         })?;
     debug!(%detector_id, ?response, "received detector response");
-    Ok(response.into())
+    let detections = chunks
+        .into_iter()
+        .zip(response)
+        .flat_map(|(chunk, detections)| {
+            detections
+                .into_iter()
+                .map(|detection| {
+                    let mut detection: Detection = detection.into();
+                    detection.detector_id = Some(detector_id.clone());
+                    if apply_chunk_offset {
+                        let offset = chunk.start;
+                        detection.start = detection.start.map(|start| start + offset);
+                        detection.end = detection.end.map(|end| end + offset);
+                    }
+                    detection
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect::<Detections>();
+    Ok(detections)
 }
 
 /// Sends request to text generation detector client.
@@ -146,7 +166,15 @@ pub async fn detect_text_generation(
             error,
         })?;
     debug!(%detector_id, ?response, "received detector response");
-    Ok(response.into())
+    let detections = response
+        .into_iter()
+        .map(|detection| {
+            let mut detection: Detection = detection.into();
+            detection.detector_id = Some(detector_id.clone());
+            detection
+        })
+        .collect::<Detections>();
+    Ok(detections)
 }
 
 /// Sends request to text chat detector client.
@@ -170,7 +198,15 @@ pub async fn detect_text_chat(
             error,
         })?;
     debug!(%detector_id, ?response, "received detector response");
-    Ok(response.into())
+    let detections = response
+        .into_iter()
+        .map(|detection| {
+            let mut detection: Detection = detection.into();
+            detection.detector_id = Some(detector_id.clone());
+            detection
+        })
+        .collect::<Detections>();
+    Ok(detections)
 }
 
 /// Sends request to text context detector client.
@@ -195,7 +231,15 @@ pub async fn detect_text_context(
             error,
         })?;
     debug!(%detector_id, ?response, "received detector response");
-    Ok(response.into())
+    let detections = response
+        .into_iter()
+        .map(|detection| {
+            let mut detection: Detection = detection.into();
+            detection.detector_id = Some(detector_id.clone());
+            detection
+        })
+        .collect::<Detections>();
+    Ok(detections)
 }
 
 /// Sends request to openai chat completions client.
@@ -203,10 +247,8 @@ pub async fn detect_text_context(
 pub async fn chat_completion(
     client: &OpenAiClient,
     headers: HeaderMap,
-    mut request: openai::ChatCompletionsRequest,
+    request: openai::ChatCompletionsRequest,
 ) -> Result<openai::ChatCompletionsResponse, Error> {
-    request.stream = false;
-    request.detectors = None;
     let model_id = request.model.clone();
     debug!(%model_id, ?request, "sending chat completions request");
     let response = client
@@ -225,10 +267,8 @@ pub async fn chat_completion(
 pub async fn chat_completion_stream(
     client: &OpenAiClient,
     headers: HeaderMap,
-    mut request: openai::ChatCompletionsRequest,
+    request: openai::ChatCompletionsRequest,
 ) -> Result<ChatCompletionStream, Error> {
-    request.stream = true;
-    request.detectors = None;
     let model_id = request.model.clone();
     debug!(%model_id, ?request, "sending chat completions stream request");
     let response = client
