@@ -64,23 +64,13 @@ impl DetectionBatcher for ChatCompletionBatcher {
         chunk: Chunk,
         detections: Detections,
     ) {
-        // println!("TREE LEN ON PUSH CALL {:?}", self.state.len());
-        // println!("WHAT IS IN TREE PUSH - KEYS {:?}", self.state.keys());
-        // println!("WHAT IS IN TREE PUSH - VALUES {:?}", self.state.values());
-
         match self.state.entry((chunk, input_id)) {
             btree_map::Entry::Vacant(entry) => {
                 // New chunk, insert entry
-                // println!("CHUNK ENTRY IN VACANT {:?}", entry);
-                // println!("CHOICE INDEX in VACANT {:?}", input_id);
-                // println!("DETECTIONS in VACANT {:?}", detections);
                 entry.insert(vec![detections]);
             }
             btree_map::Entry::Occupied(mut entry) => {
                 // Existing chunk, push detections
-                // println!("CHUNK ENTRY IN OCCUPIED {:?}", entry);
-                // println!("CHOICE INDEX in OCCUPIED {:?}", input_id);
-                // println!("DETECTIONS in OCCUPIED {:?}", detections);
                 entry.get_mut().push(detections);
             }
         }
@@ -91,10 +81,6 @@ impl DetectionBatcher for ChatCompletionBatcher {
         // Requirements in https://github.com/foundation-model-stack/fms-guardrails-orchestrator/blob/main/docs/architecture/adrs/005-chat-completion-support.md#streaming-response
         // for detections on whole output will be handled outside of the batcher
 
-        // println!("TREE LEN ON POP BATCH CALL {:?}", self.state.len());
-        // println!("WHAT IS IN TREE POP - KEYS {:?}", self.state.keys());
-        // println!("WHAT IS IN TREE POP - VALUES {:?}", self.state.values());
-
         // Check if we have all detections for the next chunk
         if self
             .state
@@ -103,9 +89,6 @@ impl DetectionBatcher for ChatCompletionBatcher {
         {
             // We have all detections for the chunk, remove and return it.
             if let Some(((chunk, choice_index), detections)) = self.state.pop_first() {
-                // println!("POPPED CHUNK {:?}", chunk);
-                // println!("CHOICE {:?}", choice_index);
-                // println!("TREE LEN {:?}", self.state.len());
                 let detections = detections.into_iter().flatten().collect();
                 return Some((chunk, choice_index, detections));
             }
@@ -570,7 +553,6 @@ mod test {
         // We have all detections for chunk-1 and chunk-2
         // detection_batch_stream.next() should be ready and return chunk-1 with 1 pii detection, for choice 1
         let batch = detection_batch_stream.next().await;
-        // println!("BATCH 1 {:?}", batch);
         assert!(batch.is_some_and(|result| {
             result.is_ok_and(|(chunk, choice_index, detections)| {
                 chunk == chunks[0] && choice_index == 0 && detections.len() == 1
@@ -579,7 +561,6 @@ mod test {
 
         // then choice 2
         let batch = detection_batch_stream.next().await;
-        // println!("BATCH 2 {:?}", batch);
         assert!(batch.is_some_and(|result| {
             result.is_ok_and(|(chunk, choice_index, detections)| {
                 chunk == chunks[0] && choice_index == 1 && detections.len() == 1
@@ -595,6 +576,7 @@ mod test {
         }));
 
         // then choice 2
+        // TODO: stream hanging issue here - ref. https://github.com/foundation-model-stack/fms-guardrails-orchestrator/issues/378
         let batch = detection_batch_stream.next().await;
         assert!(batch.is_some_and(|result| {
             result.is_ok_and(|(chunk, choice_index, detections)| {
