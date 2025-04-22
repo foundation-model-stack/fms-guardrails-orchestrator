@@ -1382,7 +1382,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc2f4eb4bc735547cfed7c0a4922cbd04a4655978c09b54f1f7b228750664c34"
 dependencies = [
  "cfg-if",
- "windows-targets 0.52.6",
+ "windows-targets 0.48.5",
 ]
 
 [[package]]
@@ -1515,8 +1515,8 @@ dependencies = [
 
 [[package]]
 name = "mocktail"
-version = "0.2.4-alpha"
-source = "git+https://github.com/IBM/mocktail#f21198017f92840b9c7b478763b0bf9d79cbb213"
+version = "0.2.5-alpha"
+source = "git+https://github.com/IBM/mocktail#6296c2783ba1d433407ae1d8144ec5619dc021b9"
 dependencies = [
  "bytes",
  "futures",
@@ -1532,7 +1532,6 @@ dependencies = [
  "thiserror 2.0.12",
  "tokio",
  "tokio-stream",
- "tonic",
  "tracing",
  "url",
  "uuid",
