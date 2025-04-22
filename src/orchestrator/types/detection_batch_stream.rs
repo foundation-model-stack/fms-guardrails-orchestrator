@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 /*
  Copyright FMS Guardrails Orchestrator Authors
 
@@ -37,30 +35,33 @@ where
     B: DetectionBatcher,
 {
     pub fn new(batcher: B, streams: Vec<DetectionStream>) -> Self {
-        // Create batch channel
         let (batch_tx, batch_rx) = mpsc::channel(32);
+        let (shutdown_tx, shutdown_rx) = oneshot::channel();
+
         // Create a stream set (single stream) from multiple detection streams
         let mut stream_set = stream::select_all(streams);
         // Create batcher manager
         // This is an actor that manages batcher state rather than using locks.
         let batcher_manager = DetectionBatcherManagerHandle::new(batcher);
 
-        // Spawn task to send batches as they become available
+        // Spawn batch sender task
         tokio::spawn({
             let batch_tx = batch_tx.clone();
             let batcher_manager = batcher_manager.clone();
             async move {
-                loop {
-                    // Pop next batch, if ready
-                    if let Some(batch) = batcher_manager.pop().await {
-                        // Send batch to batch channel
-                        let _ = batch_tx.send(Ok(batch)).await;
-                    }
-                    tokio::time::sleep(Duration::from_millis(1)).await;
+                tokio::select! {
+                    _ = async {
+                        loop {
+                            if let Some(batch) = batcher_manager.pop().await {
+                                let _ = batch_tx.send(Ok(batch)).await;
+                            }
+                        }
+                    } => {},
+                    _ = shutdown_rx => {}
                 }
             }
         });
-        // Spawn task to consume detections and send them to the batcher
+        // Spawn detection consumer task
         tokio::spawn(async move {
             while let Some(result) = stream_set.next().await {
                 match result {
@@ -77,6 +78,8 @@ where
                     }
                 }
             }
+            // Send shutdown signal to batch sender task
+            let _ = shutdown_tx.send(());
         });
 
         Self { batch_rx }
