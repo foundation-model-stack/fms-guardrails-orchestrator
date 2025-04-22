@@ -21,10 +21,9 @@ use common::{
         ANSWER_RELEVANCE_DETECTOR_SENTENCE, CHAT_DETECTOR_ENDPOINT, NON_EXISTING_DETECTOR,
         PII_DETECTOR,
     },
-    errors::{DetectorError, OrchestratorError},
+    errors::{DetectorError, OrchestratorError, get_orchestrator_internal_error},
     orchestrator::{
-        ORCHESTRATOR_CHAT_DETECTION_ENDPOINT, ORCHESTRATOR_CONFIG_FILE_PATH,
-        ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE, TestOrchestratorServer,
+        ORCHESTRATOR_CHAT_DETECTION_ENDPOINT, ORCHESTRATOR_CONFIG_FILE_PATH, TestOrchestratorServer,
     },
 };
 use fms_guardrails_orchestr8::{
@@ -254,8 +253,7 @@ async fn client_errors() -> Result<(), anyhow::Error> {
     assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
     let response = response.json::<OrchestratorError>().await?;
     debug!("{response:#?}");
-    assert_eq!(response.code, 500);
-    assert_eq!(response.details, ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE);
+    assert_eq!(response, get_orchestrator_internal_error());
 
     Ok(())
 }

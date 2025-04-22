@@ -21,10 +21,10 @@ use common::{
         ANSWER_RELEVANCE_DETECTOR_SENTENCE, CONTEXT_DOC_DETECTOR_ENDPOINT, FACT_CHECKING_DETECTOR,
         NON_EXISTING_DETECTOR,
     },
-    errors::{DetectorError, OrchestratorError},
+    errors::{DetectorError, OrchestratorError, get_orchestrator_internal_error},
     orchestrator::{
         ORCHESTRATOR_CONFIG_FILE_PATH, ORCHESTRATOR_CONTEXT_DOCS_DETECTION_ENDPOINT,
-        ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE, TestOrchestratorServer,
+        TestOrchestratorServer,
     },
 };
 use fms_guardrails_orchestr8::{
@@ -217,8 +217,7 @@ async fn client_error() -> Result<(), anyhow::Error> {
     // assertions
     assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
     let response = response.json::<OrchestratorError>().await?;
-    assert_eq!(response.code, detector_error.code);
-    assert_eq!(response.details, ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE);
+    assert_eq!(response, get_orchestrator_internal_error());
 
     Ok(())
 }

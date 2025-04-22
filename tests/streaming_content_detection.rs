@@ -23,10 +23,10 @@ use common::{
         DETECTOR_NAME_PARENTHESIS_SENTENCE, FACT_CHECKING_DETECTOR_SENTENCE, NON_EXISTING_DETECTOR,
         TEXT_CONTENTS_DETECTOR_ENDPOINT,
     },
-    errors::{DetectorError, OrchestratorError},
+    errors::{DetectorError, OrchestratorError, get_orchestrator_internal_error},
     orchestrator::{
-        ORCHESTRATOR_CONFIG_FILE_PATH, ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE,
-        ORCHESTRATOR_STREAM_CONTENT_DETECTION_ENDPOINT, TestOrchestratorServer, json_lines_stream,
+        ORCHESTRATOR_CONFIG_FILE_PATH, ORCHESTRATOR_STREAM_CONTENT_DETECTION_ENDPOINT,
+        TestOrchestratorServer, json_lines_stream,
     },
 };
 use fms_guardrails_orchestr8::{
@@ -505,6 +505,8 @@ async fn client_error() -> Result<(), anyhow::Error> {
     let chunker_error_payload = "Chunker should return an error.";
     let detector_error_payload = "Detector should return an error.";
 
+    let orchestrator_error_500 = get_orchestrator_internal_error();
+
     let mut chunker_mocks = MockSet::new();
     chunker_mocks.mock(|when, then| {
         when.path(CHUNKER_STREAMING_ENDPOINT)
@@ -582,10 +584,7 @@ async fn client_error() -> Result<(), anyhow::Error> {
         debug!("recv: {msg:?}");
         messages.push(serde_json::from_slice(&msg[..]).unwrap());
     }
-    let expected_messages = [OrchestratorError {
-        code: 500,
-        details: ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE.into(),
-    }];
+    let expected_messages = [orchestrator_error_500];
     assert_eq!(messages, expected_messages);
 
     // Assert detector error
@@ -609,10 +608,6 @@ async fn client_error() -> Result<(), anyhow::Error> {
         debug!("recv: {msg:?}");
         messages.push(serde_json::from_slice(&msg[..]).unwrap());
     }
-    let expected_messages = [OrchestratorError {
-        code: 500,
-        details: ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE.into(),
-    }];
     assert_eq!(messages, expected_messages);
 
     Ok(())

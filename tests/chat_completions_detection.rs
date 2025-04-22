@@ -23,10 +23,10 @@ use common::{
         DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC, NON_EXISTING_DETECTOR,
         TEXT_CONTENTS_DETECTOR_ENDPOINT,
     },
-    errors::{DetectorError, OrchestratorError},
+    errors::{DetectorError, OrchestratorError, get_orchestrator_internal_error},
     orchestrator::{
         ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT, ORCHESTRATOR_CONFIG_FILE_PATH,
-        ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE, TestOrchestratorServer,
+        TestOrchestratorServer,
     },
 };
 use fms_guardrails_orchestr8::{
@@ -319,10 +319,7 @@ async fn input_client_error() -> Result<(), anyhow::Error> {
         message: "Internal detector error.".into(),
     };
     // Add 500 expected orchestrator error response
-    let expected_orchestrator_error = OrchestratorError {
-        code: 500,
-        details: ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE.to_string(),
-    };
+    let expected_orchestrator_error = get_orchestrator_internal_error();
 
     // Add input for error scenarios
     let chunker_error_input = "This should return a 500 error on chunker";
@@ -704,10 +701,7 @@ async fn output_client_error() -> Result<(), anyhow::Error> {
         message: "Internal detector error.".into(),
     };
     // Add 500 expected orchestrator mock response
-    let expected_orchestrator_error = OrchestratorError {
-        code: 500,
-        details: ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE.to_string(),
-    };
+    let expected_orchestrator_error = get_orchestrator_internal_error();
 
     // Add input for error scenarios
     let chunker_error_input = "This should return a 500 error on chunker";

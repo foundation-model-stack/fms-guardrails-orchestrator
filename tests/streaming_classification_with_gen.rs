@@ -27,15 +27,14 @@ use common::{
         DETECTOR_NAME_PARENTHESIS_SENTENCE, FACT_CHECKING_DETECTOR_SENTENCE, NON_EXISTING_DETECTOR,
         TEXT_CONTENTS_DETECTOR_ENDPOINT,
     },
-    errors::{DetectorError, OrchestratorError},
+    errors::{DetectorError, OrchestratorError, get_orchestrator_internal_error},
     generation::{
         GENERATION_NLP_MODEL_ID_HEADER_NAME, GENERATION_NLP_STREAMING_ENDPOINT,
         GENERATION_NLP_TOKENIZATION_ENDPOINT,
     },
     orchestrator::{
-        ORCHESTRATOR_CONFIG_FILE_PATH, ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE,
-        ORCHESTRATOR_STREAMING_ENDPOINT, ORCHESTRATOR_UNSUITABLE_INPUT_MESSAGE, SseStream,
-        TestOrchestratorServer,
+        ORCHESTRATOR_CONFIG_FILE_PATH, ORCHESTRATOR_STREAMING_ENDPOINT,
+        ORCHESTRATOR_UNSUITABLE_INPUT_MESSAGE, SseStream, TestOrchestratorServer,
     },
 };
 use eventsource_stream::Eventsource;
@@ -486,6 +485,8 @@ async fn input_detector_client_error() -> Result<(), anyhow::Error> {
     let detector_error_input = "Detector should return an error";
     let generation_server_error_input = "Generation should return an error";
 
+    let orchestrator_error_500 = get_orchestrator_internal_error();
+
     let mut chunker_mocks = MockSet::new();
     chunker_mocks.mock(|when, then| {
         when.path(CHUNKER_UNARY_ENDPOINT)
@@ -598,13 +599,7 @@ async fn input_detector_client_error() -> Result<(), anyhow::Error> {
     debug!("{messages:#?}");
 
     assert_eq!(messages.len(), 1);
-    assert_eq!(
-        messages[0],
-        OrchestratorError {
-            code: 500,
-            details: ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE.into()
-        }
-    );
+    assert_eq!(messages[0], orchestrator_error_500);
 
     // Test error from detector
     let response = orchestrator_server
@@ -631,13 +626,7 @@ async fn input_detector_client_error() -> Result<(), anyhow::Error> {
     debug!("{messages:#?}");
 
     assert_eq!(messages.len(), 1);
-    assert_eq!(
-        messages[0],
-        OrchestratorError {
-            code: 500,
-            details: ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE.into()
-        }
-    );
+    assert_eq!(messages[0], orchestrator_error_500);
 
     // Test error from generation server
     let response = orchestrator_server
@@ -664,13 +653,7 @@ async fn input_detector_client_error() -> Result<(), anyhow::Error> {
     debug!("{messages:#?}");
 
     assert_eq!(messages.len(), 1);
-    assert_eq!(
-        messages[0],
-        OrchestratorError {
-            code: 500,
-            details: ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE.into()
-        }
-    );
+    assert_eq!(messages[0], orchestrator_error_500);
 
     Ok(())
 }
@@ -1530,6 +1513,8 @@ async fn output_detectors_detections() -> Result<(), anyhow::Error> {
 async fn output_detector_client_error() -> Result<(), anyhow::Error> {
     let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE;
 
+    let orchestrator_error_500 = get_orchestrator_internal_error();
+
     // Add generation mock
     let model_id = "my-super-model-8B";
     let mut generation_mocks = MockSet::new();
@@ -1749,13 +1734,7 @@ async fn output_detector_client_error() -> Result<(), anyhow::Error> {
     debug!("{messages:#?}");
 
     assert_eq!(messages.len(), 1);
-    assert_eq!(
-        messages[0],
-        OrchestratorError {
-            code: 500,
-            details: ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE.into()
-        }
-    );
+    assert_eq!(messages[0], orchestrator_error_500);
 
     // assert detector error
     let response = orchestrator_server
@@ -1807,13 +1786,7 @@ async fn output_detector_client_error() -> Result<(), anyhow::Error> {
     assert_eq!(first_response.start_index, Some(0));
     assert_eq!(first_response.processed_index, Some(11));
 
-    assert_eq!(
-        second_response,
-        OrchestratorError {
-            code: 500,
-            details: ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE.into()
-        }
-    );
+    assert_eq!(second_response, orchestrator_error_500);
 
     Ok(())
 }

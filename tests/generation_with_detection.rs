@@ -21,11 +21,11 @@ use common::{
         ANSWER_RELEVANCE_DETECTOR, DETECTION_ON_GENERATION_DETECTOR_ENDPOINT,
         FACT_CHECKING_DETECTOR_SENTENCE, NON_EXISTING_DETECTOR,
     },
-    errors::{DetectorError, OrchestratorError},
+    errors::{DetectorError, OrchestratorError, get_orchestrator_internal_error},
     generation::{GENERATION_NLP_MODEL_ID_HEADER_NAME, GENERATION_NLP_UNARY_ENDPOINT},
     orchestrator::{
         ORCHESTRATOR_CONFIG_FILE_PATH, ORCHESTRATOR_GENERATION_WITH_DETECTION_ENDPOINT,
-        ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE, TestOrchestratorServer,
+        TestOrchestratorServer,
     },
 };
 use fms_guardrails_orchestr8::{
@@ -221,6 +221,7 @@ async fn client_error() -> Result<(), anyhow::Error> {
         code: 500,
         message: "Here's your 500 error".into(),
     };
+    let orchestrator_error_500 = get_orchestrator_internal_error();
 
     // Add generation mock
     let model_id = "my-super-model-8B";
@@ -286,10 +287,7 @@ async fn client_error() -> Result<(), anyhow::Error> {
     assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
     assert_eq!(
         response.json::<OrchestratorError>().await?,
-        OrchestratorError {
-            code: 500,
-            details: ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE.into()
-        }
+        orchestrator_error_500
     );
 
     // assert generation error
@@ -308,10 +306,7 @@ async fn client_error() -> Result<(), anyhow::Error> {
     assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
     assert_eq!(
         response.json::<OrchestratorError>().await?,
-        OrchestratorError {
-            code: 500,
-            details: ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE.into()
-        }
+        orchestrator_error_500
     );
 
     Ok(())

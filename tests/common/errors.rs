@@ -16,6 +16,8 @@
 */
 use serde::{Deserialize, Serialize};
 
+use super::orchestrator::ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE;
+
 /// Errors returned by detector endpoints.
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct DetectorError {
@@ -28,4 +30,13 @@ pub struct DetectorError {
 pub struct OrchestratorError {
     pub code: u16,
     pub details: String,
+}
+
+/// Helper function that generates an orchestrator internal
+/// server error.
+pub fn get_orchestrator_internal_error() -> OrchestratorError {
+    OrchestratorError {
+        code: 500,
+        details: ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE.to_string(),
+    }
 }

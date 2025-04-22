@@ -25,14 +25,14 @@ use common::{
         DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC, NON_EXISTING_DETECTOR,
         TEXT_CONTENTS_DETECTOR_ENDPOINT,
     },
-    errors::{DetectorError, OrchestratorError},
+    errors::{DetectorError, OrchestratorError, get_orchestrator_internal_error},
     generation::{
         GENERATION_NLP_MODEL_ID_HEADER_NAME, GENERATION_NLP_TOKENIZATION_ENDPOINT,
         GENERATION_NLP_UNARY_ENDPOINT,
     },
     orchestrator::{
-        ORCHESTRATOR_CONFIG_FILE_PATH, ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE,
-        ORCHESTRATOR_UNARY_ENDPOINT, ORCHESTRATOR_UNSUITABLE_INPUT_MESSAGE, TestOrchestratorServer,
+        ORCHESTRATOR_CONFIG_FILE_PATH, ORCHESTRATOR_UNARY_ENDPOINT,
+        ORCHESTRATOR_UNSUITABLE_INPUT_MESSAGE, TestOrchestratorServer,
     },
 };
 use fms_guardrails_orchestr8::{
@@ -647,6 +647,8 @@ async fn input_detector_client_error() -> Result<(), anyhow::Error> {
         message: "Internal detector error.".into(),
     };
 
+    let orchestrator_error_500 = get_orchestrator_internal_error();
+
     // Add input for error scenarios
     let chunker_error_input = "This should return a 500 error on chunker";
     let detector_error_input = "This should return a 500 error on detector";
@@ -752,8 +754,7 @@ async fn input_detector_client_error() -> Result<(), anyhow::Error> {
 
     // Assertions for generation internal server error scenario
     let results = response.json::<OrchestratorError>().await?;
-    assert_eq!(results.code, StatusCode::INTERNAL_SERVER_ERROR);
-    assert_eq!(results.details, ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE);
+    assert_eq!(results, orchestrator_error_500);
 
     // Orchestrator request with unary response for detector internal server error scenario
     let response = orchestrator_server
@@ -778,8 +779,7 @@ async fn input_detector_client_error() -> Result<(), anyhow::Error> {
 
     // Assertions for detector internal server error scenario
     let results = response.json::<OrchestratorError>().await?;
-    assert_eq!(results.code, StatusCode::INTERNAL_SERVER_ERROR);
-    assert_eq!(results.details, ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE);
+    assert_eq!(results, orchestrator_error_500);
 
     // Orchestrator request with unary response
     let response = orchestrator_server
@@ -804,8 +804,7 @@ async fn input_detector_client_error() -> Result<(), anyhow::Error> {
 
     // Assertions for chunker internal server error scenario
     let results = response.json::<OrchestratorError>().await?;
-    assert_eq!(results.code, StatusCode::INTERNAL_SERVER_ERROR);
-    assert_eq!(results.details, ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE);
+    assert_eq!(results, orchestrator_error_500);
 
     Ok(())
 }
@@ -1123,6 +1122,8 @@ async fn output_detector_client_error() -> Result<(), anyhow::Error> {
         message: "Internal detector error.".into(),
     };
 
+    let orchestrator_error_500 = get_orchestrator_internal_error();
+
     // Add input for error scenarios
     let chunker_error_input = "This should return a 500 error on chunker";
     let detector_error_input = "This should return a 500 error on detector";
@@ -1256,8 +1257,7 @@ async fn output_detector_client_error() -> Result<(), anyhow::Error> {
 
     // Assertions for generation internal server error scenario
     let results = response.json::<OrchestratorError>().await?;
-    assert_eq!(results.code, StatusCode::INTERNAL_SERVER_ERROR);
-    assert_eq!(results.details, ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE);
+    assert_eq!(results, orchestrator_error_500);
 
     // Orchestrator request with unary response for detector internal server error scenario
     let response = orchestrator_server
@@ -1281,8 +1281,7 @@ async fn output_detector_client_error() -> Result<(), anyhow::Error> {
 
     // Assertions for detector internal server error scenario
     let results = response.json::<OrchestratorError>().await?;
-    assert_eq!(results.code, StatusCode::INTERNAL_SERVER_ERROR);
-    assert_eq!(results.details, ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE);
+    assert_eq!(results, orchestrator_error_500);
 
     // Orchestrator request with unary response
     let response = orchestrator_server
@@ -1306,8 +1305,7 @@ async fn output_detector_client_error() -> Result<(), anyhow::Error> {
 
     // Assertions for chunker internal server error scenario
     let results = response.json::<OrchestratorError>().await?;
-    assert_eq!(results.code, StatusCode::INTERNAL_SERVER_ERROR);
-    assert_eq!(results.details, ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE);
+    assert_eq!(results, orchestrator_error_500);
 
     Ok(())
 }
