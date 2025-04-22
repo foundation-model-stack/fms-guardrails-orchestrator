@@ -21,7 +21,11 @@ use common::{
         ANSWER_RELEVANCE_DETECTOR, DETECTION_ON_GENERATION_DETECTOR_ENDPOINT,
         FACT_CHECKING_DETECTOR_SENTENCE, NON_EXISTING_DETECTOR,
     },
-    errors::{DetectorError, OrchestratorError, get_orchestrator_internal_error},
+    errors::{
+        DetectorError, OrchestratorError, get_orchestrator_detector_not_found_error,
+        get_orchestrator_detector_not_supported_error, get_orchestrator_internal_error,
+        get_orchestrator_required_error,
+    },
     generation::{GENERATION_NLP_MODEL_ID_HEADER_NAME, GENERATION_NLP_UNARY_ENDPOINT},
     orchestrator::{
         ORCHESTRATOR_CONFIG_FILE_PATH, ORCHESTRATOR_GENERATION_WITH_DETECTION_ENDPOINT,
@@ -416,13 +420,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
     let response = response.json::<OrchestratorError>().await?;
     debug!("{response:#?}");
-    assert_eq!(
-        response,
-        OrchestratorError {
-            code: 422,
-            details: "`detectors` is required".into()
-        },
-    );
+    assert_eq!(response, get_orchestrator_required_error("detectors"));
 
     // assert request with invalid type detectors
     let response = orchestrator_server
@@ -445,13 +443,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     debug!("{response:#?}");
     assert_eq!(
         response,
-        OrchestratorError {
-            code: 422,
-            details: format!(
-                "detector `{}` is not supported by this endpoint",
-                FACT_CHECKING_DETECTOR_SENTENCE
-            )
-        },
+        get_orchestrator_detector_not_supported_error(FACT_CHECKING_DETECTOR_SENTENCE),
         "failed at invalid detector scenario"
     );
 
@@ -473,10 +465,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     debug!("{response:#?}");
     assert_eq!(
         response,
-        OrchestratorError {
-            code: 404,
-            details: format!("detector `{}` not found", NON_EXISTING_DETECTOR)
-        },
+        get_orchestrator_detector_not_found_error(NON_EXISTING_DETECTOR),
         "failed on non-existing detector scenario"
     );
 

@@ -21,7 +21,10 @@ use common::{
         ANSWER_RELEVANCE_DETECTOR_SENTENCE, CHAT_DETECTOR_ENDPOINT, NON_EXISTING_DETECTOR,
         PII_DETECTOR,
     },
-    errors::{DetectorError, OrchestratorError, get_orchestrator_internal_error},
+    errors::{
+        DetectorError, OrchestratorError, get_orchestrator_detector_not_found_error,
+        get_orchestrator_detector_not_supported_error, get_orchestrator_internal_error,
+    },
     orchestrator::{
         ORCHESTRATOR_CHAT_DETECTION_ENDPOINT, ORCHESTRATOR_CONFIG_FILE_PATH, TestOrchestratorServer,
     },
@@ -419,13 +422,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     debug!("{response:#?}");
     assert_eq!(
         response,
-        OrchestratorError {
-            code: 422,
-            details: format!(
-                "detector `{}` is not supported by this endpoint",
-                ANSWER_RELEVANCE_DETECTOR_SENTENCE
-            )
-        },
+        get_orchestrator_detector_not_supported_error(ANSWER_RELEVANCE_DETECTOR_SENTENCE),
         "failed on detector with invalid type scenario"
     );
 
@@ -445,10 +442,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     debug!("{response:#?}");
     assert_eq!(
         response,
-        OrchestratorError {
-            code: 404,
-            details: format!("detector `{}` not found", NON_EXISTING_DETECTOR)
-        },
+        get_orchestrator_detector_not_found_error(NON_EXISTING_DETECTOR),
         "failed on non-existing detector scenario"
     );
 

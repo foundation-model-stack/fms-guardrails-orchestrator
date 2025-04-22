@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 /*
  Copyright FMS Guardrails Orchestrator Authors
 
@@ -38,5 +40,49 @@ pub fn get_orchestrator_internal_error() -> OrchestratorError {
     OrchestratorError {
         code: 500,
         details: ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE.to_string(),
+    }
+}
+
+/// Helper function that generates an orchestrator invalid detector error.
+pub fn get_orchestrator_detector_not_supported_error<T: Display>(
+    detector_name: T,
+) -> OrchestratorError {
+    OrchestratorError {
+        code: 422,
+        details: format!(
+            "detector `{}` is not supported by this endpoint",
+            detector_name
+        ),
+    }
+}
+
+/// Helper function that generates an orchestrator non-existing detector error.
+pub fn get_orchestrator_detector_not_found_error<T: Display>(
+    detector_name: T,
+) -> OrchestratorError {
+    OrchestratorError {
+        code: 404,
+        details: format!("detector `{}` not found", detector_name),
+    }
+}
+
+/// Helper function that generates an orchestrator required field error.
+pub fn get_orchestrator_required_error<T: Display>(field_name: T) -> OrchestratorError {
+    OrchestratorError {
+        code: 422,
+        details: format!("`{}` is required", field_name),
+    }
+}
+
+/// Helper function that generates an orchestrator detector with not supported chunker error.
+pub fn get_orchestrator_detector_with_not_supported_chunker_error<T: Display>(
+    detector_name: T,
+) -> OrchestratorError {
+    OrchestratorError {
+        code: 422,
+        details: format!(
+            "detector `{}` uses chunker `whole_doc_chunker`, which is not supported by this endpoint",
+            detector_name
+        ),
     }
 }

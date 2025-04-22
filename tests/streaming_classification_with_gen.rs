@@ -27,7 +27,12 @@ use common::{
         DETECTOR_NAME_PARENTHESIS_SENTENCE, FACT_CHECKING_DETECTOR_SENTENCE, NON_EXISTING_DETECTOR,
         TEXT_CONTENTS_DETECTOR_ENDPOINT,
     },
-    errors::{DetectorError, OrchestratorError, get_orchestrator_internal_error},
+    errors::{
+        DetectorError, OrchestratorError, get_orchestrator_detector_not_found_error,
+        get_orchestrator_detector_not_supported_error,
+        get_orchestrator_detector_with_not_supported_chunker_error,
+        get_orchestrator_internal_error,
+    },
     generation::{
         GENERATION_NLP_MODEL_ID_HEADER_NAME, GENERATION_NLP_STREAMING_ENDPOINT,
         GENERATION_NLP_TOKENIZATION_ENDPOINT,
@@ -723,13 +728,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     assert_eq!(messages.len(), 1);
     assert_eq!(
         messages[0],
-        OrchestratorError {
-            code: 422,
-            details: format!(
-                "detector `{}` is not supported by this endpoint",
-                FACT_CHECKING_DETECTOR_SENTENCE
-            )
-        },
+        get_orchestrator_detector_not_supported_error(FACT_CHECKING_DETECTOR_SENTENCE),
         "failed at invalid input detector scenario"
     );
 
@@ -762,13 +761,9 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     assert_eq!(messages.len(), 1);
     assert_eq!(
         messages[0],
-        OrchestratorError {
-            code: 422,
-            details: format!(
-                "detector `{}` uses chunker `whole_doc_chunker`, which is not supported by this endpoint",
-                DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC
-            )
-        },
+        get_orchestrator_detector_with_not_supported_chunker_error(
+            DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC
+        ),
         "failed on input detector with invalid chunker scenario"
     );
 
@@ -798,10 +793,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     assert_eq!(messages.len(), 1);
     assert_eq!(
         messages[0],
-        OrchestratorError {
-            code: 404,
-            details: format!("detector `{}` not found", NON_EXISTING_DETECTOR)
-        },
+        get_orchestrator_detector_not_found_error(NON_EXISTING_DETECTOR),
         "failed at non-existing input detector scenario"
     );
 
@@ -833,13 +825,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     assert_eq!(messages.len(), 1);
     assert_eq!(
         messages[0],
-        OrchestratorError {
-            code: 422,
-            details: format!(
-                "detector `{}` is not supported by this endpoint",
-                FACT_CHECKING_DETECTOR_SENTENCE
-            )
-        },
+        get_orchestrator_detector_not_supported_error(FACT_CHECKING_DETECTOR_SENTENCE),
         "failed at invalid output detector scenario"
     );
 
@@ -871,13 +857,9 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     assert_eq!(messages.len(), 1);
     assert_eq!(
         messages[0],
-        OrchestratorError {
-            code: 422,
-            details: format!(
-                "detector `{}` uses chunker `whole_doc_chunker`, which is not supported by this endpoint",
-                DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC
-            )
-        },
+        get_orchestrator_detector_with_not_supported_chunker_error(
+            DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC
+        ),
         "failed on output detector with invalid chunker scenario"
     );
 
@@ -906,10 +888,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     assert_eq!(messages.len(), 1);
     assert_eq!(
         messages[0],
-        OrchestratorError {
-            code: 404,
-            details: format!("detector `{}` not found", NON_EXISTING_DETECTOR)
-        },
+        get_orchestrator_detector_not_found_error(NON_EXISTING_DETECTOR),
         "failed at non-existing output detector scenario"
     );
 
