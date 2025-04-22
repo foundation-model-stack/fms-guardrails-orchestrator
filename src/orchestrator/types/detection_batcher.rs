@@ -25,8 +25,8 @@ use super::{Chunk, Detections, DetectorId, InputId};
 
 /// A detection batcher.
 /// Implements pluggable batching logic for a [`DetectionBatchStream`].
-pub trait DetectionBatcher: Send + 'static {
-    type Batch: Send + 'static;
+pub trait DetectionBatcher: Clone + Send + 'static {
+    type Batch: Clone + Send + 'static;
 
     /// Pushes new detections.
     fn push(

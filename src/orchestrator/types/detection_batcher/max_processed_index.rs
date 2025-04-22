@@ -33,6 +33,7 @@ use super::{Chunk, DetectionBatcher, Detections, DetectorId, InputId};
 /// and so on.
 ///
 /// This batcher requires that all detectors use the same chunker.
+#[derive(Clone)]
 pub struct MaxProcessedIndexBatcher {
     n_detectors: usize,
     state: BTreeMap<Chunk, Vec<Detections>>,
