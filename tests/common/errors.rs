@@ -1,5 +1,3 @@
-use std::fmt::Display;
-
 /*
  Copyright FMS Guardrails Orchestrator Authors
 
@@ -16,6 +14,8 @@ use std::fmt::Display;
  limitations under the License.
 
 */
+use std::fmt::Display;
+
 use serde::{Deserialize, Serialize};
 
 use super::orchestrator::ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE;
