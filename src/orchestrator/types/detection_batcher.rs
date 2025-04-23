@@ -25,8 +25,8 @@ use super::{Chunk, Detections, DetectorId, InputId};
 
 /// A detection batcher.
 /// Implements pluggable batching logic for a [`DetectionBatchStream`].
-pub trait DetectionBatcher: Clone + Send + 'static {
-    type Batch: Clone + Send + 'static;
+pub trait DetectionBatcher: std::fmt::Debug + Clone + Send + 'static {
+    type Batch: std::fmt::Debug + Clone + Send + 'static;
 
     /// Pushes new detections.
     fn push(
@@ -39,4 +39,7 @@ pub trait DetectionBatcher: Clone + Send + 'static {
 
     /// Removes the next batch of detections, if ready.
     fn pop_batch(&mut self) -> Option<Self::Batch>;
+
+    /// Returns `true` if the batcher state is empty.
+    fn is_empty(&self) -> bool;
 }

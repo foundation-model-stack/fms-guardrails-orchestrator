@@ -20,7 +20,7 @@ use std::collections::BTreeMap;
 use super::{Chunk, DetectionBatcher, Detections, DetectorId, InputId};
 
 /// A batcher for chat completions.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct ChatCompletionBatcher {
     detectors: Vec<DetectorId>,
     state: BTreeMap<(Chunk, u32), Vec<Detections>>,
@@ -53,5 +53,9 @@ impl DetectionBatcher for ChatCompletionBatcher {
         // TODO: implement batching logic to align with requirements
         // ref: https://github.com/foundation-model-stack/fms-guardrails-orchestrator/blob/main/docs/architecture/adrs/005-chat-completion-support.md#streaming-response
         todo!()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.state.is_empty()
     }
 }

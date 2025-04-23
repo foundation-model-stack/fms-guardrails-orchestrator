@@ -19,7 +19,7 @@ use std::collections::VecDeque;
 use super::{Chunk, DetectionBatcher, Detections, DetectorId, InputId};
 
 /// A no-op batcher that doesn't actually batch.
-#[derive(Default, Clone)]
+#[derive(Default, Debug, Clone)]
 pub struct NoopBatcher {
     state: VecDeque<(Chunk, Detections)>,
 }
@@ -45,5 +45,9 @@ impl DetectionBatcher for NoopBatcher {
 
     fn pop_batch(&mut self) -> Option<Self::Batch> {
         self.state.pop_front()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.state.is_empty()
     }
 }

@@ -14,8 +14,14 @@
  limitations under the License.
 
 */
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
+
 use futures::{Stream, StreamExt, stream};
 use tokio::sync::{mpsc, oneshot};
+use tracing::{debug, error};
 
 use super::{Chunk, DetectionBatcher, DetectionStream, Detections, DetectorId, InputId};
 use crate::orchestrator::Error;
@@ -36,8 +42,7 @@ where
 {
     pub fn new(batcher: B, streams: Vec<DetectionStream>) -> Self {
         let (batch_tx, batch_rx) = mpsc::channel(32);
-        let (shutdown_tx, shutdown_rx) = oneshot::channel();
-
+        let completed = Arc::new(AtomicBool::new(false));
         // Create a stream set (single stream) from multiple detection streams
         let mut stream_set = stream::select_all(streams);
         // Create batcher manager
@@ -48,38 +53,50 @@ where
         tokio::spawn({
             let batch_tx = batch_tx.clone();
             let batcher_manager = batcher_manager.clone();
+            let completed = completed.clone();
             async move {
-                tokio::select! {
-                    _ = async {
-                        loop {
-                            if let Some(batch) = batcher_manager.pop().await {
-                                let _ = batch_tx.send(Ok(batch)).await;
+                loop {
+                    tokio::select! {
+                        biased;
+
+                        Some(batch) = batcher_manager.pop() => {
+                            debug!(?batch, "sending batch to batch channel");
+                            let _ = batch_tx.send(Ok(batch)).await;
+                        },
+                        empty = batcher_manager.is_empty(), if completed.load(Ordering::Relaxed) => {
+                            if empty {
+                                // We are done
+                                break;
                             }
+                        },
+                        else => {
+                            tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+                            continue;
                         }
-                    } => {},
-                    _ = shutdown_rx => {}
+                    }
                 }
+                debug!("batch sender task completed");
             }
         });
-        // Spawn detection consumer task
+        // Spawn detection receiver task
         tokio::spawn(async move {
             while let Some(result) = stream_set.next().await {
                 match result {
                     Ok((input_id, detector_id, chunk, detections)) => {
-                        // Push detections
+                        debug!(%input_id, ?chunk, ?detections, "sending detections to batcher");
                         batcher_manager
                             .push(input_id, detector_id, chunk, detections)
                             .await;
                     }
                     Err(error) => {
-                        // Send error to batch channel
+                        error!(?error, "sending error to batch channel");
                         let _ = batch_tx.send(Err(error)).await;
                         break;
                     }
                 }
             }
-            // Send shutdown signal to batch sender task
-            let _ = shutdown_tx.send(());
+            debug!("detection receiver task completed");
+            completed.store(true, Ordering::Relaxed);
         });
 
         Self { batch_rx }
@@ -110,7 +127,11 @@ enum DetectionBatcherMessage<Batch> {
     Pop {
         response_tx: oneshot::Sender<Option<Batch>>,
     },
+    IsEmpty {
+        response_tx: oneshot::Sender<bool>,
+    },
 }
+
 /// An actor that manages a [`DetectionBatcher`].
 struct DetectionBatcherManager<B: DetectionBatcher> {
     batcher: B,
@@ -133,10 +154,21 @@ where
                     detector_id,
                     chunk,
                     detections,
-                } => self.batcher.push(input_id, detector_id, chunk, detections),
+                } => {
+                    debug!(%input_id, %detector_id, ?chunk, ?detections, "handling push request");
+                    self.batcher.push(input_id, detector_id, chunk, detections)
+                }
                 DetectionBatcherMessage::Pop { response_tx } => {
+                    debug!("handling pop request");
                     let batch = self.batcher.pop_batch();
+                    debug!(?batch, "sending pop response");
                     let _ = response_tx.send(batch);
+                }
+                DetectionBatcherMessage::IsEmpty { response_tx } => {
+                    debug!("handling is_empty request");
+                    let empty = self.batcher.is_empty();
+                    debug!(%empty, "sending is_empty response");
+                    let _ = response_tx.send(empty);
                 }
             }
         }
@@ -189,5 +221,15 @@ where
             .send(DetectionBatcherMessage::Pop { response_tx })
             .await;
         response_rx.await.unwrap_or_default()
+    }
+
+    /// Returns `true` if the batcher state is empty.
+    pub async fn is_empty(&self) -> bool {
+        let (response_tx, response_rx) = oneshot::channel();
+        let _ = self
+            .tx
+            .send(DetectionBatcherMessage::IsEmpty { response_tx })
+            .await;
+        response_rx.await.unwrap()
     }
 }
