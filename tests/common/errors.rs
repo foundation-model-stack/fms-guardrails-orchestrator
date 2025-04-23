@@ -74,7 +74,7 @@ pub fn get_orchestrator_required_error<T: Display>(field_name: T) -> Orchestrato
     }
 }
 
-/// Helper function that generates an orchestrator detector with not supported chunker error.
+/// Helper function that generates an orchestrator error that a detector was used with an unsupported chunker
 pub fn get_orchestrator_detector_with_not_supported_chunker_error<T: Display>(
     detector_name: T,
 ) -> OrchestratorError {
