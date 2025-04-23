@@ -14,11 +14,6 @@
  limitations under the License.
 
 */
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
-};
-
 use futures::{Stream, StreamExt, stream};
 use tokio::sync::{mpsc, oneshot};
 use tracing::{debug, error};
@@ -42,61 +37,49 @@ where
 {
     pub fn new(batcher: B, streams: Vec<DetectionStream>) -> Self {
         let (batch_tx, batch_rx) = mpsc::channel(32);
-        let completed = Arc::new(AtomicBool::new(false));
         // Create a stream set (single stream) from multiple detection streams
         let mut stream_set = stream::select_all(streams);
         // Create batcher manager
         // This is an actor that manages batcher state rather than using locks.
         let batcher_manager = DetectionBatcherManagerHandle::new(batcher);
 
-        // Spawn batch sender task
-        tokio::spawn({
-            let batch_tx = batch_tx.clone();
-            let batcher_manager = batcher_manager.clone();
-            let completed = completed.clone();
-            async move {
-                loop {
-                    tokio::select! {
-                        biased;
+        tokio::spawn(async move {
+            let mut stream_completed = false;
+            loop {
+                tokio::select! {
+                    biased;
 
-                        Some(batch) = batcher_manager.pop() => {
-                            debug!(?batch, "sending batch to batch channel");
-                            let _ = batch_tx.send(Ok(batch)).await;
-                        },
-                        empty = batcher_manager.is_empty(), if completed.load(Ordering::Relaxed) => {
-                            if empty {
-                                // We are done
+                    msg = stream_set.next(), if !stream_completed => {
+                        match msg {
+                            Some(Ok((input_id, detector_id, chunk, detections))) => {
+                                debug!(%input_id, ?chunk, ?detections, "sending detections to batcher");
+                                batcher_manager
+                                    .push(input_id, detector_id, chunk, detections)
+                                    .await;
+                            },
+                            Some(Err(error)) => {
+                                error!(?error, "sending error to batch channel");
+                                let _ = batch_tx.send(Err(error)).await;
                                 break;
-                            }
-                        },
-                        else => {
-                            tokio::time::sleep(std::time::Duration::from_millis(1)).await;
-                            continue;
+                            },
+                            None => {
+                                debug!("detections stream has completed");
+                                stream_completed = true;
+                            },
+                        }
+                    },
+                    Some(batch) = batcher_manager.pop() => {
+                        debug!(?batch, "sending batch to batch channel");
+                        let _ = batch_tx.send(Ok(batch)).await;
+                    },
+                    empty = batcher_manager.is_empty(), if stream_completed => {
+                        if empty {
+                            // We are done
+                            break;
                         }
                     }
                 }
-                debug!("batch sender task completed");
             }
-        });
-        // Spawn detection receiver task
-        tokio::spawn(async move {
-            while let Some(result) = stream_set.next().await {
-                match result {
-                    Ok((input_id, detector_id, chunk, detections)) => {
-                        debug!(%input_id, ?chunk, ?detections, "sending detections to batcher");
-                        batcher_manager
-                            .push(input_id, detector_id, chunk, detections)
-                            .await;
-                    }
-                    Err(error) => {
-                        error!(?error, "sending error to batch channel");
-                        let _ = batch_tx.send(Err(error)).await;
-                        break;
-                    }
-                }
-            }
-            debug!("detection receiver task completed");
-            completed.store(true, Ordering::Relaxed);
         });
 
         Self { batch_rx }
