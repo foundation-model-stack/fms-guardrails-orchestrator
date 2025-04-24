@@ -37,6 +37,7 @@ use super::{Chunk, DetectionBatcher, Detections, DetectorId, InputId};
 /// like the max_processed_index batcher. Detections from detectors
 /// that require whole input and/or output of a model (i.e. that
 /// do not require chunking with chunkers) will be handled separately.
+#[derive(Debug, Clone)]
 pub struct ChatCompletionBatcher {
     n_detectors: usize,
     // (Chunk, choice_index for chunk), [chunk's detections]
@@ -576,7 +577,6 @@ mod test {
         }));
 
         // then choice 2
-        // TODO: stream hanging issue here - ref. https://github.com/foundation-model-stack/fms-guardrails-orchestrator/issues/378
         let batch = detection_batch_stream.next().await;
         assert!(batch.is_some_and(|result| {
             result.is_ok_and(|(chunk, choice_index, detections)| {
