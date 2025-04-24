@@ -1013,5 +1013,35 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
         "failed on non-existing input detector scenario"
     );
 
+    // User message without `content` scenario
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
+        .json(&json!({
+            "model": MODEL_ID,
+            "detectors": {
+                "input": {
+                    DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC: {}
+                },
+                "output": {}
+            },
+            "messages": [{
+                "role": "user",
+                "name": "string"
+            }],
+        }))
+        .send()
+        .await?;
+
+    let results = response.json::<OrchestratorError>().await?;
+    debug!("{results:#?}");
+    assert_eq!(
+        results,
+        OrchestratorError {
+            code: 422,
+            details: "`content` is mandatory for user messages".into()
+        },
+        "failed on user message missing `content` scenario"
+    );
+
     Ok(())
 }

@@ -124,6 +124,13 @@ async fn handle_input_detection(
             "Last message role must be user, assistant, or system".into(),
         ));
     }
+    // Validate User message has `content`
+    if matches!(message.role, Some(Role::User) if message.text.is_none()) {
+        return Err(Error::Validation(
+            "`content` is mandatory for user messages".into(),
+        ));
+    }
+
     let input_id = message.index;
     let input_text = message.text.map(|s| s.to_string()).unwrap_or_default();
     let detections = match common::text_contents_detections(
