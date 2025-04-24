@@ -23,7 +23,7 @@ use common::{
         DETECTOR_NAME_PARENTHESIS_SENTENCE, FACT_CHECKING_DETECTOR_SENTENCE, NON_EXISTING_DETECTOR,
         TEXT_CONTENTS_DETECTOR_ENDPOINT,
     },
-    errors::{DetectorError, OrchestratorError, orchestrator_internal_error},
+    errors::{DetectorError, OrchestratorError},
     orchestrator::{
         ORCHESTRATOR_CONFIG_FILE_PATH, ORCHESTRATOR_STREAM_CONTENT_DETECTION_ENDPOINT,
         TestOrchestratorServer, json_lines_stream,
@@ -505,7 +505,7 @@ async fn client_error() -> Result<(), anyhow::Error> {
     let chunker_error_payload = "Chunker should return an error.";
     let detector_error_payload = "Detector should return an error.";
 
-    let orchestrator_error_500 = orchestrator_internal_error();
+    let orchestrator_error_500 = OrchestratorError::internal();
 
     let mut chunker_mocks = MockSet::new();
     chunker_mocks.mock(|when, then| {

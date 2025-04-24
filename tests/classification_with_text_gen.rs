@@ -25,10 +25,7 @@ use common::{
         DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC, NON_EXISTING_DETECTOR,
         TEXT_CONTENTS_DETECTOR_ENDPOINT,
     },
-    errors::{
-        DetectorError, OrchestratorError, orchestrator_detector_not_found_error,
-        orchestrator_detector_not_supported_error, orchestrator_internal_error,
-    },
+    errors::{DetectorError, OrchestratorError},
     generation::{
         GENERATION_NLP_MODEL_ID_HEADER_NAME, GENERATION_NLP_TOKENIZATION_ENDPOINT,
         GENERATION_NLP_UNARY_ENDPOINT,
@@ -650,7 +647,7 @@ async fn input_detector_client_error() -> Result<(), anyhow::Error> {
         message: "Internal detector error.".into(),
     };
 
-    let orchestrator_error_500 = orchestrator_internal_error();
+    let orchestrator_error_500 = OrchestratorError::internal();
 
     // Add input for error scenarios
     let chunker_error_input = "This should return a 500 error on chunker";
@@ -1125,7 +1122,7 @@ async fn output_detector_client_error() -> Result<(), anyhow::Error> {
         message: "Internal detector error.".into(),
     };
 
-    let orchestrator_error_500 = orchestrator_internal_error();
+    let orchestrator_error_500 = OrchestratorError::internal();
 
     // Add input for error scenarios
     let chunker_error_input = "This should return a 500 error on chunker";
@@ -1369,7 +1366,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     debug!("{results:#?}");
     assert_eq!(
         results,
-        orchestrator_detector_not_supported_error(ANSWER_RELEVANCE_DETECTOR_SENTENCE),
+        OrchestratorError::detector_not_supported(ANSWER_RELEVANCE_DETECTOR_SENTENCE),
         "failed on input detector with invalid type scenario"
     );
 
@@ -1395,7 +1392,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     debug!("{results:#?}");
     assert_eq!(
         results,
-        orchestrator_detector_not_found_error(NON_EXISTING_DETECTOR),
+        OrchestratorError::detector_not_found(NON_EXISTING_DETECTOR),
         "failed on non-existing input detector scenario"
     );
 
@@ -1423,7 +1420,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     debug!("{results:#?}");
     assert_eq!(
         results,
-        orchestrator_detector_not_supported_error(ANSWER_RELEVANCE_DETECTOR_SENTENCE),
+        OrchestratorError::detector_not_supported(ANSWER_RELEVANCE_DETECTOR_SENTENCE),
         "failed on output detector with invalid type scenario"
     );
 
@@ -1448,7 +1445,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     debug!("{results:#?}");
     assert_eq!(
         results,
-        orchestrator_detector_not_found_error(NON_EXISTING_DETECTOR),
+        OrchestratorError::detector_not_found(NON_EXISTING_DETECTOR),
         "failed on non-existing output detector scenario"
     );
 

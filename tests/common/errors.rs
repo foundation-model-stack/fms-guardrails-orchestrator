@@ -32,51 +32,50 @@ pub struct OrchestratorError {
     pub details: String,
 }
 
-/// Helper function that generates an orchestrator internal
-/// server error.
-pub fn orchestrator_internal_error() -> OrchestratorError {
-    OrchestratorError {
-        code: 500,
-        details: ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE.to_string(),
+impl OrchestratorError {
+    /// Helper function that generates an orchestrator internal
+    /// server error.
+    pub fn internal() -> OrchestratorError {
+        OrchestratorError {
+            code: 500,
+            details: ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE.to_string(),
+        }
     }
-}
-
-/// Helper function that generates an orchestrator invalid detector error.
-pub fn orchestrator_detector_not_supported_error(detector_name: &str) -> OrchestratorError {
-    OrchestratorError {
-        code: 422,
-        details: format!(
-            "detector `{}` is not supported by this endpoint",
-            detector_name
-        ),
+    /// Helper function that generates an orchestrator non-existing detector error.
+    pub fn detector_not_found(detector_name: &str) -> Self {
+        Self {
+            code: 404,
+            details: format!("detector `{}` not found", detector_name),
+        }
     }
-}
 
-/// Helper function that generates an orchestrator non-existing detector error.
-pub fn orchestrator_detector_not_found_error(detector_name: &str) -> OrchestratorError {
-    OrchestratorError {
-        code: 404,
-        details: format!("detector `{}` not found", detector_name),
+    /// Helper function that generates an orchestrator invalid detector error.
+    pub fn detector_not_supported(detector_name: &str) -> Self {
+        Self {
+            code: 422,
+            details: format!(
+                "detector `{}` is not supported by this endpoint",
+                detector_name
+            ),
+        }
     }
-}
 
-/// Helper function that generates an orchestrator required field error.
-pub fn orchestrator_required_error(field_name: &str) -> OrchestratorError {
-    OrchestratorError {
-        code: 422,
-        details: format!("`{}` is required", field_name),
+    /// Helper function that generates an orchestrator required field error.
+    pub fn required(field_name: &str) -> Self {
+        Self {
+            code: 422,
+            details: format!("`{}` is required", field_name),
+        }
     }
-}
 
-/// Helper function that generates an orchestrator error that a detector was used with an unsupported chunker
-pub fn orchestrator_detector_with_not_supported_chunker_error(
-    detector_name: &str,
-) -> OrchestratorError {
-    OrchestratorError {
-        code: 422,
-        details: format!(
-            "detector `{}` uses chunker `whole_doc_chunker`, which is not supported by this endpoint",
-            detector_name
-        ),
+    /// Helper function that generates an orchestrator error that a detector was used with an unsupported chunker
+    pub fn detector_with_not_supported_chunker(detector_name: &str) -> Self {
+        Self {
+            code: 422,
+            details: format!(
+                "detector `{}` uses chunker `whole_doc_chunker`, which is not supported by this endpoint",
+                detector_name
+            ),
+        }
     }
 }

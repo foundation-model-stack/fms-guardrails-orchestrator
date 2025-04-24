@@ -22,11 +22,7 @@ use common::{
         ANSWER_RELEVANCE_DETECTOR, DETECTION_ON_GENERATION_DETECTOR_ENDPOINT,
         FACT_CHECKING_DETECTOR_SENTENCE, NON_EXISTING_DETECTOR,
     },
-    errors::{
-        DetectorError, OrchestratorError, orchestrator_detector_not_found_error,
-        orchestrator_detector_not_supported_error, orchestrator_internal_error,
-        orchestrator_required_error,
-    },
+    errors::{DetectorError, OrchestratorError},
     orchestrator::{
         ORCHESTRATOR_CONFIG_FILE_PATH, ORCHESTRATOR_DETECTION_ON_GENERATION_ENDPOINT,
         TestOrchestratorServer,
@@ -216,7 +212,7 @@ async fn client_error() -> Result<(), anyhow::Error> {
     // assertions
     assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
     let response = response.json::<OrchestratorError>().await?;
-    assert_eq!(response, orchestrator_internal_error());
+    assert_eq!(response, OrchestratorError::internal());
 
     Ok(())
 }
@@ -323,7 +319,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     debug!("{response:#?}");
     assert_eq!(
         response,
-        orchestrator_required_error("detectors"),
+        OrchestratorError::required("detectors"),
         "failed on empty `detectors` scenario"
     );
 
@@ -347,7 +343,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     debug!("{response:#?}");
     assert_eq!(
         response,
-        orchestrator_detector_not_supported_error(FACT_CHECKING_DETECTOR_SENTENCE),
+        OrchestratorError::detector_not_supported(FACT_CHECKING_DETECTOR_SENTENCE),
         "failed on invalid detector scenario"
     );
 
@@ -368,7 +364,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     debug!("{response:#?}");
     assert_eq!(
         response,
-        orchestrator_detector_not_found_error(NON_EXISTING_DETECTOR),
+        OrchestratorError::detector_not_found(NON_EXISTING_DETECTOR),
         "failed on non-existing detector scenario"
     );
 

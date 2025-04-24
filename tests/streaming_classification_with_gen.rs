@@ -27,11 +27,7 @@ use common::{
         DETECTOR_NAME_PARENTHESIS_SENTENCE, FACT_CHECKING_DETECTOR_SENTENCE, NON_EXISTING_DETECTOR,
         TEXT_CONTENTS_DETECTOR_ENDPOINT,
     },
-    errors::{
-        DetectorError, OrchestratorError, orchestrator_detector_not_found_error,
-        orchestrator_detector_not_supported_error,
-        orchestrator_detector_with_not_supported_chunker_error, orchestrator_internal_error,
-    },
+    errors::{DetectorError, OrchestratorError},
     generation::{
         GENERATION_NLP_MODEL_ID_HEADER_NAME, GENERATION_NLP_STREAMING_ENDPOINT,
         GENERATION_NLP_TOKENIZATION_ENDPOINT,
@@ -489,7 +485,7 @@ async fn input_detector_client_error() -> Result<(), anyhow::Error> {
     let detector_error_input = "Detector should return an error";
     let generation_server_error_input = "Generation should return an error";
 
-    let orchestrator_error_500 = orchestrator_internal_error();
+    let orchestrator_error_500 = OrchestratorError::internal();
 
     let mut chunker_mocks = MockSet::new();
     chunker_mocks.mock(|when, then| {
@@ -727,7 +723,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     assert_eq!(messages.len(), 1);
     assert_eq!(
         messages[0],
-        orchestrator_detector_not_supported_error(FACT_CHECKING_DETECTOR_SENTENCE),
+        OrchestratorError::detector_not_supported(FACT_CHECKING_DETECTOR_SENTENCE),
         "failed at invalid input detector scenario"
     );
 
@@ -760,7 +756,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     assert_eq!(messages.len(), 1);
     assert_eq!(
         messages[0],
-        orchestrator_detector_with_not_supported_chunker_error(
+        OrchestratorError::detector_with_not_supported_chunker(
             DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC
         ),
         "failed on input detector with invalid chunker scenario"
@@ -792,7 +788,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     assert_eq!(messages.len(), 1);
     assert_eq!(
         messages[0],
-        orchestrator_detector_not_found_error(NON_EXISTING_DETECTOR),
+        OrchestratorError::detector_not_found(NON_EXISTING_DETECTOR),
         "failed at non-existing input detector scenario"
     );
 
@@ -824,7 +820,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     assert_eq!(messages.len(), 1);
     assert_eq!(
         messages[0],
-        orchestrator_detector_not_supported_error(FACT_CHECKING_DETECTOR_SENTENCE),
+        OrchestratorError::detector_not_supported(FACT_CHECKING_DETECTOR_SENTENCE),
         "failed at invalid output detector scenario"
     );
 
@@ -856,7 +852,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     assert_eq!(messages.len(), 1);
     assert_eq!(
         messages[0],
-        orchestrator_detector_with_not_supported_chunker_error(
+        OrchestratorError::detector_with_not_supported_chunker(
             DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC
         ),
         "failed on output detector with invalid chunker scenario"
@@ -887,7 +883,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     assert_eq!(messages.len(), 1);
     assert_eq!(
         messages[0],
-        orchestrator_detector_not_found_error(NON_EXISTING_DETECTOR),
+        OrchestratorError::detector_not_found(NON_EXISTING_DETECTOR),
         "failed at non-existing output detector scenario"
     );
 
@@ -1491,7 +1487,7 @@ async fn output_detectors_detections() -> Result<(), anyhow::Error> {
 async fn output_detector_client_error() -> Result<(), anyhow::Error> {
     let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE;
 
-    let orchestrator_error_500 = orchestrator_internal_error();
+    let orchestrator_error_500 = OrchestratorError::internal();
 
     // Add generation mock
     let model_id = "my-super-model-8B";
