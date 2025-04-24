@@ -33,9 +33,8 @@ use common::{
         GENERATION_NLP_TOKENIZATION_ENDPOINT,
     },
     orchestrator::{
-        ORCHESTRATOR_CONFIG_FILE_PATH, ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE,
-        ORCHESTRATOR_STREAMING_ENDPOINT, ORCHESTRATOR_UNSUITABLE_INPUT_MESSAGE, SseStream,
-        TestOrchestratorServer,
+        ORCHESTRATOR_CONFIG_FILE_PATH, ORCHESTRATOR_STREAMING_ENDPOINT,
+        ORCHESTRATOR_UNSUITABLE_INPUT_MESSAGE, SseStream, TestOrchestratorServer,
     },
 };
 use eventsource_stream::Eventsource;
@@ -387,7 +386,7 @@ async fn input_detector_detections() -> Result<(), anyhow::Error> {
                 ],
                 detector_params: DetectorParams::new(),
             });
-        then.json(vec![vec![], vec![mock_detection_response.clone()]]);
+        then.json([vec![], vec![&mock_detection_response]]);
     });
 
     // Add generation mock for input token count
@@ -485,6 +484,8 @@ async fn input_detector_client_error() -> Result<(), anyhow::Error> {
     let chunker_error_input = "Chunker should return an error";
     let detector_error_input = "Detector should return an error";
     let generation_server_error_input = "Generation should return an error";
+
+    let orchestrator_error_500 = OrchestratorError::internal();
 
     let mut chunker_mocks = MockSet::new();
     chunker_mocks.mock(|when, then| {
@@ -598,13 +599,7 @@ async fn input_detector_client_error() -> Result<(), anyhow::Error> {
     debug!("{messages:#?}");
 
     assert_eq!(messages.len(), 1);
-    assert_eq!(
-        messages[0],
-        OrchestratorError {
-            code: 500,
-            details: ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE.into()
-        }
-    );
+    assert_eq!(messages[0], orchestrator_error_500);
 
     // Test error from detector
     let response = orchestrator_server
@@ -631,13 +626,7 @@ async fn input_detector_client_error() -> Result<(), anyhow::Error> {
     debug!("{messages:#?}");
 
     assert_eq!(messages.len(), 1);
-    assert_eq!(
-        messages[0],
-        OrchestratorError {
-            code: 500,
-            details: ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE.into()
-        }
-    );
+    assert_eq!(messages[0], orchestrator_error_500);
 
     // Test error from generation server
     let response = orchestrator_server
@@ -664,13 +653,7 @@ async fn input_detector_client_error() -> Result<(), anyhow::Error> {
     debug!("{messages:#?}");
 
     assert_eq!(messages.len(), 1);
-    assert_eq!(
-        messages[0],
-        OrchestratorError {
-            code: 500,
-            details: ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE.into()
-        }
-    );
+    assert_eq!(messages[0], orchestrator_error_500);
 
     Ok(())
 }
@@ -740,13 +723,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     assert_eq!(messages.len(), 1);
     assert_eq!(
         messages[0],
-        OrchestratorError {
-            code: 422,
-            details: format!(
-                "detector `{}` is not supported by this endpoint",
-                FACT_CHECKING_DETECTOR_SENTENCE
-            )
-        },
+        OrchestratorError::detector_not_supported(FACT_CHECKING_DETECTOR_SENTENCE),
         "failed at invalid input detector scenario"
     );
 
@@ -779,13 +756,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     assert_eq!(messages.len(), 1);
     assert_eq!(
         messages[0],
-        OrchestratorError {
-            code: 422,
-            details: format!(
-                "detector `{}` uses chunker `whole_doc_chunker`, which is not supported by this endpoint",
-                DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC
-            )
-        },
+        OrchestratorError::chunker_not_supported(DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC),
         "failed on input detector with invalid chunker scenario"
     );
 
@@ -815,10 +786,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     assert_eq!(messages.len(), 1);
     assert_eq!(
         messages[0],
-        OrchestratorError {
-            code: 404,
-            details: format!("detector `{}` not found", NON_EXISTING_DETECTOR)
-        },
+        OrchestratorError::detector_not_found(NON_EXISTING_DETECTOR),
         "failed at non-existing input detector scenario"
     );
 
@@ -850,13 +818,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     assert_eq!(messages.len(), 1);
     assert_eq!(
         messages[0],
-        OrchestratorError {
-            code: 422,
-            details: format!(
-                "detector `{}` is not supported by this endpoint",
-                FACT_CHECKING_DETECTOR_SENTENCE
-            )
-        },
+        OrchestratorError::detector_not_supported(FACT_CHECKING_DETECTOR_SENTENCE),
         "failed at invalid output detector scenario"
     );
 
@@ -888,13 +850,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     assert_eq!(messages.len(), 1);
     assert_eq!(
         messages[0],
-        OrchestratorError {
-            code: 422,
-            details: format!(
-                "detector `{}` uses chunker `whole_doc_chunker`, which is not supported by this endpoint",
-                DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC
-            )
-        },
+        OrchestratorError::chunker_not_supported(DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC),
         "failed on output detector with invalid chunker scenario"
     );
 
@@ -923,10 +879,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     assert_eq!(messages.len(), 1);
     assert_eq!(
         messages[0],
-        OrchestratorError {
-            code: 404,
-            details: format!("detector `{}` not found", NON_EXISTING_DETECTOR)
-        },
+        OrchestratorError::detector_not_found(NON_EXISTING_DETECTOR),
         "failed at non-existing output detector scenario"
     );
 
@@ -1041,11 +994,8 @@ async fn output_detectors_no_detections() -> Result<(), anyhow::Error> {
         ]);
     });
 
-    // Add output detection mock
-    // TODO: Simply clone mocks instead of create two exact MockSets when/if
-    // this gets merged: https://github.com/IBM/mocktail/pull/41
-    let mut angle_brackets_mocks = MockSet::new();
-    angle_brackets_mocks.mock(|when, then| {
+    let mut detection_mocks = MockSet::new();
+    detection_mocks.mock(|when, then| {
         when.post()
             .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
             .json(ContentAnalysisRequest {
@@ -1054,27 +1004,7 @@ async fn output_detectors_no_detections() -> Result<(), anyhow::Error> {
             });
         then.json([Vec::<ContentAnalysisResponse>::new()]);
     });
-    angle_brackets_mocks.mock(|when, then| {
-        when.post()
-            .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
-            .json(ContentAnalysisRequest {
-                contents: vec![" What about you?".into()],
-                detector_params: DetectorParams::new(),
-            });
-        then.json([Vec::<ContentAnalysisResponse>::new()]);
-    });
-
-    let mut parenthesis_mocks = MockSet::new();
-    parenthesis_mocks.mock(|when, then| {
-        when.post()
-            .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
-            .json(ContentAnalysisRequest {
-                contents: vec!["I am great!".into()],
-                detector_params: DetectorParams::new(),
-            });
-        then.json([Vec::<ContentAnalysisResponse>::new()]);
-    });
-    parenthesis_mocks.mock(|when, then| {
+    detection_mocks.mock(|when, then| {
         when.post()
             .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
             .json(ContentAnalysisRequest {
@@ -1087,9 +1017,9 @@ async fn output_detectors_no_detections() -> Result<(), anyhow::Error> {
     // Start orchestrator server and its dependencies
     let mock_chunker_server = MockServer::new(chunker_id).grpc().with_mocks(chunker_mocks);
     let mock_angle_brackets_detector_server =
-        MockServer::new(angle_brackets_detector).with_mocks(angle_brackets_mocks);
+        MockServer::new(angle_brackets_detector).with_mocks(detection_mocks.clone());
     let mock_parenthesis_detector_server =
-        MockServer::new(parenthesis_detector).with_mocks(parenthesis_mocks);
+        MockServer::new(parenthesis_detector).with_mocks(detection_mocks);
     let generation_server = MockServer::new("nlp").grpc().with_mocks(generation_mocks);
 
     let orchestrator_server = TestOrchestratorServer::builder()
@@ -1553,6 +1483,8 @@ async fn output_detectors_detections() -> Result<(), anyhow::Error> {
 async fn output_detector_client_error() -> Result<(), anyhow::Error> {
     let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE;
 
+    let orchestrator_error_500 = OrchestratorError::internal();
+
     // Add generation mock
     let model_id = "my-super-model-8B";
     let mut generation_mocks = MockSet::new();
@@ -1772,13 +1704,7 @@ async fn output_detector_client_error() -> Result<(), anyhow::Error> {
     debug!("{messages:#?}");
 
     assert_eq!(messages.len(), 1);
-    assert_eq!(
-        messages[0],
-        OrchestratorError {
-            code: 500,
-            details: ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE.into()
-        }
-    );
+    assert_eq!(messages[0], orchestrator_error_500);
 
     // assert detector error
     let response = orchestrator_server
@@ -1830,13 +1756,7 @@ async fn output_detector_client_error() -> Result<(), anyhow::Error> {
     assert_eq!(first_response.start_index, Some(0));
     assert_eq!(first_response.processed_index, Some(11));
 
-    assert_eq!(
-        second_response,
-        OrchestratorError {
-            code: 500,
-            details: ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE.into()
-        }
-    );
+    assert_eq!(second_response, orchestrator_error_500);
 
     Ok(())
 }

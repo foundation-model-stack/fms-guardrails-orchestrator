@@ -25,7 +25,7 @@ use common::{
     generation::{GENERATION_NLP_MODEL_ID_HEADER_NAME, GENERATION_NLP_UNARY_ENDPOINT},
     orchestrator::{
         ORCHESTRATOR_CONFIG_FILE_PATH, ORCHESTRATOR_GENERATION_WITH_DETECTION_ENDPOINT,
-        ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE, TestOrchestratorServer,
+        TestOrchestratorServer,
     },
 };
 use fms_guardrails_orchestr8::{
@@ -89,7 +89,7 @@ async fn no_detections() -> Result<(), anyhow::Error> {
                 generated_text: generated_text.into(),
                 detector_params: DetectorParams::new(),
             });
-        then.json(vec![detection.clone()]);
+        then.json([&detection]);
     });
 
     // Start orchestrator server and its dependencies
@@ -171,7 +171,7 @@ async fn detections() -> Result<(), anyhow::Error> {
                 generated_text: generated_text.into(),
                 detector_params: DetectorParams::new(),
             });
-        then.json(vec![detection.clone()]);
+        then.json([&detection]);
     });
 
     // Start orchestrator server and its dependencies
@@ -221,6 +221,7 @@ async fn client_error() -> Result<(), anyhow::Error> {
         code: 500,
         message: "Here's your 500 error".into(),
     };
+    let orchestrator_error_500 = OrchestratorError::internal();
 
     // Add generation mock
     let model_id = "my-super-model-8B";
@@ -286,10 +287,7 @@ async fn client_error() -> Result<(), anyhow::Error> {
     assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
     assert_eq!(
         response.json::<OrchestratorError>().await?,
-        OrchestratorError {
-            code: 500,
-            details: ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE.into()
-        }
+        orchestrator_error_500
     );
 
     // assert generation error
@@ -308,10 +306,7 @@ async fn client_error() -> Result<(), anyhow::Error> {
     assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
     assert_eq!(
         response.json::<OrchestratorError>().await?,
-        OrchestratorError {
-            code: 500,
-            details: ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE.into()
-        }
+        orchestrator_error_500
     );
 
     Ok(())
@@ -421,13 +416,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
     let response = response.json::<OrchestratorError>().await?;
     debug!("{response:#?}");
-    assert_eq!(
-        response,
-        OrchestratorError {
-            code: 422,
-            details: "`detectors` is required".into()
-        },
-    );
+    assert_eq!(response, OrchestratorError::required("detectors"));
 
     // assert request with invalid type detectors
     let response = orchestrator_server
@@ -450,13 +439,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     debug!("{response:#?}");
     assert_eq!(
         response,
-        OrchestratorError {
-            code: 422,
-            details: format!(
-                "detector `{}` is not supported by this endpoint",
-                FACT_CHECKING_DETECTOR_SENTENCE
-            )
-        },
+        OrchestratorError::detector_not_supported(FACT_CHECKING_DETECTOR_SENTENCE),
         "failed at invalid detector scenario"
     );
 
@@ -478,10 +461,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     debug!("{response:#?}");
     assert_eq!(
         response,
-        OrchestratorError {
-            code: 404,
-            details: format!("detector `{}` not found", NON_EXISTING_DETECTOR)
-        },
+        OrchestratorError::detector_not_found(NON_EXISTING_DETECTOR),
         "failed on non-existing detector scenario"
     );
 

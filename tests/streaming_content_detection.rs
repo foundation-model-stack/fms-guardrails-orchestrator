@@ -25,8 +25,8 @@ use common::{
     },
     errors::{DetectorError, OrchestratorError},
     orchestrator::{
-        ORCHESTRATOR_CONFIG_FILE_PATH, ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE,
-        ORCHESTRATOR_STREAM_CONTENT_DETECTION_ENDPOINT, TestOrchestratorServer, json_lines_stream,
+        ORCHESTRATOR_CONFIG_FILE_PATH, ORCHESTRATOR_STREAM_CONTENT_DETECTION_ENDPOINT,
+        TestOrchestratorServer, json_lines_stream,
     },
 };
 use fms_guardrails_orchestr8::{
@@ -110,11 +110,9 @@ async fn no_detections() -> Result<(), anyhow::Error> {
         ]);
     });
 
-    // Add input detection mock
-    // TODO: Simply clone mocks instead of create two exact MockSets when/if
-    // this gets merged: https://github.com/IBM/mocktail/pull/41
-    let mut angle_brackets_detection_mocks = MockSet::new();
-    angle_brackets_detection_mocks.mock(|when, then| {
+    // Add input detection mocks
+    let mut detection_mocks = MockSet::new();
+    detection_mocks.mock(|when, then| {
         when.post()
             .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
             .json(ContentAnalysisRequest {
@@ -123,27 +121,7 @@ async fn no_detections() -> Result<(), anyhow::Error> {
             });
         then.json([Vec::<ContentAnalysisResponse>::new()]);
     });
-    angle_brackets_detection_mocks.mock(|when, then| {
-        when.post()
-            .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
-            .json(ContentAnalysisRequest {
-                contents: vec![" How are you?".into()],
-                detector_params: DetectorParams::new(),
-            });
-        then.json([Vec::<ContentAnalysisResponse>::new()]);
-    });
-
-    let mut parenthesis_detection_mocks = MockSet::new();
-    parenthesis_detection_mocks.mock(|when, then| {
-        when.post()
-            .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
-            .json(ContentAnalysisRequest {
-                contents: vec!["Hi there!".into()],
-                detector_params: DetectorParams::new(),
-            });
-        then.json([Vec::<ContentAnalysisResponse>::new()]);
-    });
-    parenthesis_detection_mocks.mock(|when, then| {
+    detection_mocks.mock(|when, then| {
         when.post()
             .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
             .json(ContentAnalysisRequest {
@@ -156,9 +134,9 @@ async fn no_detections() -> Result<(), anyhow::Error> {
     // Run test orchestrator server
     let mock_chunker_server = MockServer::new(chunker_id).grpc().with_mocks(chunker_mocks);
     let mock_angle_brackets_detector_server =
-        MockServer::new(angle_brackets_detector).with_mocks(angle_brackets_detection_mocks);
+        MockServer::new(angle_brackets_detector).with_mocks(detection_mocks.clone());
     let mock_parenthesis_detector_server =
-        MockServer::new(parenthesis_detector).with_mocks(parenthesis_detection_mocks);
+        MockServer::new(parenthesis_detector).with_mocks(detection_mocks);
     let orchestrator_server = TestOrchestratorServer::builder()
         .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
         .detector_servers([
@@ -527,6 +505,8 @@ async fn client_error() -> Result<(), anyhow::Error> {
     let chunker_error_payload = "Chunker should return an error.";
     let detector_error_payload = "Detector should return an error.";
 
+    let orchestrator_error_500 = OrchestratorError::internal();
+
     let mut chunker_mocks = MockSet::new();
     chunker_mocks.mock(|when, then| {
         when.path(CHUNKER_STREAMING_ENDPOINT)
@@ -604,10 +584,7 @@ async fn client_error() -> Result<(), anyhow::Error> {
         debug!("recv: {msg:?}");
         messages.push(serde_json::from_slice(&msg[..]).unwrap());
     }
-    let expected_messages = [OrchestratorError {
-        code: 500,
-        details: ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE.into(),
-    }];
+    let expected_messages = [orchestrator_error_500];
     assert_eq!(messages, expected_messages);
 
     // Assert detector error
@@ -631,10 +608,6 @@ async fn client_error() -> Result<(), anyhow::Error> {
         debug!("recv: {msg:?}");
         messages.push(serde_json::from_slice(&msg[..]).unwrap());
     }
-    let expected_messages = [OrchestratorError {
-        code: 500,
-        details: ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE.into(),
-    }];
     assert_eq!(messages, expected_messages);
 
     Ok(())

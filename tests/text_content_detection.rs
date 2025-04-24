@@ -26,7 +26,7 @@ use common::{
     errors::{DetectorError, OrchestratorError},
     orchestrator::{
         ORCHESTRATOR_CONFIG_FILE_PATH, ORCHESTRATOR_CONTENT_DETECTION_ENDPOINT,
-        ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE, TestOrchestratorServer,
+        TestOrchestratorServer,
     },
 };
 use fms_guardrails_orchestr8::{
@@ -92,7 +92,7 @@ async fn no_detections() -> Result<(), anyhow::Error> {
                 ],
                 detector_params: DetectorParams::new(),
             });
-        then.json(vec![
+        then.json([
             Vec::<ContentAnalysisResponse>::new(),
             Vec::<ContentAnalysisResponse>::new(),
         ]);
@@ -106,7 +106,7 @@ async fn no_detections() -> Result<(), anyhow::Error> {
                 contents: vec!["This sentence has no detections.".into()],
                 detector_params: DetectorParams::new(),
             });
-        then.json(vec![Vec::<ContentAnalysisResponse>::new()]);
+        then.json([Vec::<ContentAnalysisResponse>::new()]);
     });
 
     // Start orchestrator server and its dependencies
@@ -238,7 +238,7 @@ async fn detections() -> Result<(), anyhow::Error> {
                 contents: vec!["This sentence has <a detection here>.".into()],
                 detector_params: DetectorParams::new(),
             });
-        then.json(vec![vec![ContentAnalysisResponse {
+        then.json([[ContentAnalysisResponse {
             start: 18,
             end: 35,
             text: "a detection here".into(),
@@ -387,8 +387,7 @@ async fn client_error() -> Result<(), anyhow::Error> {
     assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
 
     let response: OrchestratorError = response.json().await?;
-    assert_eq!(response.code, 500);
-    assert_eq!(response.details, ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE);
+    assert_eq!(response, OrchestratorError::internal());
 
     Ok(())
 }
