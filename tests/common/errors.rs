@@ -14,8 +14,6 @@
  limitations under the License.
 
 */
-use std::fmt::Display;
-
 use serde::{Deserialize, Serialize};
 
 use super::orchestrator::ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE;
@@ -44,9 +42,7 @@ pub fn orchestrator_internal_error() -> OrchestratorError {
 }
 
 /// Helper function that generates an orchestrator invalid detector error.
-pub fn orchestrator_detector_not_supported_error<T: Display>(
-    detector_name: T,
-) -> OrchestratorError {
+pub fn orchestrator_detector_not_supported_error(detector_name: &str) -> OrchestratorError {
     OrchestratorError {
         code: 422,
         details: format!(
@@ -57,7 +53,7 @@ pub fn orchestrator_detector_not_supported_error<T: Display>(
 }
 
 /// Helper function that generates an orchestrator non-existing detector error.
-pub fn orchestrator_detector_not_found_error<T: Display>(detector_name: T) -> OrchestratorError {
+pub fn orchestrator_detector_not_found_error(detector_name: &str) -> OrchestratorError {
     OrchestratorError {
         code: 404,
         details: format!("detector `{}` not found", detector_name),
@@ -65,7 +61,7 @@ pub fn orchestrator_detector_not_found_error<T: Display>(detector_name: T) -> Or
 }
 
 /// Helper function that generates an orchestrator required field error.
-pub fn orchestrator_required_error<T: Display>(field_name: T) -> OrchestratorError {
+pub fn orchestrator_required_error(field_name: &str) -> OrchestratorError {
     OrchestratorError {
         code: 422,
         details: format!("`{}` is required", field_name),
@@ -73,8 +69,8 @@ pub fn orchestrator_required_error<T: Display>(field_name: T) -> OrchestratorErr
 }
 
 /// Helper function that generates an orchestrator error that a detector was used with an unsupported chunker
-pub fn orchestrator_detector_with_not_supported_chunker_error<T: Display>(
-    detector_name: T,
+pub fn orchestrator_detector_with_not_supported_chunker_error(
+    detector_name: &str,
 ) -> OrchestratorError {
     OrchestratorError {
         code: 422,
