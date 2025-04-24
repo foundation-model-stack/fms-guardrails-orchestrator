@@ -16,8 +16,6 @@
 */
 use serde::{Deserialize, Serialize};
 
-use super::orchestrator::ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE;
-
 /// Errors returned by detector endpoints.
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct DetectorError {
@@ -38,7 +36,7 @@ impl OrchestratorError {
     pub fn internal() -> OrchestratorError {
         OrchestratorError {
             code: 500,
-            details: ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE.to_string(),
+            details: "unexpected error occurred while processing request".into(),
         }
     }
     /// Helper function that generates an orchestrator non-existing detector error.
