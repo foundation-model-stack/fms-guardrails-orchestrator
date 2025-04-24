@@ -23,7 +23,7 @@ use common::{
         DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE, DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC,
         FACT_CHECKING_DETECTOR_SENTENCE, NON_EXISTING_DETECTOR, TEXT_CONTENTS_DETECTOR_ENDPOINT,
     },
-    errors::{DetectorError, OrchestratorError, get_orchestrator_internal_error},
+    errors::{DetectorError, OrchestratorError, orchestrator_internal_error},
     orchestrator::{
         ORCHESTRATOR_CONFIG_FILE_PATH, ORCHESTRATOR_CONTENT_DETECTION_ENDPOINT,
         TestOrchestratorServer,
@@ -387,7 +387,7 @@ async fn client_error() -> Result<(), anyhow::Error> {
     assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
 
     let response: OrchestratorError = response.json().await?;
-    assert_eq!(response, get_orchestrator_internal_error());
+    assert_eq!(response, orchestrator_internal_error());
 
     Ok(())
 }

@@ -22,8 +22,8 @@ use common::{
         PII_DETECTOR,
     },
     errors::{
-        DetectorError, OrchestratorError, get_orchestrator_detector_not_found_error,
-        get_orchestrator_detector_not_supported_error, get_orchestrator_internal_error,
+        DetectorError, OrchestratorError, orchestrator_detector_not_found_error,
+        orchestrator_detector_not_supported_error, orchestrator_internal_error,
     },
     orchestrator::{
         ORCHESTRATOR_CHAT_DETECTION_ENDPOINT, ORCHESTRATOR_CONFIG_FILE_PATH, TestOrchestratorServer,
@@ -256,7 +256,7 @@ async fn client_errors() -> Result<(), anyhow::Error> {
     assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
     let response = response.json::<OrchestratorError>().await?;
     debug!("{response:#?}");
-    assert_eq!(response, get_orchestrator_internal_error());
+    assert_eq!(response, orchestrator_internal_error());
 
     Ok(())
 }
@@ -422,7 +422,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     debug!("{response:#?}");
     assert_eq!(
         response,
-        get_orchestrator_detector_not_supported_error(ANSWER_RELEVANCE_DETECTOR_SENTENCE),
+        orchestrator_detector_not_supported_error(ANSWER_RELEVANCE_DETECTOR_SENTENCE),
         "failed on detector with invalid type scenario"
     );
 
@@ -442,7 +442,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     debug!("{response:#?}");
     assert_eq!(
         response,
-        get_orchestrator_detector_not_found_error(NON_EXISTING_DETECTOR),
+        orchestrator_detector_not_found_error(NON_EXISTING_DETECTOR),
         "failed on non-existing detector scenario"
     );
 

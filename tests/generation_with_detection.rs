@@ -22,9 +22,9 @@ use common::{
         FACT_CHECKING_DETECTOR_SENTENCE, NON_EXISTING_DETECTOR,
     },
     errors::{
-        DetectorError, OrchestratorError, get_orchestrator_detector_not_found_error,
-        get_orchestrator_detector_not_supported_error, get_orchestrator_internal_error,
-        get_orchestrator_required_error,
+        DetectorError, OrchestratorError, orchestrator_detector_not_found_error,
+        orchestrator_detector_not_supported_error, orchestrator_internal_error,
+        orchestrator_required_error,
     },
     generation::{GENERATION_NLP_MODEL_ID_HEADER_NAME, GENERATION_NLP_UNARY_ENDPOINT},
     orchestrator::{
@@ -225,7 +225,7 @@ async fn client_error() -> Result<(), anyhow::Error> {
         code: 500,
         message: "Here's your 500 error".into(),
     };
-    let orchestrator_error_500 = get_orchestrator_internal_error();
+    let orchestrator_error_500 = orchestrator_internal_error();
 
     // Add generation mock
     let model_id = "my-super-model-8B";
@@ -420,7 +420,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
     let response = response.json::<OrchestratorError>().await?;
     debug!("{response:#?}");
-    assert_eq!(response, get_orchestrator_required_error("detectors"));
+    assert_eq!(response, orchestrator_required_error("detectors"));
 
     // assert request with invalid type detectors
     let response = orchestrator_server
@@ -443,7 +443,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     debug!("{response:#?}");
     assert_eq!(
         response,
-        get_orchestrator_detector_not_supported_error(FACT_CHECKING_DETECTOR_SENTENCE),
+        orchestrator_detector_not_supported_error(FACT_CHECKING_DETECTOR_SENTENCE),
         "failed at invalid detector scenario"
     );
 
@@ -465,7 +465,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     debug!("{response:#?}");
     assert_eq!(
         response,
-        get_orchestrator_detector_not_found_error(NON_EXISTING_DETECTOR),
+        orchestrator_detector_not_found_error(NON_EXISTING_DETECTOR),
         "failed on non-existing detector scenario"
     );
 
