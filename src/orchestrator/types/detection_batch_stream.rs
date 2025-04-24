@@ -37,22 +37,23 @@ where
 {
     pub fn new(batcher: B, streams: Vec<DetectionStream>) -> Self {
         let (batch_tx, batch_rx) = mpsc::channel(32);
-        // Create a stream set (single stream) from multiple detection streams
+        // Create single stream from multiple detection streams
         let mut stream_set = stream::select_all(streams);
-        // Create batcher manager
-        // This is an actor that manages batcher state rather than using locks.
+        // Create batcher manager, an actor to manage the batcher instead of using locks
         let batcher_manager = DetectionBatcherManagerHandle::new(batcher);
-
+        // Spawn task to receive detections and process batches
         tokio::spawn(async move {
             let mut stream_completed = false;
             loop {
                 tokio::select! {
+                    // Disable random branch selection to poll the futures in order
                     biased;
 
+                    // Receive detections and push to batcher
                     msg = stream_set.next(), if !stream_completed => {
                         match msg {
                             Some(Ok((input_id, detector_id, chunk, detections))) => {
-                                debug!(%input_id, ?chunk, ?detections, "sending detections to batcher");
+                                debug!(%input_id, ?chunk, ?detections, "pushing detections to batcher");
                                 batcher_manager
                                     .push(input_id, detector_id, chunk, detections)
                                     .await;
@@ -68,18 +69,20 @@ where
                             },
                         }
                     },
+                    // Pop batches and send them to batch channel
                     Some(batch) = batcher_manager.pop() => {
                         debug!(?batch, "sending batch to batch channel");
                         let _ = batch_tx.send(Ok(batch)).await;
                     },
+                    // Terminate task when stream is completed and batcher state is empty
                     empty = batcher_manager.is_empty(), if stream_completed => {
                         if empty {
-                            // We are done
                             break;
                         }
                     }
                 }
             }
+            debug!("detection batch stream task has completed");
         });
 
         Self { batch_rx }
@@ -169,7 +172,7 @@ where
     B: DetectionBatcher,
     B::Batch: Clone,
 {
-    /// Creates a new [`DetectionBatcherManager`] and returns it's handle.
+    /// Creates a new [`DetectionBatcherManager`] and returns its handle.
     pub fn new(batcher: B) -> Self {
         let (tx, rx) = mpsc::channel(32);
         let mut actor = DetectionBatcherManager::new(batcher, rx);
