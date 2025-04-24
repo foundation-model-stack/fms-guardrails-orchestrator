@@ -66,8 +66,8 @@ impl OrchestratorError {
         }
     }
 
-    /// Helper function that generates an orchestrator error that a detector was used with an unsupported chunker
-    pub fn detector_with_not_supported_chunker(detector_name: &str) -> Self {
+    /// Helper function that generates an orchestrator invalid chunker error.
+    pub fn chunker_not_supported(detector_name: &str) -> Self {
         Self {
             code: 422,
             details: format!(

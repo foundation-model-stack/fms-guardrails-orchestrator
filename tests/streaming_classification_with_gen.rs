@@ -756,9 +756,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     assert_eq!(messages.len(), 1);
     assert_eq!(
         messages[0],
-        OrchestratorError::detector_with_not_supported_chunker(
-            DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC
-        ),
+        OrchestratorError::chunker_not_supported(DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC),
         "failed on input detector with invalid chunker scenario"
     );
 
@@ -852,9 +850,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     assert_eq!(messages.len(), 1);
     assert_eq!(
         messages[0],
-        OrchestratorError::detector_with_not_supported_chunker(
-            DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC
-        ),
+        OrchestratorError::chunker_not_supported(DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC),
         "failed on output detector with invalid chunker scenario"
     );
 
