@@ -60,8 +60,6 @@ pub const ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT: &str =
     "/api/v2/chat/completions-detection";
 
 // Messages
-pub const ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE: &str =
-    "unexpected error occurred while processing request";
 pub const ORCHESTRATOR_UNSUITABLE_INPUT_MESSAGE: &str = "Unsuitable input detected. Please check the detected entities on your input and try again with the unsuitable input removed.";
 
 pub fn ensure_global_rustls_state() {

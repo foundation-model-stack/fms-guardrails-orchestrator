@@ -24,7 +24,7 @@ use common::{
     errors::{DetectorError, OrchestratorError},
     orchestrator::{
         ORCHESTRATOR_CONFIG_FILE_PATH, ORCHESTRATOR_CONTEXT_DOCS_DETECTION_ENDPOINT,
-        ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE, TestOrchestratorServer,
+        TestOrchestratorServer,
     },
 };
 use fms_guardrails_orchestr8::{
@@ -67,7 +67,7 @@ async fn no_detections() -> Result<(), anyhow::Error> {
                 context_type: ContextType::Url,
                 context: context.clone(),
             });
-        then.json(vec![detection.clone()]);
+        then.json([&detection]);
     });
 
     // Start orchestrator server and its dependencies
@@ -129,7 +129,7 @@ async fn detections() -> Result<(), anyhow::Error> {
                 context: context.clone(),
             });
 
-        then.json(vec![detection.clone()]);
+        then.json([&detection]);
     });
 
     // Start orchestrator server and its dependencies
@@ -217,8 +217,7 @@ async fn client_error() -> Result<(), anyhow::Error> {
     // assertions
     assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
     let response = response.json::<OrchestratorError>().await?;
-    assert_eq!(response.code, detector_error.code);
-    assert_eq!(response.details, ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE);
+    assert_eq!(response, OrchestratorError::internal());
 
     Ok(())
 }
@@ -404,13 +403,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     debug!("{response:#?}");
     assert_eq!(
         response,
-        OrchestratorError {
-            code: 422,
-            details: format!(
-                "detector `{}` is not supported by this endpoint",
-                ANSWER_RELEVANCE_DETECTOR_SENTENCE
-            )
-        },
+        OrchestratorError::detector_not_supported(ANSWER_RELEVANCE_DETECTOR_SENTENCE),
         "failed on detector with invalid type scenario"
     );
 
@@ -432,10 +425,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     debug!("{response:#?}");
     assert_eq!(
         response,
-        OrchestratorError {
-            code: 404,
-            details: format!("detector `{}` not found", NON_EXISTING_DETECTOR)
-        },
+        OrchestratorError::detector_not_found(NON_EXISTING_DETECTOR),
         "failed on non-existing detector scenario"
     );
 

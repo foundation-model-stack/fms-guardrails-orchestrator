@@ -16,7 +16,7 @@
 */
 
 use common::{
-    chat_completions::CHAT_COMPLETIONS_ENDPOINT,
+    chat_generation::CHAT_COMPLETIONS_ENDPOINT,
     chunker::CHUNKER_UNARY_ENDPOINT,
     detectors::{
         ANSWER_RELEVANCE_DETECTOR, DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE,
@@ -26,7 +26,7 @@ use common::{
     errors::{DetectorError, OrchestratorError},
     orchestrator::{
         ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT, ORCHESTRATOR_CONFIG_FILE_PATH,
-        ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE, TestOrchestratorServer,
+        TestOrchestratorServer,
     },
 };
 use fms_guardrails_orchestr8::{
@@ -122,7 +122,7 @@ async fn no_detections() -> Result<(), anyhow::Error> {
                 contents: vec!["Hi there!".into()],
                 detector_params: DetectorParams::new(),
             });
-        then.json(vec![Vec::<ContentAnalysisResponse>::new()]);
+        then.json([Vec::<ContentAnalysisResponse>::new()]);
     });
     // Add detector output mock
     detector_mocks.mock(|when, then| {
@@ -132,7 +132,7 @@ async fn no_detections() -> Result<(), anyhow::Error> {
                 contents: vec!["Hello!".into()],
                 detector_params: DetectorParams::new(),
             });
-        then.json(vec![Vec::<ContentAnalysisResponse>::new()]);
+        then.json([Vec::<ContentAnalysisResponse>::new()]);
     });
 
     // Add chat completions mock
@@ -256,7 +256,7 @@ async fn input_detections() -> Result<(), anyhow::Error> {
                 contents: vec![input_text.into()],
                 detector_params: DetectorParams::new(),
             });
-        then.json(vec![&expected_detections]);
+        then.json([&expected_detections]);
     });
 
     // Add chat completions mock
@@ -319,10 +319,7 @@ async fn input_client_error() -> Result<(), anyhow::Error> {
         message: "Internal detector error.".into(),
     };
     // Add 500 expected orchestrator error response
-    let expected_orchestrator_error = OrchestratorError {
-        code: 500,
-        details: ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE.to_string(),
-    };
+    let expected_orchestrator_error = OrchestratorError::internal();
 
     // Add input for error scenarios
     let chunker_error_input = "This should return a 500 error on chunker";
@@ -404,7 +401,7 @@ async fn input_client_error() -> Result<(), anyhow::Error> {
                 contents: vec![chat_completions_error_input.into()],
                 detector_params: DetectorParams::new(),
             });
-        then.json(vec![Vec::<ContentAnalysisResponse>::new()]);
+        then.json([Vec::<ContentAnalysisResponse>::new()]);
     });
 
     // Add detector mock for detector error scenario
@@ -595,7 +592,7 @@ async fn output_detections() -> Result<(), anyhow::Error> {
                 contents: vec![input_text.into()],
                 detector_params: DetectorParams::new(),
             });
-        then.json(vec![Vec::<ContentAnalysisResponse>::new()]);
+        then.json([Vec::<ContentAnalysisResponse>::new()]);
     });
 
     // Add detector output mock for generated message
@@ -606,7 +603,7 @@ async fn output_detections() -> Result<(), anyhow::Error> {
                 contents: vec![output_text.into()],
                 detector_params: DetectorParams::new(),
             });
-        then.json(vec![&expected_detections]);
+        then.json([&expected_detections]);
     });
 
     // Add chunker tokenization mock for output detection user input
@@ -704,10 +701,7 @@ async fn output_client_error() -> Result<(), anyhow::Error> {
         message: "Internal detector error.".into(),
     };
     // Add 500 expected orchestrator mock response
-    let expected_orchestrator_error = OrchestratorError {
-        code: 500,
-        details: ORCHESTRATOR_INTERNAL_SERVER_ERROR_MESSAGE.to_string(),
-    };
+    let expected_orchestrator_error = OrchestratorError::internal();
 
     // Add input for error scenarios
     let chunker_error_input = "This should return a 500 error on chunker";
@@ -789,7 +783,7 @@ async fn output_client_error() -> Result<(), anyhow::Error> {
                 contents: vec![chat_completions_error_input.into()],
                 detector_params: DetectorParams::new(),
             });
-        then.json(vec![Vec::<ContentAnalysisResponse>::new()]);
+        then.json([Vec::<ContentAnalysisResponse>::new()]);
     });
 
     // Add detector mock for detector error scenario
@@ -943,13 +937,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     debug!("{results:#?}");
     assert_eq!(
         results,
-        OrchestratorError {
-            code: 422,
-            details: format!(
-                "detector `{}` is not supported by this endpoint",
-                ANSWER_RELEVANCE_DETECTOR
-            )
-        },
+        OrchestratorError::detector_not_supported(ANSWER_RELEVANCE_DETECTOR),
         "failed on invalid input detector scenario"
     );
 
@@ -973,10 +961,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     debug!("{results:#?}");
     assert_eq!(
         results,
-        OrchestratorError {
-            code: 404,
-            details: format!("detector `{}` not found", NON_EXISTING_DETECTOR)
-        },
+        OrchestratorError::detector_not_found(NON_EXISTING_DETECTOR),
         "failed on non-existing input detector scenario"
     );
 
@@ -1000,13 +985,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     debug!("{results:#?}");
     assert_eq!(
         results,
-        OrchestratorError {
-            code: 422,
-            details: format!(
-                "detector `{}` is not supported by this endpoint",
-                ANSWER_RELEVANCE_DETECTOR
-            )
-        },
+        OrchestratorError::detector_not_supported(ANSWER_RELEVANCE_DETECTOR),
         "failed on invalid output detector scenario"
     );
 
@@ -1030,10 +1009,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     debug!("{results:#?}");
     assert_eq!(
         results,
-        OrchestratorError {
-            code: 404,
-            details: format!("detector `{}` not found", NON_EXISTING_DETECTOR)
-        },
+        OrchestratorError::detector_not_found(NON_EXISTING_DETECTOR),
         "failed on non-existing input detector scenario"
     );
 

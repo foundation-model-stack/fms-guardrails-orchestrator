@@ -29,3 +29,51 @@ pub struct OrchestratorError {
     pub code: u16,
     pub details: String,
 }
+
+impl OrchestratorError {
+    /// Helper function that generates an orchestrator internal
+    /// server error.
+    pub fn internal() -> OrchestratorError {
+        OrchestratorError {
+            code: 500,
+            details: "unexpected error occurred while processing request".into(),
+        }
+    }
+    /// Helper function that generates an orchestrator non-existing detector error.
+    pub fn detector_not_found(detector_name: &str) -> Self {
+        Self {
+            code: 404,
+            details: format!("detector `{}` not found", detector_name),
+        }
+    }
+
+    /// Helper function that generates an orchestrator invalid detector error.
+    pub fn detector_not_supported(detector_name: &str) -> Self {
+        Self {
+            code: 422,
+            details: format!(
+                "detector `{}` is not supported by this endpoint",
+                detector_name
+            ),
+        }
+    }
+
+    /// Helper function that generates an orchestrator required field error.
+    pub fn required(field_name: &str) -> Self {
+        Self {
+            code: 422,
+            details: format!("`{}` is required", field_name),
+        }
+    }
+
+    /// Helper function that generates an orchestrator invalid chunker error.
+    pub fn chunker_not_supported(detector_name: &str) -> Self {
+        Self {
+            code: 422,
+            details: format!(
+                "detector `{}` uses chunker `whole_doc_chunker`, which is not supported by this endpoint",
+                detector_name
+            ),
+        }
+    }
+}

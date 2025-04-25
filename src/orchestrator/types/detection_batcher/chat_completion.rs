@@ -15,27 +15,28 @@
 
 */
 #![allow(dead_code)]
+use std::collections::BTreeMap;
+
 use super::{Chunk, DetectionBatcher, Detections, DetectorId, InputId};
-use crate::orchestrator::types::Chunks;
 
 /// A batcher for chat completions.
+#[derive(Debug, Clone)]
 pub struct ChatCompletionBatcher {
     detectors: Vec<DetectorId>,
-    // state: TBD
+    state: BTreeMap<(Chunk, u32), Vec<Detections>>,
 }
 
 impl ChatCompletionBatcher {
     pub fn new(detectors: Vec<DetectorId>) -> Self {
-        // let state = TBD::new();
         Self {
             detectors,
-            // state,
+            state: BTreeMap::default(),
         }
     }
 }
 
 impl DetectionBatcher for ChatCompletionBatcher {
-    type Batch = (u32, Chunks, Detections); // placeholder, actual type TBD
+    type Batch = (u32, Chunk, Detections);
 
     fn push(
         &mut self,
@@ -52,5 +53,9 @@ impl DetectionBatcher for ChatCompletionBatcher {
         // TODO: implement batching logic to align with requirements
         // ref: https://github.com/foundation-model-stack/fms-guardrails-orchestrator/blob/main/docs/architecture/adrs/005-chat-completion-support.md#streaming-response
         todo!()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.state.is_empty()
     }
 }
