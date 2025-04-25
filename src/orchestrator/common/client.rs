@@ -16,7 +16,7 @@
 */
 //! Client helpers
 use futures::{StreamExt, TryStreamExt};
-use http::HeaderMap;
+use http::{HeaderMap, header::CONTENT_TYPE};
 use tokio::sync::broadcast;
 use tokio_stream::wrappers::{BroadcastStream, ReceiverStream};
 use tracing::{debug, instrument};
@@ -251,6 +251,8 @@ pub async fn chat_completion(
 ) -> Result<openai::ChatCompletionsResponse, Error> {
     let model_id = request.model.clone();
     debug!(%model_id, ?request, "sending chat completions request");
+    let mut headers = headers;
+    headers.append(CONTENT_TYPE, "application/json".parse().unwrap());
     let response = client
         .chat_completions(request, headers)
         .await
@@ -271,6 +273,8 @@ pub async fn chat_completion_stream(
 ) -> Result<ChatCompletionStream, Error> {
     let model_id = request.model.clone();
     debug!(%model_id, ?request, "sending chat completions stream request");
+    let mut headers = headers;
+    headers.append(CONTENT_TYPE, "application/json".parse().unwrap());
     let response = client
         .chat_completions(request, headers)
         .await
