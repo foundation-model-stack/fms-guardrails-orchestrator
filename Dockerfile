@@ -16,7 +16,7 @@ RUN cd /tmp && \
         apt update && \
         apt install -y cmake clang libclang-dev curl unzip && \
         curl -L -O https://github.com/protocolbuffers/protobuf/releases/download/v${PROTOC_VERSION}/protoc-${PROTOC_VERSION}-linux-s390_64.zip; \
-    elif [ "$(uname -m)" = "x86_64" ]; then \
+    else \
         curl -L -O https://github.com/protocolbuffers/protobuf/releases/download/v${PROTOC_VERSION}/protoc-${PROTOC_VERSION}-linux-x86_64.zip; \
     fi && \
     unzip protoc-*.zip -d /usr/local && \
