@@ -219,7 +219,17 @@ impl TryFrom<Map<String, Value>> for ChatCompletionsRequest {
         }
         let messages = if let Some(messages) = value.get("messages") {
             Vec::<Message>::deserialize(messages)
-                .map_err(|_| ValidationError::Invalid("error deserializing `messages`".into()))
+                .map(|messages| {
+                    for message in &messages {
+                        if message.role == Role::User && message.content.is_none() {
+                            return Err(ValidationError::Invalid(
+                                "`content` is mandatory for user messages".into(),
+                            ));
+                        }
+                    }
+                    Ok(messages)
+                })
+                .map_err(|_| ValidationError::Invalid("error deserializing `messages`".into()))?
         } else {
             Err(ValidationError::Required("messages".into()))
         }?;

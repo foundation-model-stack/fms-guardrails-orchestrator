@@ -1013,7 +1013,35 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
         "failed on non-existing input detector scenario"
     );
 
-    // User message without `content` scenario
+    // User message without `content` scenario - no detectors
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
+        .json(&json!({
+            "model": MODEL_ID,
+            "detectors": {
+                "input": {},
+                "output": {}
+            },
+            "messages": [{
+                "role": "user",
+                "name": "string"
+            }],
+        }))
+        .send()
+        .await?;
+
+    let results = response.json::<OrchestratorError>().await?;
+    debug!("{results:#?}");
+    assert_eq!(
+        results,
+        OrchestratorError {
+            code: 422,
+            details: "`content` is mandatory for user messages".into()
+        },
+        "failed on user message missing `content` (no detectors) scenario"
+    );
+
+    // User message without `content` scenario - input detector
     let response = orchestrator_server
         .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
         .json(&json!({
@@ -1040,7 +1068,37 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
             code: 422,
             details: "`content` is mandatory for user messages".into()
         },
-        "failed on user message missing `content` scenario"
+        "failed on user message missing `content` (input detector) scenario"
+    );
+
+    // User message without `content` scenario - output detector
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
+        .json(&json!({
+            "model": MODEL_ID,
+            "detectors": {
+                "input": {},
+                "output": {
+                    DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC: {}
+                }
+            },
+            "messages": [{
+                "role": "user",
+                "name": "string"
+            }],
+        }))
+        .send()
+        .await?;
+
+    let results = response.json::<OrchestratorError>().await?;
+    debug!("{results:#?}");
+    assert_eq!(
+        results,
+        OrchestratorError {
+            code: 422,
+            details: "`content` is mandatory for user messages".into()
+        },
+        "failed on user message missing `content` (output detector) scenario"
     );
 
     Ok(())
