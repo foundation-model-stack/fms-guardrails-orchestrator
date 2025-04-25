@@ -20,23 +20,19 @@ use super::{Chunk, DetectionBatcher, Detections, DetectorId, InputId};
 
 /// A batcher for chat completions.
 ///
-/// A batch corresponds to a chunk. Batches are returned in-order
-/// as detections from all detectors are received for the chunk.
-/// For chat completions, each chunk will also correspond to a choice,
-/// where choices are independent of each other. Each streamed event
-/// for chat completions has a 'choices' field, but only contains
-/// one choice per event, e.g.
-/// data: {"id":"chat-", ..., "choices":[{"index":0, ...}]}
-/// data: {"id":"chat-", ..., "choices":[{"index":1, ...}]}
-/// data: {"id":"chat-", ..., "choices":[{"index":0, ...}]}
+/// A batch corresponds to a choice-chunk. Batches are
+/// returned in-order as detections from all detectors
+/// are received for the choice-chunk.
 ///
-/// The `choice_index` can then be tracked with each chunk,
-/// but do not have to be batched or aggregated for stream events.
+/// Chat completion messages have a `choices` field containing
+/// a single choice, e.g.
+/// ```text
+///     data: {"id":"chat-", ..., "choices":[{"index":0, ...}]}
+///     data: {"id":"chat-", ..., "choices":[{"index":1, ...}]}
+/// ```
+/// And we track chunks for each choice independently.
 ///
-/// This batcher requires that all detectors use the same chunker,
-/// like the max_processed_index batcher. Detections from detectors
-/// that require whole input and/or output of a model (i.e. that
-/// do not require chunking with chunkers) will be handled separately.
+/// This batcher requires that all detectors use the same chunker.
 #[derive(Debug, Clone)]
 pub struct ChatCompletionBatcher {
     n_detectors: usize,
