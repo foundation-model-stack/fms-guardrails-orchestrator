@@ -18,11 +18,13 @@ use std::collections::{BTreeMap, btree_map};
 
 use super::{Chunk, DetectionBatcher, Detections, DetectorId, InputId};
 
+pub type ChoiceIndex = u32;
+
 /// A batcher for chat completions.
 ///
-/// A batch corresponds to a choice-chunk. Batches are
-/// returned in-order as detections from all detectors
-/// are received for the choice-chunk.
+/// A batch corresponds to a choice-chunk (where each chunk is associated
+/// with a particular choice through a ChoiceIndex). Batches are returned
+/// in-order as detections from all detectors are received for the choice-chunk.
 ///
 /// Chat completion messages have a `choices` field containing
 /// a single choice, e.g.
@@ -36,10 +38,9 @@ use super::{Chunk, DetectionBatcher, Detections, DetectorId, InputId};
 #[derive(Debug, Clone)]
 pub struct ChatCompletionBatcher {
     n_detectors: usize,
-    // (Chunk, choice_index for chunk), [chunk's detections]
     // We place the chunk first since chunk ordering includes where
     // the chunk is in all the processed messages.
-    state: BTreeMap<(Chunk, u32), Vec<Detections>>,
+    state: BTreeMap<(Chunk, ChoiceIndex), Vec<Detections>>,
 }
 
 impl ChatCompletionBatcher {
