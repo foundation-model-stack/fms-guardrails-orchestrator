@@ -202,6 +202,11 @@ mod test {
         let n = 2;
         let mut batcher = MaxProcessedIndexBatcher::new(n);
 
+        // NOTE: Both chunk-2 detections are pushed for detectors here before their
+        // respective chunk-1 detections. At this batcher level, ordering will be
+        // expected but may present as an edge case at the stream level ref.
+        // https://github.com/foundation-model-stack/fms-guardrails-orchestrator/issues/377
+
         // Push chunk-2 detections for pii detector
         batcher.push(
             input_id,
