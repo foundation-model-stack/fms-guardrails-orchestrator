@@ -53,16 +53,16 @@ impl ChatCompletionBatcher {
 }
 
 impl DetectionBatcher for ChatCompletionBatcher {
-    type Batch = (Chunk, u32, Detections); // (chunk, choice_index, corresponding detections)
+    type Batch = (Chunk, ChoiceIndex, Detections);
 
     fn push(
         &mut self,
-        input_id: InputId, // maps to choice_index
+        choice_index: ChoiceIndex,
         _detector_id: DetectorId,
         chunk: Chunk,
         detections: Detections,
     ) {
-        match self.state.entry((chunk, input_id)) {
+        match self.state.entry((chunk, choice_index)) {
             btree_map::Entry::Vacant(entry) => {
                 // New chunk, insert entry
                 entry.insert(vec![detections]);
