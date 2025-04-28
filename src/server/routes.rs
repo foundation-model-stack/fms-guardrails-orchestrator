@@ -31,11 +31,9 @@ use futures::{
     Stream, StreamExt,
     stream::{self, BoxStream},
 };
-use opentelemetry::trace::TraceContextExt;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
-use tracing::{Span, info};
-use tracing_opentelemetry::OpenTelemetrySpanExt;
+use tracing::info;
 
 use crate::{
     clients::openai::{ChatCompletionsRequest, ChatCompletionsResponse},
@@ -47,7 +45,10 @@ use crate::{
     utils,
 };
 
-use super::{Error, ServerState, filter_headers};
+use super::{
+    Error, ServerState,
+    utils::{filter_headers, get_trace_id},
+};
 
 const PACKAGE_VERSION: &str = env!("CARGO_PKG_VERSION");
 const PACKAGE_NAME: &str = env!("CARGO_PKG_NAME");
@@ -120,7 +121,7 @@ async fn classification_with_gen(
     headers: HeaderMap,
     WithRejection(Json(request), _): WithRejection<Json<models::GuardrailsHttpRequest>, Error>,
 ) -> Result<impl IntoResponse, Error> {
-    let trace_id = Span::current().context().span().span_context().trace_id();
+    let trace_id = get_trace_id();
     request.validate()?;
     let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
     let task = ClassificationWithGenTask::new(trace_id, request, headers);
@@ -138,7 +139,7 @@ async fn generation_with_detection(
         Error,
     >,
 ) -> Result<impl IntoResponse, Error> {
-    let trace_id = Span::current().context().span().span_context().trace_id();
+    let trace_id = get_trace_id();
     request.validate()?;
     let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
     let task = GenerationWithDetectionTask::new(trace_id, request, headers);
@@ -153,7 +154,7 @@ async fn stream_classification_with_gen(
     headers: HeaderMap,
     WithRejection(Json(request), _): WithRejection<Json<models::GuardrailsHttpRequest>, Error>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
-    let trace_id = Span::current().context().span().span_context().trace_id();
+    let trace_id = get_trace_id();
     if let Err(error) = request.validate() {
         // Request validation failed, return stream with single error SSE event
         let error: Error = error.into();
@@ -192,7 +193,7 @@ async fn stream_content_detection(
     headers: HeaderMap,
     json_lines: JsonLines<StreamingContentDetectionRequest>,
 ) -> Result<impl IntoResponse, Error> {
-    let trace_id = Span::current().context().span().span_context().trace_id();
+    let trace_id = get_trace_id();
     // Validate the content-type from the header and ensure it is application/x-ndjson
     // If it's not, return a UnsupportedContentType error with the appropriate message
     let content_type = headers
@@ -260,7 +261,7 @@ async fn detection_content(
         Error,
     >,
 ) -> Result<impl IntoResponse, Error> {
-    let trace_id = Span::current().context().span().span_context().trace_id();
+    let trace_id = get_trace_id();
     request.validate()?;
     let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
     let task = TextContentDetectionTask::new(trace_id, request, headers);
@@ -275,7 +276,7 @@ async fn detect_context_documents(
     headers: HeaderMap,
     WithRejection(Json(request), _): WithRejection<Json<models::ContextDocsHttpRequest>, Error>,
 ) -> Result<impl IntoResponse, Error> {
-    let trace_id = Span::current().context().span().span_context().trace_id();
+    let trace_id = get_trace_id();
     request.validate()?;
     let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
     let task = ContextDocsDetectionTask::new(trace_id, request, headers);
@@ -290,7 +291,7 @@ async fn detect_chat(
     headers: HeaderMap,
     WithRejection(Json(request), _): WithRejection<Json<models::ChatDetectionHttpRequest>, Error>,
 ) -> Result<impl IntoResponse, Error> {
-    let trace_id = Span::current().context().span().span_context().trace_id();
+    let trace_id = get_trace_id();
     request.validate_for_text()?;
     let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
     let task = ChatDetectionTask::new(trace_id, request, headers);
@@ -308,7 +309,7 @@ async fn detect_generated(
         Error,
     >,
 ) -> Result<impl IntoResponse, Error> {
-    let trace_id = Span::current().context().span().span_context().trace_id();
+    let trace_id = get_trace_id();
     request.validate()?;
     let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
     let task = DetectionOnGenerationTask::new(trace_id, request, headers);
@@ -324,7 +325,7 @@ async fn chat_completions_detection(
     WithRejection(Json(request), _): WithRejection<Json<ChatCompletionsRequest>, Error>,
 ) -> Result<impl IntoResponse, Error> {
     use ChatCompletionsResponse::*;
-    let trace_id = Span::current().context().span().span_context().trace_id();
+    let trace_id = get_trace_id();
     let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
     let task = ChatCompletionsDetectionTask::new(trace_id, request, headers);
     match state.orchestrator.handle(task).await {

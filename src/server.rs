@@ -14,9 +14,9 @@
  limitations under the License.
 
 */
-use std::{collections::HashSet, net::SocketAddr, path::PathBuf, sync::Arc};
+use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 
-use axum::{Router, extract::Request, http::HeaderMap};
+use axum::{Router, extract::Request};
 use hyper::body::Incoming;
 use hyper_util::rt::{TokioExecutor, TokioIo};
 use tokio::{net::TcpListener, signal};
@@ -31,6 +31,7 @@ mod tls;
 use tls::configure_tls;
 mod errors;
 mod routes;
+mod utils;
 pub use errors::Error;
 
 /// Configures and runs orchestrator servers.
@@ -202,14 +203,6 @@ async fn shutdown_signal() {
         _ = terminate => {},
     }
     info!("signal received, starting graceful shutdown");
-}
-
-fn filter_headers(passthrough_headers: &HashSet<String>, headers: HeaderMap) -> HeaderMap {
-    headers
-        .iter()
-        .filter(|(name, _)| passthrough_headers.contains(&name.as_str().to_lowercase()))
-        .map(|(name, value)| (name.clone(), value.clone()))
-        .collect()
 }
 
 /// Server shared state
