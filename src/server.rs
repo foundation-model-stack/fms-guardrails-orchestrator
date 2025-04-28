@@ -16,21 +16,16 @@
 */
 use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 
-use axum::{Router, extract::Request};
-use hyper::body::Incoming;
-use hyper_util::rt::{TokioExecutor, TokioIo};
 use tokio::{net::TcpListener, signal};
-use tokio_rustls::TlsAcceptor;
-use tower::Service;
 use tower_http::trace::TraceLayer;
-use tracing::{debug, error, info, warn};
+use tracing::info;
 
 use crate::orchestrator::Orchestrator;
 
-mod tls;
-use tls::configure_tls;
 mod errors;
 mod routes;
+mod tls;
+use tls::{configure_tls, serve_with_tls};
 mod utils;
 pub use errors::Error;
 
@@ -103,83 +98,6 @@ async fn run_guardrails_server(
             server.await.expect("guardrails server crashed!")
         }))
     }
-}
-
-/// Serve the service with the supplied listener, TLS config, and shutdown signal.
-/// Based on https://github.com/tokio-rs/axum/blob/main/examples/low-level-rustls/src/main.rs
-fn serve_with_tls<F>(
-    app: Router,
-    listener: TcpListener,
-    tls_config: Arc<rustls::ServerConfig>,
-    shutdown_signal: F,
-) -> tokio::task::JoinHandle<()>
-where
-    F: Future<Output = ()> + Send + 'static,
-{
-    let tls_acceptor = TlsAcceptor::from(tls_config);
-    tokio::spawn(async move {
-        let graceful = hyper_util::server::graceful::GracefulShutdown::new();
-        let builder = hyper_util::server::conn::auto::Builder::new(TokioExecutor::new());
-        let mut signal = std::pin::pin!(shutdown_signal);
-        loop {
-            let tower_service = app.clone();
-            let tls_acceptor = tls_acceptor.clone();
-            // Wait for new tcp connection
-            let (cnx, addr) = tokio::select! {
-                res = listener.accept() => {
-                    match res {
-                        Ok(res) => res,
-                        Err(err) => {
-                            error!("error accepting tcp connection: {err}");
-                            continue;
-                        }
-                    }
-                }
-                _ = &mut signal => {
-                    debug!("graceful shutdown signal received");
-                    break;
-                }
-            };
-            // Wait for tls handshake
-            let stream = tokio::select! {
-                res = tls_acceptor.accept(cnx) => {
-                    match res {
-                        Ok(stream) => stream,
-                        Err(err) => {
-                            error!("error accepting connection on handshake: {err}");
-                            continue;
-                        }
-                    }
-                }
-                _ = &mut signal => {
-                    debug!("graceful shutdown signal received");
-                    break;
-                }
-            };
-            // `TokioIo` converts between Hyper's own `AsyncRead` and `AsyncWrite` traits
-            let stream = TokioIo::new(stream);
-            let hyper_service = hyper::service::service_fn(move |request: Request<Incoming>| {
-                // Clone necessary since hyper's `Service` uses `&self` whereas
-                // tower's `Service` requires `&mut self`
-                tower_service.clone().call(request)
-            });
-            let conn = builder.serve_connection_with_upgrades(stream, hyper_service);
-            let fut = graceful.watch(conn.into_owned());
-            tokio::spawn(async move {
-                if let Err(err) = fut.await {
-                    warn!("error serving connection from {}: {}", addr, err);
-                }
-            });
-        }
-        tokio::select! {
-            () = graceful.shutdown() => {
-                debug!("graceful shutdown completed");
-            },
-            () = tokio::time::sleep(std::time::Duration::from_secs(10)) => {
-                debug!("graceful shutdown timed out, aborting...");
-            }
-        }
-    })
 }
 
 /// Shutdown signal handler
