@@ -58,7 +58,8 @@ fn main() -> Result<(), anyhow::Error> {
                 args.tls_client_ca_cert_path,
                 orchestrator,
             )
-            .await?;
+            .await
+            .unwrap_or_else(|e| panic!("failed to run server: {e}"));
             Ok(trace_shutdown()?)
         })
 }
