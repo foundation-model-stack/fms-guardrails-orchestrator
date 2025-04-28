@@ -74,18 +74,25 @@ impl Handle<StreamingClassificationWithGenTask> for Orchestrator {
             let input_detectors = task.guardrails_config.input_detectors();
             let output_detectors = task.guardrails_config.output_detectors();
 
-            // input detectors validation
+            // Input detectors validation
+            // Allow `whole_doc_chunker` detectors on input detection
+            // because the input detection call is unary
             if let Err(error) = validate_detectors(
                 &input_detectors,
                 &ctx.config.detectors,
                 &[DetectorType::TextContents],
-                false,
+                true,
             ) {
                 let _ = response_tx.send(Err(error)).await;
                 return;
             }
 
-            // output detectors validation
+            // Output detectors validation
+            // Disallow `whole_doc_chunker` detectors on output detection
+            // for now until results of these detectors are handled as
+            // planned for chat completions, with detection results
+            // provided separately at the end but not blocking other
+            // detection results that may be provided on smaller chunks
             if let Err(error) = validate_detectors(
                 &output_detectors,
                 &ctx.config.detectors,
