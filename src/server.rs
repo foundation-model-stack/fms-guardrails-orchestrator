@@ -19,8 +19,6 @@ use std::{
     collections::{HashMap, HashSet},
     convert::Infallible,
     error::Error as _,
-    fs::File,
-    io::BufReader,
     net::SocketAddr,
     path::PathBuf,
     sync::Arc,
@@ -44,7 +42,6 @@ use futures::{
 use hyper::body::Incoming;
 use hyper_util::rt::{TokioExecutor, TokioIo};
 use opentelemetry::trace::TraceContextExt;
-use rustls::{RootCertStore, ServerConfig, server::WebPkiClientVerifier};
 use tokio::{net::TcpListener, signal, sync::mpsc};
 use tokio_rustls::TlsAcceptor;
 use tokio_stream::wrappers::ReceiverStream;
@@ -52,7 +49,6 @@ use tower::Service;
 use tower_http::trace::TraceLayer;
 use tracing::{Span, debug, error, info, warn};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
-use webpki::types::{CertificateDer, PrivateKeyDer};
 
 use crate::{
     clients::openai::{ChatCompletionsRequest, ChatCompletionsResponse},
@@ -63,6 +59,9 @@ use crate::{
     },
     utils,
 };
+
+mod tls;
+use tls::configure_tls;
 
 const API_PREFIX: &str = r#"/api/v1/task"#;
 // New orchestrator API
@@ -121,47 +120,7 @@ pub async fn run(
 
     // (2) Main guardrails server
     // (2a) Configure TLS if requested
-    let mut arc_server_config: Option<Arc<ServerConfig>> = None;
-    if let (Some(cert_path), Some(key_path)) = (tls_cert_path, tls_key_path) {
-        info!("Configuring Server TLS for incoming connections");
-        let server_cert = load_certs(&cert_path);
-        let key = load_private_key(&key_path);
-
-        // A process wide default crypto provider is needed, aws_lc_rs feature is enabled by default
-        let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
-
-        // Configure mTLS if client CA is provided
-        let client_auth = if tls_client_ca_cert_path.is_some() {
-            info!("Configuring TLS trust certificate (mTLS) for incoming connections");
-            let client_certs = load_certs(
-                tls_client_ca_cert_path
-                    .as_ref()
-                    .expect("error loading certs for mTLS"),
-            );
-            let mut client_auth_certs = RootCertStore::empty();
-            for client_cert in client_certs {
-                // Should be only one
-                client_auth_certs
-                    .add(client_cert.clone())
-                    .unwrap_or_else(|e| {
-                        panic!("error adding client cert {:?}: {}", client_cert, e)
-                    });
-            }
-            WebPkiClientVerifier::builder(client_auth_certs.into())
-                .build()
-                .unwrap_or_else(|e| panic!("error building client verifier: {}", e))
-        } else {
-            WebPkiClientVerifier::no_client_auth()
-        };
-
-        let server_config = ServerConfig::builder()
-            .with_client_cert_verifier(client_auth)
-            .with_single_cert(server_cert, key)
-            .expect("bad server certificate or key");
-        arc_server_config = Some(Arc::new(server_config));
-    } else {
-        info!("HTTP server not configured with TLS")
-    }
+    let tls_config = configure_tls(tls_cert_path, tls_key_path, tls_client_ca_cert_path);
 
     // (2b) Add main guardrails server routes
     let mut router = Router::new()
@@ -222,12 +181,12 @@ pub async fn run(
     let listener: TcpListener = TcpListener::bind(&http_addr)
         .await
         .unwrap_or_else(|_| panic!("failed to bind to {http_addr}"));
-    let guardrails_handle = if arc_server_config.is_some() {
+    let guardrails_handle = if let Some(tls_config) = tls_config {
         // TLS
         // Use more low level server configuration than axum for configurability
         // Ref. https://github.com/tokio-rs/axum/blob/main/examples/low-level-rustls/src/main.rs
         info!("HTTPS server started on port {}", http_addr.port());
-        let tls_acceptor = TlsAcceptor::from(arc_server_config.unwrap());
+        let tls_acceptor = TlsAcceptor::from(tls_config);
         tokio::spawn(async move {
             let graceful = hyper_util::server::graceful::GracefulShutdown::new();
             let builder = hyper_util::server::conn::auto::Builder::new(TokioExecutor::new());
@@ -605,37 +564,6 @@ async fn shutdown_signal() {
     }
 
     info!("signal received, starting graceful shutdown");
-}
-
-// Ref. https://github.com/rustls/rustls/blob/main/examples/src/bin/tlsserver-mio.rs
-/// Load certificates from a file
-fn load_certs(filename: &PathBuf) -> Vec<CertificateDer<'static>> {
-    let cert_file = File::open(filename).expect("cannot open certificate file");
-    let mut reader = BufReader::new(cert_file);
-    rustls_pemfile::certs(&mut reader)
-        .map(|result| result.unwrap())
-        .collect()
-}
-
-/// Load private key from a file
-fn load_private_key(filename: &PathBuf) -> PrivateKeyDer<'static> {
-    let key_file = File::open(filename).expect("cannot open private key file");
-    let mut reader = BufReader::new(key_file);
-
-    loop {
-        match rustls_pemfile::read_one(&mut reader).expect("cannot parse private key .pem file") {
-            Some(rustls_pemfile::Item::Pkcs1Key(key)) => return key.into(),
-            Some(rustls_pemfile::Item::Pkcs8Key(key)) => return key.into(),
-            Some(rustls_pemfile::Item::Sec1Key(key)) => return key.into(),
-            None => break,
-            _ => {}
-        }
-    }
-
-    panic!(
-        "no keys found in {:?} (encrypted keys not supported)",
-        filename
-    );
 }
 
 /// High-level errors to return to clients.
