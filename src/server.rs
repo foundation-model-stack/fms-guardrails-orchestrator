@@ -50,7 +50,7 @@ pub async fn run(
         tls_cert_path,
         tls_key_path,
         tls_client_ca_cert_path,
-        state.clone(),
+        state,
     )
     .await?;
     // Await server shutdown
