@@ -82,10 +82,9 @@ impl<C: DetectorClient + HttpClientExt> DetectorClientExt for C {
         &self,
         model_id: &str,
         url: Url,
-        headers: HeaderMap,
+        mut headers: HeaderMap,
         request: impl RequestBody,
     ) -> Result<U, Error> {
-        let mut headers = headers;
         headers.append(DETECTOR_ID_HEADER_NAME, model_id.parse().unwrap());
         headers.append(CONTENT_TYPE, "application/json".parse().unwrap());
         // Header used by a router component, if available

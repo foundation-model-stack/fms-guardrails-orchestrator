@@ -246,12 +246,11 @@ pub async fn detect_text_context(
 #[instrument(skip_all, fields(model_id))]
 pub async fn chat_completion(
     client: &OpenAiClient,
-    headers: HeaderMap,
+    mut headers: HeaderMap,
     request: openai::ChatCompletionsRequest,
 ) -> Result<openai::ChatCompletionsResponse, Error> {
     let model_id = request.model.clone();
     debug!(%model_id, ?request, "sending chat completions request");
-    let mut headers = headers;
     headers.append(CONTENT_TYPE, "application/json".parse().unwrap());
     let response = client
         .chat_completions(request, headers)
@@ -268,12 +267,11 @@ pub async fn chat_completion(
 #[instrument(skip_all, fields(model_id))]
 pub async fn chat_completion_stream(
     client: &OpenAiClient,
-    headers: HeaderMap,
+    mut headers: HeaderMap,
     request: openai::ChatCompletionsRequest,
 ) -> Result<ChatCompletionStream, Error> {
     let model_id = request.model.clone();
     debug!(%model_id, ?request, "sending chat completions stream request");
-    let mut headers = headers;
     headers.append(CONTENT_TYPE, "application/json".parse().unwrap());
     let response = client
         .chat_completions(request, headers)
