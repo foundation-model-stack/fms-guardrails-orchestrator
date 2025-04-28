@@ -44,7 +44,7 @@ pub async fn run(
     orchestrator: Orchestrator,
 ) -> Result<(), Error> {
     let state = Arc::new(ServerState::new(orchestrator));
-    let health_handle = run_health_server(health_addr, state.clone()).await;
+    let health_handle = run_health_server(health_addr, state.clone()).await?;
     let guardrails_handle = run_guardrails_server(
         guardrails_addr,
         tls_cert_path,
@@ -52,7 +52,7 @@ pub async fn run(
         tls_client_ca_cert_path,
         state.clone(),
     )
-    .await;
+    .await?;
     // Await server shutdown
     let _ = tokio::join!(health_handle, guardrails_handle);
     info!("shutdown complete");
@@ -63,15 +63,15 @@ pub async fn run(
 async fn run_health_server(
     addr: SocketAddr,
     state: Arc<ServerState>,
-) -> tokio::task::JoinHandle<()> {
+) -> Result<tokio::task::JoinHandle<()>, Error> {
     info!("starting health server on {addr}");
     let app = routes::health_router(state);
-    let listener = TcpListener::bind(&addr)
-        .await
-        .unwrap_or_else(|_| panic!("starting health server failed: could not bind to {addr}"));
+    let listener = TcpListener::bind(&addr).await?;
     let server =
         axum::serve(listener, app.into_make_service()).with_graceful_shutdown(shutdown_signal());
-    tokio::task::spawn(async { server.await.expect("health server crashed!") })
+    Ok(tokio::task::spawn(async {
+        server.await.expect("health server crashed!")
+    }))
 }
 
 /// Configures and runs guardrails server.
@@ -81,7 +81,7 @@ async fn run_guardrails_server(
     tls_key_path: Option<PathBuf>,
     tls_client_ca_cert_path: Option<PathBuf>,
     state: Arc<ServerState>,
-) -> tokio::task::JoinHandle<()> {
+) -> Result<tokio::task::JoinHandle<()>, Error> {
     info!("starting guardrails server on {addr}");
     let router = routes::guardrails_router(state);
     let app = router.layer(
@@ -91,17 +91,17 @@ async fn run_guardrails_server(
             .on_response(crate::utils::trace::on_outgoing_response)
             .on_eos(crate::utils::trace::on_outgoing_eos),
     );
-    let listener = TcpListener::bind(&addr)
-        .await
-        .unwrap_or_else(|_| panic!("starting guardrails server failed: could not bind to {addr}"));
+    let listener = TcpListener::bind(&addr).await?;
     let tls_config = configure_tls(tls_cert_path, tls_key_path, tls_client_ca_cert_path);
     let shutdown_signal = shutdown_signal();
     if let Some(tls_config) = tls_config {
-        serve_with_tls(app, listener, tls_config, shutdown_signal)
+        Ok(serve_with_tls(app, listener, tls_config, shutdown_signal))
     } else {
         let server =
             axum::serve(listener, app.into_make_service()).with_graceful_shutdown(shutdown_signal);
-        tokio::task::spawn(async { server.await.expect("guardrails server crashed!") })
+        Ok(tokio::task::spawn(async {
+            server.await.expect("guardrails server crashed!")
+        }))
     }
 }
 

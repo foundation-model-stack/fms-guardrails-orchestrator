@@ -42,6 +42,8 @@ pub enum Error {
     JsonError(String),
     #[error("unsupported content type: {0}")]
     UnsupportedContentType(String),
+    #[error(transparent)]
+    IoError(#[from] std::io::Error),
 }
 
 impl From<orchestrator::Error> for Error {
@@ -86,6 +88,7 @@ impl Error {
                 _ => (json_rejection.status(), json_rejection.body_text()),
             },
             JsonError(_) => (StatusCode::UNPROCESSABLE_ENTITY, self.to_string()),
+            IoError(error) => (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()),
         };
         serde_json::json!({
             "code": code.as_u16(),
@@ -112,6 +115,7 @@ impl IntoResponse for Error {
                 _ => (json_rejection.status(), json_rejection.body_text()),
             },
             JsonError(_) => (StatusCode::UNPROCESSABLE_ENTITY, self.to_string()),
+            IoError(error) => (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()),
         };
         let error = serde_json::json!({
             "code": code.as_u16(),
