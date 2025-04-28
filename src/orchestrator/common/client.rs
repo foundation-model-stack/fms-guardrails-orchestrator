@@ -30,6 +30,7 @@ use crate::{
             GenerationDetectionRequest, TextChatDetectorClient, TextContextDocDetectorClient,
             TextGenerationDetectorClient,
         },
+        http::JSON_CONTENT_TYPE,
         openai::{self, ChatCompletionsResponse, OpenAiClient},
     },
     models::{
@@ -251,7 +252,7 @@ pub async fn chat_completion(
 ) -> Result<openai::ChatCompletionsResponse, Error> {
     let model_id = request.model.clone();
     debug!(%model_id, ?request, "sending chat completions request");
-    headers.append(CONTENT_TYPE, "application/json".parse().unwrap());
+    headers.append(CONTENT_TYPE, JSON_CONTENT_TYPE);
     let response = client
         .chat_completions(request, headers)
         .await
@@ -272,7 +273,7 @@ pub async fn chat_completion_stream(
 ) -> Result<ChatCompletionStream, Error> {
     let model_id = request.model.clone();
     debug!(%model_id, ?request, "sending chat completions stream request");
-    headers.append(CONTENT_TYPE, "application/json".parse().unwrap());
+    headers.append(CONTENT_TYPE, JSON_CONTENT_TYPE);
     let response = client
         .chat_completions(request, headers)
         .await
