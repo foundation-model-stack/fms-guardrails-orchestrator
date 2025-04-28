@@ -16,7 +16,7 @@
 */
 //! Client helpers
 use futures::{StreamExt, TryStreamExt};
-use http::HeaderMap;
+use http::{HeaderMap, header::CONTENT_TYPE};
 use tokio::sync::broadcast;
 use tokio_stream::wrappers::{BroadcastStream, ReceiverStream};
 use tracing::{debug, instrument};
@@ -30,6 +30,7 @@ use crate::{
             GenerationDetectionRequest, TextChatDetectorClient, TextContextDocDetectorClient,
             TextGenerationDetectorClient,
         },
+        http::JSON_CONTENT_TYPE,
         openai::{self, ChatCompletionsResponse, OpenAiClient},
     },
     models::{
@@ -246,11 +247,12 @@ pub async fn detect_text_context(
 #[instrument(skip_all, fields(model_id))]
 pub async fn chat_completion(
     client: &OpenAiClient,
-    headers: HeaderMap,
+    mut headers: HeaderMap,
     request: openai::ChatCompletionsRequest,
 ) -> Result<openai::ChatCompletionsResponse, Error> {
     let model_id = request.model.clone();
     debug!(%model_id, ?request, "sending chat completions request");
+    headers.append(CONTENT_TYPE, JSON_CONTENT_TYPE);
     let response = client
         .chat_completions(request, headers)
         .await
@@ -266,11 +268,12 @@ pub async fn chat_completion(
 #[instrument(skip_all, fields(model_id))]
 pub async fn chat_completion_stream(
     client: &OpenAiClient,
-    headers: HeaderMap,
+    mut headers: HeaderMap,
     request: openai::ChatCompletionsRequest,
 ) -> Result<ChatCompletionStream, Error> {
     let model_id = request.model.clone();
     debug!(%model_id, ?request, "sending chat completions stream request");
+    headers.append(CONTENT_TYPE, JSON_CONTENT_TYPE);
     let response = client
         .chat_completions(request, headers)
         .await

@@ -25,7 +25,7 @@ use url::Url;
 
 use super::{
     Error,
-    http::{HttpClientExt, RequestBody, ResponseBody},
+    http::{HttpClientExt, JSON_CONTENT_TYPE, RequestBody, ResponseBody},
 };
 
 pub mod text_contents;
@@ -82,12 +82,11 @@ impl<C: DetectorClient + HttpClientExt> DetectorClientExt for C {
         &self,
         model_id: &str,
         url: Url,
-        headers: HeaderMap,
+        mut headers: HeaderMap,
         request: impl RequestBody,
     ) -> Result<U, Error> {
-        let mut headers = headers;
         headers.append(DETECTOR_ID_HEADER_NAME, model_id.parse().unwrap());
-        headers.append(CONTENT_TYPE, "application/json".parse().unwrap());
+        headers.append(CONTENT_TYPE, JSON_CONTENT_TYPE);
         // Header used by a router component, if available
         headers.append(MODEL_HEADER_NAME, model_id.parse().unwrap());
 

@@ -17,6 +17,7 @@
 
 use std::{fmt::Debug, ops::Deref, time::Duration};
 
+use http::header::HeaderValue;
 use http_body_util::{BodyExt, Full, combinators::BoxBody};
 use hyper::{
     HeaderMap, Method, Request, StatusCode,
@@ -45,6 +46,8 @@ use crate::{
     health::{HealthCheckResult, HealthStatus, OptionalHealthCheckResponseBody},
     utils::{AsUriExt, trace},
 };
+
+pub const JSON_CONTENT_TYPE: HeaderValue = HeaderValue::from_static("application/json");
 
 /// Any type that implements Debug and Serialize can be used as a request body
 pub trait RequestBody: Debug + Serialize {}
