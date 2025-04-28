@@ -102,21 +102,10 @@ pub async fn run(
     // with rustls, the hyper and tower crates [what axum is built on] had to
     // be used directly
 
-    let shared_state = Arc::new(ServerState::new(orchestrator));
+    let state = Arc::new(ServerState::new(orchestrator));
 
     // (1) Separate HTTP health server without TLS for probes
-    let health_app = get_health_app(shared_state.clone());
-    let health_listener = TcpListener::bind(&health_http_addr)
-        .await
-        .unwrap_or_else(|_| panic!("failed to bind to {health_http_addr}"));
-    let health_server = axum::serve(health_listener, health_app.into_make_service())
-        .with_graceful_shutdown(shutdown_signal());
-    let health_handle =
-        tokio::task::spawn(async { health_server.await.expect("HTTP health server crashed!") });
-    info!(
-        "HTTP health server started on port {}",
-        health_http_addr.port()
-    );
+    let health_handle = run_health_server(health_http_addr, state.clone()).await;
 
     // (2) Main guardrails server
     // (2a) Configure TLS if requested
@@ -161,7 +150,7 @@ pub async fn run(
         );
 
     // If chat generation is configured, enable the chat completions detection endpoint.
-    if shared_state.orchestrator.config().chat_generation.is_some() {
+    if state.orchestrator.config().chat_generation.is_some() {
         info!("Enabling chat completions detection endpoint");
         router = router.route(
             "/api/v2/chat/completions-detection",
@@ -169,7 +158,7 @@ pub async fn run(
         );
     }
 
-    let app = router.with_state(shared_state).layer(
+    let app = router.with_state(state).layer(
         TraceLayer::new_for_http()
             .make_span_with(utils::trace::incoming_request_span)
             .on_request(utils::trace::on_incoming_request)
@@ -273,11 +262,22 @@ pub async fn run(
     Ok(())
 }
 
-pub fn get_health_app(state: Arc<ServerState>) -> Router {
-    Router::new()
+/// Configures and runs standalone health server.
+async fn run_health_server(
+    addr: SocketAddr,
+    state: Arc<ServerState>,
+) -> tokio::task::JoinHandle<()> {
+    info!("starting health server on {addr}");
+    let app = Router::new()
         .route("/health", get(health))
         .route("/info", get(info))
-        .with_state(state)
+        .with_state(state);
+    let listener = TcpListener::bind(&addr)
+        .await
+        .unwrap_or_else(|_| panic!("starting health server failed: could not bind to {addr}"));
+    let server =
+        axum::serve(listener, app.into_make_service()).with_graceful_shutdown(shutdown_signal());
+    tokio::task::spawn(async { server.await.expect("health server crashed!") })
 }
 
 async fn health() -> Result<impl IntoResponse, ()> {
