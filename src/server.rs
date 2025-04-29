@@ -152,6 +152,7 @@ mod tests {
             Orchestrator::default(),
         )
         .await;
+        dbg!(&result); // temp
         assert!(result.is_err_and(|error| matches!(error, Error::IoError(_))
             && error.to_string() == "Address already in use (os error 48)"));
         Ok(())
