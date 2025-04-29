@@ -404,6 +404,32 @@ async fn input_detector_detections() -> Result<(), anyhow::Error> {
         then.pb(mock_tokenization_response.clone());
     });
 
+    // Detector on whole doc / entire input for multi-detector scenario
+    let whole_doc_mock_detection_response = ContentAnalysisResponse {
+        start: 0,
+        end: 61,
+        text: "This sentence does not have a detection. But <this one does>.".into(),
+        detection: "has_angle_brackets_1".into(),
+        detection_type: "angle_brackets_1".into(),
+        detector_id: Some(DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC.into()),
+        score: 1.0,
+        evidence: None,
+        metadata: Metadata::new(),
+    };
+    let mut whole_doc_detection_mocks = MockSet::new();
+    whole_doc_detection_mocks.mock(|when, then| {
+        when.path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
+            .json(ContentAnalysisRequest {
+                contents: vec![
+                    "This sentence does not have a detection. But <this one does>.".into(),
+                ],
+                detector_params: DetectorParams::new(),
+            });
+        then.json([vec![&whole_doc_mock_detection_response]]);
+    });
+    let mock_whole_doc_detector_server = MockServer::new(DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC)
+        .with_mocks(whole_doc_detection_mocks);
+
     // Start orchestrator server and its dependencies
     let mock_chunker_server = MockServer::new(chunker_id).grpc().with_mocks(chunker_mocks);
     let mock_detector_server = MockServer::new(detector_name).with_mocks(detection_mocks);
@@ -411,7 +437,7 @@ async fn input_detector_detections() -> Result<(), anyhow::Error> {
     let orchestrator_server = TestOrchestratorServer::builder()
         .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
         .generation_server(&generation_server)
-        .detector_servers([&mock_detector_server])
+        .detector_servers([&mock_detector_server, &mock_whole_doc_detector_server])
         .chunker_servers([&mock_chunker_server])
         .build()
         .await?;
@@ -469,6 +495,65 @@ async fn input_detector_detections() -> Result<(), anyhow::Error> {
             id: Some(fms_guardrails_orchestr8::models::DetectionWarningReason::UnsuitableInput),
             message: Some(ORCHESTRATOR_UNSUITABLE_INPUT_MESSAGE.into())
         }])
+    );
+
+    // Multi-detector scenario with detector that uses content from entire input
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_STREAMING_ENDPOINT)
+        .json(&GuardrailsHttpRequest {
+            model_id: model_id.into(),
+            inputs: "This sentence does not have a detection. But <this one does>.".into(),
+            guardrail_config: Some(GuardrailsConfig {
+                input: Some(GuardrailsConfigInput {
+                    models: HashMap::from([
+                        (detector_name.into(), DetectorParams::new()),
+                        (
+                            DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC.into(),
+                            DetectorParams::new(),
+                        ),
+                    ]),
+                    masks: None,
+                }),
+                output: None,
+            }),
+            text_gen_parameters: None,
+        })
+        .send()
+        .await?;
+    let sse_stream: SseStream<ClassifiedGeneratedTextStreamResult> =
+        SseStream::new(response.bytes_stream());
+    let messages = sse_stream.try_collect::<Vec<_>>().await?;
+    debug!("{messages:#?}");
+
+    assert_eq!(messages.len(), 1);
+    assert!(messages[0].generated_text.is_none());
+    assert_eq!(
+        messages[0].token_classification_results,
+        TextGenTokenClassificationResults {
+            input: Some(vec![
+                TokenClassificationResult {
+                    start: 0,
+                    end: 61,
+                    word: whole_doc_mock_detection_response.text,
+                    entity: whole_doc_mock_detection_response.detection,
+                    entity_group: whole_doc_mock_detection_response.detection_type,
+                    detector_id: whole_doc_mock_detection_response.detector_id,
+                    score: whole_doc_mock_detection_response.score,
+                    token_count: None
+                },
+                TokenClassificationResult {
+                    start: 46, // index of first token of detected text, relative to the `inputs` string sent in the orchestrator request.
+                    end: 59, // index of last token (+1) of detected text, relative to the `inputs` string sent in the orchestrator request.
+                    word: "this one does".into(),
+                    entity: "has_angle_brackets".into(),
+                    entity_group: "angle_brackets".into(),
+                    detector_id: Some(detector_name.to_string()),
+                    score: mock_detection_response.score,
+                    token_count: None
+                }
+            ]),
+            output: None
+        }
     );
 
     Ok(())
@@ -725,39 +810,6 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
         messages[0],
         OrchestratorError::detector_not_supported(FACT_CHECKING_DETECTOR_SENTENCE),
         "failed at invalid input detector scenario"
-    );
-
-    // Invalid chunker on input detector scenario
-    let response = orchestrator_server
-        .post(ORCHESTRATOR_STREAMING_ENDPOINT)
-        .json(&GuardrailsHttpRequest {
-            model_id: model_id.into(),
-            inputs: "This request contains a detector with an invalid chunker".into(),
-            guardrail_config: Some(GuardrailsConfig {
-                input: Some(GuardrailsConfigInput {
-                    models: HashMap::from([(
-                        DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC.into(),
-                        DetectorParams::new(),
-                    )]),
-                    masks: None,
-                }),
-                output: None,
-            }),
-            text_gen_parameters: None,
-        })
-        .send()
-        .await?;
-    debug!("{response:#?}");
-
-    assert_eq!(response.status(), 200);
-    let sse_stream: SseStream<OrchestratorError> = SseStream::new(response.bytes_stream());
-    let messages = sse_stream.try_collect::<Vec<_>>().await?;
-    debug!("{messages:#?}");
-    assert_eq!(messages.len(), 1);
-    assert_eq!(
-        messages[0],
-        OrchestratorError::chunker_not_supported(DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC),
-        "failed on input detector with invalid chunker scenario"
     );
 
     // Non-existing input detector scenario
