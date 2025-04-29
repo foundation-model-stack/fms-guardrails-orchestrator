@@ -36,7 +36,7 @@ pub async fn run(
     tls_key_path: Option<PathBuf>,
     tls_client_ca_cert_path: Option<PathBuf>,
     orchestrator: Orchestrator,
-) -> Result<(), Error> {
+) -> Result<(tokio::task::JoinHandle<()>, tokio::task::JoinHandle<()>), Error> {
     let state = Arc::new(ServerState::new(orchestrator));
     let health_handle = run_health_server(health_addr, state.clone()).await?;
     let guardrails_handle = run_guardrails_server(
@@ -47,10 +47,7 @@ pub async fn run(
         state,
     )
     .await?;
-    // Await server shutdown
-    let _ = tokio::join!(health_handle, guardrails_handle);
-    info!("shutdown complete");
-    Ok(())
+    Ok((health_handle, guardrails_handle))
 }
 
 /// Configures and runs health server.
@@ -153,6 +150,30 @@ mod tests {
         .await;
         assert!(result.is_err_and(|error| matches!(error, Error::IoError(_))
             && error.to_string().starts_with("Address already in use")));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_run_with_tls() -> Result<(), Error> {
+        let guardrails_addr: SocketAddr = "0.0.0.0:50104".parse().unwrap();
+        let health_addr: SocketAddr = "0.0.0.0:50105".parse().unwrap();
+        let config_path = std::env::current_dir().unwrap().join("config");
+        let tls_cert_path = config_path.join("localhost.crt");
+        let tls_key_path = config_path.join("localhost.key");
+        let (_health_handle, guardrails_handle) = run(
+            guardrails_addr,
+            health_addr,
+            Some(tls_cert_path),
+            Some(tls_key_path),
+            None,
+            Orchestrator::default(),
+        )
+        .await?;
+
+        // Ensure guardrails server task is still running
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        assert!(!guardrails_handle.is_finished());
+
         Ok(())
     }
 }
