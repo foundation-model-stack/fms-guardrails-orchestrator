@@ -133,3 +133,27 @@ impl ServerState {
         Self { orchestrator }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_run_bind_failure() -> Result<(), Error> {
+        let guardrails_addr: SocketAddr = "0.0.0.0:5000".parse().unwrap();
+        let health_addr: SocketAddr = "0.0.0.0:5001".parse().unwrap();
+        let _listener = TcpListener::bind(&guardrails_addr).await?;
+        let result = run(
+            guardrails_addr,
+            health_addr,
+            None,
+            None,
+            None,
+            Orchestrator::default(),
+        )
+        .await;
+        assert!(result.is_err_and(|error| matches!(error, Error::IoError(_))
+            && error.to_string() == "Address already in use (os error 48)"));
+        Ok(())
+    }
+}
