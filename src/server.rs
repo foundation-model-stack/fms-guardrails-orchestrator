@@ -140,8 +140,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_run_bind_failure() -> Result<(), Error> {
-        let guardrails_addr: SocketAddr = "0.0.0.0:5000".parse().unwrap();
-        let health_addr: SocketAddr = "0.0.0.0:5001".parse().unwrap();
+        let guardrails_addr: SocketAddr = "0.0.0.0:50101".parse().unwrap();
+        let health_addr: SocketAddr = "0.0.0.0:50103".parse().unwrap();
         let _listener = TcpListener::bind(&guardrails_addr).await?;
         let result = run(
             guardrails_addr,
