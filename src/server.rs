@@ -25,9 +25,8 @@ use crate::orchestrator::Orchestrator;
 mod errors;
 mod routes;
 mod tls;
-use tls::{configure_tls, serve_with_tls};
-mod utils;
 pub use errors::Error;
+use tls::{configure_tls, serve_with_tls};
 
 /// Configures and runs orchestrator servers.
 pub async fn run(
