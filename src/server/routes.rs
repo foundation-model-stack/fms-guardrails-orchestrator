@@ -35,6 +35,10 @@ use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::info;
 
+use super::{
+    Error, ServerState,
+    utils::{filter_headers, get_trace_id},
+};
 use crate::{
     clients::openai::{ChatCompletionsRequest, ChatCompletionsResponse},
     models::{self, InfoParams, InfoResponse, StreamingContentDetectionRequest},
@@ -43,11 +47,6 @@ use crate::{
         handlers::{chat_completions_detection::ChatCompletionsDetectionTask, *},
     },
     utils,
-};
-
-use super::{
-    Error, ServerState,
-    utils::{filter_headers, get_trace_id},
 };
 
 const PACKAGE_VERSION: &str = env!("CARGO_PKG_VERSION");
