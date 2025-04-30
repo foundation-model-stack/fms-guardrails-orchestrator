@@ -157,9 +157,11 @@ mod tests {
     async fn test_run_with_tls() -> Result<(), Error> {
         let guardrails_addr: SocketAddr = "0.0.0.0:50104".parse().unwrap();
         let health_addr: SocketAddr = "0.0.0.0:50105".parse().unwrap();
-        let config_path = std::env::current_dir().unwrap().join("config");
-        let tls_cert_path = config_path.join("localhost.crt");
-        let tls_key_path = config_path.join("localhost.key");
+        let resources: PathBuf = [env!("CARGO_MANIFEST_DIR"), "tests", "resources"]
+            .iter()
+            .collect();
+        let tls_cert_path = resources.join("localhost.crt");
+        let tls_key_path = resources.join("localhost.key");
         let (_health_handle, guardrails_handle) = run(
             guardrails_addr,
             health_addr,
