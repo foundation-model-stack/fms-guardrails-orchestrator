@@ -21,6 +21,7 @@ use clap::Parser;
 use fms_guardrails_orchestr8::{
     args::Args, config::OrchestratorConfig, orchestrator::Orchestrator, server, utils,
 };
+use tracing::info;
 
 fn main() -> Result<(), anyhow::Error> {
     rustls::crypto::aws_lc_rs::default_provider()
@@ -50,7 +51,7 @@ fn main() -> Result<(), anyhow::Error> {
             let config = OrchestratorConfig::load(args.config_path).await?;
             let orchestrator = Orchestrator::new(config, args.start_up_health_check).await?;
 
-            server::run(
+            let (health_handle, guardrails_handle) = server::run(
                 http_addr,
                 health_http_addr,
                 args.tls_cert_path,
@@ -58,7 +59,13 @@ fn main() -> Result<(), anyhow::Error> {
                 args.tls_client_ca_cert_path,
                 orchestrator,
             )
-            .await?;
+            .await
+            .unwrap_or_else(|e| panic!("failed to run server: {e}"));
+
+            // Await server shutdown
+            let _ = tokio::join!(health_handle, guardrails_handle);
+            info!("shutdown complete");
+
             Ok(trace_shutdown()?)
         })
 }
