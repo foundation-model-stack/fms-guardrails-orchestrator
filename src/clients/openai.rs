@@ -22,13 +22,15 @@ use eventsource_stream::Eventsource;
 use futures::StreamExt;
 use http_body_util::BodyExt;
 use hyper::{HeaderMap, StatusCode};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Map, Value};
 use tokio::sync::mpsc;
+use url::Url;
 
 use super::{
-    Client, Error, HttpClient, create_http_client, detector::ContentAnalysisResponse,
-    http::HttpClientExt,
+    Client, Error, HttpClient, create_http_client,
+    detector::ContentAnalysisResponse,
+    http::{HttpClientExt, RequestBody},
 };
 use crate::{
     config::ServiceConfig,
@@ -76,62 +78,11 @@ impl OpenAiClient {
     ) -> Result<ChatCompletionsResponse, Error> {
         let url = self.inner().endpoint(CHAT_COMPLETIONS_ENDPOINT);
         if let Some(true) = request.stream {
-            let (tx, rx) = mpsc::channel(32);
-            let mut event_stream = self
-                .inner()
-                .post(url, headers, request)
-                .await?
-                .0
-                .into_data_stream()
-                .eventsource();
-            // Spawn task to forward events to receiver
-            tokio::spawn(async move {
-                while let Some(result) = event_stream.next().await {
-                    match result {
-                        Ok(event) if event.data == "[DONE]" => {
-                            // Send None to signal that the stream completed
-                            let _ = tx.send(Ok(None)).await;
-                            break;
-                        }
-                        Ok(event) => match serde_json::from_str::<ChatCompletionChunk>(&event.data)
-                        {
-                            Ok(chunk) => {
-                                let _ = tx.send(Ok(Some(chunk))).await;
-                            }
-                            Err(e) => {
-                                let error = Error::Http {
-                                    code: StatusCode::INTERNAL_SERVER_ERROR,
-                                    message: format!("deserialization error: {e}"),
-                                };
-                                let _ = tx.send(Err(error.into())).await;
-                            }
-                        },
-                        Err(error) => {
-                            // We received an error from the event stream, send error message
-                            let error = Error::Http {
-                                code: StatusCode::INTERNAL_SERVER_ERROR,
-                                message: error.to_string(),
-                            };
-                            let _ = tx.send(Err(error.into())).await;
-                        }
-                    }
-                }
-            });
+            let rx = self.handle_streaming(url, request, headers).await?;
             Ok(ChatCompletionsResponse::Streaming(rx))
         } else {
-            let response = self.client.clone().post(url, headers, request).await?;
-            match response.status() {
-                StatusCode::OK => Ok(response.json::<ChatCompletion>().await?.into()),
-                _ => {
-                    let code = response.status();
-                    let message = if let Ok(response) = response.json::<OpenAiError>().await {
-                        response.message
-                    } else {
-                        "unknown error occurred".into()
-                    };
-                    Err(Error::Http { code, message })
-                }
-            }
+            let chat_completion = self.handle_unary(url, request, headers).await?;
+            Ok(ChatCompletionsResponse::Unary(chat_completion))
         }
     }
 
@@ -142,62 +93,85 @@ impl OpenAiClient {
     ) -> Result<CompletionsResponse, Error> {
         let url = self.inner().endpoint(COMPLETIONS_ENDPOINT);
         if let Some(true) = request.stream {
-            let (tx, rx) = mpsc::channel(32);
-            let mut event_stream = self
-                .inner()
-                .post(url, headers, request)
-                .await?
-                .0
-                .into_data_stream()
-                .eventsource();
-            // Spawn task to forward events to receiver
-            tokio::spawn(async move {
-                while let Some(result) = event_stream.next().await {
-                    match result {
-                        Ok(event) if event.data == "[DONE]" => {
-                            // Send None to signal that the stream completed
-                            let _ = tx.send(Ok(None)).await;
-                            break;
+            let rx = self.handle_streaming(url, request, headers).await?;
+            Ok(CompletionsResponse::Streaming(rx))
+        } else {
+            let completion = self.handle_unary(url, request, headers).await?;
+            Ok(CompletionsResponse::Unary(completion))
+        }
+    }
+
+    async fn handle_unary<R, S>(&self, url: Url, request: R, headers: HeaderMap) -> Result<S, Error>
+    where
+        R: RequestBody,
+        S: DeserializeOwned,
+    {
+        let response = self.client.clone().post(url, headers, request).await?;
+        match response.status() {
+            StatusCode::OK => response.json::<S>().await,
+            _ => {
+                let code = response.status();
+                let message = if let Ok(response) = response.json::<OpenAiError>().await {
+                    response.message
+                } else {
+                    "unknown error occurred".into()
+                };
+                Err(Error::Http { code, message })
+            }
+        }
+    }
+
+    async fn handle_streaming<R, S>(
+        &self,
+        url: Url,
+        request: R,
+        headers: HeaderMap,
+    ) -> Result<mpsc::Receiver<Result<Option<S>, orchestrator::Error>>, Error>
+    where
+        R: RequestBody,
+        S: DeserializeOwned + Send + 'static,
+    {
+        let (tx, rx) = mpsc::channel(32);
+        let mut event_stream = self
+            .inner()
+            .post(url, headers, request)
+            .await?
+            .0
+            .into_data_stream()
+            .eventsource();
+        // Spawn task to forward events to receiver
+        tokio::spawn(async move {
+            while let Some(result) = event_stream.next().await {
+                match result {
+                    Ok(event) if event.data == "[DONE]" => {
+                        // Send None to signal that the stream completed
+                        let _ = tx.send(Ok(None)).await;
+                        break;
+                    }
+                    Ok(event) => match serde_json::from_str::<S>(&event.data) {
+                        Ok(chunk) => {
+                            let _ = tx.send(Ok(Some(chunk))).await;
                         }
-                        Ok(event) => match serde_json::from_str::<Completion>(&event.data) {
-                            Ok(chunk) => {
-                                let _ = tx.send(Ok(Some(chunk))).await;
-                            }
-                            Err(e) => {
-                                let error = Error::Http {
-                                    code: StatusCode::INTERNAL_SERVER_ERROR,
-                                    message: format!("deserialization error: {e}"),
-                                };
-                                let _ = tx.send(Err(error.into())).await;
-                            }
-                        },
-                        Err(error) => {
-                            // We received an error from the event stream, send error message
+                        Err(e) => {
                             let error = Error::Http {
                                 code: StatusCode::INTERNAL_SERVER_ERROR,
-                                message: error.to_string(),
+                                message: format!("deserialization error: {e}"),
                             };
                             let _ = tx.send(Err(error.into())).await;
                         }
+                    },
+                    Err(error) => {
+                        // We received an error from the event stream, send error message
+                        let error = Error::Http {
+                            code: StatusCode::INTERNAL_SERVER_ERROR,
+                            message: error.to_string(),
+                        };
+                        let _ = tx.send(Err(error.into())).await;
                     }
                 }
-            });
-            Ok(CompletionsResponse::Streaming(rx))
-        } else {
-            let response = self.client.clone().post(url, headers, request).await?;
-            match response.status() {
-                StatusCode::OK => Ok(response.json::<Completion>().await?.into()),
-                _ => {
-                    let code = response.status();
-                    let message = if let Ok(response) = response.json::<OpenAiError>().await {
-                        response.message
-                    } else {
-                        "unknown error occurred".into()
-                    };
-                    Err(Error::Http { code, message })
-                }
             }
-        }
+        });
+        Ok(rx)
     }
 }
 
