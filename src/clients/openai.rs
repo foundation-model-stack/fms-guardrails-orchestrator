@@ -74,7 +74,7 @@ impl OpenAiClient {
         headers: HeaderMap,
     ) -> Result<ChatCompletionsResponse, Error> {
         let url = self.inner().endpoint(CHAT_COMPLETIONS_ENDPOINT);
-        if request.stream {
+        if let Some(true) = request.stream {
             let (tx, rx) = mpsc::channel(32);
             let mut event_stream = self
                 .inner()
@@ -171,79 +171,41 @@ impl From<ChatCompletion> for ChatCompletionsResponse {
 /// Represents a chat completions request.
 ///
 /// As orchestrator is only concerned with a limited subset
-/// of request fields, we deserialize to an inner [`serde_json::Map`]
-/// and only validate and extract the fields used by this service.
-/// This type is then serialized to the inner [`serde_json::Map`].
+/// of request fields, we only inline and validate fields used by
+/// this service. Extra fields are deserialized to `extra` via
+/// struct flattening. The `detectors` field is not serialized.
 ///
 /// This is to avoid tracking and updating OpenAI and vLLM
 /// parameter additions/changes. Full validation is delegated to
 /// the downstream server implementation.
-///
-/// Validated fields: detectors (internal), model, messages
-#[derive(Debug, Default, Clone, PartialEq, Deserialize)]
-#[serde(try_from = "Map<String, Value>")]
+#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ChatCompletionsRequest {
     /// Detector config.
+    #[serde(default, skip_serializing)]
     pub detectors: DetectorConfig,
     /// Stream parameter.
-    pub stream: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stream: Option<bool>,
     /// Model name.
     pub model: String,
     /// Messages.
     pub messages: Vec<Message>,
-    /// Inner request.
-    pub inner: Map<String, Value>,
+    /// Extra fields not captured above.
+    #[serde(flatten)]
+    pub extra: Map<String, Value>,
 }
 
-impl TryFrom<Map<String, Value>> for ChatCompletionsRequest {
-    type Error = ValidationError;
-
-    fn try_from(mut value: Map<String, Value>) -> Result<Self, Self::Error> {
-        let detectors = if let Some(detectors) = value.remove("detectors") {
-            DetectorConfig::deserialize(detectors)
-                .map_err(|_| ValidationError::Invalid("error deserializing `detectors`".into()))?
-        } else {
-            DetectorConfig::default()
-        };
-        let stream = value
-            .get("stream")
-            .and_then(|v| v.as_bool())
-            .unwrap_or_default();
-        let model = if let Some(Value::String(model)) = value.get("model") {
-            Ok(model.clone())
-        } else {
-            Err(ValidationError::Required("model".into()))
-        }?;
-        if model.is_empty() {
+impl ChatCompletionsRequest {
+    pub fn validate(&self) -> Result<(), ValidationError> {
+        if self.model.is_empty() {
             return Err(ValidationError::Invalid("`model` must not be empty".into()));
         }
-        let messages = if let Some(messages) = value.get("messages") {
-            Vec::<Message>::deserialize(messages)
-                .map_err(|_| ValidationError::Invalid("error deserializing `messages`".into()))
-        } else {
-            Err(ValidationError::Required("messages".into()))
-        }?;
-        if messages.is_empty() {
+        if self.messages.is_empty() {
             return Err(ValidationError::Invalid(
                 "`messages` must not be empty".into(),
             ));
         }
-        Ok(ChatCompletionsRequest {
-            detectors,
-            stream,
-            model,
-            messages,
-            inner: value,
-        })
-    }
-}
-
-impl Serialize for ChatCompletionsRequest {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        self.inner.serialize(serializer)
+        Ok(())
     }
 }
 
@@ -714,18 +676,19 @@ mod test {
             "model": "test",
             "detectors": detectors,
             "messages": messages,
+            "frequency_penalty": 2.0,
         });
         let request = ChatCompletionsRequest::deserialize(&json_request)?;
-        let mut inner = json_request.as_object().unwrap().to_owned();
-        inner.remove("detectors").unwrap();
+        let mut extra = Map::new();
+        extra.insert("frequency_penalty".into(), 2.0.into());
         assert_eq!(
             request,
             ChatCompletionsRequest {
                 detectors,
-                stream: false,
+                stream: None,
                 model: "test".into(),
                 messages: messages.clone(),
-                inner,
+                extra,
             }
         );
 
@@ -735,57 +698,67 @@ mod test {
             "messages": messages,
         });
         let request = ChatCompletionsRequest::deserialize(&json_request)?;
-        let inner = json_request.as_object().unwrap().to_owned();
         assert_eq!(
             request,
             ChatCompletionsRequest {
                 detectors: DetectorConfig::default(),
-                stream: false,
+                stream: None,
                 model: "test".into(),
                 messages: messages.clone(),
-                inner,
+                extra: Map::new(),
             }
         );
 
-        // Test deserialize validation errors
+        // Test deserialize errors
         let result = ChatCompletionsRequest::deserialize(json!({
             "detectors": DetectorConfig::default(),
             "messages": messages,
         }));
-        assert!(result.is_err_and(|error| error.to_string() == "`model` is required"));
-
-        let result = ChatCompletionsRequest::deserialize(json!({
-            "model": "",
-            "detectors": DetectorConfig::default(),
-            "messages": Vec::<Message>::default(),
-        }));
-        assert!(result.is_err_and(|error| error.to_string() == "`model` must not be empty"));
-
-        let result = ChatCompletionsRequest::deserialize(json!({
-            "model": "test",
-            "detectors": DetectorConfig::default(),
-            "messages": Vec::<Message>::default(),
-        }));
-        assert!(result.is_err_and(|error| error.to_string() == "`messages` must not be empty"));
+        assert!(result.is_err_and(|error| error.to_string().starts_with("missing field `model`")));
 
         let result = ChatCompletionsRequest::deserialize(json!({
             "model": "test",
             "detectors": DetectorConfig::default(),
             "messages": ["invalid"],
         }));
-        assert!(result.is_err_and(|error| error.to_string() == "error deserializing `messages`"));
+        assert!(result.is_err_and(|error| error.to_string()
+            == "invalid type: string \"invalid\", expected struct Message"));
+
+        // Test validation errors
+        let request = ChatCompletionsRequest::deserialize(json!({
+            "model": "",
+            "detectors": DetectorConfig::default(),
+            "messages": Vec::<Message>::default(),
+        }))?;
+        let result = request.validate();
+        assert!(result.is_err_and(|error| error.to_string() == "`model` must not be empty"));
+
+        let request = ChatCompletionsRequest::deserialize(json!({
+            "model": "test",
+            "detectors": DetectorConfig::default(),
+            "messages": Vec::<Message>::default(),
+        }))?;
+        let result = request.validate();
+        assert!(result.is_err_and(|error| error.to_string() == "`messages` must not be empty"));
 
         // Test serialize
+        let request = ChatCompletionsRequest::deserialize(&json!({
+            "model": "test",
+            "detectors": {
+                "input": {"some_detector": {}},
+                "output": {},
+            },
+            "messages": [{"role": "user", "content": "Hi there!"}],
+            "frequency_penalty": 2.0,
+        }))?;
         let serialized_request = serde_json::to_value(request)?;
+        // should include stream: false and exclude detectors
         assert_eq!(
             serialized_request,
             json!({
                 "model": "test",
-                "messages": [Message {
-                    content: Some(Content::Text("Hi there!".to_string())),
-                    role: Role::User,
-                    ..Default::default()
-                }],
+                "messages": [{"role": "user", "content": "Hi there!"}],
+                "frequency_penalty": 2.0,
             })
         );
 
