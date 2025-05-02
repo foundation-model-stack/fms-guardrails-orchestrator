@@ -76,7 +76,7 @@ impl OpenAiClient {
         request: ChatCompletionsRequest,
         headers: HeaderMap,
     ) -> Result<ChatCompletionsResponse, Error> {
-        let url = self.inner().endpoint(CHAT_COMPLETIONS_ENDPOINT);
+        let url = self.client.endpoint(CHAT_COMPLETIONS_ENDPOINT);
         if let Some(true) = request.stream {
             let rx = self.handle_streaming(url, request, headers).await?;
             Ok(ChatCompletionsResponse::Streaming(rx))
@@ -91,7 +91,7 @@ impl OpenAiClient {
         request: CompletionsRequest,
         headers: HeaderMap,
     ) -> Result<CompletionsResponse, Error> {
-        let url = self.inner().endpoint(COMPLETIONS_ENDPOINT);
+        let url = self.client.endpoint(COMPLETIONS_ENDPOINT);
         if let Some(true) = request.stream {
             let rx = self.handle_streaming(url, request, headers).await?;
             Ok(CompletionsResponse::Streaming(rx))
@@ -106,7 +106,7 @@ impl OpenAiClient {
         R: RequestBody,
         S: DeserializeOwned,
     {
-        let response = self.client.clone().post(url, headers, request).await?;
+        let response = self.client.post(url, headers, request).await?;
         match response.status() {
             StatusCode::OK => response.json::<S>().await,
             _ => {
@@ -133,7 +133,7 @@ impl OpenAiClient {
     {
         let (tx, rx) = mpsc::channel(32);
         let mut event_stream = self
-            .inner()
+            .client
             .post(url, headers, request)
             .await?
             .0
