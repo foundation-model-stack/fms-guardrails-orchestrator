@@ -670,7 +670,7 @@ pub struct Completion {
     /// A list of completion choices. Can be more than one if n is greater than 1.
     pub choices: Vec<CompletionChoice>,
     /// Usage statistics for the completion request.
-    pub usage: Usage,
+    pub usage: Option<Usage>,
     /// This fingerprint represents the backend configuration that the model runs with.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub system_fingerprint: Option<String>,
@@ -686,7 +686,7 @@ pub struct CompletionChoice {
     /// Log probability information for the choice.
     pub logprobs: Option<CompletionLogprobs>,
     /// The reason the model stopped generating tokens.
-    pub finish_reason: String,
+    pub finish_reason: Option<String>,
     /// The stop string or token id that caused the completion.
     pub stop_reason: Option<String>,
     /// Prompt logprobs.
@@ -935,16 +935,33 @@ mod test {
             http::header::CONTENT_TYPE,
             "application/json".parse().unwrap(),
         );
+
+        // Test unary
         let json_request = json!({
             "model": "meta-llama/Meta-Llama-3-8B-Instruct",
             "prompt": "Hello!",
-            //"echo": true,
+            "echo": true,
             //"prompt_logprobs": 1,
         });
         let request = CompletionsRequest::deserialize(&json_request)?;
-        dbg!(&request);
-        let response = client.completions(request, headers).await?;
+        // dbg!(&request);
+        let response = client.completions(request, headers.clone()).await?;
         dbg!(&response);
+
+        // Test streaming
+        let json_request = json!({
+            "model": "meta-llama/Meta-Llama-3-8B-Instruct",
+            "prompt": "Hello!",
+            "stream": true,
+        });
+        let request = CompletionsRequest::deserialize(&json_request)?;
+        // dbg!(&request);
+        let response = client.completions(request, headers).await?;
+        if let CompletionsResponse::Streaming(mut rx) = response {
+            while let Some(msg) = rx.recv().await {
+                println!("{msg:?}");
+            }
+        }
 
         Ok(())
     }
