@@ -683,6 +683,8 @@ pub struct CompletionChoice {
     pub logprobs: Option<CompletionLogprobs>,
     /// The reason the model stopped generating tokens.
     pub finish_reason: String,
+    pub stop_reason: String,
+    pub prompt_logprobs: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
@@ -898,6 +900,34 @@ mod test {
                 "frequency_penalty": 2.0,
             })
         );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_completions() -> Result<(), anyhow::Error> {
+        let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+
+        let config = ServiceConfig {
+            hostname: "127.0.0.1".into(),
+            port: Some(3000),
+            ..Default::default()
+        };
+        let client = OpenAiClient::new(&config, None).await?;
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            http::header::CONTENT_TYPE,
+            "application/json".parse().unwrap(),
+        );
+        let json_request = json!({
+            "model": "meta-llama/Meta-Llama-3-8B-Instruct",
+            "prompt": "Hello!",
+            "echo": true,
+        });
+        let request = CompletionsRequest::deserialize(&json_request)?;
+        dbg!(&request);
+        let response = client.completions(request, headers).await?;
+        dbg!(&response);
 
         Ok(())
     }
