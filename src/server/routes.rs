@@ -326,6 +326,7 @@ async fn chat_completions_detection(
 ) -> Result<impl IntoResponse, Error> {
     use ChatCompletionsResponse::*;
     let trace_id = current_trace_id();
+    request.validate()?;
     let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
     let task = ChatCompletionsDetectionTask::new(trace_id, request, headers);
     match state.orchestrator.handle(task).await {
