@@ -196,7 +196,7 @@ impl HttpClientExt for OpenAiClient {
     }
 }
 
-/// A chat completions response.
+/// Chat completions response.
 #[derive(Debug)]
 pub enum ChatCompletionsResponse {
     Unary(Box<ChatCompletion>),
@@ -209,7 +209,7 @@ impl From<ChatCompletion> for ChatCompletionsResponse {
     }
 }
 
-/// A completions (legacy) response.
+/// Completions (legacy) response.
 #[derive(Debug)]
 pub enum CompletionsResponse {
     Unary(Box<Completion>),
@@ -222,7 +222,7 @@ impl From<Completion> for CompletionsResponse {
     }
 }
 
-/// Represents a chat completions request.
+/// Chat completions request.
 ///
 /// As orchestrator is only concerned with a limited subset
 /// of request fields, we only inline and validate fields used by
@@ -263,7 +263,7 @@ impl ChatCompletionsRequest {
     }
 }
 
-/// Represents a completions (legacy) request.
+/// Completions (legacy) request.
 ///
 /// As orchestrator is only concerned with a limited subset
 /// of request fields, we only inline and validate fields used by
@@ -301,7 +301,7 @@ impl CompletionsRequest {
     }
 }
 
-/// Structure to contain parameters for detectors.
+/// Detector config.
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DetectorConfig {
@@ -311,6 +311,7 @@ pub struct DetectorConfig {
     pub output: HashMap<String, DetectorParams>,
 }
 
+/// Response format.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResponseFormat {
     /// The type of response format being defined.
@@ -320,6 +321,7 @@ pub struct ResponseFormat {
     pub json_schema: HashMap<String, serde_json::Value>,
 }
 
+/// Tool.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Tool {
     /// The type of the tool.
@@ -328,6 +330,7 @@ pub struct Tool {
     pub function: ToolFunction,
 }
 
+/// Tool function.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolFunction {
     /// The name of the function to be called.
@@ -344,6 +347,7 @@ pub struct ToolFunction {
     pub strict: Option<bool>,
 }
 
+/// Tool choice.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum ToolChoice {
@@ -355,6 +359,7 @@ pub enum ToolChoice {
     Object(ToolChoiceObject),
 }
 
+/// Tool choice object.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolChoiceObject {
     /// The type of the tool.
@@ -363,6 +368,7 @@ pub struct ToolChoiceObject {
     pub function: Function,
 }
 
+/// Stream options.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StreamOptions {
     /// If set, an additional chunk will be streamed before the data: [DONE] message.
@@ -373,6 +379,7 @@ pub struct StreamOptions {
     pub include_usage: Option<bool>,
 }
 
+/// Role.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum Role {
@@ -384,6 +391,7 @@ pub enum Role {
     Tool,
 }
 
+/// Message.
 #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Message {
@@ -406,6 +414,7 @@ pub struct Message {
     pub tool_call_id: Option<String>,
 }
 
+/// Content.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(untagged)]
 pub enum Content {
@@ -450,6 +459,7 @@ impl From<Vec<String>> for Content {
     }
 }
 
+/// Content type.
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
 pub enum ContentType {
     #[serde(rename = "text")]
@@ -459,6 +469,7 @@ pub enum ContentType {
     ImageUrl,
 }
 
+/// Content part.
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ContentPart {
     /// The type of the content part.
@@ -475,6 +486,7 @@ pub struct ContentPart {
     pub refusal: Option<String>,
 }
 
+/// Image url.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ImageUrl {
     /// Either a URL of the image or the base64 encoded image data.
@@ -484,6 +496,7 @@ pub struct ImageUrl {
     pub detail: Option<String>,
 }
 
+/// Tool call.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ToolCall {
     /// The ID of the tool call.
@@ -495,6 +508,7 @@ pub struct ToolCall {
     pub function: Function,
 }
 
+/// Function.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Function {
     /// The name of the function to call.
@@ -504,7 +518,7 @@ pub struct Function {
     pub arguments: Option<String>,
 }
 
-/// Represents a chat completion response returned by model, based on the provided input.
+/// Chat completion response.
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ChatCompletion {
     /// A unique identifier for the chat completion.
@@ -536,7 +550,7 @@ pub struct ChatCompletion {
     pub warnings: Vec<OrchestratorWarning>,
 }
 
-/// A chat completion choice.
+/// Chat completion choice.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ChatCompletionChoice {
     /// The index of the choice in the list of choices.
@@ -551,7 +565,7 @@ pub struct ChatCompletionChoice {
     pub stop_reason: Option<String>,
 }
 
-/// A chat completion message generated by the model.
+/// Chat completion message.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ChatCompletionMessage {
     /// The role of the author of this message.
@@ -566,6 +580,7 @@ pub struct ChatCompletionMessage {
     pub refusal: Option<String>,
 }
 
+/// Chat completion logprobs.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub struct ChatCompletionLogprobs {
     /// A list of message content tokens with log probability information.
@@ -575,7 +590,7 @@ pub struct ChatCompletionLogprobs {
     pub refusal: Option<Vec<ChatCompletionLogprob>>,
 }
 
-/// Log probability information for a choice.
+/// Chat completion logprob.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ChatCompletionLogprob {
     /// The token.
@@ -589,6 +604,7 @@ pub struct ChatCompletionLogprob {
     pub top_logprobs: Option<Vec<ChatCompletionTopLogprob>>,
 }
 
+/// Chat completion top logprob.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ChatCompletionTopLogprob {
     /// The token.
@@ -597,7 +613,7 @@ pub struct ChatCompletionTopLogprob {
     pub logprob: f32,
 }
 
-/// Represents a streamed chunk of a chat completion response returned by model, based on the provided input.
+/// Streaming chat completion chunk.
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct ChatCompletionChunk {
     /// A unique identifier for the chat completion. Each chunk has the same ID.
@@ -627,6 +643,7 @@ pub struct ChatCompletionChunk {
     pub warnings: Vec<OrchestratorWarning>,
 }
 
+/// Streaming chat completion chunk choice.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatCompletionChunkChoice {
     /// The index of the choice in the list of choices.
@@ -641,7 +658,7 @@ pub struct ChatCompletionChunkChoice {
     pub stop_reason: Option<String>,
 }
 
-/// A chat completion delta generated by streamed model responses.
+/// Streaming chat completion delta.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatCompletionDelta {
     /// The role of the author of this message.
@@ -658,7 +675,7 @@ pub struct ChatCompletionDelta {
     pub tool_calls: Vec<ToolCall>,
 }
 
-/// Represents a completion (legacy) response returned by model, based on the provided input.
+/// Completion (legacy) response. Also used for streaming.
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Completion {
     /// A unique identifier for the completion.
@@ -678,7 +695,7 @@ pub struct Completion {
     pub system_fingerprint: Option<String>,
 }
 
-/// A completion (legacy) choice.
+/// Completion (legacy) choice.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct CompletionChoice {
     /// The index of the choice in the list of choices.
@@ -696,6 +713,7 @@ pub struct CompletionChoice {
     pub prompt_logprobs: Option<Vec<Option<HashMap<String, Logprob>>>>,
 }
 
+/// Completion logprobs.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub struct CompletionLogprobs {
     /// Tokens generated by the model.
@@ -708,6 +726,7 @@ pub struct CompletionLogprobs {
     pub text_offset: Vec<u32>,
 }
 
+/// Logprob.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub struct Logprob {
     /// The logprob of the chosen token
@@ -718,7 +737,7 @@ pub struct Logprob {
     pub decoded_token: Option<String>,
 }
 
-/// Usage statistics for a completion.
+/// Completion usage statistics.
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Usage {
     /// Number of tokens in the prompt.
@@ -735,18 +754,21 @@ pub struct Usage {
     pub completion_token_details: Option<CompletionTokenDetails>,
 }
 
+/// Completion token details.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct CompletionTokenDetails {
     pub audio_tokens: u32,
     pub reasoning_tokens: u32,
 }
 
+/// Prompt token details.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PromptTokenDetails {
     pub audio_tokens: u32,
     pub cached_tokens: u32,
 }
 
+/// Stop tokens.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum StopTokens {
@@ -754,6 +776,7 @@ pub enum StopTokens {
     String(String),
 }
 
+/// OpenAI error response.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpenAiError {
     pub object: Option<String>,
@@ -764,7 +787,7 @@ pub struct OpenAiError {
     pub code: u16,
 }
 
-/// Guardrails detection results.
+/// Guardrails chat detections.
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ChatDetections {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -773,7 +796,7 @@ pub struct ChatDetections {
     pub output: Vec<OutputDetectionResult>,
 }
 
-/// Guardrails detection result for application on input.
+/// Guardrails chat input detections.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct InputDetectionResult {
     pub message_index: u32,
@@ -781,7 +804,7 @@ pub struct InputDetectionResult {
     pub results: Vec<ContentAnalysisResponse>,
 }
 
-/// Guardrails detection result for application output.
+/// Guardrails chat output detections.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct OutputDetectionResult {
     pub choice_index: u32,
@@ -789,15 +812,7 @@ pub struct OutputDetectionResult {
     pub results: Vec<ContentAnalysisResponse>,
 }
 
-/// Represents the input and output of detection results following processing.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DetectionResult {
-    pub index: u32,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub results: Vec<ContentAnalysisResponse>,
-}
-
-/// Warnings generated by guardrails.
+/// Guardrails warning.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct OrchestratorWarning {
     r#type: DetectionWarningReason,
