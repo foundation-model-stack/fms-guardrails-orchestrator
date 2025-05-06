@@ -690,7 +690,8 @@ pub struct CompletionChoice {
     /// The stop string or token id that caused the completion.
     pub stop_reason: Option<String>,
     /// Prompt logprobs.
-    pub prompt_logprobs: Option<Vec<Option<HashMap<String, Logprob>>>>, // Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt_logprobs: Option<Vec<Option<HashMap<String, Logprob>>>>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
