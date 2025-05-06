@@ -31,7 +31,7 @@ use crate::{
             TextGenerationDetectorClient,
         },
         http::JSON_CONTENT_TYPE,
-        openai::{self, ChatCompletionsResponse, OpenAiClient},
+        openai::{self, OpenAiClient},
     },
     models::{
         ClassifiedGeneratedTextResult as GenerateResponse, DetectorParams,
@@ -282,8 +282,55 @@ pub async fn chat_completion_stream(
             error,
         })?;
     let stream = match response {
-        ChatCompletionsResponse::Streaming(rx) => ReceiverStream::new(rx),
-        ChatCompletionsResponse::Unary(_) => unimplemented!(),
+        openai::ChatCompletionsResponse::Streaming(rx) => ReceiverStream::new(rx),
+        openai::ChatCompletionsResponse::Unary(_) => unimplemented!(),
+    }
+    .enumerate()
+    .boxed();
+    Ok(stream)
+}
+
+/// Sends request to openai completions client.
+#[instrument(skip_all, fields(model_id))]
+pub async fn completion(
+    client: &OpenAiClient,
+    mut headers: HeaderMap,
+    request: openai::CompletionsRequest,
+) -> Result<openai::CompletionsResponse, Error> {
+    let model_id = request.model.clone();
+    debug!(%model_id, ?request, "sending completions request");
+    headers.append(CONTENT_TYPE, JSON_CONTENT_TYPE);
+    let response = client
+        .completions(request, headers)
+        .await
+        .map_err(|error| Error::CompletionRequestFailed {
+            id: model_id.clone(),
+            error,
+        })?;
+    debug!(%model_id, ?response, "received completions response");
+    Ok(response)
+}
+
+/// Sends stream request to openai completions client.
+#[instrument(skip_all, fields(model_id))]
+pub async fn completion_stream(
+    client: &OpenAiClient,
+    mut headers: HeaderMap,
+    request: openai::CompletionsRequest,
+) -> Result<CompletionStream, Error> {
+    let model_id = request.model.clone();
+    debug!(%model_id, ?request, "sending completions stream request");
+    headers.append(CONTENT_TYPE, JSON_CONTENT_TYPE);
+    let response = client
+        .completions(request, headers)
+        .await
+        .map_err(|error| Error::CompletionRequestFailed {
+            id: model_id.clone(),
+            error,
+        })?;
+    let stream = match response {
+        openai::CompletionsResponse::Streaming(rx) => ReceiverStream::new(rx),
+        openai::CompletionsResponse::Unary(_) => unimplemented!(),
     }
     .enumerate()
     .boxed();

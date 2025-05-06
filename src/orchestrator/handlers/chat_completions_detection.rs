@@ -38,8 +38,8 @@ impl Handle<ChatCompletionsDetectionTask> for Orchestrator {
     async fn handle(&self, task: ChatCompletionsDetectionTask) -> Result<Self::Response, Error> {
         let ctx = self.ctx.clone();
         match task.request.stream {
-            true => streaming::handle_streaming(ctx, task).await,
-            false => unary::handle_unary(ctx, task).await,
+            Some(true) => streaming::handle_streaming(ctx, task).await,
+            _ => unary::handle_unary(ctx, task).await,
         }
     }
 }

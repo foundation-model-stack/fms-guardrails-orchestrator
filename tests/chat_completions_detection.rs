@@ -93,6 +93,7 @@ async fn no_detections() -> Result<(), anyhow::Error> {
             index: 0,
             logprobs: None,
             finish_reason: "NOT_FINISHED".to_string(),
+            stop_reason: None,
         },
         ChatCompletionChoice {
             message: ChatCompletionMessage {
@@ -104,6 +105,7 @@ async fn no_detections() -> Result<(), anyhow::Error> {
             index: 1,
             logprobs: None,
             finish_reason: "EOS_TOKEN".to_string(),
+            stop_reason: None,
         },
     ];
     let chat_completions_response = ChatCompletion {
@@ -552,6 +554,7 @@ async fn output_detections() -> Result<(), anyhow::Error> {
             index: 0,
             logprobs: None,
             finish_reason: "NOT_FINISHED".to_string(),
+            stop_reason: None,
         },
         ChatCompletionChoice {
             message: ChatCompletionMessage {
@@ -563,6 +566,7 @@ async fn output_detections() -> Result<(), anyhow::Error> {
             index: 1,
             logprobs: None,
             finish_reason: "EOS_TOKEN".to_string(),
+            stop_reason: None,
         },
     ];
 
