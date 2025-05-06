@@ -33,6 +33,8 @@ pub enum Error {
     GenerateRequestFailed { id: String, error: clients::Error },
     #[error("chat completion request failed for `{id}`: {error}")]
     ChatCompletionRequestFailed { id: String, error: clients::Error },
+    #[error("completion request failed for `{id}`: {error}")]
+    CompletionRequestFailed { id: String, error: clients::Error },
     #[error("tokenize request failed for `{id}`: {error}")]
     TokenizeRequestFailed { id: String, error: clients::Error },
     #[error("validation error: {0}")]
