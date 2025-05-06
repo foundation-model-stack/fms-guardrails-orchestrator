@@ -519,6 +519,8 @@ pub struct ChatCompletion {
     pub choices: Vec<ChatCompletionChoice>,
     /// Usage statistics for the completion request.
     pub usage: Usage,
+    /// Prompt logprobs.
+    pub prompt_logprobs: Option<Vec<Option<HashMap<String, Logprob>>>>,
     /// This fingerprint represents the backend configuration that the model runs with.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub system_fingerprint: Option<String>,
@@ -617,8 +619,6 @@ pub struct ChatCompletionChunk {
     pub service_tier: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub usage: Option<Usage>,
-    /// Prompt logprobs.
-    pub prompt_logprobs: Option<Vec<Option<HashMap<String, Logprob>>>>, // Option<serde_json::Value>,
     /// Detections
     #[serde(skip_serializing_if = "Option::is_none")]
     pub detections: Option<ChatDetections>,
