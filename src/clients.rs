@@ -27,7 +27,7 @@ use std::{
 use async_trait::async_trait;
 use axum::http::{Extensions, HeaderMap};
 use futures::Stream;
-use ginepro::LoadBalancedChannel;
+use ginepro::{LoadBalancedChannel, ResolutionStrategy};
 use hyper_timeout::TimeoutConnector;
 use hyper_util::rt::TokioExecutor;
 use tonic::{Request, metadata::MetadataMap};
@@ -70,6 +70,7 @@ pub mod openai;
 const DEFAULT_CONNECT_TIMEOUT_SEC: u64 = 60;
 const DEFAULT_REQUEST_TIMEOUT_SEC: u64 = 600;
 const DEFAULT_GRPC_PROBE_INTERVAL_SEC: u64 = 10;
+const DEFAULT_RES_STRATEGY_INTERVAL_SEC: u64 = 10;
 
 pub type BoxStream<T> = Pin<Box<dyn Stream<Item = T> + Send>>;
 
@@ -278,11 +279,26 @@ pub async fn create_grpc_client<C: Debug + Clone>(
             .grpc_dns_probe_interval
             .unwrap_or(DEFAULT_GRPC_PROBE_INTERVAL_SEC),
     );
+    let resolution_strategy =
+        if let Some(resolution_strategy_override) = &service_config.resolution_strategy {
+            match resolution_strategy_override.as_str() {
+                "eager" => ResolutionStrategy::Eager {
+                    timeout: (Duration::from_secs(
+                        service_config
+                            .resolution_strategy_interval
+                            .unwrap_or(DEFAULT_RES_STRATEGY_INTERVAL_SEC),
+                    )),
+                },
+                _ => ResolutionStrategy::Lazy,
+            }
+        } else {
+            ResolutionStrategy::Lazy
+        };
     let mut builder = LoadBalancedChannel::builder((service_config.hostname.clone(), port))
         .dns_probe_interval(grpc_dns_probe_interval)
         .connect_timeout(connect_timeout)
-        .timeout(request_timeout);
-
+        .timeout(request_timeout)
+        .resolution_strategy(resolution_strategy);
     let client_tls_config = if let Some(Tls::Config(tls_config)) = &service_config.tls {
         let cert_path = tls_config.cert_path.as_ref().unwrap().as_path();
         let key_path = tls_config.key_path.as_ref().unwrap().as_path();
