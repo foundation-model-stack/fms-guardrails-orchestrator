@@ -33,10 +33,10 @@ use futures::{
     },
 };
 use mocktail::server::MockServer;
-use rand::Rng;
+use rand::{Rng, SeedableRng, rngs::SmallRng};
 use rustls::crypto::ring;
 use serde::{Serialize, de::DeserializeOwned};
-use tokio::task::JoinHandle;
+use tracing::info;
 use url::Url;
 
 // Default orchestrator configuration file for integration tests.
@@ -149,7 +149,6 @@ pub struct TestOrchestratorServer {
     base_url: Url,
     health_url: Url,
     client: reqwest::Client,
-    _handle: Option<JoinHandle<Result<(), anyhow::Error>>>,
 }
 
 impl TestOrchestratorServer {
@@ -164,7 +163,6 @@ impl TestOrchestratorServer {
             base_url,
             health_url,
             client,
-            _handle: None,
         }
     }
 
@@ -174,12 +172,15 @@ impl TestOrchestratorServer {
 
     /// Starts the orchestrator server.
     pub async fn start(&mut self) -> Result<(), anyhow::Error> {
-        let orchestrator = Orchestrator::new(self.config.clone(), false).await?;
-        let http_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), self.port);
-        let health_http_addr: SocketAddr =
-            SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), self.health_port);
-        let handle = tokio::spawn(async move {
-            fms_guardrails_orchestr8::server::run(
+        let mut rng = SmallRng::from_os_rng();
+        loop {
+            let port = rng.random_range(10000..60000);
+            let health_port = rng.random_range(10000..60000);
+            let orchestrator = Orchestrator::new(self.config.clone(), false).await?;
+            let http_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), port);
+            let health_http_addr: SocketAddr =
+                SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), health_port);
+            let handle = fms_guardrails_orchestr8::server::run(
                 http_addr,
                 health_http_addr,
                 None,
@@ -187,10 +188,23 @@ impl TestOrchestratorServer {
                 None,
                 orchestrator,
             )
-            .await?;
-            Ok::<(), anyhow::Error>(())
-        });
-        self._handle = Some(handle);
+            .await;
+
+            if handle.is_ok() {
+                self.port = port;
+                self.health_port = health_port;
+                self.base_url = Url::parse(&format!("http://0.0.0.0:{port}")).unwrap();
+                self.health_url =
+                    Url::parse(&format!("http://0.0.0.0:{health_port}/health")).unwrap();
+                info!(
+                    "TestOrchestratorServer started successfully on ports {port} (guardrails) and {health_port} (health)"
+                );
+                break;
+            }
+            info!(
+                "Failed to bind TestOrchestratorServer to ports {port} (guardrails) and {health_port} (health). Trying again using different ports..."
+            );
+        }
 
         // Give the server time to become ready.
         tokio::time::sleep(Duration::from_millis(10)).await;
