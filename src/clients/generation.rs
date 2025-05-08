@@ -40,6 +40,7 @@ use crate::{
     },
 };
 
+
 async fn retry_function<F, Fut>(max_retries: usize, func: F) -> Result<GeneratedTextResult, Error>
 where
     F: Fn() -> Fut,
@@ -57,6 +58,7 @@ where
     loop {
         let result = func().await;
 
+        attempt += 1;
         if result.is_ok() {
             return result;
         } else {
@@ -64,15 +66,13 @@ where
 
             if allowed_retry_codes.contains(&error.status_code()) {
                 // Only retry when status code is within list
-                if attempt >= max_retries {
+                if attempt > max_retries {
                     warn!(
                         "Final attempt failed to connect to server. attempt: {}, error: {}",
                         attempt, &error
                     );
                     return Err(error);
                 }
-
-                attempt += 1;
                 // Exponential backoff for retries.
                 tokio::time::sleep(std::time::Duration::from_millis(
                     2_u64.pow(attempt as u32 - 1),
@@ -265,11 +265,18 @@ impl GenerationClient {
                     }
                 };
 
-                let response_stream = client
-                    .server_streaming_text_generation_task_predict(&model_id, request, headers)
-                    .await?
-                    .map_ok(Into::into)
-                    .boxed();
+                let response_stream = retry_function(
+                    self.1,
+                    || {client.server_streaming_text_generation_task_predict(&model_id, request, headers)}
+                ).await?
+                .map_ok(Into::into)
+                .boxed();
+
+                // let response_stream = client
+                //     .server_streaming_text_generation_task_predict(&model_id, request, headers)
+                //     .await?
+                //     .map_ok(Into::into)
+                //     .boxed();
                 Ok(response_stream)
             }
             None => Err(Error::ModelNotFound { model_id }),
