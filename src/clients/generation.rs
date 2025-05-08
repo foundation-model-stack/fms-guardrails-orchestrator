@@ -17,7 +17,8 @@
 
 use async_trait::async_trait;
 use futures::{StreamExt, TryStreamExt};
-use hyper::HeaderMap;
+use hyper::{HeaderMap, StatusCode};
+use tracing::warn;
 
 use super::{BoxStream, Client, Error, NlpClient, TgisClient};
 use crate::{
@@ -38,11 +39,6 @@ use crate::{
         },
     },
 };
-
-use hyper::StatusCode;
-use tracing::warn;
-
-const MAX_RETRIES: usize = 3;
 
 async fn retry_function<F, Fut>(max_retries: usize, func: F) -> Result<GeneratedTextResult, Error>
 where
@@ -96,7 +92,7 @@ where
 }
 
 #[derive(Clone)]
-pub struct GenerationClient(Option<GenerationClientInner>);
+pub struct GenerationClient(Option<GenerationClientInner>, usize);
 
 #[derive(Clone)]
 enum GenerationClientInner {
@@ -105,16 +101,16 @@ enum GenerationClientInner {
 }
 
 impl GenerationClient {
-    pub fn tgis(client: TgisClient) -> Self {
-        Self(Some(GenerationClientInner::Tgis(client)))
+    pub fn tgis(client: TgisClient, max_retries: usize) -> Self {
+        Self(Some(GenerationClientInner::Tgis(client)), max_retries)
     }
 
-    pub fn nlp(client: NlpClient) -> Self {
-        Self(Some(GenerationClientInner::Nlp(client)))
+    pub fn nlp(client: NlpClient, max_retries: usize) -> Self {
+        Self(Some(GenerationClientInner::Nlp(client)), max_retries)
     }
 
     pub fn not_configured() -> Self {
-        Self(None)
+        Self(None, 0)
     }
 
     pub async fn tokenize(
@@ -203,7 +199,7 @@ impl GenerationClient {
                         ..Default::default()
                     }
                 };
-                let response = retry_function(MAX_RETRIES, || {
+                let response = retry_function(self.1, || {
                     client.text_generation_task_predict(&model_id, request.clone(), headers.clone())
                 })
                 .await?;

@@ -80,6 +80,8 @@ pub struct ServiceConfig {
     pub resolution_strategy: Option<String>,
     /// Resolution strategy timeout in seconds
     pub resolution_strategy_interval: Option<u64>,
+    /// Max retries for client calls [currently only for grpc generation]
+    pub max_retries: Option<usize>,
 }
 
 impl ServiceConfig {
@@ -92,6 +94,7 @@ impl ServiceConfig {
             grpc_dns_probe_interval: None,
             resolution_strategy: None,
             resolution_strategy_interval: None,
+            max_retries: None,
         }
     }
 }
