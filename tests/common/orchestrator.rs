@@ -25,7 +25,7 @@ use std::{
 
 use bytes::Bytes;
 use eventsource_stream::{EventStream, Eventsource};
-use fms_guardrails_orchestr8::{config::OrchestratorConfig, orchestrator::Orchestrator};
+use fms_guardrails_orchestr8::{config::OrchestratorConfig, orchestrator::Orchestrator, server};
 use futures::{
     Stream, StreamExt,
     stream::{
@@ -36,7 +36,7 @@ use mocktail::server::MockServer;
 use rand::{Rng, SeedableRng, rngs::SmallRng};
 use rustls::crypto::ring;
 use serde::{Serialize, de::DeserializeOwned};
-use tracing::info;
+use tracing::{error, warn};
 use url::Url;
 
 // Default orchestrator configuration file for integration tests.
@@ -149,9 +149,7 @@ impl TestOrchestratorServer {
     }
 
     /// Starts the orchestrator server.
-    pub async fn start(
-        config: OrchestratorConfig,
-    ) -> Result<TestOrchestratorServer, anyhow::Error> {
+    pub async fn start(config: OrchestratorConfig) -> Result<Self, anyhow::Error> {
         let mut rng = SmallRng::from_os_rng();
         loop {
             let port = rng.random_range(10000..60000);
@@ -160,38 +158,25 @@ impl TestOrchestratorServer {
             let http_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), port);
             let health_http_addr: SocketAddr =
                 SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), health_port);
-            match fms_guardrails_orchestr8::server::run(
-                http_addr,
-                health_http_addr,
-                None,
-                None,
-                None,
-                orchestrator,
-            )
-            .await
-            {
+            match server::run(http_addr, health_http_addr, None, None, None, orchestrator).await {
                 Ok(_) => {
                     // Give the server time to become ready.
                     tokio::time::sleep(Duration::from_millis(10)).await;
-
-                    return Ok(TestOrchestratorServer {
+                    return Ok(Self {
                         base_url: Url::parse(&format!("http://0.0.0.0:{port}")).unwrap(),
                         health_url: Url::parse(&format!("http://0.0.0.0:{health_port}/health"))
                             .unwrap(),
                         client: reqwest::Client::builder().build().unwrap(),
                     });
                 }
-                Err(error) => match error {
-                    fms_guardrails_orchestr8::server::Error::IoError(_) => {
-                        info!(
-                            "Failed to bind TestOrchestratorServer to ports {port} (guardrails) and {health_port} (health). Trying again using different ports..."
-                        );
-                        continue;
-                    }
-                    error => {
-                        return Err(error.into());
-                    }
-                },
+                Err(server::Error::IoError(error)) => {
+                    warn!(%error, "failed to start server, trying again with different ports...");
+                    continue;
+                }
+                Err(error) => {
+                    error!(%error, "failed to start server");
+                    return Err(error.into());
+                }
             };
         }
     }
