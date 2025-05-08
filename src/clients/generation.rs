@@ -32,7 +32,6 @@ use crate::{
             ServerStreamingTextGenerationTaskRequest, TextGenerationTaskRequest,
             TokenizationTaskRequest,
         },
-        caikit_data_model::nlp::GeneratedTextResult,
         fmaas::{
             BatchedGenerationRequest, BatchedTokenizeRequest, GenerationRequest,
             SingleGenerationRequest, TokenizeRequest,
@@ -40,11 +39,10 @@ use crate::{
     },
 };
 
-
-async fn retry_function<F, Fut>(max_retries: usize, func: F) -> Result<GeneratedTextResult, Error>
+async fn retry_function<F, Fut, Res>(max_retries: usize, func: F) -> Result<Res, Error>
 where
     F: Fn() -> Fut,
-    Fut: std::future::Future<Output = Result<GeneratedTextResult, Error>>,
+    Fut: std::future::Future<Output = Result<Res, Error>>,
 {
     let mut attempt = 0;
 
@@ -56,37 +54,36 @@ where
         StatusCode::VARIANT_ALSO_NEGOTIATES,
     ];
     loop {
-        let result = func().await;
-
         attempt += 1;
-        if result.is_ok() {
-            return result;
-        } else {
-            let error = result.unwrap_err();
 
-            if allowed_retry_codes.contains(&error.status_code()) {
-                // Only retry when status code is within list
-                if attempt > max_retries {
+        match func().await {
+            Ok(res) => return Ok(res),
+
+            Err(error) => {
+                if allowed_retry_codes.contains(&error.status_code()) {
+                    // Only retry when status code is within list
+                    if attempt > max_retries {
+                        warn!(
+                            "Final attempt failed to connect to server. attempt: {}, error: {}",
+                            attempt, &error
+                        );
+                        return Err(error);
+                    }
+                    // Exponential backoff for retries.
+                    tokio::time::sleep(std::time::Duration::from_millis(
+                        2_u64.pow(attempt as u32 - 1),
+                    ))
+                    .await;
                     warn!(
-                        "Final attempt failed to connect to server. attempt: {}, error: {}",
+                        "failed to connect to server. attempt: {}, error: {}",
                         attempt, &error
                     );
-                    return Err(error);
+                    continue;
                 }
-                // Exponential backoff for retries.
-                tokio::time::sleep(std::time::Duration::from_millis(
-                    2_u64.pow(attempt as u32 - 1),
-                ))
-                .await;
-                warn!(
-                    "failed to connect to server. attempt: {}, error: {}",
-                    attempt, &error
-                );
-                continue;
-            }
 
-            // Else return error
-            return Err(error);
+                // Else return error
+                return Err(error);
+            }
         }
     }
 }
@@ -134,9 +131,10 @@ impl GenerationClient {
             }
             Some(GenerationClientInner::Nlp(client)) => {
                 let request = TokenizationTaskRequest { text };
-                let response = client
-                    .tokenization_task_predict(&model_id, request, headers)
-                    .await?;
+                let response = retry_function(self.1, || {
+                    client.tokenization_task_predict(&model_id, request.clone(), headers.clone())
+                })
+                .await?;
                 let tokens = response
                     .results
                     .into_iter()
@@ -265,18 +263,17 @@ impl GenerationClient {
                     }
                 };
 
-                let response_stream = retry_function(
-                    self.1,
-                    || {client.server_streaming_text_generation_task_predict(&model_id, request, headers)}
-                ).await?
+                let response_stream = retry_function(self.1, || {
+                    client.server_streaming_text_generation_task_predict(
+                        &model_id,
+                        request.clone(),
+                        headers.clone(),
+                    )
+                })
+                .await?
                 .map_ok(Into::into)
                 .boxed();
 
-                // let response_stream = client
-                //     .server_streaming_text_generation_task_predict(&model_id, request, headers)
-                //     .await?
-                //     .map_ok(Into::into)
-                //     .boxed();
                 Ok(response_stream)
             }
             None => Err(Error::ModelNotFound { model_id }),
