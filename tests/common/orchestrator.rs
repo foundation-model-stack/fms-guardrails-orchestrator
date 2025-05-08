@@ -131,56 +131,36 @@ impl<'a> TestOrchestratorServerBuilder<'a> {
         initialize_chunkers(self.chunker_servers.as_deref(), &mut config).await?;
 
         // Create & start test orchestrator server
-        let port = self.port.unwrap_or_else(|| find_available_port().unwrap());
-        let health_port = self
-            .health_port
-            .unwrap_or_else(|| find_available_port().unwrap());
-        let mut server = TestOrchestratorServer::new(config, port, health_port);
-        server.start().await?;
+        let server = TestOrchestratorServer::start(config).await?;
 
         Ok(server)
     }
 }
 
 pub struct TestOrchestratorServer {
-    config: OrchestratorConfig,
-    port: u16,
-    health_port: u16,
     base_url: Url,
     health_url: Url,
     client: reqwest::Client,
 }
 
 impl TestOrchestratorServer {
-    pub fn new(config: OrchestratorConfig, port: u16, health_port: u16) -> Self {
-        let base_url = Url::parse(&format!("http://0.0.0.0:{port}")).unwrap();
-        let health_url = Url::parse(&format!("http://0.0.0.0:{health_port}/health")).unwrap();
-        let client = reqwest::Client::builder().build().unwrap();
-        Self {
-            config,
-            port,
-            health_port,
-            base_url,
-            health_url,
-            client,
-        }
-    }
-
     pub fn builder<'a>() -> TestOrchestratorServerBuilder<'a> {
         TestOrchestratorServerBuilder::default()
     }
 
     /// Starts the orchestrator server.
-    pub async fn start(&mut self) -> Result<(), anyhow::Error> {
+    pub async fn start(
+        config: OrchestratorConfig,
+    ) -> Result<TestOrchestratorServer, anyhow::Error> {
         let mut rng = SmallRng::from_os_rng();
         loop {
             let port = rng.random_range(10000..60000);
             let health_port = rng.random_range(10000..60000);
-            let orchestrator = Orchestrator::new(self.config.clone(), false).await?;
+            let orchestrator = Orchestrator::new(config.clone(), false).await?;
             let http_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), port);
             let health_http_addr: SocketAddr =
                 SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), health_port);
-            let handle = fms_guardrails_orchestr8::server::run(
+            match fms_guardrails_orchestr8::server::run(
                 http_addr,
                 health_http_addr,
                 None,
@@ -188,28 +168,32 @@ impl TestOrchestratorServer {
                 None,
                 orchestrator,
             )
-            .await;
+            .await
+            {
+                Ok(_) => {
+                    // Give the server time to become ready.
+                    tokio::time::sleep(Duration::from_millis(10)).await;
 
-            if handle.is_ok() {
-                self.port = port;
-                self.health_port = health_port;
-                self.base_url = Url::parse(&format!("http://0.0.0.0:{port}")).unwrap();
-                self.health_url =
-                    Url::parse(&format!("http://0.0.0.0:{health_port}/health")).unwrap();
-                info!(
-                    "TestOrchestratorServer started successfully on ports {port} (guardrails) and {health_port} (health)"
-                );
-                break;
-            }
-            info!(
-                "Failed to bind TestOrchestratorServer to ports {port} (guardrails) and {health_port} (health). Trying again using different ports..."
-            );
+                    return Ok(TestOrchestratorServer {
+                        base_url: Url::parse(&format!("http://0.0.0.0:{port}")).unwrap(),
+                        health_url: Url::parse(&format!("http://0.0.0.0:{health_port}/health"))
+                            .unwrap(),
+                        client: reqwest::Client::builder().build().unwrap(),
+                    });
+                }
+                Err(error) => match error {
+                    fms_guardrails_orchestr8::server::Error::IoError(_) => {
+                        info!(
+                            "Failed to bind TestOrchestratorServer to ports {port} (guardrails) and {health_port} (health). Trying again using different ports..."
+                        );
+                        continue;
+                    }
+                    error => {
+                        return Err(error.into());
+                    }
+                },
+            };
         }
-
-        // Give the server time to become ready.
-        tokio::time::sleep(Duration::from_millis(10)).await;
-
-        Ok(())
     }
 
     pub fn server_url(&self, path: &str) -> Url {
@@ -334,20 +318,6 @@ where
             Poll::Pending => Poll::Pending,
         }
     }
-}
-
-fn find_available_port() -> Option<u16> {
-    let mut rng = rand::rng();
-    loop {
-        let port: u16 = rng.random_range(40000..60000);
-        if port_is_available(port) {
-            return Some(port);
-        }
-    }
-}
-
-fn port_is_available(port: u16) -> bool {
-    std::net::TcpListener::bind(("0.0.0.0", port)).is_ok()
 }
 
 pub fn json_lines_stream(
