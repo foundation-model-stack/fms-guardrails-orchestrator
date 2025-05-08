@@ -31,12 +31,69 @@ use crate::{
             ServerStreamingTextGenerationTaskRequest, TextGenerationTaskRequest,
             TokenizationTaskRequest,
         },
+        caikit_data_model::nlp::GeneratedTextResult,
         fmaas::{
             BatchedGenerationRequest, BatchedTokenizeRequest, GenerationRequest,
             SingleGenerationRequest, TokenizeRequest,
         },
     },
 };
+
+use hyper::StatusCode;
+use tracing::warn;
+
+const MAX_RETRIES: usize = 3;
+
+async fn retry_function<F, Fut>(max_retries: usize, func: F) -> Result<GeneratedTextResult, Error>
+where
+    F: Fn() -> Fut,
+    Fut: std::future::Future<Output = Result<GeneratedTextResult, Error>>,
+{
+    let mut attempt = 0;
+
+    let allowed_retry_codes = [
+        StatusCode::BAD_GATEWAY,
+        StatusCode::SERVICE_UNAVAILABLE,
+        StatusCode::GATEWAY_TIMEOUT,
+        StatusCode::HTTP_VERSION_NOT_SUPPORTED,
+        StatusCode::VARIANT_ALSO_NEGOTIATES,
+    ];
+    loop {
+        let result = func().await;
+
+        if result.is_ok() {
+            return result;
+        } else {
+            let error = result.unwrap_err();
+
+            if allowed_retry_codes.contains(&error.status_code()) {
+                // Only retry when status code is within list
+                if attempt >= max_retries {
+                    warn!(
+                        "Final attempt failed to connect to server. attempt: {}, error: {}",
+                        attempt, &error
+                    );
+                    return Err(error);
+                }
+
+                attempt += 1;
+                // Exponential backoff for retries.
+                tokio::time::sleep(std::time::Duration::from_millis(
+                    2_u64.pow(attempt as u32 - 1),
+                ))
+                .await;
+                warn!(
+                    "failed to connect to server. attempt: {}, error: {}",
+                    attempt, &error
+                );
+                continue;
+            }
+
+            // Else return error
+            return Err(error);
+        }
+    }
+}
 
 #[derive(Clone)]
 pub struct GenerationClient(Option<GenerationClientInner>);
@@ -146,9 +203,10 @@ impl GenerationClient {
                         ..Default::default()
                     }
                 };
-                let response = client
-                    .text_generation_task_predict(&model_id, request, headers)
-                    .await?;
+                let response = retry_function(MAX_RETRIES, || {
+                    client.text_generation_task_predict(&model_id, request.clone(), headers.clone())
+                })
+                .await?;
                 Ok(response.into())
             }
             None => Err(Error::ModelNotFound { model_id }),
@@ -210,6 +268,7 @@ impl GenerationClient {
                         ..Default::default()
                     }
                 };
+
                 let response_stream = client
                     .server_streaming_text_generation_task_predict(&model_id, request, headers)
                     .await?
