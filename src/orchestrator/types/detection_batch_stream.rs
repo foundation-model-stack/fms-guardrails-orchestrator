@@ -25,8 +25,7 @@ use crate::orchestrator::Error;
 /// produces a stream of batches using a [`DetectionBatcher`]
 /// implementation.
 ///
-/// The detection batcher enables flexible batching
-/// logic and returned batch types for different use cases.
+/// The detection batcher enables flexible batching logic for different use cases.
 pub struct DetectionBatchStream {
     batch_rx: mpsc::Receiver<Result<Batch, Error>>,
 }
