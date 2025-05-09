@@ -190,9 +190,9 @@ pub async fn text_contents_detections(
     ctx: Arc<Context>,
     headers: HeaderMap,
     detectors: HashMap<String, DetectorParams>,
-    input_id: InputId,
+    input_id: u32,
     inputs: Vec<(usize, String)>,
-) -> Result<(InputId, Detections), Error> {
+) -> Result<(u32, Detections), Error> {
     let chunkers = get_chunker_ids(&ctx, &detectors)?;
     let chunk_map = chunks(ctx.clone(), chunkers, inputs).await?;
     let inputs = detectors
@@ -249,7 +249,7 @@ pub async fn text_contents_detection_streams(
     ctx: Arc<Context>,
     headers: HeaderMap,
     detectors: HashMap<String, DetectorParams>,
-    input_id: InputId,
+    input_id: u32,
     input_rx: mpsc::Receiver<Result<(usize, String), Error>>, // (message_index, text)
 ) -> Result<Vec<DetectionStream>, Error> {
     // Create chunk streams
@@ -294,14 +294,8 @@ pub async fn text_contents_detection_streams(
                                         .filter(|detection| detection.score >= threshold)
                                         .collect::<Detections>();
                                     // Send to detection channel
-                                    let _ = detection_tx
-                                        .send(Ok((
-                                            input_id,
-                                            detector_id.clone(),
-                                            chunk,
-                                            detections,
-                                        )))
-                                        .await;
+                                    let _ =
+                                        detection_tx.send(Ok((input_id, chunk, detections))).await;
                                 }
                                 Err(error) => {
                                     // Send error to detection channel
@@ -985,9 +979,7 @@ mod test {
 
         let mut fake_detector_stream = detection_streams.swap_remove(0);
         let mut results = Vec::with_capacity(1);
-        while let Some(Ok((_input_id, _detector_id, _chunk, detections))) =
-            fake_detector_stream.next().await
-        {
+        while let Some(Ok((_input_id, _chunk, detections))) = fake_detector_stream.next().await {
             results.push(detections);
         }
         assert_eq!(results.len(), 1);

@@ -16,7 +16,7 @@
 */
 use std::collections::{BTreeMap, btree_map};
 
-use super::{Chunk, DetectionBatcher, Detections, DetectorId, InputId};
+use super::{Batch, Chunk, DetectionBatcher, Detections};
 
 /// A batcher based on the original "max processed index"
 /// aggregator.
@@ -49,15 +49,7 @@ impl MaxProcessedIndexBatcher {
 }
 
 impl DetectionBatcher for MaxProcessedIndexBatcher {
-    type Batch = (Chunk, Detections);
-
-    fn push(
-        &mut self,
-        _input_id: InputId,
-        _detector_id: DetectorId,
-        chunk: Chunk,
-        detections: Detections,
-    ) {
+    fn push(&mut self, _input_id: u32, chunk: Chunk, detections: Detections) {
         match self.state.entry(chunk) {
             btree_map::Entry::Vacant(entry) => {
                 // New chunk, insert entry
@@ -70,7 +62,7 @@ impl DetectionBatcher for MaxProcessedIndexBatcher {
         }
     }
 
-    fn pop_batch(&mut self) -> Option<Self::Batch> {
+    fn pop_batch(&mut self) -> Option<Batch> {
         // Check if we have all detections for the next chunk
         if self
             .state
@@ -80,7 +72,7 @@ impl DetectionBatcher for MaxProcessedIndexBatcher {
             // We have all detections for the chunk, remove and return it.
             if let Some((chunk, detections)) = self.state.pop_first() {
                 let detections = detections.into_iter().flatten().collect();
-                return Some((chunk, detections));
+                return Some((0, chunk, detections));
             }
         }
         None
@@ -123,7 +115,6 @@ mod test {
         // Push chunk detections for pii detector
         batcher.push(
             input_id,
-            "pii".into(),
             chunk.clone(),
             vec![Detection {
                 start: Some(5),
@@ -143,7 +134,6 @@ mod test {
         // Push chunk detections for hap detector
         batcher.push(
             input_id,
-            "hap".into(),
             chunk.clone(),
             vec![
                 Detection {
@@ -169,9 +159,9 @@ mod test {
         // We have detections for 2 detectors
         // pop_batch() should return a batch containing 3 detections for the chunk
         let batch = batcher.pop_batch();
-        assert!(
-            batch.is_some_and(|(chunk, detections)| { chunk == chunk && detections.len() == 3 })
-        );
+        assert!(batch.is_some_and(|(_input_id, chunk, detections)| {
+            chunk == chunk && detections.len() == 3
+        }));
     }
 
     #[test]
@@ -210,21 +200,18 @@ mod test {
         // Push chunk-2 detections for pii detector
         batcher.push(
             input_id,
-            "pii".into(),
             chunks[1].clone(),
             Detections::default(), // no detections
         );
         // Push chunk-2 detections for hap detector
         batcher.push(
             input_id,
-            "hap".into(),
             chunks[1].clone(),
             Detections::default(), // no detections
         );
         // Push chunk-1 detections for hap detector
         batcher.push(
             input_id,
-            "hap".into(),
             chunks[0].clone(),
             Detections::default(), // no detections
         );
@@ -236,7 +223,6 @@ mod test {
         // Push chunk-1 detections for pii detector
         batcher.push(
             input_id,
-            "pii".into(),
             chunks[0].clone(),
             vec![Detection {
                 start: Some(10),
@@ -252,17 +238,15 @@ mod test {
         // We have all detections for chunk-1 and chunk-2
         // pop_batch() should return chunk-1 with 1 pii detection
         let batch = batcher.pop_batch();
-        assert!(
-            batch
-                .is_some_and(|(chunk, detections)| { chunk == chunks[0] && detections.len() == 1 })
-        );
+        assert!(batch.is_some_and(|(_input_id, chunk, detections)| {
+            chunk == chunks[0] && detections.len() == 1
+        }));
 
         // pop_batch() should return chunk-2 with no detections
         let batch = batcher.pop_batch();
-        assert!(
-            batch
-                .is_some_and(|(chunk, detections)| { chunk == chunks[1] && detections.is_empty() })
-        );
+        assert!(batch.is_some_and(|(_input_id, chunk, detections)| {
+            chunk == chunks[1] && detections.is_empty()
+        }));
 
         // batcher state should be empty as all batches have been returned
         assert!(batcher.state.is_empty());
@@ -294,10 +278,10 @@ mod test {
 
         // Create detection channels and streams
         let (pii_detections_tx, pii_detections_rx) =
-            mpsc::channel::<Result<(InputId, DetectorId, Chunk, Detections), Error>>(4);
+            mpsc::channel::<Result<(u32, Chunk, Detections), Error>>(4);
         let pii_detections_stream = ReceiverStream::new(pii_detections_rx).boxed();
         let (hap_detections_tx, hap_detections_rx) =
-            mpsc::channel::<Result<(InputId, DetectorId, Chunk, Detections), Error>>(4);
+            mpsc::channel::<Result<(u32, Chunk, Detections), Error>>(4);
         let hap_detections_stream = ReceiverStream::new(hap_detections_rx).boxed();
 
         // Create a batcher that will process batches for 2 detectors
@@ -312,7 +296,6 @@ mod test {
         let _ = pii_detections_tx
             .send(Ok((
                 input_id,
-                "pii".into(),
                 chunks[1].clone(),
                 Detections::default(), // no detections
             )))
@@ -322,7 +305,6 @@ mod test {
         let _ = hap_detections_tx
             .send(Ok((
                 input_id,
-                "hap".into(),
                 chunks[0].clone(),
                 Detections::default(), // no detections
             )))
@@ -332,7 +314,6 @@ mod test {
         let _ = hap_detections_tx
             .send(Ok((
                 input_id,
-                "hap".into(),
                 chunks[1].clone(),
                 Detections::default(), // no detections
             )))
@@ -349,7 +330,6 @@ mod test {
         let _ = pii_detections_tx
             .send(Ok((
                 input_id,
-                "pii".into(),
                 chunks[0].clone(),
                 vec![Detection {
                     start: Some(10),
@@ -367,13 +347,17 @@ mod test {
         // detection_batch_stream.next() should be ready and return chunk-1 with 1 pii detection
         let batch = detection_batch_stream.next().await;
         assert!(batch.is_some_and(|result| {
-            result.is_ok_and(|(chunk, detections)| chunk == chunks[0] && detections.len() == 1)
+            result.is_ok_and(|(_input_id, chunk, detections)| {
+                chunk == chunks[0] && detections.len() == 1
+            })
         }));
 
         // detection_batch_stream.next() should be ready and return chunk-2 with no detections
         let batch = detection_batch_stream.next().await;
         assert!(batch.is_some_and(|result| {
-            result.is_ok_and(|(chunk, detections)| chunk == chunks[1] && detections.is_empty())
+            result.is_ok_and(|(_input_id, chunk, detections)| {
+                chunk == chunks[1] && detections.is_empty()
+            })
         }));
 
         // detection_batch_stream.next() future should not be ready
