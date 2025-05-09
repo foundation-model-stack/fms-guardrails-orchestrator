@@ -18,66 +18,82 @@ use futures::{Stream, StreamExt, stream};
 use tokio::sync::{mpsc, oneshot};
 use tracing::{debug, error};
 
-use super::{Chunk, DetectionBatcher, DetectionStream, Detections, DetectorId, InputId};
+use super::{Batch, Chunk, DetectionBatcher, DetectionStream, Detections};
 use crate::orchestrator::Error;
 
-/// A stream adapter that wraps multiple detection streams and
+/// A stream adapter that wraps detection streams and
 /// produces a stream of batches using a [`DetectionBatcher`]
 /// implementation.
 ///
 /// The detection batcher enables flexible batching
 /// logic and returned batch types for different use cases.
-pub struct DetectionBatchStream<B: DetectionBatcher> {
-    batch_rx: mpsc::Receiver<Result<B::Batch, Error>>,
+pub struct DetectionBatchStream {
+    batch_rx: mpsc::Receiver<Result<Batch, Error>>,
 }
 
-impl<B> DetectionBatchStream<B>
-where
-    B: DetectionBatcher,
-{
-    pub fn new(batcher: B, streams: Vec<DetectionStream>) -> Self {
+impl DetectionBatchStream {
+    pub fn new(batcher: impl DetectionBatcher, mut streams: Vec<DetectionStream>) -> Self {
         let (batch_tx, batch_rx) = mpsc::channel(32);
-        // Create single stream from multiple detection streams
-        let mut stream_set = stream::select_all(streams);
-        // Create batcher manager, an actor to manage the batcher instead of using locks
-        let batcher_manager = DetectionBatcherManagerHandle::new(batcher);
         // Spawn task to receive detections and process batches
         tokio::spawn(async move {
-            let mut stream_completed = false;
-            loop {
-                tokio::select! {
-                    // Disable random branch selection to poll the futures in order
-                    biased;
-
-                    // Receive detections and push to batcher
-                    msg = stream_set.next(), if !stream_completed => {
-                        match msg {
-                            Some(Ok((input_id, detector_id, chunk, detections))) => {
-                                debug!(%input_id, ?chunk, ?detections, "pushing detections to batcher");
-                                batcher_manager
-                                    .push(input_id, detector_id, chunk, detections)
-                                    .await;
-                            },
-                            Some(Err(error)) => {
-                                error!(?error, "sending error to batch channel");
-                                let _ = batch_tx.send(Err(error)).await;
-                                break;
-                            },
-                            None => {
-                                debug!("detections stream has completed");
-                                stream_completed = true;
-                            },
+            if streams.len() == 1 {
+                // Skip the batching process for a single detection stream
+                let mut stream = streams.swap_remove(0);
+                while let Some(msg) = stream.next().await {
+                    match msg {
+                        Ok(batch) => {
+                            debug!(?batch, "sending batch to batch channel");
+                            let _ = batch_tx.send(Ok(batch)).await;
                         }
-                    },
-                    // Pop batches and send them to batch channel
-                    Some(batch) = batcher_manager.pop() => {
-                        debug!(?batch, "sending batch to batch channel");
-                        let _ = batch_tx.send(Ok(batch)).await;
-                    },
-                    // Terminate task when stream is completed and batcher state is empty
-                    empty = batcher_manager.is_empty(), if stream_completed => {
-                        if empty {
+                        Err(error) => {
+                            error!(?error, "sending error to batch channel");
+                            let _ = batch_tx.send(Err(error)).await;
                             break;
+                        }
+                    }
+                }
+                debug!("detections stream has completed");
+            } else {
+                // Create single stream from multiple detection streams
+                let mut stream_set = stream::select_all(streams);
+                // Create batcher manager, an actor to manage the batcher instead of using locks
+                let batcher_manager = DetectionBatcherManagerHandle::new(batcher);
+                let mut stream_completed = false;
+                loop {
+                    tokio::select! {
+                        // Disable random branch selection to poll the futures in order
+                        biased;
+
+                        // Receive detections and push to batcher
+                        msg = stream_set.next(), if !stream_completed => {
+                            match msg {
+                                Some(Ok((input_id, chunk, detections))) => {
+                                    debug!(%input_id, ?chunk, ?detections, "pushing detections to batcher");
+                                    batcher_manager
+                                        .push(input_id, chunk, detections)
+                                        .await;
+                                },
+                                Some(Err(error)) => {
+                                    error!(?error, "sending error to batch channel");
+                                    let _ = batch_tx.send(Err(error)).await;
+                                    break;
+                                },
+                                None => {
+                                    debug!("detections stream has completed");
+                                    stream_completed = true;
+                                },
+                            }
+                        },
+                        // Pop batches and send them to batch channel
+                        Some(batch) = batcher_manager.pop() => {
+                            debug!(?batch, "sending batch to batch channel");
+                            let _ = batch_tx.send(Ok(batch)).await;
+                        },
+                        // Terminate task when stream is completed and batcher state is empty
+                        empty = batcher_manager.is_empty(), if stream_completed => {
+                            if empty {
+                                break;
+                            }
                         }
                     }
                 }
@@ -89,11 +105,8 @@ where
     }
 }
 
-impl<B> Stream for DetectionBatchStream<B>
-where
-    B: DetectionBatcher,
-{
-    type Item = Result<B::Batch, Error>;
+impl Stream for DetectionBatchStream {
+    type Item = Result<Batch, Error>;
 
     fn poll_next(
         mut self: std::pin::Pin<&mut Self>,
@@ -103,10 +116,9 @@ where
     }
 }
 
-enum DetectionBatcherMessage<Batch> {
+enum DetectionBatcherMessage {
     Push {
-        input_id: InputId,
-        detector_id: DetectorId,
+        input_id: u32,
         chunk: Chunk,
         detections: Detections,
     },
@@ -121,14 +133,14 @@ enum DetectionBatcherMessage<Batch> {
 /// An actor that manages a [`DetectionBatcher`].
 struct DetectionBatcherManager<B: DetectionBatcher> {
     batcher: B,
-    rx: mpsc::Receiver<DetectionBatcherMessage<B::Batch>>,
+    rx: mpsc::Receiver<DetectionBatcherMessage>,
 }
 
 impl<B> DetectionBatcherManager<B>
 where
     B: DetectionBatcher,
 {
-    pub fn new(batcher: B, rx: mpsc::Receiver<DetectionBatcherMessage<B::Batch>>) -> Self {
+    pub fn new(batcher: B, rx: mpsc::Receiver<DetectionBatcherMessage>) -> Self {
         Self { batcher, rx }
     }
 
@@ -137,12 +149,11 @@ where
             match msg {
                 DetectionBatcherMessage::Push {
                     input_id,
-                    detector_id,
                     chunk,
                     detections,
                 } => {
-                    debug!(%input_id, %detector_id, ?chunk, ?detections, "handling push request");
-                    self.batcher.push(input_id, detector_id, chunk, detections)
+                    debug!(%input_id, ?chunk, ?detections, "handling push request");
+                    self.batcher.push(input_id, chunk, detections)
                 }
                 DetectionBatcherMessage::Pop { response_tx } => {
                     debug!("handling pop request");
@@ -163,17 +174,13 @@ where
 
 /// A handle to a [`DetectionBatcherManager`].
 #[derive(Clone)]
-struct DetectionBatcherManagerHandle<B: DetectionBatcher> {
-    tx: mpsc::Sender<DetectionBatcherMessage<B::Batch>>,
+struct DetectionBatcherManagerHandle {
+    tx: mpsc::Sender<DetectionBatcherMessage>,
 }
 
-impl<B> DetectionBatcherManagerHandle<B>
-where
-    B: DetectionBatcher,
-    B::Batch: Clone,
-{
+impl DetectionBatcherManagerHandle {
     /// Creates a new [`DetectionBatcherManager`] and returns its handle.
-    pub fn new(batcher: B) -> Self {
+    pub fn new(batcher: impl DetectionBatcher) -> Self {
         let (tx, rx) = mpsc::channel(32);
         let mut actor = DetectionBatcherManager::new(batcher, rx);
         tokio::spawn(async move { actor.run().await });
@@ -181,18 +188,11 @@ where
     }
 
     /// Pushes new detections to the batcher.
-    pub async fn push(
-        &self,
-        input_id: InputId,
-        detector_id: DetectorId,
-        chunk: Chunk,
-        detections: Detections,
-    ) {
+    pub async fn push(&self, input_id: u32, chunk: Chunk, detections: Detections) {
         let _ = self
             .tx
             .send(DetectionBatcherMessage::Push {
                 input_id,
-                detector_id,
                 chunk,
                 detections,
             })
@@ -200,7 +200,7 @@ where
     }
 
     /// Removes the next batch of detections from the batcher, if ready.
-    pub async fn pop(&self) -> Option<B::Batch> {
+    pub async fn pop(&self) -> Option<Batch> {
         let (response_tx, response_rx) = oneshot::channel();
         let _ = self
             .tx
