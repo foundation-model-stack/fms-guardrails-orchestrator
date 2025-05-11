@@ -23,7 +23,7 @@ clap = { version = "4.5.26", features = ["derive", "env"] }
 eventsource-stream = "0.2.3"
 futures = "0.3.31"
 futures-util = { version = "0.3", default-features = false, features = [] }
-ginepro = "0.8.2"
+ginepro = { git = "https://github.com/gkumbhat/ginepro" }
 http = "1.2.0"
 http-body = "1.0"
 http-body-util = "0.1.2"
@@ -36,16 +36,16 @@ hyper-util = { version = "0.1.10", features = [
     "server-graceful",
     "tokio",
 ] }
-opentelemetry = { version = "0.27.1", features = ["metrics", "trace"] }
+opentelemetry = { version = "0.27.0", features = ["metrics", "trace"] }
 opentelemetry-http = { version = "0.27.0", features = ["reqwest"] }
 opentelemetry-otlp = { version = "0.27.0", features = [
     "grpc-tonic",
     "http-proto",
 ] }
-opentelemetry_sdk = { version = "0.27.1", features = ["rt-tokio", "metrics"] }
+opentelemetry_sdk = { version = "0.27.0", features = ["rt-tokio", "metrics"] }
 pin-project-lite = "0.2.16"
 prost = "0.13.4"
-reqwest = { version = "0.12.12", features = [
+reqwest = { version = "0.12.15", features = [
     "blocking",
     "rustls-tls",
     "json",
@@ -73,7 +73,7 @@ tokio-rustls = { version = "0.26.1", features = ["ring"] }
 tokio-stream = { version = "0.1.17", features = ["sync"] }
 tonic = { version = "0.12.3", features = [
     "tls",
-    "tls-roots",
+    "tls-native-roots",
     "tls-webpki-roots",
 ] }
 tower = { version = "0.5.2", features = ["timeout"] }
