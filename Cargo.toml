@@ -23,7 +23,7 @@ clap = { version = "4.5.26", features = ["derive", "env"] }
 eventsource-stream = "0.2.3"
 futures = "0.3.31"
 futures-util = { version = "0.3", default-features = false, features = [] }
-ginepro = { git = "https://github.com/gkumbhat/ginepro" }
+ginepro = { git = "https://github.com/gkumbhat/ginepro", branch = "add_tonic_endpoint_settings" }
 http = "1.2.0"
 http-body = "1.0"
 http-body-util = "0.1.2"

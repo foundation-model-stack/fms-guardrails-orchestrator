@@ -865,7 +865,7 @@ checksum = "07e28edb80900c19c28f1072f2e8aeca7fa06b23cd4169cefe1af5aa3260783f"
 [[package]]
 name = "ginepro"
 version = "0.8.2"
-source = "git+https://github.com/gkumbhat/ginepro#1b312520209c2cfe83781a68bbbccecdd3e53cad"
+source = "git+https://github.com/gkumbhat/ginepro?branch=add_tonic_endpoint_settings#5d931cd78f1890bf42ac18425c392ba85a77e7ed"
 dependencies = [
  "anyhow",
  "async-trait",

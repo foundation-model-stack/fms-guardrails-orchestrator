@@ -71,6 +71,8 @@ const DEFAULT_CONNECT_TIMEOUT_SEC: u64 = 60;
 const DEFAULT_REQUEST_TIMEOUT_SEC: u64 = 600;
 const DEFAULT_GRPC_PROBE_INTERVAL_SEC: u64 = 10;
 const DEFAULT_RES_STRATEGY_INTERVAL_SEC: u64 = 10;
+const DEFAULT_HTTP2_KEEP_ALIVE_INTERVAL: u64 = 30;
+const DEFAULT_KEEP_ALIVE_TIMEOUT: u64 = 30;
 
 pub type BoxStream<T> = Pin<Box<dyn Stream<Item = T> + Send>>;
 
@@ -298,6 +300,9 @@ pub async fn create_grpc_client<C: Debug + Clone>(
         .dns_probe_interval(grpc_dns_probe_interval)
         .connect_timeout(connect_timeout)
         .timeout(request_timeout)
+        .keep_alive_while_idle(true)
+        .keep_alive_timeout(Duration::from_secs(DEFAULT_KEEP_ALIVE_TIMEOUT))
+        .http2_keep_alive_interval(Duration::from_secs(DEFAULT_HTTP2_KEEP_ALIVE_INTERVAL))
         .resolution_strategy(resolution_strategy);
     let client_tls_config = if let Some(Tls::Config(tls_config)) = &service_config.tls {
         let cert_path = tls_config.cert_path.as_ref().unwrap().as_path();
