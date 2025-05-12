@@ -16,7 +16,7 @@
 */
 use std::collections::{BTreeMap, btree_map};
 
-use super::{Chunk, DetectionBatcher, Detections, DetectorId};
+use super::{Batch, Chunk, DetectionBatcher, Detections};
 
 pub type ChoiceIndex = u32;
 
@@ -53,15 +53,7 @@ impl ChatCompletionBatcher {
 }
 
 impl DetectionBatcher for ChatCompletionBatcher {
-    type Batch = (Chunk, ChoiceIndex, Detections);
-
-    fn push(
-        &mut self,
-        choice_index: ChoiceIndex,
-        _detector_id: DetectorId,
-        chunk: Chunk,
-        detections: Detections,
-    ) {
+    fn push(&mut self, choice_index: ChoiceIndex, chunk: Chunk, detections: Detections) {
         match self.state.entry((chunk, choice_index)) {
             btree_map::Entry::Vacant(entry) => {
                 // New chunk, insert entry
@@ -74,7 +66,7 @@ impl DetectionBatcher for ChatCompletionBatcher {
         }
     }
 
-    fn pop_batch(&mut self) -> Option<Self::Batch> {
+    fn pop_batch(&mut self) -> Option<Batch> {
         // Batching logic here will only assume detections with the same chunker type
         // Requirements in https://github.com/foundation-model-stack/fms-guardrails-orchestrator/blob/main/docs/architecture/adrs/005-chat-completion-support.md#streaming-response
         // for detections on whole output will be handled outside of the batcher
@@ -88,7 +80,7 @@ impl DetectionBatcher for ChatCompletionBatcher {
             // We have all detections for the chunk, remove and return it.
             if let Some(((chunk, choice_index), detections)) = self.state.pop_first() {
                 let detections = detections.into_iter().flatten().collect();
-                return Some((chunk, choice_index, detections));
+                return Some((choice_index, chunk, detections));
             }
         }
         None
@@ -131,7 +123,6 @@ mod test {
         // Push chunk detections for pii detector
         batcher.push(
             choice_index,
-            "pii".into(),
             chunk.clone(),
             vec![Detection {
                 start: Some(5),
@@ -151,7 +142,6 @@ mod test {
         // Push chunk detections for hap detector
         batcher.push(
             choice_index,
-            "hap".into(),
             chunk.clone(),
             vec![
                 Detection {
@@ -178,7 +168,7 @@ mod test {
         // pop_batch() should return a batch containing 3 detections for the chunk
         let batch = batcher.pop_batch();
         assert!(
-            batch.is_some_and(|(actual_chunk, actual_choice_index, detections)| {
+            batch.is_some_and(|(actual_choice_index, actual_chunk, detections)| {
                 actual_chunk == chunk
                     && actual_choice_index == choice_index
                     && detections.len() == 3
@@ -219,21 +209,18 @@ mod test {
             // Push chunk-2 detections for pii detector
             batcher.push(
                 choice_index,
-                "pii".into(),
                 chunks[1].clone(),
                 Detections::default(), // no detections
             );
             // Push chunk-1 detections for hap detector
             batcher.push(
                 choice_index,
-                "hap".into(),
                 chunks[0].clone(),
                 Detections::default(), // no detections
             );
             // Push chunk-2 detections for hap detector
             batcher.push(
                 choice_index,
-                "hap".into(),
                 chunks[1].clone(),
                 Detections::default(), // no detections
             );
@@ -247,7 +234,6 @@ mod test {
         for choice_index in 0..choices {
             batcher.push(
                 choice_index,
-                "pii".into(),
                 chunks[0].clone(),
                 vec![Detection {
                     start: Some(10),
@@ -264,25 +250,25 @@ mod test {
         // We have all detections for chunk-1 and chunk-2
         // pop_batch() should return chunk-1 with 1 pii detection, for the first choice
         let batch = batcher.pop_batch();
-        assert!(batch.is_some_and(|(chunk, choice_index, detections)| {
+        assert!(batch.is_some_and(|(choice_index, chunk, detections)| {
             chunk == chunks[0] && choice_index == 0 && detections.len() == 1
         }));
 
         // Return the same chunk-1 with 1 pii detection for the second choice
         let batch = batcher.pop_batch();
-        assert!(batch.is_some_and(|(chunk, choice_index, detections)| {
+        assert!(batch.is_some_and(|(choice_index, chunk, detections)| {
             chunk == chunks[0] && choice_index == 1 && detections.len() == 1
         }));
 
         // pop_batch() should return chunk-2 with no detections, for the first choice
         let batch = batcher.pop_batch();
-        assert!(batch.is_some_and(|(chunk, choice_index, detections)| {
+        assert!(batch.is_some_and(|(choice_index, chunk, detections)| {
             chunk == chunks[1] && choice_index == 0 && detections.is_empty()
         }));
 
         // Return the same chunk-2 with no detections for the second choice
         let batch = batcher.pop_batch();
-        assert!(batch.is_some_and(|(chunk, choice_index, detections)| {
+        assert!(batch.is_some_and(|(choice_index, chunk, detections)| {
             chunk == chunks[1] && choice_index == 1 && detections.is_empty()
         }));
 
@@ -352,42 +338,36 @@ mod test {
         // Push chunk-2 detections for pii detector, choice 1
         batcher.push(
             choice_1_index,
-            "pii".into(),
             choice_1_chunks[1].clone(),
             Detections::default(), // no detections
         );
         // Same for choice 2
         batcher.push(
             choice_2_index,
-            "pii".into(),
             choice_2_chunks[1].clone(),
             Detections::default(), // no detections
         );
         // Push chunk-2 detections for hap detector, choice 2
         batcher.push(
             choice_2_index,
-            "hap".into(),
             choice_2_chunks[1].clone(),
             Detections::default(), // no detections
         );
         // Same for choice 1
         batcher.push(
             choice_1_index,
-            "hap".into(),
             choice_1_chunks[1].clone(),
             Detections::default(), // no detections
         );
         // Push chunk-1 detections for hap detector, choice 1
         batcher.push(
             choice_1_index,
-            "hap".into(),
             choice_1_chunks[0].clone(),
             Detections::default(), // no detections
         );
         // Same for choice 2
         batcher.push(
             choice_2_index,
-            "hap".into(),
             choice_2_chunks[0].clone(),
             Detections::default(), // no detections
         );
@@ -399,7 +379,6 @@ mod test {
         // Push chunk-1 detections for pii detector, for first choice
         batcher.push(
             choice_1_index,
-            "pii".into(),
             choice_1_chunks[0].clone(),
             vec![Detection {
                 start: Some(10),
@@ -414,7 +393,6 @@ mod test {
         // Push chunk-1 detections for pii detector, for second choice
         batcher.push(
             choice_2_index,
-            "pii".into(),
             choice_2_chunks[0].clone(),
             vec![Detection {
                 start: Some(10),
@@ -430,21 +408,21 @@ mod test {
         // We have all detections for chunk-1 and chunk-2
         // Expect 4 chunks, with those for the chunk-1 chunks first
         let batch = batcher.pop_batch();
-        assert!(batch.is_some_and(|(chunk, choice_index, detections)| {
+        assert!(batch.is_some_and(|(choice_index, chunk, detections)| {
             chunk == choice_1_chunks[0] && choice_index == choice_1_index && detections.len() == 1
         }));
         let batch = batcher.pop_batch();
-        assert!(batch.is_some_and(|(chunk, choice_index, detections)| {
+        assert!(batch.is_some_and(|(choice_index, chunk, detections)| {
             chunk == choice_2_chunks[0] && choice_index == choice_2_index && detections.len() == 1
         }));
 
         // chunk-2 chunks
         let batch = batcher.pop_batch();
-        assert!(batch.is_some_and(|(chunk, choice_index, detections)| {
+        assert!(batch.is_some_and(|(choice_index, chunk, detections)| {
             chunk == choice_1_chunks[1] && choice_index == choice_1_index && detections.is_empty()
         }));
         let batch = batcher.pop_batch();
-        assert!(batch.is_some_and(|(chunk, choice_index, detections)| {
+        assert!(batch.is_some_and(|(choice_index, chunk, detections)| {
             chunk == choice_2_chunks[1] && choice_index == choice_2_index && detections.is_empty()
         }));
 
@@ -479,10 +457,10 @@ mod test {
 
         // Create detection channels and streams
         let (pii_detections_tx, pii_detections_rx) =
-            mpsc::channel::<Result<(ChoiceIndex, DetectorId, Chunk, Detections), Error>>(4);
+            mpsc::channel::<Result<(ChoiceIndex, Chunk, Detections), Error>>(4);
         let pii_detections_stream = ReceiverStream::new(pii_detections_rx).boxed();
         let (hap_detections_tx, hap_detections_rx) =
-            mpsc::channel::<Result<(ChoiceIndex, DetectorId, Chunk, Detections), Error>>(4);
+            mpsc::channel::<Result<(ChoiceIndex, Chunk, Detections), Error>>(4);
         let hap_detections_stream = ReceiverStream::new(hap_detections_rx).boxed();
 
         // Create a batcher that will process batches for 2 detectors
@@ -498,7 +476,6 @@ mod test {
             let _ = pii_detections_tx
                 .send(Ok((
                     choice_index,
-                    "pii".into(),
                     chunks[1].clone(),
                     Detections::default(), // no detections
                 )))
@@ -508,7 +485,6 @@ mod test {
             let _ = hap_detections_tx
                 .send(Ok((
                     choice_index,
-                    "hap".into(),
                     chunks[0].clone(),
                     Detections::default(), // no detections
                 )))
@@ -518,7 +494,6 @@ mod test {
             let _ = hap_detections_tx
                 .send(Ok((
                     choice_index,
-                    "hap".into(),
                     chunks[1].clone(),
                     Detections::default(), // no detections
                 )))
@@ -537,7 +512,6 @@ mod test {
             let _ = pii_detections_tx
                 .send(Ok((
                     choice_index,
-                    "pii".into(),
                     chunks[0].clone(),
                     vec![Detection {
                         start: Some(10),
@@ -556,7 +530,7 @@ mod test {
         // detection_batch_stream.next() should be ready and return chunk-1 with 1 pii detection, for choice 1
         let batch = detection_batch_stream.next().await;
         assert!(batch.is_some_and(|result| {
-            result.is_ok_and(|(chunk, choice_index, detections)| {
+            result.is_ok_and(|(choice_index, chunk, detections)| {
                 chunk == chunks[0] && choice_index == 0 && detections.len() == 1
             })
         }));
@@ -564,7 +538,7 @@ mod test {
         // Then choice 2
         let batch = detection_batch_stream.next().await;
         assert!(batch.is_some_and(|result| {
-            result.is_ok_and(|(chunk, choice_index, detections)| {
+            result.is_ok_and(|(choice_index, chunk, detections)| {
                 chunk == chunks[0] && choice_index == 1 && detections.len() == 1
             })
         }));
@@ -572,7 +546,7 @@ mod test {
         // detection_batch_stream.next() should be ready and return chunk-2 with no detections, for choice 1
         let batch = detection_batch_stream.next().await;
         assert!(batch.is_some_and(|result| {
-            result.is_ok_and(|(chunk, choice_index, detections)| {
+            result.is_ok_and(|(choice_index, chunk, detections)| {
                 chunk == chunks[1] && choice_index == 0 && detections.is_empty()
             })
         }));
@@ -580,7 +554,7 @@ mod test {
         // Then choice 2
         let batch = detection_batch_stream.next().await;
         assert!(batch.is_some_and(|result| {
-            result.is_ok_and(|(chunk, choice_index, detections)| {
+            result.is_ok_and(|(choice_index, chunk, detections)| {
                 chunk == chunks[1] && choice_index == 1 && detections.is_empty()
             })
         }));
