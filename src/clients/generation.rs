@@ -17,7 +17,8 @@
 
 use async_trait::async_trait;
 use futures::{StreamExt, TryStreamExt};
-use hyper::HeaderMap;
+use hyper::{HeaderMap, StatusCode};
+use tracing::warn;
 
 use super::{BoxStream, Client, Error, NlpClient, TgisClient};
 use crate::{
@@ -38,8 +39,57 @@ use crate::{
     },
 };
 
+async fn retry_function<F, Fut, Res>(max_retries: usize, func: F) -> Result<Res, Error>
+where
+    F: Fn() -> Fut,
+    Fut: std::future::Future<Output = Result<Res, Error>>,
+{
+    let mut attempt = 0;
+
+    let allowed_retry_codes = [
+        StatusCode::BAD_GATEWAY,
+        StatusCode::SERVICE_UNAVAILABLE,
+        StatusCode::GATEWAY_TIMEOUT,
+        StatusCode::HTTP_VERSION_NOT_SUPPORTED,
+        StatusCode::VARIANT_ALSO_NEGOTIATES,
+    ];
+    loop {
+        attempt += 1;
+
+        match func().await {
+            Ok(res) => return Ok(res),
+
+            Err(error) => {
+                if allowed_retry_codes.contains(&error.status_code()) {
+                    // Only retry when status code is within list
+                    if attempt > max_retries {
+                        warn!(
+                            "Final attempt failed to connect to server. attempt: {}, error: {}",
+                            attempt, &error
+                        );
+                        return Err(error);
+                    }
+                    // Exponential backoff for retries.
+                    tokio::time::sleep(std::time::Duration::from_millis(
+                        2_u64.pow(attempt as u32 - 1),
+                    ))
+                    .await;
+                    warn!(
+                        "failed to connect to server. attempt: {}, error: {}",
+                        attempt, &error
+                    );
+                    continue;
+                }
+
+                // Else return error
+                return Err(error);
+            }
+        }
+    }
+}
+
 #[derive(Clone)]
-pub struct GenerationClient(Option<GenerationClientInner>);
+pub struct GenerationClient(Option<GenerationClientInner>, usize);
 
 #[derive(Clone)]
 enum GenerationClientInner {
@@ -48,16 +98,16 @@ enum GenerationClientInner {
 }
 
 impl GenerationClient {
-    pub fn tgis(client: TgisClient) -> Self {
-        Self(Some(GenerationClientInner::Tgis(client)))
+    pub fn tgis(client: TgisClient, max_retries: usize) -> Self {
+        Self(Some(GenerationClientInner::Tgis(client)), max_retries)
     }
 
-    pub fn nlp(client: NlpClient) -> Self {
-        Self(Some(GenerationClientInner::Nlp(client)))
+    pub fn nlp(client: NlpClient, max_retries: usize) -> Self {
+        Self(Some(GenerationClientInner::Nlp(client)), max_retries)
     }
 
     pub fn not_configured() -> Self {
-        Self(None)
+        Self(None, 0)
     }
 
     pub async fn tokenize(
@@ -81,9 +131,10 @@ impl GenerationClient {
             }
             Some(GenerationClientInner::Nlp(client)) => {
                 let request = TokenizationTaskRequest { text };
-                let response = client
-                    .tokenization_task_predict(&model_id, request, headers)
-                    .await?;
+                let response = retry_function(self.1, || {
+                    client.tokenization_task_predict(&model_id, request.clone(), headers.clone())
+                })
+                .await?;
                 let tokens = response
                     .results
                     .into_iter()
@@ -146,9 +197,10 @@ impl GenerationClient {
                         ..Default::default()
                     }
                 };
-                let response = client
-                    .text_generation_task_predict(&model_id, request, headers)
-                    .await?;
+                let response = retry_function(self.1, || {
+                    client.text_generation_task_predict(&model_id, request.clone(), headers.clone())
+                })
+                .await?;
                 Ok(response.into())
             }
             None => Err(Error::ModelNotFound { model_id }),
@@ -210,11 +262,18 @@ impl GenerationClient {
                         ..Default::default()
                     }
                 };
-                let response_stream = client
-                    .server_streaming_text_generation_task_predict(&model_id, request, headers)
-                    .await?
-                    .map_ok(Into::into)
-                    .boxed();
+
+                let response_stream = retry_function(self.1, || {
+                    client.server_streaming_text_generation_task_predict(
+                        &model_id,
+                        request.clone(),
+                        headers.clone(),
+                    )
+                })
+                .await?
+                .map_ok(Into::into)
+                .boxed();
+
                 Ok(response_stream)
             }
             None => Err(Error::ModelNotFound { model_id }),
