@@ -405,39 +405,37 @@ fn output_detection_response(
     // Get range of chat completions for this chunk
     let chat_completions = chat_completions.range(chunk.input_start_index..=chunk.input_end_index);
     // Build response using the last chat completion received for this chunk
-    let mut chat_completion = chat_completions.last().unwrap().1.clone();
-    // Build choice
-    let choice = ChatCompletionChunkChoice { 
-        index: choice_index, 
-        delta: ChatCompletionDelta { 
-            role: Some(Role::Assistant), 
-            content: Some(chunk.text), 
+    if let Some((_message_index, chat_completion)) = chat_completions.last() {
+        let mut chat_completion = chat_completion.clone();
+        // Set content to chunk text
+        chat_completion.choices[0].delta.content = Some(chunk.text);
+        // Set logprobs
+        chat_completion.choices[0].logprobs = None; // TODO
+        // Set detections and warnings
+        if !detections.is_empty() {
+            chat_completion.warnings = vec![OrchestratorWarning::new(
+                DetectionWarningReason::UnsuitableOutput,
+                UNSUITABLE_OUTPUT_MESSAGE,
+            )];
+        }
+        chat_completion.detections = Some(ChatDetections { 
+            output: vec![OutputDetectionResult {
+                choice_index,
+                results: detections.into(),
+            }], 
             ..Default::default()
-        }, 
-        logprobs: None, // TODO
-        finish_reason: chat_completion.choices[0].finish_reason.clone(),
-        stop_reason: chat_completion.choices[0].stop_reason.clone(),
-    };
-    chat_completion.choices = vec![choice];
-    // TODO: logprobs, usage, prompt_logprobs, tool_calls
-    // chat_completion.usage = todo!();
-
-    // Set detections and warnings
-    if !detections.is_empty() {
-        chat_completion.warnings = vec![OrchestratorWarning::new(
-            DetectionWarningReason::UnsuitableOutput,
-            UNSUITABLE_OUTPUT_MESSAGE,
-        )];
+        });
+        // TODO: logprobs, usage, prompt_logprobs, tool_calls
+        Ok(chat_completion)
+    } else {
+        error!(
+            %choice_index, 
+            %chunk.input_start_index, 
+            %chunk.input_end_index, 
+            "no chat completions found for chunk"
+        );
+        Err(Error::Other("no chat completions found for chunk".into()))
     }
-    chat_completion.detections = Some(ChatDetections { 
-        output: vec![OutputDetectionResult {
-            choice_index,
-            results: detections.into(),
-        }], 
-        ..Default::default()
-    });
-    
-    Ok(chat_completion)
 }
 
 /// Consumes a detection batch stream, builds responses, and sends them to a response channel.
@@ -450,11 +448,20 @@ async fn process_detection_batch_stream(
     while let Some(result) = detection_batch_stream.next().await {
         match result {
             Ok((choice_index, chunk, detections)) => {
-                let chat_completion = output_detection_response(&chat_completion_state, choice_index, chunk, detections).unwrap();
-                // Send message to response channel
-                if response_tx.send(Ok(Some(chat_completion))).await.is_err() {
-                    info!(%trace_id, "task completed: client disconnected");
-                    return;
+                match output_detection_response(&chat_completion_state, choice_index, chunk, detections) {
+                    Ok(chat_completion) => {
+                        // Send chat completion to response channel
+                        if response_tx.send(Ok(Some(chat_completion))).await.is_err() {
+                            info!(%trace_id, "task completed: client disconnected");
+                            return;
+                        }
+                    },
+                    Err(error) => {
+                        error!(%trace_id, %error, "task failed: error building output detection response");
+                        // Send error to response channel and terminate
+                        let _ = response_tx.send(Err(error)).await;
+                        return;
+                    }
                 }
             }
             Err(error) => {
