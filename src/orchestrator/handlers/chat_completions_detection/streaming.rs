@@ -14,7 +14,7 @@
  limitations under the License.
 
 */
-use std::{collections::{BTreeMap, HashMap}, sync::Arc};
+use std::{collections::{BTreeMap, HashMap}, sync::{Arc, Mutex}};
 
 use dashmap::DashMap;
 use futures::StreamExt;
@@ -127,7 +127,7 @@ pub async fn handle_streaming(
 
                 // Create chat completions state
                 // This holds all chat completion chunks received and is used to build responses
-                let chat_completion_state: Arc<DashMap<ChoiceIndex, BTreeMap<usize, ChatCompletionChunk>>> = Arc::new(DashMap::new());
+                let chat_completion_state = Arc::new(ChatCompletionState::new());
 
                 // Handle output detection
                 if !output_detectors.is_empty() {
@@ -148,11 +148,14 @@ pub async fn handle_streaming(
                         ctx.clone(),
                         &task,
                         whole_doc_output_detectors,
-                        chat_completion_state,
+                        chat_completion_state.clone(),
                         response_tx.clone(),
                     )
                     .await;
                 }
+
+                // Handle usage
+                handle_usage(chat_completion_state, response_tx.clone()).await;
             }
 
             // Send None to signal completion
@@ -239,7 +242,7 @@ async fn handle_output_detection(
     ctx: Arc<Context>,
     task: &ChatCompletionsDetectionTask,
     detectors: HashMap<String, DetectorParams>,
-    chat_completion_state: Arc<DashMap<ChoiceIndex, BTreeMap<usize, ChatCompletionChunk>>>,
+    chat_completion_state: Arc<ChatCompletionState>,
     chat_completion_stream: ChatCompletionStream,
     response_tx: mpsc::Sender<Result<Option<ChatCompletionChunk>, Error>>,
 ) {
@@ -331,26 +334,32 @@ async fn forward_chat_completion_stream(
 /// and updates chat completion state.
 #[allow(clippy::type_complexity)]
 async fn process_chat_completion_stream(
-    chat_completion_state: Arc<DashMap<ChoiceIndex, BTreeMap<usize, ChatCompletionChunk>>>,
+    chat_completion_state: Arc<ChatCompletionState>,
     mut chat_completion_stream: ChatCompletionStream,
     input_txs: HashMap<u32, mpsc::Sender<Result<(usize, String), Error>>>,
 ) {
     while let Some((message_index, result)) = chat_completion_stream.next().await {
         match result {
             Ok(Some(chat_completion)) => {
-                let choice = &chat_completion.choices[0]; // TODO: handle
-                let choice_text = choice.delta.content.clone().unwrap_or_default();
-                // Send choice text to input channel
-                let input_tx = input_txs.get(&choice.index).unwrap();
-                let _ = input_tx.send(Ok((message_index, choice_text))).await;
-                // Update chat completion state
-                match chat_completion_state.entry(choice.index) {
-                    dashmap::Entry::Occupied(mut entry) => {
-                        entry.get_mut().insert(message_index, chat_completion);
-                    },
-                    dashmap::Entry::Vacant(entry) => {
-                        entry.insert(BTreeMap::from([(message_index, chat_completion)]));
-                    },
+                if chat_completion.usage.is_some() {
+                    // This is a usage message, set usage
+                    *chat_completion_state.usage.lock().unwrap() = Some(chat_completion);
+                } else {
+                    // TODO: figure out how we want to handle tool_calls, refusal, etc
+                    let choice = &chat_completion.choices[0]; // TODO: handle
+                    let choice_text = choice.delta.content.clone().unwrap_or_default();
+                    // Send choice text to input channel
+                    let input_tx = input_txs.get(&choice.index).unwrap();
+                    let _ = input_tx.send(Ok((message_index, choice_text))).await;
+                    // Update chat completion state
+                    match chat_completion_state.chat_completions.entry(choice.index) {
+                        dashmap::Entry::Occupied(mut entry) => {
+                            entry.get_mut().insert(message_index, chat_completion);
+                        },
+                        dashmap::Entry::Vacant(entry) => {
+                            entry.insert(BTreeMap::from([(message_index, chat_completion)]));
+                        },
+                    }
                 }
             }
             Ok(None) => (), // Complete, stream has closed
@@ -369,7 +378,7 @@ async fn handle_whole_doc_output_detection(
     _ctx: Arc<Context>,
     _task: &ChatCompletionsDetectionTask,
     _detectors: HashMap<String, DetectorParams>,
-    _chat_completion_state: Arc<DashMap<ChoiceIndex, BTreeMap<usize, ChatCompletionChunk>>>,
+    _chat_completion_state: Arc<ChatCompletionState>,
     _response_tx: mpsc::Sender<Result<Option<ChatCompletionChunk>, Error>>,
 ) {
     // let headers = task.headers.clone();
@@ -393,15 +402,27 @@ async fn handle_whole_doc_output_detection(
     // TODO
 }
 
+/// Sends a response with usage, if requested.
+async fn handle_usage(
+    chat_completion_state: Arc<ChatCompletionState>,
+    response_tx: mpsc::Sender<Result<Option<ChatCompletionChunk>, Error>>,
+) {
+    let chat_completion = chat_completion_state.usage.lock().unwrap().take();
+    if let Some(chat_completion) = chat_completion {
+        // Send chat completion with usage to response channel
+        let _ = response_tx.send(Ok(Some(chat_completion))).await;
+    }
+}
+
 /// Builds a response with output detections.
 fn output_detection_response(
-    chat_completion_state: &Arc<DashMap<ChoiceIndex, BTreeMap<usize, ChatCompletionChunk>>>,
+    chat_completion_state: &Arc<ChatCompletionState>,
     choice_index: u32,
     chunk: Chunk,
     detections: Detections,
 ) -> Result<ChatCompletionChunk, Error> {
     // Get chat completions for this choice index
-    let chat_completions = chat_completion_state.get(&choice_index).unwrap();
+    let chat_completions = chat_completion_state.chat_completions.get(&choice_index).unwrap();
     // Get range of chat completions for this chunk
     let chat_completions = chat_completions.range(chunk.input_start_index..=chunk.input_end_index);
     // Build response using the last chat completion received for this chunk
@@ -410,7 +431,7 @@ fn output_detection_response(
         // Set content to chunk text
         chat_completion.choices[0].delta.content = Some(chunk.text);
         // Set logprobs
-        chat_completion.choices[0].logprobs = None; // TODO
+        chat_completion.choices[0].logprobs = None; // TODO: build merged logprobs
         // Set detections and warnings
         if !detections.is_empty() {
             chat_completion.warnings = vec![OrchestratorWarning::new(
@@ -425,7 +446,6 @@ fn output_detection_response(
             }], 
             ..Default::default()
         });
-        // TODO: logprobs, usage, prompt_logprobs, tool_calls
         Ok(chat_completion)
     } else {
         error!(
@@ -441,7 +461,7 @@ fn output_detection_response(
 /// Consumes a detection batch stream, builds responses, and sends them to a response channel.
 async fn process_detection_batch_stream(
     trace_id: &TraceId,
-    chat_completion_state: Arc<DashMap<ChoiceIndex, BTreeMap<usize, ChatCompletionChunk>>>,
+    chat_completion_state: Arc<ChatCompletionState>,
     mut detection_batch_stream: DetectionBatchStream,
     response_tx: mpsc::Sender<Result<Option<ChatCompletionChunk>, Error>>,
 ) {
@@ -473,4 +493,16 @@ async fn process_detection_batch_stream(
         }
     }
     info!(%trace_id, "task completed: detection batch stream closed");
+}
+
+#[derive(Debug, Default)]
+struct ChatCompletionState {
+    pub chat_completions: DashMap<ChoiceIndex, BTreeMap<usize, ChatCompletionChunk>>,
+    pub usage: Mutex<Option<ChatCompletionChunk>>,
+}
+
+impl ChatCompletionState {
+    pub fn new() -> Self {
+        Self::default()
+    }
 }
