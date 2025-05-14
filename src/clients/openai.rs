@@ -259,6 +259,12 @@ impl ChatCompletionsRequest {
                 "`messages` must not be empty".into(),
             ));
         }
+        if !self.detectors.input.is_empty() && self.messages.last().unwrap().content.is_none() {
+            return Err(ValidationError::Invalid(
+                "if input detectors are provided, `content` must not be empty on last message"
+                    .into(),
+            ));
+        }
         Ok(())
     }
 }
