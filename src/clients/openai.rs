@@ -583,13 +583,14 @@ pub struct ChatCompletionMessage {
 }
 
 /// Chat completion logprobs.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq)]
 pub struct ChatCompletionLogprobs {
     /// A list of message content tokens with log probability information.
-    pub content: Option<Vec<ChatCompletionLogprob>>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub content: Vec<ChatCompletionLogprob>,
     /// A list of message refusal tokens with log probability information.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub refusal: Option<Vec<ChatCompletionLogprob>>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub refusal: Vec<ChatCompletionLogprob>,
 }
 
 /// Chat completion logprob.

@@ -346,6 +346,7 @@ async fn process_chat_completion_stream(
                     *chat_completion_state.usage.lock().unwrap() = Some(chat_completion);
                 } else {
                     // TODO: figure out how we want to handle tool_calls, refusal, etc
+                    // Only messages with content should be sent to detectors
                     let choice = &chat_completion.choices[0]; // TODO: handle
                     let choice_text = choice.delta.content.clone().unwrap_or_default();
                     // Send choice text to input channel
@@ -424,21 +425,27 @@ fn output_detection_response(
     // Get chat completions for this choice index
     let chat_completions = chat_completion_state.chat_completions.get(&choice_index).unwrap();
     // Get range of chat completions for this chunk
-    let chat_completions = chat_completions.range(chunk.input_start_index..=chunk.input_end_index);
+    let chat_completions = chat_completions
+        .range(chunk.input_start_index..=chunk.input_end_index)
+        .map(|(_index, chat_completion)| chat_completion.clone())
+        .collect::<Vec<_>>();
+    let content = Some(chunk.text);
+    let logprobs = merge_logprobs(&chat_completions);
     // Build response using the last chat completion received for this chunk
-    if let Some((_message_index, chat_completion)) = chat_completions.last() {
+    if let Some(chat_completion) = chat_completions.last() {
         let mut chat_completion = chat_completion.clone();
-        // Set content to chunk text
-        chat_completion.choices[0].delta.content = Some(chunk.text);
+        // Set content
+        chat_completion.choices[0].delta.content = content;
         // Set logprobs
-        chat_completion.choices[0].logprobs = None; // TODO: build merged logprobs
-        // Set detections and warnings
+        chat_completion.choices[0].logprobs = logprobs;
+        // Set warnings
         if !detections.is_empty() {
             chat_completion.warnings = vec![OrchestratorWarning::new(
                 DetectionWarningReason::UnsuitableOutput,
                 UNSUITABLE_OUTPUT_MESSAGE,
             )];
         }
+        // Set detections
         chat_completion.detections = Some(ChatDetections { 
             output: vec![OutputDetectionResult {
                 choice_index,
@@ -456,6 +463,21 @@ fn output_detection_response(
         );
         Err(Error::Other("no chat completions found for chunk".into()))
     }
+}
+
+/// Combines logprobs from chat completion chunks to a single [`ChatCompletionLogprobs`].
+fn merge_logprobs(chat_completions: &[ChatCompletionChunk]) -> Option<ChatCompletionLogprobs> {
+    let mut content: Vec<ChatCompletionLogprob> = Vec::new();
+    let mut refusal: Vec<ChatCompletionLogprob> = Vec::new();
+    for chat_completion in chat_completions {
+        if let Some(choice) = chat_completion.choices.first() {
+            if let Some(logprobs) = &choice.logprobs {
+                content.extend_from_slice(&logprobs.content);
+                refusal.extend_from_slice(&logprobs.refusal);
+            }
+        }
+    }
+    (!content.is_empty() || !refusal.is_empty()).then_some(ChatCompletionLogprobs { content, refusal })
 }
 
 /// Consumes a detection batch stream, builds responses, and sends them to a response channel.
