@@ -499,6 +499,8 @@ pub struct ImageUrl {
 /// Tool call.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ToolCall {
+    /// Index
+    pub index: usize,
     /// The ID of the tool call.
     pub id: String,
     /// The type of the tool.
@@ -597,10 +599,9 @@ pub struct ChatCompletionLogprob {
     pub token: String,
     /// The log probability of this token.
     pub logprob: f32,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// A list of integers representing the UTF-8 bytes representation of the token.
     pub bytes: Option<Vec<u8>>,
     /// List of the most likely tokens and their log probability, at this token position.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub top_logprobs: Option<Vec<ChatCompletionTopLogprob>>,
 }
 
@@ -611,6 +612,8 @@ pub struct ChatCompletionTopLogprob {
     pub token: String,
     /// The log probability of this token.
     pub logprob: f32,
+    /// A list of integers representing the UTF-8 bytes representation of the token.
+    pub bytes: Option<Vec<u8>>,
 }
 
 /// Streaming chat completion chunk.
