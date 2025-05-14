@@ -1147,5 +1147,43 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
         "failed on non-existing input detector scenario"
     );
 
+    // input detectors and last message without `content` scenario
+    let no_content_messages = vec![
+        Message {
+            content: Some(Content::Text("Hi there!".to_string())),
+            role: Role::User,
+            ..Default::default()
+        },
+        Message {
+            role: Role::User,
+            ..Default::default()
+        },
+    ];
+
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
+        .json(&json!({
+            "model": MODEL_ID,
+            "detectors": {
+                "input": {
+                    DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC: {}
+
+                }
+            },
+            "messages": no_content_messages,
+        }))
+        .send()
+        .await?;
+
+    let results = response.json::<OrchestratorError>().await?;
+    debug!("{results:#?}");
+    assert_eq!(
+        results,
+        OrchestratorError {
+            code: 422,
+            details: "if input detectors are provided, `content` must not be empty on last message"
+                .into()
+        }
+    );
     Ok(())
 }
