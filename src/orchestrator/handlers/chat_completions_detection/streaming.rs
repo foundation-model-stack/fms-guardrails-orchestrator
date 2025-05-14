@@ -112,9 +112,14 @@ pub async fn handle_streaming(
                 // No output detectors, forward chat completion chunks to response channel
                 forward_chat_completion_stream(trace_id, chat_completion_stream, response_tx.clone()).await;
             } else {
-                // Partition output detectors
-                // Detectors using whole_doc_chunker are processed at the end after all chat completion chunks
-                // have been collected. Results are returned with the second-last message.
+                // Split output detectors into 2 groups:
+                // 1. Output Detectors
+                //    These detectors are applied to chunk content. Detections are returned in batches.
+                // 2. Whole Doc Output Detectors
+                //    These detectors are applied to combined chunk content, i.e. the whole document. Detections
+                //    are processed after all chat completion chunks have been collected. Detections are returned
+                //    at the end, prior to the usage (if applicable) and DONE messages.
+                //    Currently, the criteria for this group is any detector that uses "whole_doc_chunker".
                 let (whole_doc_output_detectors, output_detectors): (HashMap<_, _>, HashMap<_, _>) = output_detectors
                     .into_iter()
                     .partition(|(detector_id, _params)| {
@@ -382,24 +387,6 @@ async fn handle_whole_doc_output_detection(
     _chat_completion_state: Arc<ChatCompletionState>,
     _response_tx: mpsc::Sender<Result<Option<ChatCompletionChunk>, Error>>,
 ) {
-    // let headers = task.headers.clone();
-    // let choice_pairs = chat_completion_state
-    //     .iter()
-    //     .map(|entry| {
-    //         let (choice_index, chunks) = entry.pair();
-    //         // Join chat completion chunks for this choice to a single string
-    //         let choice_text = chunks
-    //             .iter()
-    //             .map(|chunk| chunk.choices[0].delta.content.clone().unwrap_or_default())
-    //             .collect::<String>();
-    //         (*choice_index, choice_text)
-    //     })
-    //     .collect::<Vec<_>>();
-    // TODO: run detection tasks
-    // for (detector_id, detector_params) in &detectors {
-    //     let detector_type = &ctx.config.detectors.get(detector_id).unwrap().r#type;
-    //     todo!()
-    // }
     // TODO
 }
 
