@@ -302,6 +302,7 @@ async fn no_detections() -> Result<(), anyhow::Error> {
             stop_reason: None,
         },
     ];
+
     let chat_completions_response = ChatCompletion {
         model: MODEL_ID.into(),
         choices: expected_choices.clone(),
@@ -369,12 +370,86 @@ async fn no_detections() -> Result<(), anyhow::Error> {
         .send()
         .await?;
 
-    // Assertions for no detections
     assert_eq!(response.status(), StatusCode::OK);
     let results = response.json::<ChatCompletion>().await?;
     assert_eq!(results.choices[0], chat_completions_response.choices[0]);
     assert_eq!(results.choices[1], chat_completions_response.choices[1]);
     assert_eq!(results.warnings, vec![]);
+    assert!(results.detections.is_none());
+
+    // Scenario: output detectors on empty choices responses
+    let messages = vec![Message {
+        content: Some(Content::Text(
+            "Please provide me an empty message".to_string(),
+        )),
+        role: Role::User,
+        ..Default::default()
+    }];
+    let expected_choices = vec![
+        ChatCompletionChoice {
+            message: ChatCompletionMessage {
+                role: Role::Assistant,
+                content: Some("".to_string()),
+                refusal: None,
+                tool_calls: vec![],
+            },
+            index: 0,
+            logprobs: None,
+            finish_reason: "EOS_TOKEN".to_string(),
+            stop_reason: None,
+        },
+        ChatCompletionChoice {
+            message: ChatCompletionMessage {
+                role: Role::Assistant,
+                content: None,
+                refusal: None,
+                tool_calls: vec![],
+            },
+            index: 1,
+            logprobs: None,
+            finish_reason: "EOS_TOKEN".to_string(),
+            stop_reason: None,
+        },
+    ];
+    let expected_warnings = vec![OrchestratorWarning::new(
+        DetectionWarningReason::EmptyOutput,
+        "All choices have empty content",
+    )];
+    let chat_completions_response = ChatCompletion {
+        model: MODEL_ID.into(),
+        choices: expected_choices.clone(),
+        detections: None,
+        warnings: expected_warnings.clone(),
+        ..Default::default()
+    };
+
+    mock_chat_completions_server.mocks().mock(|when, then| {
+        when.post().path(CHAT_COMPLETIONS_ENDPOINT).json(json!({
+            "model": MODEL_ID,
+            "messages": messages,
+        }));
+        then.json(&chat_completions_response);
+    });
+
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
+        .json(&json!({
+            "model": MODEL_ID,
+            "detectors": {
+                "output": {
+                    detector_name: {},
+                },
+            },
+            "messages": messages,
+        }))
+        .send()
+        .await?;
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let results = response.json::<ChatCompletion>().await?;
+    assert_eq!(results.choices[0], chat_completions_response.choices[0]);
+    assert_eq!(results.choices[1], chat_completions_response.choices[1]);
+    assert_eq!(results.warnings, expected_warnings);
     assert!(results.detections.is_none());
 
     Ok(())
