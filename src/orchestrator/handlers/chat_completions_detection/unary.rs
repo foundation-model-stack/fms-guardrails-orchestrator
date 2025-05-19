@@ -202,6 +202,7 @@ async fn handle_output_detection(
             .in_current_span(),
         ));
     }
+    chat_completion.warnings.extend(warnings);
     let detections = try_join_all(tasks)
         .await?
         .into_iter()

@@ -454,7 +454,7 @@ async fn no_detections() -> Result<(), anyhow::Error> {
 
     assert_eq!(response.status(), StatusCode::OK);
     let results = response.json::<ChatCompletion>().await?;
-    tracing::debug!("{}", serde_json::to_string_pretty(&results)?);
+    debug!("{}", serde_json::to_string_pretty(&results)?);
     assert_eq!(results.choices[0], chat_completions_response.choices[0]);
     assert_eq!(results.choices[1], chat_completions_response.choices[1]);
     assert_eq!(results.warnings, expected_warnings);
