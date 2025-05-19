@@ -554,7 +554,7 @@ pub enum DetectionWarningReason {
     #[serde(rename = "UNSUITABLE_OUTPUT")]
     UnsuitableOutput,
 
-    /// Unsuitable text detected on output
+    /// Output is empty
     #[serde(rename = "EMPTY_OUTPUT")]
     EmptyOutput,
 }
