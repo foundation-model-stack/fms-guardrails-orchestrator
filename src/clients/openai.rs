@@ -625,6 +625,15 @@ pub struct ChatCompletionChoice {
     pub stop_reason: Option<String>,
 }
 
+impl ChatCompletionChoice {
+    pub fn is_message_empty(&self) -> bool {
+        match &self.message.content {
+            Some(content) => content.is_empty(),
+            None => true,
+        }
+    }
+}
+
 /// Chat completion message.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ChatCompletionMessage {

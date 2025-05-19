@@ -411,10 +411,17 @@ async fn no_detections() -> Result<(), anyhow::Error> {
             stop_reason: None,
         },
     ];
-    let expected_warnings = vec![OrchestratorWarning::new(
-        DetectionWarningReason::EmptyOutput,
-        "All choices have empty content",
-    )];
+
+    let expected_warnings = vec![
+        OrchestratorWarning::new(
+            DetectionWarningReason::EmptyOutput,
+            "Choice of index 0 has no content. Output detection was not executed",
+        ),
+        OrchestratorWarning::new(
+            DetectionWarningReason::EmptyOutput,
+            "Choice of index 1 has no content. Output detection was not executed",
+        ),
+    ];
     let chat_completions_response = ChatCompletion {
         model: MODEL_ID.into(),
         choices: expected_choices.clone(),
@@ -447,6 +454,7 @@ async fn no_detections() -> Result<(), anyhow::Error> {
 
     assert_eq!(response.status(), StatusCode::OK);
     let results = response.json::<ChatCompletion>().await?;
+    debug!("{results:#?}");
     assert_eq!(results.choices[0], chat_completions_response.choices[0]);
     assert_eq!(results.choices[1], chat_completions_response.choices[1]);
     assert_eq!(results.warnings, expected_warnings);
