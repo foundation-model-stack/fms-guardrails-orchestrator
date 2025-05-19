@@ -178,7 +178,6 @@ async fn handle_output_detection(
 ) -> Result<ChatCompletion, Error> {
     let mut tasks = Vec::with_capacity(chat_completion.choices.len());
     let mut warnings = Vec::with_capacity(chat_completion.choices.len());
-    // if chat_completion.choices.iter().all(|choice| choice.message.content.is_none())
     for choice in &chat_completion.choices {
         if choice.is_message_empty() {
             warnings.push(OrchestratorWarning::new(
@@ -203,7 +202,6 @@ async fn handle_output_detection(
             .in_current_span(),
         ));
     }
-    // chat_completion.warnings.extend(warnings);
     let detections = try_join_all(tasks)
         .await?
         .into_iter()
