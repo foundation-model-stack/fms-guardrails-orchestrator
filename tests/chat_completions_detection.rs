@@ -69,7 +69,7 @@ async fn no_detectors() -> Result<(), anyhow::Error> {
             ..Default::default()
         },
         Message {
-            content: Some(Content::Text("Hello!".to_string())),
+            content: Some(Content::Text("".to_string())),
             role: Role::Assistant,
             ..Default::default()
         },
