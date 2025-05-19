@@ -259,6 +259,8 @@ impl ChatCompletionsRequest {
                 "`messages` must not be empty".into(),
             ));
         }
+        // As text_content detections only run on last message at the moment, only the last
+        // message is being validated.
         if !self.detectors.input.is_empty() && self.messages.last().unwrap().content.is_none() {
             return Err(ValidationError::Invalid(
                 "if input detectors are provided, `content` must not be empty on last message"
