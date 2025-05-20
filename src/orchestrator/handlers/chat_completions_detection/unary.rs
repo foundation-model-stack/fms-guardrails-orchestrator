@@ -177,7 +177,18 @@ async fn handle_output_detection(
     mut chat_completion: ChatCompletion,
 ) -> Result<ChatCompletion, Error> {
     let mut tasks = Vec::with_capacity(chat_completion.choices.len());
+    let mut warnings = Vec::new();
     for choice in &chat_completion.choices {
+        if choice.is_message_empty() {
+            warnings.push(OrchestratorWarning::new(
+                DetectionWarningReason::EmptyOutput,
+                &format!(
+                    "Choice of index {} has no content. Output detection was not executed",
+                    choice.index
+                ),
+            ));
+            continue;
+        }
         let input_id = choice.index;
         let input_text = choice.message.content.clone().unwrap_or_default();
         tasks.push(tokio::spawn(

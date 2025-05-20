@@ -553,6 +553,10 @@ pub enum DetectionWarningReason {
     /// Unsuitable text detected on output
     #[serde(rename = "UNSUITABLE_OUTPUT")]
     UnsuitableOutput,
+
+    /// Unsuitable text detected on output
+    #[serde(rename = "EMPTY_OUTPUT")]
+    EmptyOutput,
 }
 
 /// Generated token information

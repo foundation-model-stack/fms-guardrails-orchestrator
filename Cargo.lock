@@ -1516,7 +1516,7 @@ dependencies = [
 [[package]]
 name = "mocktail"
 version = "0.2.5-alpha"
-source = "git+https://github.com/IBM/mocktail#6296c2783ba1d433407ae1d8144ec5619dc021b9"
+source = "git+https://github.com/IBM/mocktail#025d724965f5d4ee7cc6666bf22845a896b00b58"
 dependencies = [
  "bytes",
  "futures",
