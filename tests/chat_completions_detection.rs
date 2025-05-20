@@ -35,7 +35,8 @@ use fms_guardrails_orchestr8::{
         detector::{ContentAnalysisRequest, ContentAnalysisResponse},
         openai::{
             ChatCompletion, ChatCompletionChoice, ChatCompletionMessage, ChatDetections, Content,
-            InputDetectionResult, Message, OrchestratorWarning, OutputDetectionResult, Role,
+            ContentPart, ContentType, InputDetectionResult, Message, OrchestratorWarning,
+            OutputDetectionResult, Role,
         },
     },
     models::{
@@ -1185,5 +1186,139 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
                 .into()
         }
     );
+
+    // input detectors and last message with empty string as `content` scenario
+    let no_content_messages = vec![
+        Message {
+            content: Some(Content::Text("Hi there!".to_string())),
+            role: Role::User,
+            ..Default::default()
+        },
+        Message {
+            content: Some(Content::Text("".into())),
+            role: Role::User,
+            ..Default::default()
+        },
+    ];
+
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
+        .json(&json!({
+            "model": MODEL_ID,
+            "detectors": {
+                "input": {
+                    DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC: {}
+
+                }
+            },
+            "messages": no_content_messages,
+        }))
+        .send()
+        .await?;
+
+    let results = response.json::<OrchestratorError>().await?;
+    debug!("{results:#?}");
+    assert_eq!(
+        results,
+        OrchestratorError {
+            code: 422,
+            details: "if input detectors are provided, `content` must not be empty on last message"
+                .into()
+        }
+    );
+
+    // input detectors and last message with empty array as `content` scenario
+    let no_content_messages = vec![
+        Message {
+            content: Some(Content::Text("Hi there!".to_string())),
+            role: Role::User,
+            ..Default::default()
+        },
+        Message {
+            content: Some(Content::Array(Vec::new())),
+            role: Role::User,
+            ..Default::default()
+        },
+    ];
+
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
+        .json(&json!({
+            "model": MODEL_ID,
+            "detectors": {
+                "input": {
+                    DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC: {}
+
+                }
+            },
+            "messages": no_content_messages,
+        }))
+        .send()
+        .await?;
+
+    let results = response.json::<OrchestratorError>().await?;
+    debug!("{results:#?}");
+    assert_eq!(
+        results,
+        OrchestratorError {
+            code: 422,
+            details: "if input detectors are provided, `content` must not be empty on last message"
+                .into()
+        }
+    );
+
+    // input detectors and last message with array of empty strings as `content` scenario
+    let no_content_messages = vec![
+        Message {
+            content: Some(Content::Text("Hi there!".to_string())),
+            role: Role::User,
+            ..Default::default()
+        },
+        Message {
+            content: Some(Content::Array(vec![
+                ContentPart {
+                    r#type: ContentType::Text,
+                    text: Some("".into()),
+                    image_url: None,
+                    refusal: None,
+                },
+                ContentPart {
+                    r#type: ContentType::Text,
+                    text: Some("".into()),
+                    image_url: None,
+                    refusal: None,
+                },
+            ])),
+            role: Role::User,
+            ..Default::default()
+        },
+    ];
+
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
+        .json(&json!({
+            "model": MODEL_ID,
+            "detectors": {
+                "input": {
+                    DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC: {}
+
+                }
+            },
+            "messages": no_content_messages,
+        }))
+        .send()
+        .await?;
+
+    let results = response.json::<OrchestratorError>().await?;
+    debug!("{results:#?}");
+    assert_eq!(
+        results,
+        OrchestratorError {
+            code: 422,
+            details: "if input detectors are provided, `content` must not be empty on last message"
+                .into()
+        }
+    );
+
     Ok(())
 }
