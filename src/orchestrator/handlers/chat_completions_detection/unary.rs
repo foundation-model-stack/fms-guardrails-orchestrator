@@ -177,9 +177,11 @@ async fn handle_output_detection(
     mut chat_completion: ChatCompletion,
 ) -> Result<ChatCompletion, Error> {
     let mut tasks = Vec::with_capacity(chat_completion.choices.len());
-    let mut warnings = Vec::with_capacity(chat_completion.choices.len());
+    let mut warnings = Vec::new();
+    tracing::error!("Outside for loop");
     for choice in &chat_completion.choices {
         if choice.is_message_empty() {
+            tracing::error!("Inside for loop, choice.index={}", choice.index);
             warnings.push(OrchestratorWarning::new(
                 DetectionWarningReason::EmptyOutput,
                 &format!(
