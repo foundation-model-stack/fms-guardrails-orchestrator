@@ -1325,8 +1325,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
         results,
         OrchestratorError {
             code: 422,
-            details: "if input detectors are provided, `content` must not be empty on last message"
-                .into()
+            details: "Detection on array is not supported".into()
         }
     );
 
@@ -1378,8 +1377,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
         results,
         OrchestratorError {
             code: 422,
-            details: "if input detectors are provided, `content` must not be empty on last message"
-                .into()
+            details: "Detection on array is not supported".into()
         }
     );
 

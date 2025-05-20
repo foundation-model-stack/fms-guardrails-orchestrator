@@ -259,6 +259,17 @@ impl ChatCompletionsRequest {
                 "`messages` must not be empty".into(),
             ));
         }
+
+        // Content of type Array is not supported yet
+        // Adding this validation separately as we do plan to support arrays of string in the future
+        if !self.detectors.input.is_empty() {
+            if let Some(Content::Array(_)) = self.messages.last().unwrap().content {
+                return Err(ValidationError::Invalid(
+                    "Detection on array is not supported".into(),
+                ));
+            }
+        }
+
         // As text_content detections only run on last message at the moment, only the last
         // message is being validated.
         if !self.detectors.input.is_empty() && self.messages.last().unwrap().is_text_content_empty()
