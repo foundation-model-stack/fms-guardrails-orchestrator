@@ -123,7 +123,8 @@ async fn no_detectors() -> Result<(), anyhow::Error> {
     });
 
     // Start orchestrator server and its dependencies
-    let mock_chat_completions_server = MockServer::new("chat_completions").with_mocks(chat_mocks);
+    let mut mock_chat_completions_server =
+        MockServer::new("chat_completions").with_mocks(chat_mocks);
 
     let orchestrator_server = TestOrchestratorServer::builder()
         .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
@@ -167,6 +168,68 @@ async fn no_detectors() -> Result<(), anyhow::Error> {
     assert!(results.detections.is_none());
 
     // `detectors` with empty `input` and `output` scenario
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
+        .json(&json!({
+            "model": MODEL_ID,
+            "messages": messages,
+            "detectors": {
+                "input": {},
+                "output": {},
+            },
+        }))
+        .send()
+        .await?;
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let results = response.json::<ChatCompletion>().await?;
+    assert_eq!(results.choices[0], chat_completions_response.choices[0]);
+    assert_eq!(results.choices[1], chat_completions_response.choices[1]);
+    assert_eq!(results.warnings, vec![]);
+    assert!(results.detections.is_none());
+
+    // message content as array, `detectors` with empty `input` and `output` scenario
+    let messages = vec![
+        Message {
+            content: Some(Content::Text("Hi there!".to_string())),
+            role: Role::User,
+            ..Default::default()
+        },
+        Message {
+            content: Some(Content::Array(vec![
+                ContentPart {
+                    r#type: ContentType::Text,
+                    text: Some("How".into()),
+                    image_url: None,
+                    refusal: None,
+                },
+                ContentPart {
+                    r#type: ContentType::Text,
+                    text: Some("are".into()),
+                    image_url: None,
+                    refusal: None,
+                },
+                ContentPart {
+                    r#type: ContentType::Text,
+                    text: Some("you?".into()),
+                    image_url: None,
+                    refusal: None,
+                },
+            ])),
+            role: Role::Assistant,
+            ..Default::default()
+        },
+    ];
+
+    // add new mock
+    mock_chat_completions_server.mock(|when, then| {
+        when.post().path(CHAT_COMPLETIONS_ENDPOINT).json(json!({
+            "model": MODEL_ID,
+            "messages": messages,
+        }));
+        then.json(&chat_completions_response);
+    });
+
     let response = orchestrator_server
         .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
         .json(&json!({
