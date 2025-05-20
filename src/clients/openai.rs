@@ -260,25 +260,25 @@ impl ChatCompletionsRequest {
             ));
         }
 
-        // Content of type Array is not supported yet
-        // Adding this validation separately as we do plan to support arrays of string in the future
         if !self.detectors.input.is_empty() {
+            // Content of type Array is not supported yet
+            // Adding this validation separately as we do plan to support arrays of string in the future
             if let Some(Content::Array(_)) = self.messages.last().unwrap().content {
                 return Err(ValidationError::Invalid(
                     "Detection on array is not supported".into(),
                 ));
             }
+
+            // As text_content detections only run on last message at the moment, only the last
+            // message is being validated.
+            if self.messages.last().unwrap().is_text_content_empty() {
+                return Err(ValidationError::Invalid(
+                    "if input detectors are provided, `content` must not be empty on last message"
+                        .into(),
+                ));
+            }
         }
 
-        // As text_content detections only run on last message at the moment, only the last
-        // message is being validated.
-        if !self.detectors.input.is_empty() && self.messages.last().unwrap().is_text_content_empty()
-        {
-            return Err(ValidationError::Invalid(
-                "if input detectors are provided, `content` must not be empty on last message"
-                    .into(),
-            ));
-        }
         Ok(())
     }
 }
