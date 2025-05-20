@@ -35,7 +35,8 @@ use fms_guardrails_orchestr8::{
         detector::{ContentAnalysisRequest, ContentAnalysisResponse},
         openai::{
             ChatCompletion, ChatCompletionChoice, ChatCompletionMessage, ChatDetections, Content,
-            InputDetectionResult, Message, OrchestratorWarning, OutputDetectionResult, Role,
+            ContentPart, ContentType, InputDetectionResult, Message, OrchestratorWarning,
+            OutputDetectionResult, Role,
         },
     },
     models::{
@@ -58,6 +59,199 @@ pub mod common;
 // Constants
 const CHUNKER_NAME_SENTENCE: &str = "sentence_chunker";
 const MODEL_ID: &str = "my-super-model-8B";
+
+// Validate passthrough scenario
+#[test(tokio::test)]
+async fn no_detectors() -> Result<(), anyhow::Error> {
+    let messages = vec![
+        Message {
+            content: Some(Content::Text("Hi there!".to_string())),
+            role: Role::User,
+            ..Default::default()
+        },
+        Message {
+            content: Some(Content::Text("".to_string())),
+            role: Role::Assistant,
+            ..Default::default()
+        },
+    ];
+
+    // Add mocksets
+    let mut chat_mocks = MockSet::new();
+
+    let expected_choices = vec![
+        ChatCompletionChoice {
+            message: ChatCompletionMessage {
+                role: messages[0].role.clone(),
+                content: Some("Hi there!".to_string()),
+                refusal: None,
+                tool_calls: vec![],
+            },
+            index: 0,
+            logprobs: None,
+            finish_reason: "NOT_FINISHED".to_string(),
+            stop_reason: None,
+        },
+        ChatCompletionChoice {
+            message: ChatCompletionMessage {
+                role: messages[1].role.clone(),
+                content: Some("Hello!".to_string()),
+                refusal: None,
+                tool_calls: vec![],
+            },
+            index: 1,
+            logprobs: None,
+            finish_reason: "EOS_TOKEN".to_string(),
+            stop_reason: None,
+        },
+    ];
+    let chat_completions_response = ChatCompletion {
+        model: MODEL_ID.into(),
+        choices: expected_choices.clone(),
+        detections: None,
+        warnings: vec![],
+        ..Default::default()
+    };
+
+    // Add chat completions mock
+    chat_mocks.mock(|when, then| {
+        when.post().path(CHAT_COMPLETIONS_ENDPOINT).json(json!({
+            "model": MODEL_ID,
+            "messages": messages,
+        }));
+        then.json(&chat_completions_response);
+    });
+
+    // Start orchestrator server and its dependencies
+    let mut mock_chat_completions_server =
+        MockServer::new("chat_completions").with_mocks(chat_mocks);
+
+    let orchestrator_server = TestOrchestratorServer::builder()
+        .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
+        .chat_generation_server(&mock_chat_completions_server)
+        .build()
+        .await?;
+
+    // Empty `detectors` scenario
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
+        .json(&json!({
+            "model": MODEL_ID,
+            "detectors": {},
+            "messages": messages,
+        }))
+        .send()
+        .await?;
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let results = response.json::<ChatCompletion>().await?;
+    assert_eq!(results.choices[0], chat_completions_response.choices[0]);
+    assert_eq!(results.choices[1], chat_completions_response.choices[1]);
+    assert_eq!(results.warnings, vec![]);
+    assert!(results.detections.is_none());
+
+    // Missing `detectors` scenario
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
+        .json(&json!({
+            "model": MODEL_ID,
+            "messages": messages,
+        }))
+        .send()
+        .await?;
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let results = response.json::<ChatCompletion>().await?;
+    assert_eq!(results.choices[0], chat_completions_response.choices[0]);
+    assert_eq!(results.choices[1], chat_completions_response.choices[1]);
+    assert_eq!(results.warnings, vec![]);
+    assert!(results.detections.is_none());
+
+    // `detectors` with empty `input` and `output` scenario
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
+        .json(&json!({
+            "model": MODEL_ID,
+            "messages": messages,
+            "detectors": {
+                "input": {},
+                "output": {},
+            },
+        }))
+        .send()
+        .await?;
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let results = response.json::<ChatCompletion>().await?;
+    assert_eq!(results.choices[0], chat_completions_response.choices[0]);
+    assert_eq!(results.choices[1], chat_completions_response.choices[1]);
+    assert_eq!(results.warnings, vec![]);
+    assert!(results.detections.is_none());
+
+    // message content as array, `detectors` with empty `input` and `output` scenario
+    let messages = vec![
+        Message {
+            content: Some(Content::Text("Hi there!".to_string())),
+            role: Role::User,
+            ..Default::default()
+        },
+        Message {
+            content: Some(Content::Array(vec![
+                ContentPart {
+                    r#type: ContentType::Text,
+                    text: Some("How".into()),
+                    image_url: None,
+                    refusal: None,
+                },
+                ContentPart {
+                    r#type: ContentType::Text,
+                    text: Some("are".into()),
+                    image_url: None,
+                    refusal: None,
+                },
+                ContentPart {
+                    r#type: ContentType::Text,
+                    text: Some("you?".into()),
+                    image_url: None,
+                    refusal: None,
+                },
+            ])),
+            role: Role::Assistant,
+            ..Default::default()
+        },
+    ];
+
+    // add new mock
+    mock_chat_completions_server.mock(|when, then| {
+        when.post().path(CHAT_COMPLETIONS_ENDPOINT).json(json!({
+            "model": MODEL_ID,
+            "messages": messages,
+        }));
+        then.json(&chat_completions_response);
+    });
+
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
+        .json(&json!({
+            "model": MODEL_ID,
+            "messages": messages,
+            "detectors": {
+                "input": {},
+                "output": {},
+            },
+        }))
+        .send()
+        .await?;
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let results = response.json::<ChatCompletion>().await?;
+    assert_eq!(results.choices[0], chat_completions_response.choices[0]);
+    assert_eq!(results.choices[1], chat_completions_response.choices[1]);
+    assert_eq!(results.warnings, vec![]);
+    assert!(results.detections.is_none());
+
+    Ok(())
+}
 
 // Validate that requests without detectors, input detector and output detector configured
 // returns text generated by model
@@ -1015,6 +1209,176 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
         results,
         OrchestratorError::detector_not_found(NON_EXISTING_DETECTOR),
         "failed on non-existing input detector scenario"
+    );
+
+    // input detectors and last message without `content` scenario
+    let no_content_messages = vec![
+        Message {
+            content: Some(Content::Text("Hi there!".to_string())),
+            role: Role::User,
+            ..Default::default()
+        },
+        Message {
+            role: Role::User,
+            ..Default::default()
+        },
+    ];
+
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
+        .json(&json!({
+            "model": MODEL_ID,
+            "detectors": {
+                "input": {
+                    DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC: {}
+
+                }
+            },
+            "messages": no_content_messages,
+        }))
+        .send()
+        .await?;
+
+    let results = response.json::<OrchestratorError>().await?;
+    debug!("{results:#?}");
+    assert_eq!(
+        results,
+        OrchestratorError {
+            code: 422,
+            details: "if input detectors are provided, `content` must not be empty on last message"
+                .into()
+        }
+    );
+
+    // input detectors and last message with empty string as `content` scenario
+    let no_content_messages = vec![
+        Message {
+            content: Some(Content::Text("Hi there!".to_string())),
+            role: Role::User,
+            ..Default::default()
+        },
+        Message {
+            content: Some(Content::Text("".into())),
+            role: Role::User,
+            ..Default::default()
+        },
+    ];
+
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
+        .json(&json!({
+            "model": MODEL_ID,
+            "detectors": {
+                "input": {
+                    DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC: {}
+
+                }
+            },
+            "messages": no_content_messages,
+        }))
+        .send()
+        .await?;
+
+    let results = response.json::<OrchestratorError>().await?;
+    debug!("{results:#?}");
+    assert_eq!(
+        results,
+        OrchestratorError {
+            code: 422,
+            details: "if input detectors are provided, `content` must not be empty on last message"
+                .into()
+        }
+    );
+
+    // input detectors and last message with empty array as `content` scenario
+    let no_content_messages = vec![
+        Message {
+            content: Some(Content::Text("Hi there!".to_string())),
+            role: Role::User,
+            ..Default::default()
+        },
+        Message {
+            content: Some(Content::Array(Vec::new())),
+            role: Role::User,
+            ..Default::default()
+        },
+    ];
+
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
+        .json(&json!({
+            "model": MODEL_ID,
+            "detectors": {
+                "input": {
+                    DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC: {}
+
+                }
+            },
+            "messages": no_content_messages,
+        }))
+        .send()
+        .await?;
+
+    let results = response.json::<OrchestratorError>().await?;
+    debug!("{results:#?}");
+    assert_eq!(
+        results,
+        OrchestratorError {
+            code: 422,
+            details: "Detection on array is not supported".into()
+        }
+    );
+
+    // input detectors and last message with array of empty strings as `content` scenario
+    let no_content_messages = vec![
+        Message {
+            content: Some(Content::Text("Hi there!".to_string())),
+            role: Role::User,
+            ..Default::default()
+        },
+        Message {
+            content: Some(Content::Array(vec![
+                ContentPart {
+                    r#type: ContentType::Text,
+                    text: Some("".into()),
+                    image_url: None,
+                    refusal: None,
+                },
+                ContentPart {
+                    r#type: ContentType::Text,
+                    text: Some("".into()),
+                    image_url: None,
+                    refusal: None,
+                },
+            ])),
+            role: Role::User,
+            ..Default::default()
+        },
+    ];
+
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
+        .json(&json!({
+            "model": MODEL_ID,
+            "detectors": {
+                "input": {
+                    DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC: {}
+
+                }
+            },
+            "messages": no_content_messages,
+        }))
+        .send()
+        .await?;
+
+    let results = response.json::<OrchestratorError>().await?;
+    debug!("{results:#?}");
+    assert_eq!(
+        results,
+        OrchestratorError {
+            code: 422,
+            details: "Detection on array is not supported".into()
+        }
     );
 
     Ok(())
