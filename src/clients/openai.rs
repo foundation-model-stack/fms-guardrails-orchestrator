@@ -259,6 +259,26 @@ impl ChatCompletionsRequest {
                 "`messages` must not be empty".into(),
             ));
         }
+
+        if !self.detectors.input.is_empty() {
+            // Content of type Array is not supported yet
+            // Adding this validation separately as we do plan to support arrays of string in the future
+            if let Some(Content::Array(_)) = self.messages.last().unwrap().content {
+                return Err(ValidationError::Invalid(
+                    "Detection on array is not supported".into(),
+                ));
+            }
+
+            // As text_content detections only run on last message at the moment, only the last
+            // message is being validated.
+            if self.messages.last().unwrap().is_text_content_empty() {
+                return Err(ValidationError::Invalid(
+                    "if input detectors are provided, `content` must not be empty on last message"
+                        .into(),
+                ));
+            }
+        }
+
         Ok(())
     }
 }
@@ -412,6 +432,32 @@ pub struct Message {
     /// Tool call that this message is responding to. (tool message only)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_call_id: Option<String>,
+}
+
+impl Message {
+    /// Checks if text content of a message is empty.
+    ///
+    /// The following messages are considered empty:
+    /// 1. [`Message::content`] is None.
+    /// 2. [`Message::content`] is an empty string.
+    /// 3. [`Message::content`] is an empty array.
+    /// 4. [`Message::content`] is an array of empty strings and ContentType is Text.
+    pub fn is_text_content_empty(&self) -> bool {
+        match &self.content {
+            Some(content) => match content {
+                Content::Text(string) => string.is_empty(),
+                Content::Array(content_parts) => {
+                    content_parts.is_empty()
+                        || content_parts.iter().all(|content_part| {
+                            content_part.text.is_none()
+                                || (content_part.r#type == ContentType::Text
+                                    && content_part.text.as_ref().unwrap().is_empty())
+                        })
+                }
+            },
+            None => true,
+        }
+    }
 }
 
 /// Content.

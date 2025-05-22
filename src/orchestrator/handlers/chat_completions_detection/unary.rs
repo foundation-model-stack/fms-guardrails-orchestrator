@@ -108,6 +108,8 @@ async fn handle_input_detection(
     let model_id = task.request.model.clone();
 
     // Input detectors are only applied to the last message
+    // If this changes, the empty content validation in [`ChatCompletionsRequest::validate`]
+    // should also change.
     // Get the last message
     let messages = task.request.messages();
     let message = if let Some(message) = messages.last() {
