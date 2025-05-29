@@ -714,7 +714,7 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "tokio-stream",
- "tonic",
+ "tonic 0.13.1",
  "tonic-build",
  "tower 0.5.2",
  "tower-http",
@@ -894,7 +894,7 @@ dependencies = [
  "http",
  "thiserror 1.0.69",
  "tokio",
- "tonic",
+ "tonic 0.12.3",
  "tower 0.4.13",
  "tracing",
 ]
@@ -1692,7 +1692,7 @@ dependencies = [
  "reqwest",
  "thiserror 2.0.12",
  "tokio",
- "tonic",
+ "tonic 0.12.3",
  "tracing",
 ]
 
@@ -1705,7 +1705,7 @@ dependencies = [
  "opentelemetry",
  "opentelemetry_sdk",
  "prost",
- "tonic",
+ "tonic 0.12.3",
 ]
 
 [[package]]
@@ -2794,7 +2794,6 @@ dependencies = [
  "percent-encoding",
  "pin-project",
  "prost",
- "rustls-native-certs",
  "rustls-pemfile",
  "socket2",
  "tokio",
@@ -2804,14 +2803,45 @@ dependencies = [
  "tower-layer",
  "tower-service",
  "tracing",
+]
+
+[[package]]
+name = "tonic"
+version = "0.13.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7e581ba15a835f4d9ea06c55ab1bd4dce26fc53752c69a04aac00703bfb49ba9"
+dependencies = [
+ "async-trait",
+ "axum 0.8.4",
+ "base64",
+ "bytes",
+ "h2",
+ "http",
+ "http-body",
+ "http-body-util",
+ "hyper",
+ "hyper-timeout",
+ "hyper-util",
+ "percent-encoding",
+ "pin-project",
+ "prost",
+ "rustls-native-certs",
+ "socket2",
+ "tokio",
+ "tokio-rustls",
+ "tokio-stream",
+ "tower 0.5.2",
+ "tower-layer",
+ "tower-service",
+ "tracing",
  "webpki-roots 0.26.11",
 ]
 
 [[package]]
 name = "tonic-build"
-version = "0.12.3"
+version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9557ce109ea773b399c9b9e5dca39294110b74f1f342cb347a80d1fce8c26a11"
+checksum = "eac6f67be712d12f0b41328db3137e0d0757645d8904b4cb7d51cd9c2279e847"
 dependencies = [
  "prettyplease",
  "proc-macro2",
@@ -2849,9 +2879,12 @@ checksum = "d039ad9159c98b70ecfd540b2573b97f7f52c3e8d9f8ad57a24b916a536975f9"
 dependencies = [
  "futures-core",
  "futures-util",
+ "indexmap 2.9.0",
  "pin-project-lite",
+ "slab",
  "sync_wrapper",
  "tokio",
+ "tokio-util",
  "tower-layer",
  "tower-service",
  "tracing",
