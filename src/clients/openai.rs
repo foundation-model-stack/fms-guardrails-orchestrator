@@ -545,6 +545,8 @@ pub struct ImageUrl {
 /// Tool call.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ToolCall {
+    /// Index
+    pub index: usize,
     /// The ID of the tool call.
     pub id: String,
     /// The type of the tool.
@@ -627,13 +629,14 @@ pub struct ChatCompletionMessage {
 }
 
 /// Chat completion logprobs.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq)]
 pub struct ChatCompletionLogprobs {
     /// A list of message content tokens with log probability information.
-    pub content: Option<Vec<ChatCompletionLogprob>>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub content: Vec<ChatCompletionLogprob>,
     /// A list of message refusal tokens with log probability information.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub refusal: Option<Vec<ChatCompletionLogprob>>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub refusal: Vec<ChatCompletionLogprob>,
 }
 
 /// Chat completion logprob.
@@ -643,10 +646,9 @@ pub struct ChatCompletionLogprob {
     pub token: String,
     /// The log probability of this token.
     pub logprob: f32,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// A list of integers representing the UTF-8 bytes representation of the token.
     pub bytes: Option<Vec<u8>>,
     /// List of the most likely tokens and their log probability, at this token position.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub top_logprobs: Option<Vec<ChatCompletionTopLogprob>>,
 }
 
@@ -657,10 +659,12 @@ pub struct ChatCompletionTopLogprob {
     pub token: String,
     /// The log probability of this token.
     pub logprob: f32,
+    /// A list of integers representing the UTF-8 bytes representation of the token.
+    pub bytes: Option<Vec<u8>>,
 }
 
 /// Streaming chat completion chunk.
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatCompletionChunk {
     /// A unique identifier for the chat completion. Each chunk has the same ID.
     pub id: String,
@@ -689,8 +693,25 @@ pub struct ChatCompletionChunk {
     pub warnings: Vec<OrchestratorWarning>,
 }
 
+impl Default for ChatCompletionChunk {
+    fn default() -> Self {
+        Self {
+            id: Default::default(),
+            object: "chat.completion.chunk".into(),
+            created: Default::default(),
+            model: Default::default(),
+            system_fingerprint: Default::default(),
+            choices: Default::default(),
+            service_tier: Default::default(),
+            usage: Default::default(),
+            detections: Default::default(),
+            warnings: Default::default(),
+        }
+    }
+}
+
 /// Streaming chat completion chunk choice.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct ChatCompletionChunkChoice {
     /// The index of the choice in the list of choices.
     pub index: u32,
@@ -705,7 +726,7 @@ pub struct ChatCompletionChunkChoice {
 }
 
 /// Streaming chat completion delta.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct ChatCompletionDelta {
     /// The role of the author of this message.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -846,7 +867,7 @@ pub struct ChatDetections {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct InputDetectionResult {
     pub message_index: u32,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default)]
     pub results: Vec<ContentAnalysisResponse>,
 }
 
@@ -854,7 +875,7 @@ pub struct InputDetectionResult {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct OutputDetectionResult {
     pub choice_index: u32,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default)]
     pub results: Vec<ContentAnalysisResponse>,
 }
 
