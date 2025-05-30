@@ -14,22 +14,32 @@
  limitations under the License.
 
 */
-use std::{collections::{BTreeMap, HashMap}, sync::{Arc, Mutex}};
+use std::{
+    collections::{BTreeMap, HashMap},
+    sync::{Arc, Mutex},
+};
 
 use dashmap::DashMap;
-use futures::{stream, StreamExt, TryStreamExt};
+use futures::{StreamExt, TryStreamExt, stream};
 use opentelemetry::trace::TraceId;
 use tokio::sync::mpsc;
-use tracing::{error, info, instrument, Instrument};
+use tracing::{Instrument, error, info, instrument};
 use uuid::Uuid;
 
 use super::ChatCompletionsDetectionTask;
 use crate::{
     clients::openai::*,
     config::DetectorType,
-    models::{DetectionWarningReason, DetectorParams, UNSUITABLE_INPUT_MESSAGE, UNSUITABLE_OUTPUT_MESSAGE},
+    models::{
+        DetectionWarningReason, DetectorParams, UNSUITABLE_INPUT_MESSAGE, UNSUITABLE_OUTPUT_MESSAGE,
+    },
     orchestrator::{
-        common::{self, text_contents_detections, validate_detectors}, types::{ChatCompletionBatcher, ChatCompletionStream, ChatMessageIterator, ChoiceIndex, Chunk, DetectionBatchStream, Detections}, Context, Error
+        Context, Error,
+        common::{self, text_contents_detections, validate_detectors},
+        types::{
+            ChatCompletionBatcher, ChatCompletionStream, ChatMessageIterator, ChoiceIndex, Chunk,
+            DetectionBatchStream, Detections,
+        },
     },
 };
 
@@ -97,17 +107,16 @@ pub async fn handle_streaming(
                 .clients
                 .get_as::<OpenAiClient>("chat_generation")
                 .unwrap();
-            let chat_completion_stream =
-                match common::chat_completion_stream(client, task.headers.clone(), task.request.clone()).await {
-                    Ok(stream) => stream,
-                    Err(error) => {
-                        error!(%trace_id, %error, "task failed: error creating chat completions stream");
-                        // Send error to response channel and terminate
-                        let _ = response_tx.send(Err(error)).await;
-                        return;
-                    }
-                };
-            
+            let chat_completion_stream = match common::chat_completion_stream(client, task.headers.clone(), task.request.clone()).await {
+                Ok(stream) => stream,
+                Err(error) => {
+                    error!(%trace_id, %error, "task failed: error creating chat completions stream");
+                    // Send error to response channel and terminate
+                    let _ = response_tx.send(Err(error)).await;
+                    return;
+                }
+            };
+
             if output_detectors.is_empty() {
                 // No output detectors, forward chat completion chunks to response channel
                 forward_chat_completion_stream(trace_id, chat_completion_stream, response_tx.clone()).await;
@@ -201,7 +210,6 @@ async fn handle_input_detection(
     }
 }
 
-
 #[instrument(skip_all)]
 async fn handle_output_detection(
     ctx: Arc<Context>,
@@ -216,9 +224,10 @@ async fn handle_output_detection(
     // 1) Output Detectors: Applied to chunks. Detections are returned in batches.
     // 2) Whole Doc Output Detectors: Applied to concatinated chunk content (whole doc) after the chat completion stream has been consumed.
     // Currently, this is any detector that uses "whole_doc_chunker".
-    let (whole_doc_detectors, detectors): (HashMap<_, _>, HashMap<_, _>) = detectors
-        .into_iter()
-        .partition(|(detector_id, _)| ctx.config.get_chunker_id(detector_id).unwrap() == "whole_doc_chunker");
+    let (whole_doc_detectors, detectors): (HashMap<_, _>, HashMap<_, _>) =
+        detectors.into_iter().partition(|(detector_id, _)| {
+            ctx.config.get_chunker_id(detector_id).unwrap() == "whole_doc_chunker"
+        });
     let chat_completion_state = Arc::new(ChatCompletionState::new());
 
     if !detectors.is_empty() {
@@ -264,8 +273,10 @@ async fn handle_output_detection(
             Some(input_txs),
         ));
         // Process detection streams and await completion
-        let detection_batch_stream =
-            DetectionBatchStream::new(ChatCompletionBatcher::new(detectors.len()), detection_streams);
+        let detection_batch_stream = DetectionBatchStream::new(
+            ChatCompletionBatcher::new(detectors.len()),
+            detection_streams,
+        );
         process_detection_batch_stream(
             trace_id,
             chat_completion_state.clone(),
@@ -276,7 +287,8 @@ async fn handle_output_detection(
     } else {
         // We only have whole doc detectors, so the streaming detection pipeline is disabled
         // Consume chat completions stream and await completion
-        process_chat_completion_stream(chat_completion_state.clone(), chat_completion_stream, None).await;
+        process_chat_completion_stream(chat_completion_state.clone(), chat_completion_stream, None)
+            .await;
     }
     // At this point, the chat completions stream has been fully consumed and chat completion state is final
 
@@ -297,17 +309,18 @@ async fn handle_output_detection(
                 whole_doc_detectors,
                 chat_completion_state,
             )
-            .await {
+            .await
+            {
                 Ok((detections, warnings)) => {
                     chat_completion.detections = Some(detections);
                     chat_completion.warnings = warnings;
-                },
+                }
                 Err(error) => {
                     error!(%error, "task failed: error processing whole doc output detections");
                     // Send error to response channel
                     let _ = response_tx.send(Err(error)).await;
                     return;
-                },
+                }
             }
         }
         // Send chat completion with whole doc output detections and/or usage to response channel
@@ -361,7 +374,8 @@ async fn process_chat_completion_stream(
                 }
                 if chat_completion.usage.is_some() {
                     // Set usage
-                    chat_completion_state.metadata.lock().unwrap().usage = chat_completion.usage.clone();
+                    chat_completion_state.metadata.lock().unwrap().usage =
+                        chat_completion.usage.clone();
                 } else {
                     // TODO: figure out how we want to handle tool_calls, refusal, etc
                     // Only messages with content should be sent to detectors
@@ -369,7 +383,9 @@ async fn process_chat_completion_stream(
                     let choice_text = choice.delta.content.clone().unwrap_or_default();
 
                     // Send choice text to detection input channel
-                    if let Some(input_tx) = input_txs.as_ref().and_then(|txs| txs.get(&choice.index)) {
+                    if let Some(input_tx) =
+                        input_txs.as_ref().and_then(|txs| txs.get(&choice.index))
+                    {
                         let _ = input_tx.send(Ok((message_index, choice_text))).await;
                     }
 
@@ -377,10 +393,10 @@ async fn process_chat_completion_stream(
                     match chat_completion_state.chat_completions.entry(choice.index) {
                         dashmap::Entry::Occupied(mut entry) => {
                             entry.get_mut().insert(message_index, chat_completion);
-                        },
+                        }
                         dashmap::Entry::Vacant(entry) => {
                             entry.insert(BTreeMap::from([(message_index, chat_completion)]));
-                        },
+                        }
                     }
                 }
             }
@@ -413,7 +429,11 @@ async fn handle_whole_doc_output_detection(
             let text = entry
                 .values()
                 .map(|chunk| {
-                    chunk.choices.first().and_then(|choice| choice.delta.content.clone()).unwrap_or_default()
+                    chunk
+                        .choices
+                        .first()
+                        .and_then(|choice| choice.delta.content.clone())
+                        .unwrap_or_default()
                 })
                 .collect::<String>();
             let inputs = vec![(0usize, text)];
@@ -424,11 +444,11 @@ async fn handle_whole_doc_output_detection(
     let choice_detections = stream::iter(choice_inputs)
         .map(|(choice_index, inputs)| {
             text_contents_detections(
-                ctx.clone(), 
-                task.headers.clone(), 
-                detectors.clone(), 
-                choice_index, 
-                inputs
+                ctx.clone(),
+                task.headers.clone(),
+                detectors.clone(),
+                choice_index,
+                inputs,
             )
         })
         .buffer_unordered(ctx.config.detector_concurrent_requests)
@@ -437,17 +457,21 @@ async fn handle_whole_doc_output_detection(
     // Build output detections
     let output = choice_detections
         .into_iter()
-        .map(|(choice_index, detections)| {
-            OutputDetectionResult { choice_index, results: detections.into() }
+        .map(|(choice_index, detections)| OutputDetectionResult {
+            choice_index,
+            results: detections.into(),
         })
         .collect::<Vec<_>>();
     // Build warnings
     let warnings = if output.iter().any(|d| !d.results.is_empty()) {
-        vec![OrchestratorWarning::new(DetectionWarningReason::UnsuitableOutput, UNSUITABLE_OUTPUT_MESSAGE)]
+        vec![OrchestratorWarning::new(
+            DetectionWarningReason::UnsuitableOutput,
+            UNSUITABLE_OUTPUT_MESSAGE,
+        )]
     } else {
         Vec::new()
     };
-    let detections = ChatDetections { 
+    let detections = ChatDetections {
         output,
         ..Default::default()
     };
@@ -462,7 +486,10 @@ fn output_detection_response(
     detections: Detections,
 ) -> Result<ChatCompletionChunk, Error> {
     // Get chat completions for this choice index
-    let chat_completions = chat_completion_state.chat_completions.get(&choice_index).unwrap();
+    let chat_completions = chat_completion_state
+        .chat_completions
+        .get(&choice_index)
+        .unwrap();
     // Get range of chat completions for this chunk
     let chat_completions = chat_completions
         .range(chunk.input_start_index..=chunk.input_end_index)
@@ -485,19 +512,19 @@ fn output_detection_response(
             )];
         }
         // Set detections
-        chat_completion.detections = Some(ChatDetections { 
+        chat_completion.detections = Some(ChatDetections {
             output: vec![OutputDetectionResult {
                 choice_index,
                 results: detections.into(),
-            }], 
+            }],
             ..Default::default()
         });
         Ok(chat_completion)
     } else {
         error!(
-            %choice_index, 
-            %chunk.input_start_index, 
-            %chunk.input_end_index, 
+            %choice_index,
+            %chunk.input_start_index,
+            %chunk.input_end_index,
             "no chat completions found for chunk"
         );
         Err(Error::Other("no chat completions found for chunk".into()))
@@ -516,7 +543,8 @@ fn merge_logprobs(chat_completions: &[ChatCompletionChunk]) -> Option<ChatComple
             }
         }
     }
-    (!content.is_empty() || !refusal.is_empty()).then_some(ChatCompletionLogprobs { content, refusal })
+    (!content.is_empty() || !refusal.is_empty())
+        .then_some(ChatCompletionLogprobs { content, refusal })
 }
 
 /// Consumes a detection batch stream, builds responses, and sends them to a response channel.
@@ -529,14 +557,19 @@ async fn process_detection_batch_stream(
     while let Some(result) = detection_batch_stream.next().await {
         match result {
             Ok((choice_index, chunk, detections)) => {
-                match output_detection_response(&chat_completion_state, choice_index, chunk, detections) {
+                match output_detection_response(
+                    &chat_completion_state,
+                    choice_index,
+                    chunk,
+                    detections,
+                ) {
                     Ok(chat_completion) => {
                         // Send chat completion to response channel
                         if response_tx.send(Ok(Some(chat_completion))).await.is_err() {
                             info!(%trace_id, "task completed: client disconnected");
                             return;
                         }
-                    },
+                    }
                     Err(error) => {
                         error!(%trace_id, %error, "task failed: error building output detection response");
                         // Send error to response channel and terminate
@@ -584,7 +617,7 @@ impl ChatCompletionState {
     pub fn id(&self) -> String {
         self.metadata.lock().unwrap().id.clone()
     }
-    
+
     pub fn created(&self) -> i64 {
         self.metadata.lock().unwrap().created
     }
