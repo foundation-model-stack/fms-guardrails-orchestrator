@@ -222,7 +222,7 @@ async fn handle_output_detection(
     let request = task.request.clone();
     // Split output detectors into 2 groups:
     // 1) Output Detectors: Applied to chunks. Detections are returned in batches.
-    // 2) Whole Doc Output Detectors: Applied to concatinated chunk content (whole doc) after the chat completion stream has been consumed.
+    // 2) Whole Doc Output Detectors: Applied to concatenated chunks (whole doc) after the chat completion stream has been consumed.
     // Currently, this is any detector that uses "whole_doc_chunker".
     let (whole_doc_detectors, detectors): (HashMap<_, _>, HashMap<_, _>) =
         detectors.into_iter().partition(|(detector_id, _)| {
