@@ -20,6 +20,7 @@ axum = { version = "0.8.4", features = ["json"] }
 axum-extra = { version = "0.10.1", features = ["json-lines"] }
 bytes = "1.10.1"
 clap = { version = "4.5.39", features = ["derive", "env"] }
+dashmap = "6.1.0"
 eventsource-stream = "0.2.3"
 futures = "0.3.31"
 futures-util = { version = "0.3", default-features = false, features = [] }
