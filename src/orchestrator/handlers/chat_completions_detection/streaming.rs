@@ -119,6 +119,7 @@ pub async fn handle_streaming(
 
             if output_detectors.is_empty() {
                 // No output detectors, forward chat completion chunks to response channel
+                // TODO: use process_chat_completion_stream
                 forward_chat_completion_stream(trace_id, chat_completion_stream, response_tx.clone()).await;
             } else {
                 // Handle output detection
@@ -271,6 +272,7 @@ async fn handle_output_detection(
             chat_completion_state.clone(),
             chat_completion_stream,
             Some(input_txs),
+            None,
         ));
         // Process detection streams and await completion
         let detection_batch_stream = DetectionBatchStream::new(
@@ -287,8 +289,13 @@ async fn handle_output_detection(
     } else {
         // We only have whole doc detectors, so the streaming detection pipeline is disabled
         // Consume chat completions stream and await completion
-        process_chat_completion_stream(chat_completion_state.clone(), chat_completion_stream, None)
-            .await;
+        process_chat_completion_stream(
+            chat_completion_state.clone(),
+            chat_completion_stream,
+            None,
+            Some(response_tx.clone()),
+        )
+        .await;
     }
     // At this point, the chat completions stream has been fully consumed and chat completion state is final
 
@@ -361,10 +368,15 @@ async fn process_chat_completion_stream(
     chat_completion_state: Arc<ChatCompletionState>,
     mut chat_completion_stream: ChatCompletionStream,
     input_txs: Option<HashMap<u32, mpsc::Sender<Result<(usize, String), Error>>>>,
+    response_tx: Option<mpsc::Sender<Result<Option<ChatCompletionChunk>, Error>>>,
 ) {
     while let Some((message_index, result)) = chat_completion_stream.next().await {
         match result {
             Ok(Some(chat_completion)) => {
+                // Forward to response channel
+                if let Some(response_tx) = &response_tx {
+                    let _ = response_tx.send(Ok(Some(chat_completion.clone()))).await;
+                }
                 if message_index == 0 {
                     // Set metadata
                     let mut metadata = chat_completion_state.metadata.lock().unwrap();
