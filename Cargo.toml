@@ -24,7 +24,7 @@ dashmap = "6.1.0"
 eventsource-stream = "0.2.3"
 futures = "0.3.31"
 futures-util = { version = "0.3", default-features = false, features = [] }
-ginepro = { git = "https://github.com/gkumbhat/ginepro", branch = "add_tonic_endpoint_settings" }
+ginepro = {version = "0.8.2", git = "https://github.com/mdevino/ginepro", branch = "upgrade_tonic"}
 http = "1.3.1"
 http-body = "1.0"
 http-body-util = "0.1.3"
