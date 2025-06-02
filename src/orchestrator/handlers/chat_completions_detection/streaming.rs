@@ -299,7 +299,7 @@ async fn handle_output_detection(
     }
     // At this point, the chat completions stream has been fully consumed and chat completion state is final
 
-    // If whole doc output detections or usage is requested, a final message is created one or both items
+    // If whole doc output detections or usage is requested, a final message is created with one or both items
     if !whole_doc_detectors.is_empty() || chat_completion_state.usage().is_some() {
         let mut chat_completion = ChatCompletionChunk {
             id: chat_completion_state.id(),
@@ -389,9 +389,7 @@ async fn process_chat_completion_stream(
                     chat_completion_state.metadata.lock().unwrap().usage =
                         chat_completion.usage.clone();
                 } else {
-                    // TODO: figure out how we want to handle tool_calls, refusal, etc
-                    // Only messages with content should be sent to detectors
-                    let choice = &chat_completion.choices[0]; // TODO: handle
+                    let choice = &chat_completion.choices[0];
                     let choice_text = choice.delta.content.clone().unwrap_or_default();
 
                     // Send choice text to detection input channel
@@ -514,6 +512,7 @@ fn output_detection_response(
         let mut chat_completion = chat_completion.clone();
         // Set content
         chat_completion.choices[0].delta.content = content;
+        // TODO: if applicable, set tool_calls and refusal
         // Set logprobs
         chat_completion.choices[0].logprobs = logprobs;
         // Set warnings
