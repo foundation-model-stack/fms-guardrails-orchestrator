@@ -23,7 +23,7 @@ use dashmap::DashMap;
 use futures::{StreamExt, TryStreamExt, stream};
 use opentelemetry::trace::TraceId;
 use tokio::sync::mpsc;
-use tracing::{Instrument, error, info, instrument};
+use tracing::{Instrument, debug, error, info, instrument, warn};
 use uuid::Uuid;
 
 use super::ChatCompletionsDetectionTask;
@@ -119,8 +119,8 @@ pub async fn handle_streaming(
 
             if output_detectors.is_empty() {
                 // No output detectors, forward chat completion chunks to response channel
-                // TODO: use process_chat_completion_stream
-                forward_chat_completion_stream(trace_id, chat_completion_stream, response_tx.clone()).await;
+                process_chat_completion_stream(trace_id, chat_completion_stream, None, None, Some(response_tx.clone())).await;
+                info!(%trace_id, "task completed: chat completion stream closed");
             } else {
                 // Handle output detection
                 handle_output_detection(
@@ -219,7 +219,7 @@ async fn handle_output_detection(
     chat_completion_stream: ChatCompletionStream,
     response_tx: mpsc::Sender<Result<Option<ChatCompletionChunk>, Error>>,
 ) {
-    let trace_id = &task.trace_id;
+    let trace_id = task.trace_id;
     let request = task.request.clone();
     // Split output detectors into 2 groups:
     // 1) Output Detectors: Applied to chunks. Detections are returned in batches.
@@ -269,8 +269,9 @@ async fn handle_output_detection(
 
         // Spawn task to consume chat completions stream and send choice text to detection pipeline
         tokio::spawn(process_chat_completion_stream(
-            chat_completion_state.clone(),
+            trace_id,
             chat_completion_stream,
+            Some(chat_completion_state.clone()),
             Some(input_txs),
             None,
         ));
@@ -290,16 +291,17 @@ async fn handle_output_detection(
         // We only have whole doc detectors, so the streaming detection pipeline is disabled
         // Consume chat completions stream and await completion
         process_chat_completion_stream(
-            chat_completion_state.clone(),
+            trace_id,
             chat_completion_stream,
+            Some(chat_completion_state.clone()),
             None,
             Some(response_tx.clone()),
         )
         .await;
     }
-    // At this point, the chat completions stream has been fully consumed and chat completion state is final
+    // NOTE: at this point, the chat completions stream has been fully consumed and chat completion state is final
 
-    // If whole doc output detections or usage is requested, a final message is created with one or both items
+    // If whole doc output detections or usage is requested, a final message is sent with these items
     if !whole_doc_detectors.is_empty() || chat_completion_state.usage().is_some() {
         let mut chat_completion = ChatCompletionChunk {
             id: chat_completion_state.id(),
@@ -335,84 +337,88 @@ async fn handle_output_detection(
     }
 }
 
-async fn forward_chat_completion_stream(
-    trace_id: TraceId,
-    mut chat_completion_stream: ChatCompletionStream,
-    response_tx: mpsc::Sender<Result<Option<ChatCompletionChunk>, Error>>,
-) {
-    while let Some((_index, result)) = chat_completion_stream.next().await {
-        match result {
-            Ok(Some(chat_completion)) => {
-                // Send message to response channel
-                if response_tx.send(Ok(Some(chat_completion))).await.is_err() {
-                    info!(%trace_id, "task completed: client disconnected");
-                    return;
-                }
-            }
-            Ok(None) => (), // Completed
-            Err(error) => {
-                error!(%trace_id, %error, "task failed: error received from chat completion stream");
-                // Send error to response channel and terminate
-                let _ = response_tx.send(Err(error)).await;
-                return;
-            }
-        }
-    }
-    info!(%trace_id, "task completed: chat completion stream closed");
-}
-
-/// Consumes chat completion stream, sends choices to input channels,
-/// and updates chat completion state.
+/// Processes chat completion stream.
 #[allow(clippy::type_complexity)]
 async fn process_chat_completion_stream(
-    chat_completion_state: Arc<ChatCompletionState>,
+    trace_id: TraceId,
     mut chat_completion_stream: ChatCompletionStream,
+    chat_completion_state: Option<Arc<ChatCompletionState>>,
     input_txs: Option<HashMap<u32, mpsc::Sender<Result<(usize, String), Error>>>>,
     response_tx: Option<mpsc::Sender<Result<Option<ChatCompletionChunk>, Error>>>,
 ) {
     while let Some((message_index, result)) = chat_completion_stream.next().await {
         match result {
             Ok(Some(chat_completion)) => {
-                // Forward to response channel
+                // Send chat completion chunk to response channel
+                // NOTE: this forwards chat completion chunks without detections and is only
+                // done here for 2 cases: a) no output detectors b) only whole doc output detectors
                 if let Some(response_tx) = &response_tx {
-                    let _ = response_tx.send(Ok(Some(chat_completion.clone()))).await;
-                }
-                if message_index == 0 {
-                    // Set metadata
-                    let mut metadata = chat_completion_state.metadata.lock().unwrap();
-                    metadata.id = chat_completion.id.clone();
-                    metadata.created = chat_completion.created;
-                    metadata.model = chat_completion.model.clone();
+                    if response_tx
+                        .send(Ok(Some(chat_completion.clone())))
+                        .await
+                        .is_err()
+                    {
+                        info!(%trace_id, "task completed: client disconnected");
+                        return;
+                    }
                 }
                 if chat_completion.usage.is_some() {
-                    // Set usage
-                    chat_completion_state.metadata.lock().unwrap().usage =
-                        chat_completion.usage.clone();
-                } else {
-                    let choice = &chat_completion.choices[0];
-                    let choice_text = choice.delta.content.clone().unwrap_or_default();
-
-                    // Send choice text to detection input channel
-                    if let Some(input_tx) =
-                        input_txs.as_ref().and_then(|txs| txs.get(&choice.index))
-                    {
-                        let _ = input_tx.send(Ok((message_index, choice_text))).await;
+                    // Set usage state from the usage message
+                    // NOTE: this message has no choices and is not sent to detection input channel
+                    if let Some(state) = &chat_completion_state {
+                        state.metadata.lock().unwrap().usage = chat_completion.usage.clone();
                     }
-
-                    // Update chat completion state
-                    match chat_completion_state.chat_completions.entry(choice.index) {
-                        dashmap::Entry::Occupied(mut entry) => {
-                            entry.get_mut().insert(message_index, chat_completion);
+                } else {
+                    if message_index == 0 {
+                        // Set metadata state from the first message
+                        // NOTE: these values are the same for all chat completion chunks
+                        if let Some(state) = &chat_completion_state {
+                            let mut metadata = state.metadata.lock().unwrap();
+                            metadata.id = chat_completion.id.clone();
+                            metadata.created = chat_completion.created;
+                            metadata.model = chat_completion.model.clone();
                         }
-                        dashmap::Entry::Vacant(entry) => {
-                            entry.insert(BTreeMap::from([(message_index, chat_completion)]));
+                    }
+                    // NOTE: chat completion chunks should contain only 1 choice
+                    if let Some(choice) = chat_completion.choices.first() {
+                        // Extract choice text
+                        let choice_text = choice.delta.content.clone().unwrap_or_default();
+                        // Update state for this choice index
+                        if let Some(state) = &chat_completion_state {
+                            match state.chat_completions.entry(choice.index) {
+                                dashmap::Entry::Occupied(mut entry) => {
+                                    entry
+                                        .get_mut()
+                                        .insert(message_index, chat_completion.clone());
+                                }
+                                dashmap::Entry::Vacant(entry) => {
+                                    entry.insert(BTreeMap::from([(
+                                        message_index,
+                                        chat_completion.clone(),
+                                    )]));
+                                }
+                            }
                         }
+                        // Send choice text to detection input channel
+                        if let Some(input_tx) =
+                            input_txs.as_ref().and_then(|txs| txs.get(&choice.index))
+                        {
+                            let _ = input_tx.send(Ok((message_index, choice_text))).await;
+                        }
+                    } else {
+                        debug!(%trace_id, %message_index, ?chat_completion, "chat completion chunk contained no choices");
+                        warn!(%trace_id, %message_index, "chat completion chunk contained no choices");
                     }
                 }
             }
             Ok(None) => (), // Complete, stream has closed
             Err(error) => {
-                // Send error to all detection input channels
+                error!(%trace_id, %error, "task failed: error received from chat completion stream");
+                // Send error to response channel
+                if let Some(response_tx) = &response_tx {
+                    let _ = response_tx.send(Err(error.clone())).await;
+                }
+                // Send error to detection input channels
                 if let Some(input_txs) = &input_txs {
                     for input_tx in input_txs.values() {
                         let _ = input_tx.send(Err(error.clone())).await;
@@ -560,7 +566,7 @@ fn merge_logprobs(chat_completions: &[ChatCompletionChunk]) -> Option<ChatComple
 
 /// Consumes a detection batch stream, builds responses, and sends them to a response channel.
 async fn process_detection_batch_stream(
-    trace_id: &TraceId,
+    trace_id: TraceId,
     chat_completion_state: Arc<ChatCompletionState>,
     mut detection_batch_stream: DetectionBatchStream,
     response_tx: mpsc::Sender<Result<Option<ChatCompletionChunk>, Error>>,
