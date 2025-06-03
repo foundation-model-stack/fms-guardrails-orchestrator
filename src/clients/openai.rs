@@ -259,6 +259,26 @@ impl ChatCompletionsRequest {
                 "`messages` must not be empty".into(),
             ));
         }
+
+        if !self.detectors.input.is_empty() {
+            // Content of type Array is not supported yet
+            // Adding this validation separately as we do plan to support arrays of string in the future
+            if let Some(Content::Array(_)) = self.messages.last().unwrap().content {
+                return Err(ValidationError::Invalid(
+                    "Detection on array is not supported".into(),
+                ));
+            }
+
+            // As text_content detections only run on last message at the moment, only the last
+            // message is being validated.
+            if self.messages.last().unwrap().is_text_content_empty() {
+                return Err(ValidationError::Invalid(
+                    "if input detectors are provided, `content` must not be empty on last message"
+                        .into(),
+                ));
+            }
+        }
+
         Ok(())
     }
 }
@@ -414,6 +434,32 @@ pub struct Message {
     pub tool_call_id: Option<String>,
 }
 
+impl Message {
+    /// Checks if text content of a message is empty.
+    ///
+    /// The following messages are considered empty:
+    /// 1. [`Message::content`] is None.
+    /// 2. [`Message::content`] is an empty string.
+    /// 3. [`Message::content`] is an empty array.
+    /// 4. [`Message::content`] is an array of empty strings and ContentType is Text.
+    pub fn is_text_content_empty(&self) -> bool {
+        match &self.content {
+            Some(content) => match content {
+                Content::Text(string) => string.is_empty(),
+                Content::Array(content_parts) => {
+                    content_parts.is_empty()
+                        || content_parts.iter().all(|content_part| {
+                            content_part.text.is_none()
+                                || (content_part.r#type == ContentType::Text
+                                    && content_part.text.as_ref().unwrap().is_empty())
+                        })
+                }
+            },
+            None => true,
+        }
+    }
+}
+
 /// Content.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(untagged)]
@@ -499,6 +545,8 @@ pub struct ImageUrl {
 /// Tool call.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ToolCall {
+    /// Index
+    pub index: usize,
     /// The ID of the tool call.
     pub id: String,
     /// The type of the tool.
@@ -581,13 +629,14 @@ pub struct ChatCompletionMessage {
 }
 
 /// Chat completion logprobs.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq)]
 pub struct ChatCompletionLogprobs {
     /// A list of message content tokens with log probability information.
-    pub content: Option<Vec<ChatCompletionLogprob>>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub content: Vec<ChatCompletionLogprob>,
     /// A list of message refusal tokens with log probability information.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub refusal: Option<Vec<ChatCompletionLogprob>>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub refusal: Vec<ChatCompletionLogprob>,
 }
 
 /// Chat completion logprob.
@@ -597,10 +646,9 @@ pub struct ChatCompletionLogprob {
     pub token: String,
     /// The log probability of this token.
     pub logprob: f32,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// A list of integers representing the UTF-8 bytes representation of the token.
     pub bytes: Option<Vec<u8>>,
     /// List of the most likely tokens and their log probability, at this token position.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub top_logprobs: Option<Vec<ChatCompletionTopLogprob>>,
 }
 
@@ -611,10 +659,12 @@ pub struct ChatCompletionTopLogprob {
     pub token: String,
     /// The log probability of this token.
     pub logprob: f32,
+    /// A list of integers representing the UTF-8 bytes representation of the token.
+    pub bytes: Option<Vec<u8>>,
 }
 
 /// Streaming chat completion chunk.
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatCompletionChunk {
     /// A unique identifier for the chat completion. Each chunk has the same ID.
     pub id: String,
@@ -643,8 +693,25 @@ pub struct ChatCompletionChunk {
     pub warnings: Vec<OrchestratorWarning>,
 }
 
+impl Default for ChatCompletionChunk {
+    fn default() -> Self {
+        Self {
+            id: Default::default(),
+            object: "chat.completion.chunk".into(),
+            created: Default::default(),
+            model: Default::default(),
+            system_fingerprint: Default::default(),
+            choices: Default::default(),
+            service_tier: Default::default(),
+            usage: Default::default(),
+            detections: Default::default(),
+            warnings: Default::default(),
+        }
+    }
+}
+
 /// Streaming chat completion chunk choice.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct ChatCompletionChunkChoice {
     /// The index of the choice in the list of choices.
     pub index: u32,
@@ -659,7 +726,7 @@ pub struct ChatCompletionChunkChoice {
 }
 
 /// Streaming chat completion delta.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct ChatCompletionDelta {
     /// The role of the author of this message.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -800,7 +867,7 @@ pub struct ChatDetections {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct InputDetectionResult {
     pub message_index: u32,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default)]
     pub results: Vec<ContentAnalysisResponse>,
 }
 
@@ -808,7 +875,7 @@ pub struct InputDetectionResult {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct OutputDetectionResult {
     pub choice_index: u32,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default)]
     pub results: Vec<ContentAnalysisResponse>,
 }
 

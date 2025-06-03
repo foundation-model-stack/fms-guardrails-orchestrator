@@ -16,29 +16,21 @@
 */
 pub mod chat_completion;
 pub use chat_completion::*;
-pub mod noop;
-pub use noop::*;
 pub mod max_processed_index;
 pub use max_processed_index::*;
 
-use super::{Chunk, Detections, DetectorId, InputId};
+use super::{Chunk, Detections};
+
+pub type Batch = (u32, Chunk, Detections);
 
 /// A detection batcher.
 /// Implements pluggable batching logic for a [`DetectionBatchStream`].
 pub trait DetectionBatcher: std::fmt::Debug + Clone + Send + 'static {
-    type Batch: std::fmt::Debug + Clone + Send + 'static;
-
     /// Pushes new detections.
-    fn push(
-        &mut self,
-        input_id: InputId,
-        detector_id: DetectorId,
-        chunk: Chunk,
-        detections: Detections,
-    );
+    fn push(&mut self, input_id: u32, chunk: Chunk, detections: Detections);
 
     /// Removes the next batch of detections, if ready.
-    fn pop_batch(&mut self) -> Option<Self::Batch>;
+    fn pop_batch(&mut self) -> Option<Batch>;
 
     /// Returns `true` if the batcher state is empty.
     fn is_empty(&self) -> bool;
