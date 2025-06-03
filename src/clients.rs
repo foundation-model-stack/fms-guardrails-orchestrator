@@ -70,7 +70,7 @@ pub mod openai;
 const DEFAULT_CONNECT_TIMEOUT_SEC: u64 = 60;
 const DEFAULT_REQUEST_TIMEOUT_SEC: u64 = 600;
 const DEFAULT_GRPC_PROBE_INTERVAL_SEC: u64 = 10;
-const DEFAULT_RES_STRATEGY_INTERVAL_SEC: u64 = 10;
+const DEFAULT_RES_STRATEGY_TIMEOUT_SEC: u64 = 10;
 const DEFAULT_HTTP2_KEEP_ALIVE_INTERVAL: u64 = 30;
 const DEFAULT_KEEP_ALIVE_TIMEOUT: u64 = 30;
 
@@ -281,21 +281,17 @@ pub async fn create_grpc_client<C: Debug + Clone>(
             .grpc_dns_probe_interval
             .unwrap_or(DEFAULT_GRPC_PROBE_INTERVAL_SEC),
     );
-    let resolution_strategy =
-        if let Some(resolution_strategy_override) = &service_config.resolution_strategy {
-            match resolution_strategy_override.as_str() {
-                "eager" => ResolutionStrategy::Eager {
-                    timeout: (Duration::from_secs(
-                        service_config
-                            .resolution_strategy_interval
-                            .unwrap_or(DEFAULT_RES_STRATEGY_INTERVAL_SEC),
-                    )),
-                },
-                _ => ResolutionStrategy::Lazy,
-            }
-        } else {
-            ResolutionStrategy::Lazy
-        };
+    let resolution_strategy_timeout = Duration::from_secs(
+        service_config
+            .resolution_strategy_timeout
+            .unwrap_or(DEFAULT_RES_STRATEGY_TIMEOUT_SEC),
+    );
+    let resolution_strategy = match &service_config.resolution_strategy {
+        Some(name) if name == "eager" => ResolutionStrategy::Eager {
+            timeout: resolution_strategy_timeout,
+        },
+        _ => ResolutionStrategy::Lazy,
+    };
     let mut builder = LoadBalancedChannel::builder((service_config.hostname.clone(), port))
         .dns_probe_interval(grpc_dns_probe_interval)
         .connect_timeout(connect_timeout)
