@@ -31,7 +31,7 @@ use opentelemetry_sdk::{
     error::OTelSdkError,
     metrics::{PeriodicReader, SdkMeterProvider},
     propagation::TraceContextPropagator,
-    trace::{Sampler, TraceError},
+    trace::Sampler,
 };
 use tracing::{Span, error, info, info_span};
 use tracing_opentelemetry::{MetricsLayer, OpenTelemetrySpanExt};
@@ -44,8 +44,6 @@ use crate::{
 
 #[derive(Debug, thiserror::Error)]
 pub enum TracingError {
-    #[error("Error from tracing provider: {0}")]
-    TraceError(#[from] TraceError),
     #[error("Error from builder: {0}")]
     BuilderError(#[from] ExporterBuildError),
     #[error("Error shutting down: {0}")]
