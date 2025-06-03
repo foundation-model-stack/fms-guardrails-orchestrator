@@ -19,17 +19,19 @@ use std::time::Duration;
 
 use axum::{extract::Request, http::HeaderMap, response::Response};
 use opentelemetry::{
-    KeyValue, global,
-    trace::{TraceContextExt, TraceError, TraceId, TracerProvider},
+    global,
+    trace::{TraceContextExt, TraceId, TracerProvider},
 };
 use opentelemetry_http::{HeaderExtractor, HeaderInjector};
-use opentelemetry_otlp::{MetricExporter, SpanExporter, WithExportConfig, WithHttpConfig};
+use opentelemetry_otlp::{
+    ExporterBuildError, MetricExporter, SpanExporter, WithExportConfig, WithHttpConfig,
+};
 use opentelemetry_sdk::{
     Resource,
+    error::OTelSdkError,
     metrics::{MetricError, PeriodicReader, SdkMeterProvider},
     propagation::TraceContextPropagator,
-    runtime,
-    trace::Sampler,
+    trace::{Sampler, TraceError},
 };
 use tracing::{Span, error, info, info_span};
 use tracing_opentelemetry::{MetricsLayer, OpenTelemetrySpanExt};
@@ -46,20 +48,23 @@ pub enum TracingError {
     TraceError(#[from] TraceError),
     #[error("Error from metrics provider: {0}")]
     MetricError(#[from] MetricError),
+    #[error("Error from builder: {0}")]
+    BuilderError(#[from] ExporterBuildError),
+    #[error("Error shutting down: {0}")]
+    ShutdownError(#[from] OTelSdkError),
 }
 
 fn resource(tracing_config: TracingConfig) -> Resource {
-    Resource::new(vec![KeyValue::new(
-        "service.name",
-        tracing_config.service_name,
-    )])
+    Resource::builder()
+        .with_service_name(tracing_config.service_name)
+        .build()
 }
 
 /// Initializes an OpenTelemetry tracer provider with an OTLP export pipeline based on the
 /// provided config.
 fn init_tracer_provider(
     tracing_config: TracingConfig,
-) -> Result<Option<opentelemetry_sdk::trace::TracerProvider>, TracingError> {
+) -> Result<Option<opentelemetry_sdk::trace::SdkTracerProvider>, TracingError> {
     if let Some((protocol, endpoint)) = tracing_config.clone().traces {
         let timeout = Duration::from_secs(3);
         let exporter = match protocol {
@@ -76,8 +81,8 @@ fn init_tracer_provider(
                 .build()?,
         };
         Ok(Some(
-            opentelemetry_sdk::trace::TracerProvider::builder()
-                .with_batch_exporter(exporter, runtime::Tokio)
+            opentelemetry_sdk::trace::SdkTracerProvider::builder()
+                .with_batch_exporter(exporter)
                 .with_resource(resource(tracing_config))
                 .with_sampler(Sampler::AlwaysOn)
                 .build(),
@@ -86,7 +91,7 @@ fn init_tracer_provider(
         // We still need a tracing provider as long as we are logging in order to enable any
         // trace-sensitive logs, such as any mentions of a request's trace_id.
         Ok(Some(
-            opentelemetry_sdk::trace::TracerProvider::builder()
+            opentelemetry_sdk::trace::SdkTracerProvider::builder()
                 .with_resource(resource(tracing_config))
                 .with_sampler(Sampler::AlwaysOn)
                 .build(),
@@ -118,7 +123,7 @@ fn init_meter_provider(
                 .with_timeout(timeout)
                 .build()?,
         };
-        let reader = PeriodicReader::builder(exporter, runtime::Tokio)
+        let reader = PeriodicReader::builder(exporter)
             .with_interval(Duration::from_secs(3))
             .build();
         Ok(Some(
@@ -218,11 +223,15 @@ pub fn init_tracing(
     }
 
     Ok(move || {
-        global::shutdown_tracer_provider();
+        if let Some(trace_provider) = trace_provider {
+            trace_provider
+                .shutdown()
+                .map_err(TracingError::ShutdownError)?;
+        }
         if let Some(meter_provider) = meter_provider {
             meter_provider
                 .shutdown()
-                .map_err(TracingError::MetricError)?;
+                .map_err(TracingError::ShutdownError)?;
         }
         Ok(())
     })
