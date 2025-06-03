@@ -29,7 +29,7 @@ use opentelemetry_otlp::{
 use opentelemetry_sdk::{
     Resource,
     error::OTelSdkError,
-    metrics::{MetricError, PeriodicReader, SdkMeterProvider},
+    metrics::{PeriodicReader, SdkMeterProvider},
     propagation::TraceContextPropagator,
     trace::{Sampler, TraceError},
 };
@@ -46,8 +46,6 @@ use crate::{
 pub enum TracingError {
     #[error("Error from tracing provider: {0}")]
     TraceError(#[from] TraceError),
-    #[error("Error from metrics provider: {0}")]
-    MetricError(#[from] MetricError),
     #[error("Error from builder: {0}")]
     BuilderError(#[from] ExporterBuildError),
     #[error("Error shutting down: {0}")]
