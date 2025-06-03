@@ -38,6 +38,8 @@ use crate::{
     health::HealthCheckCache,
 };
 
+const DEFAULT_MAX_RETRIES: usize = 3;
+
 #[cfg_attr(test, derive(Default))]
 pub struct Context {
     config: OrchestratorConfig,
@@ -120,15 +122,19 @@ async fn create_clients(config: &OrchestratorConfig) -> Result<ClientMap, Error>
 
     // Create generation client
     if let Some(generation) = &config.generation {
+        let retries = generation
+            .service
+            .max_retries
+            .unwrap_or(DEFAULT_MAX_RETRIES);
         match generation.provider {
             GenerationProvider::Tgis => {
                 let tgis_client = TgisClient::new(&generation.service).await;
-                let generation_client = GenerationClient::tgis(tgis_client);
+                let generation_client = GenerationClient::tgis(tgis_client, retries);
                 clients.insert("generation".to_string(), generation_client);
             }
             GenerationProvider::Nlp => {
                 let nlp_client = NlpClient::new(&generation.service).await;
-                let generation_client = GenerationClient::nlp(nlp_client);
+                let generation_client = GenerationClient::nlp(nlp_client, retries);
                 clients.insert("generation".to_string(), generation_client);
             }
         }

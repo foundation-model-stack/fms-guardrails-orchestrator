@@ -24,7 +24,7 @@ dashmap = "6.1.0"
 eventsource-stream = "0.2.3"
 futures = "0.3.31"
 futures-util = { version = "0.3", default-features = false, features = [] }
-ginepro = "0.8.2"
+ginepro = { git = "https://github.com/gkumbhat/ginepro", branch = "add_tonic_endpoint_settings" }
 http = "1.3.1"
 http-body = "1.0"
 http-body-util = "0.1.3"
@@ -74,7 +74,7 @@ tokio-rustls = { version = "0.26.2", features = ["ring"] }
 tokio-stream = { version = "0.1.17", features = ["sync"] }
 tonic = { version = "0.12.3", features = [
     "tls",
-    "tls-roots",
+    "tls-native-roots",
     "tls-webpki-roots",
 ] }
 tower = { version = "0.5.2", features = ["timeout"] }

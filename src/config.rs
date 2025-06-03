@@ -76,6 +76,12 @@ pub struct ServiceConfig {
     pub tls: Option<Tls>,
     /// gRPC probe interval in seconds
     pub grpc_dns_probe_interval: Option<u64>,
+    /// Resolution strategy
+    pub resolution_strategy: Option<String>,
+    /// Resolution strategy timeout in seconds
+    pub resolution_strategy_timeout: Option<u64>,
+    /// Max retries for client calls [currently only for grpc generation]
+    pub max_retries: Option<usize>,
 }
 
 impl ServiceConfig {
@@ -86,6 +92,9 @@ impl ServiceConfig {
             request_timeout: None,
             tls: None,
             grpc_dns_probe_interval: None,
+            resolution_strategy: None,
+            resolution_strategy_timeout: None,
+            max_retries: None,
         }
     }
 }
