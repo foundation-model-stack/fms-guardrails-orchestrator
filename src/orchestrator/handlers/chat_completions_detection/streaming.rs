@@ -409,8 +409,8 @@ async fn process_chat_completion_stream(
                             let _ = input_tx.send(Ok((message_index, choice_text))).await;
                         }
                     } else {
-                        debug!(%trace_id, %message_index, ?chat_completion, "chat completion chunk contained no choices");
-                        warn!(%trace_id, %message_index, "chat completion chunk contained no choices");
+                        debug!(%trace_id, %message_index, ?chat_completion, "chat completion chunk contains no choice");
+                        warn!(%trace_id, %message_index, "chat completion chunk contains no choice");
                     }
                 }
             }
