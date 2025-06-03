@@ -234,7 +234,7 @@ async fn handle_output_detection(
     if !detectors.is_empty() {
         // Set up streaming detection pipeline
         // n represents how many choices to generate for each input message
-        // Choices are processed independently so each choice has it's own input channels and detection streams.
+        // Choices are processed independently so each choice has its own input channels and detection streams.
         let n = request.extra.get("n").and_then(|v| v.as_i64()).unwrap_or(1) as usize;
         // Create input channels
         let mut input_txs = HashMap::with_capacity(n);
