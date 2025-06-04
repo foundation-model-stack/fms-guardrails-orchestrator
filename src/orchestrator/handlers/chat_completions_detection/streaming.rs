@@ -383,9 +383,6 @@ async fn process_chat_completion_stream(
                     if let Some(choice) = chat_completion.choices.first() {
                         // Extract choice text
                         let choice_text = choice.delta.content.clone().unwrap_or_default();
-                        if choice_text.is_empty() {
-                            warn!(%trace_id, %message_index, "chat completion chunk choice content is empty");
-                        }
                         // Update state for this choice index
                         if let Some(state) = &chat_completion_state {
                             match state.chat_completions.entry(choice.index) {
