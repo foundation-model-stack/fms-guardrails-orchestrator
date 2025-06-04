@@ -110,6 +110,7 @@ impl OpenAiClient {
         match response.status() {
             StatusCode::OK => response.json::<S>().await,
             _ => {
+                // Error from downstream server
                 let code = response.status();
                 let message = if let Ok(response) = response.json::<OpenAiError>().await {
                     response.message
@@ -132,46 +133,57 @@ impl OpenAiClient {
         S: DeserializeOwned + Send + 'static,
     {
         let (tx, rx) = mpsc::channel(32);
-        let mut event_stream = self
-            .client
-            .post(url, headers, request)
-            .await?
-            .0
-            .into_data_stream()
-            .eventsource();
-        // Spawn task to forward events to receiver
-        tokio::spawn(async move {
-            while let Some(result) = event_stream.next().await {
-                match result {
-                    Ok(event) if event.data == "[DONE]" => {
-                        // Send None to signal that the stream completed
-                        let _ = tx.send(Ok(None)).await;
-                        break;
-                    }
-                    Ok(event) => match serde_json::from_str::<S>(&event.data) {
-                        Ok(chunk) => {
-                            let _ = tx.send(Ok(Some(chunk))).await;
+        let response = self.client.post(url, headers, request).await?;
+        match response.status() {
+            StatusCode::OK => {
+                // Create event stream
+                let mut event_stream = response.0.into_data_stream().eventsource();
+                // Spawn task to consume event stream and send messages to receiver
+                tokio::spawn(async move {
+                    while let Some(result) = event_stream.next().await {
+                        match result {
+                            Ok(event) if event.data == "[DONE]" => {
+                                // DONE message: send None to signal completion
+                                let _ = tx.send(Ok(None)).await;
+                                break;
+                            }
+                            Ok(event) => match serde_json::from_str::<S>(&event.data) {
+                                Ok(message) => {
+                                    let _ = tx.send(Ok(Some(message))).await;
+                                }
+                                Err(e) => {
+                                    // Deserialization error
+                                    let error = Error::Http {
+                                        code: StatusCode::INTERNAL_SERVER_ERROR,
+                                        message: format!("deserialization error: {e}"),
+                                    };
+                                    let _ = tx.send(Err(error.into())).await;
+                                }
+                            },
+                            Err(error) => {
+                                // Event stream error
+                                let error = Error::Http {
+                                    code: StatusCode::INTERNAL_SERVER_ERROR,
+                                    message: error.to_string(),
+                                };
+                                let _ = tx.send(Err(error.into())).await;
+                            }
                         }
-                        Err(e) => {
-                            let error = Error::Http {
-                                code: StatusCode::INTERNAL_SERVER_ERROR,
-                                message: format!("deserialization error: {e}"),
-                            };
-                            let _ = tx.send(Err(error.into())).await;
-                        }
-                    },
-                    Err(error) => {
-                        // We received an error from the event stream, send error message
-                        let error = Error::Http {
-                            code: StatusCode::INTERNAL_SERVER_ERROR,
-                            message: error.to_string(),
-                        };
-                        let _ = tx.send(Err(error.into())).await;
                     }
-                }
+                });
+                Ok(rx)
             }
-        });
-        Ok(rx)
+            _ => {
+                // Error from downstream server
+                let code = response.status();
+                let message = if let Ok(response) = response.json::<OpenAiError>().await {
+                    response.message
+                } else {
+                    "unknown error occurred".into()
+                };
+                Err(Error::Http { code, message })
+            }
+        }
     }
 }
 
