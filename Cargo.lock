@@ -817,7 +817,7 @@ checksum = "07e28edb80900c19c28f1072f2e8aeca7fa06b23cd4169cefe1af5aa3260783f"
 [[package]]
 name = "ginepro"
 version = "0.8.2"
-source = "git+https://github.com/mdevino/ginepro?rev=863ca186f37abf5997126aa97e85b56ca288a76c#863ca186f37abf5997126aa97e85b56ca288a76c"
+source = "git+https://github.com/gkumbhat/ginepro?rev=863ca186f37abf5997126aa97e85b56ca288a76c#863ca186f37abf5997126aa97e85b56ca288a76c"
 dependencies = [
  "anyhow",
  "async-trait",

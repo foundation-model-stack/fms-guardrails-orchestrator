@@ -24,7 +24,7 @@ dashmap = "6.1.0"
 eventsource-stream = "0.2.3"
 futures = "0.3.31"
 futures-util = { version = "0.3", default-features = false, features = [] }
-ginepro = {git = "https://github.com/mdevino/ginepro", rev = "863ca186f37abf5997126aa97e85b56ca288a76c"}
+ginepro = {git = "https://github.com/gkumbhat/ginepro", rev = "863ca186f37abf5997126aa97e85b56ca288a76c"}
 http = "1.3.1"
 http-body = "1.0"
 http-body-util = "0.1.3"
