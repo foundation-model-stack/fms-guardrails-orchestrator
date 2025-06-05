@@ -66,6 +66,6 @@ fn main() -> Result<(), anyhow::Error> {
             let _ = tokio::join!(health_handle, guardrails_handle);
             info!("shutdown complete");
 
-            Ok(trace_shutdown()?)
+            trace_shutdown()
         })
 }
