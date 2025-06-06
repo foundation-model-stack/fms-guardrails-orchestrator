@@ -199,9 +199,10 @@ async fn stream_content_detection(
     match content_type {
         Some(content_type) if content_type.starts_with("application/x-ndjson") => (),
         _ => {
-            return Err(Error::UnsupportedContentType(
-                "expected application/x-ndjson".into(),
-            ));
+            return Err(Error {
+                code: http::StatusCode::UNSUPPORTED_MEDIA_TYPE,
+                details: "expected application/x-ndjson".into(),
+            });
         }
     };
     let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);

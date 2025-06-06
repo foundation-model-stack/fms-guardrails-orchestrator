@@ -169,7 +169,7 @@ impl TestOrchestratorServer {
                         client: reqwest::Client::builder().build().unwrap(),
                     });
                 }
-                Err(server::Error::IoError(error)) => {
+                Err(error) if error.details().starts_with("io error") => {
                     warn!(%error, "failed to start server, trying again with different ports...");
                     continue;
                 }
