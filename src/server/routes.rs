@@ -161,7 +161,7 @@ async fn stream_classification_with_gen(
         return Sse::new(
             stream::iter([Ok(Event::default()
                 .event("error")
-                .json_data(error.to_json())
+                .json_data(error)
                 .unwrap())])
             .boxed(),
         );
@@ -178,10 +178,7 @@ async fn stream_classification_with_gen(
                 .unwrap()),
             Err(error) => {
                 let error: Error = error.into();
-                Ok(Event::default()
-                    .event("error")
-                    .json_data(error.to_json())
-                    .unwrap())
+                Ok(Event::default().event("error").json_data(error).unwrap())
             }
         })
         .boxed();
@@ -202,9 +199,10 @@ async fn stream_content_detection(
     match content_type {
         Some(content_type) if content_type.starts_with("application/x-ndjson") => (),
         _ => {
-            return Err(Error::UnsupportedContentType(
-                "expected application/x-ndjson".into(),
-            ));
+            return Err(Error {
+                code: http::StatusCode::UNSUPPORTED_MEDIA_TYPE,
+                details: "expected application/x-ndjson".into(),
+            });
         }
     };
     let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
@@ -242,8 +240,7 @@ async fn stream_content_detection(
                 Err(error) => {
                     // Convert orchestrator::Error to server::Error
                     let error: Error = error.into();
-                    // server::Error doesn't impl Serialize, so we use to_json()
-                    let error_msg = utils::json::to_nd_string(&error.to_json()).unwrap();
+                    let error_msg = utils::json::to_nd_string(&error).unwrap();
                     let _ = output_tx.send(Ok(error_msg)).await;
                 }
             }
@@ -344,10 +341,7 @@ async fn chat_completions_detection(
                         }
                         Err(error) => {
                             let error: Error = error.into();
-                            Ok(Event::default()
-                                .event("error")
-                                .json_data(error.to_json())
-                                .unwrap())
+                            Ok(Event::default().event("error").json_data(error).unwrap())
                         }
                     })
                     .boxed();

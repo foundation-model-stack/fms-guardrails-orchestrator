@@ -148,8 +148,11 @@ mod tests {
             Orchestrator::default(),
         )
         .await;
-        assert!(result.is_err_and(|error| matches!(error, Error::IoError(_))
-            && error.to_string().starts_with("Address already in use")));
+        assert!(result.is_err_and(|error| {
+            error
+                .to_string()
+                .starts_with("io error: Address already in use")
+        }));
         Ok(())
     }
 
