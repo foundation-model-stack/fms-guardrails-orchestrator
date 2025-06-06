@@ -426,7 +426,6 @@ async fn no_detections() -> Result<(), anyhow::Error> {
         model: MODEL_ID.into(),
         choices: expected_choices.clone(),
         detections: None,
-        warnings: expected_warnings.clone(),
         ..Default::default()
     };
 
