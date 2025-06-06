@@ -22,6 +22,7 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use http::StatusCode;
+use serde::ser::SerializeMap;
 
 use crate::{models::ValidationError, orchestrator};
 
@@ -46,6 +47,63 @@ pub enum Error {
     IoError(#[from] std::io::Error),
 }
 
+impl Error {
+    pub fn code(&self) -> StatusCode {
+        use Error::*;
+        match self {
+            Validation(_) => StatusCode::UNPROCESSABLE_ENTITY,
+            NotFound(_) => StatusCode::NOT_FOUND,
+            ServiceUnavailable(_) => StatusCode::SERVICE_UNAVAILABLE,
+            UnsupportedContentType(_) => StatusCode::UNSUPPORTED_MEDIA_TYPE,
+            Unexpected => StatusCode::INTERNAL_SERVER_ERROR,
+            JsonExtractorRejection(json_rejection) => json_rejection.status(),
+            JsonError(_) => StatusCode::UNPROCESSABLE_ENTITY,
+            IoError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    }
+
+    pub fn message(&self) -> String {
+        use Error::*;
+        match self {
+            JsonExtractorRejection(json_rejection) => match json_rejection {
+                JsonRejection::JsonDataError(e) => {
+                    // Get lower-level serde error message
+                    e.source().map(|e| e.to_string()).unwrap_or_default()
+                }
+                _ => json_rejection.body_text(),
+            },
+            _ => self.to_string(),
+        }
+    }
+}
+
+impl serde::Serialize for Error {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let code = self.code();
+        let message = self.message();
+        let mut map = serializer.serialize_map(Some(2))?;
+        map.serialize_entry("code", &code.as_u16())?;
+        map.serialize_entry("details", &message)?;
+        map.end()
+    }
+}
+
+impl IntoResponse for Error {
+    fn into_response(self) -> Response {
+        let code = self.code();
+        (code, Json(self)).into_response()
+    }
+}
+
+impl From<ValidationError> for Error {
+    fn from(value: ValidationError) -> Self {
+        Self::Validation(value.to_string())
+    }
+}
+
 impl From<orchestrator::Error> for Error {
     fn from(value: orchestrator::Error) -> Self {
         use orchestrator::Error::*;
@@ -67,66 +125,5 @@ impl From<orchestrator::Error> for Error {
             Validation(message) => Self::Validation(message),
             _ => Self::Unexpected,
         }
-    }
-}
-
-impl Error {
-    pub fn to_json(self) -> serde_json::Value {
-        use Error::*;
-        let (code, message) = match self {
-            Validation(_) => (StatusCode::UNPROCESSABLE_ENTITY, self.to_string()),
-            NotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
-            ServiceUnavailable(_) => (StatusCode::SERVICE_UNAVAILABLE, self.to_string()),
-            UnsupportedContentType(_) => (StatusCode::UNSUPPORTED_MEDIA_TYPE, self.to_string()),
-            Unexpected => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
-            JsonExtractorRejection(json_rejection) => match json_rejection {
-                JsonRejection::JsonDataError(e) => {
-                    // Get lower-level serde error message
-                    let message = e.source().map(|e| e.to_string()).unwrap_or_default();
-                    (e.status(), message)
-                }
-                _ => (json_rejection.status(), json_rejection.body_text()),
-            },
-            JsonError(_) => (StatusCode::UNPROCESSABLE_ENTITY, self.to_string()),
-            IoError(error) => (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()),
-        };
-        serde_json::json!({
-            "code": code.as_u16(),
-            "details": message,
-        })
-    }
-}
-
-impl IntoResponse for Error {
-    fn into_response(self) -> Response {
-        use Error::*;
-        let (code, message) = match self {
-            Validation(_) => (StatusCode::UNPROCESSABLE_ENTITY, self.to_string()),
-            NotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
-            ServiceUnavailable(_) => (StatusCode::SERVICE_UNAVAILABLE, self.to_string()),
-            UnsupportedContentType(_) => (StatusCode::UNSUPPORTED_MEDIA_TYPE, self.to_string()),
-            Unexpected => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
-            JsonExtractorRejection(json_rejection) => match json_rejection {
-                JsonRejection::JsonDataError(e) => {
-                    // Get lower-level serde error message
-                    let message = e.source().map(|e| e.to_string()).unwrap_or_default();
-                    (e.status(), message)
-                }
-                _ => (json_rejection.status(), json_rejection.body_text()),
-            },
-            JsonError(_) => (StatusCode::UNPROCESSABLE_ENTITY, self.to_string()),
-            IoError(error) => (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()),
-        };
-        let error = serde_json::json!({
-            "code": code.as_u16(),
-            "details": message,
-        });
-        (code, Json(error)).into_response()
-    }
-}
-
-impl From<ValidationError> for Error {
-    fn from(value: ValidationError) -> Self {
-        Self::Validation(value.to_string())
     }
 }
