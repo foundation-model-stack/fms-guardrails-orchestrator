@@ -25,7 +25,7 @@ use common::{
         DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC, NON_EXISTING_DETECTOR,
         TEXT_CONTENTS_DETECTOR_ENDPOINT,
     },
-    errors::{DetectorError, OrchestratorError},
+    errors::DetectorError,
     generation::{
         GENERATION_NLP_MODEL_ID_HEADER_NAME, GENERATION_NLP_TOKENIZATION_ENDPOINT,
         GENERATION_NLP_UNARY_ENDPOINT,
@@ -52,6 +52,7 @@ use fms_guardrails_orchestr8::{
         },
         caikit_data_model::nlp::{GeneratedTextResult, Token, TokenizationResults},
     },
+    server,
 };
 use hyper::StatusCode;
 use mocktail::prelude::*;
@@ -647,7 +648,10 @@ async fn input_detector_client_error() -> Result<(), anyhow::Error> {
         message: "Internal detector error.".into(),
     };
 
-    let orchestrator_error_500 = OrchestratorError::internal();
+    let orchestrator_error_500 = server::Error {
+        code: http::StatusCode::INTERNAL_SERVER_ERROR,
+        details: "unexpected error occurred while processing request".into(),
+    };
 
     // Add input for error scenarios
     let chunker_error_input = "This should return a 500 error on chunker";
@@ -753,7 +757,7 @@ async fn input_detector_client_error() -> Result<(), anyhow::Error> {
         .await?;
 
     // Assertions for generation internal server error scenario
-    let results = response.json::<OrchestratorError>().await?;
+    let results = response.json::<server::Error>().await?;
     assert_eq!(results, orchestrator_error_500);
 
     // Orchestrator request with unary response for detector internal server error scenario
@@ -778,7 +782,7 @@ async fn input_detector_client_error() -> Result<(), anyhow::Error> {
         .await?;
 
     // Assertions for detector internal server error scenario
-    let results = response.json::<OrchestratorError>().await?;
+    let results = response.json::<server::Error>().await?;
     assert_eq!(results, orchestrator_error_500);
 
     // Orchestrator request with unary response
@@ -803,7 +807,7 @@ async fn input_detector_client_error() -> Result<(), anyhow::Error> {
         .await?;
 
     // Assertions for chunker internal server error scenario
-    let results = response.json::<OrchestratorError>().await?;
+    let results = response.json::<server::Error>().await?;
     assert_eq!(results, orchestrator_error_500);
 
     Ok(())
@@ -1122,7 +1126,10 @@ async fn output_detector_client_error() -> Result<(), anyhow::Error> {
         message: "Internal detector error.".into(),
     };
 
-    let orchestrator_error_500 = OrchestratorError::internal();
+    let orchestrator_error_500 = server::Error {
+        code: http::StatusCode::INTERNAL_SERVER_ERROR,
+        details: "unexpected error occurred while processing request".into(),
+    };
 
     // Add input for error scenarios
     let chunker_error_input = "This should return a 500 error on chunker";
@@ -1256,7 +1263,7 @@ async fn output_detector_client_error() -> Result<(), anyhow::Error> {
         .await?;
 
     // Assertions for generation internal server error scenario
-    let results = response.json::<OrchestratorError>().await?;
+    let results = response.json::<server::Error>().await?;
     assert_eq!(results, orchestrator_error_500);
 
     // Orchestrator request with unary response for detector internal server error scenario
@@ -1280,7 +1287,7 @@ async fn output_detector_client_error() -> Result<(), anyhow::Error> {
         .await?;
 
     // Assertions for detector internal server error scenario
-    let results = response.json::<OrchestratorError>().await?;
+    let results = response.json::<server::Error>().await?;
     assert_eq!(results, orchestrator_error_500);
 
     // Orchestrator request with unary response
@@ -1304,7 +1311,7 @@ async fn output_detector_client_error() -> Result<(), anyhow::Error> {
         .await?;
 
     // Assertions for chunker internal server error scenario
-    let results = response.json::<OrchestratorError>().await?;
+    let results = response.json::<server::Error>().await?;
     assert_eq!(results, orchestrator_error_500);
 
     Ok(())
@@ -1332,7 +1339,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
         .send()
         .await?;
 
-    let results = response.json::<OrchestratorError>().await?;
+    let results = response.json::<server::Error>().await?;
     debug!("{results:#?}");
     assert_eq!(results.code, StatusCode::UNPROCESSABLE_ENTITY);
     assert!(
@@ -1362,11 +1369,16 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
         .send()
         .await?;
 
-    let results = response.json::<OrchestratorError>().await?;
+    let results = response.json::<server::Error>().await?;
     debug!("{results:#?}");
     assert_eq!(
         results,
-        OrchestratorError::detector_not_supported(ANSWER_RELEVANCE_DETECTOR_SENTENCE),
+        server::Error {
+            code: http::StatusCode::UNPROCESSABLE_ENTITY,
+            details: format!(
+                "detector `{ANSWER_RELEVANCE_DETECTOR_SENTENCE}` is not supported by this endpoint"
+            ),
+        },
         "failed on input detector with invalid type scenario"
     );
 
@@ -1388,12 +1400,15 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
         .send()
         .await?;
 
-    let results = response.json::<OrchestratorError>().await?;
+    let results = response.json::<server::Error>().await?;
     debug!("{results:#?}");
     assert_eq!(
         results,
-        OrchestratorError::detector_not_found(NON_EXISTING_DETECTOR),
-        "failed on non-existing input detector scenario"
+        server::Error {
+            code: http::StatusCode::NOT_FOUND,
+            details: format!("detector `{NON_EXISTING_DETECTOR}` not found"),
+        },
+        "failed on non-existing detector scenario"
     );
 
     // Invalid output detector scenario
@@ -1416,11 +1431,16 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
         .send()
         .await?;
 
-    let results = response.json::<OrchestratorError>().await?;
+    let results = response.json::<server::Error>().await?;
     debug!("{results:#?}");
     assert_eq!(
         results,
-        OrchestratorError::detector_not_supported(ANSWER_RELEVANCE_DETECTOR_SENTENCE),
+        server::Error {
+            code: http::StatusCode::UNPROCESSABLE_ENTITY,
+            details: format!(
+                "detector `{ANSWER_RELEVANCE_DETECTOR_SENTENCE}` is not supported by this endpoint"
+            ),
+        },
         "failed on output detector with invalid type scenario"
     );
 
@@ -1441,11 +1461,14 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
         .send()
         .await?;
 
-    let results = response.json::<OrchestratorError>().await?;
+    let results = response.json::<server::Error>().await?;
     debug!("{results:#?}");
     assert_eq!(
         results,
-        OrchestratorError::detector_not_found(NON_EXISTING_DETECTOR),
+        server::Error {
+            code: http::StatusCode::NOT_FOUND,
+            details: format!("detector `{NON_EXISTING_DETECTOR}` not found"),
+        },
         "failed on non-existing output detector scenario"
     );
 

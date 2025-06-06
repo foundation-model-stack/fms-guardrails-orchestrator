@@ -285,7 +285,7 @@ impl<T> Stream for SseStream<'_, T>
 where
     T: DeserializeOwned,
 {
-    type Item = Result<T, anyhow::Error>;
+    type Item = Result<T, server::Error>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
         match Pin::new(&mut self.get_mut().stream).poll_next(cx) {
@@ -293,12 +293,30 @@ where
                 if event.data == "[DONE]" {
                     return Poll::Ready(None);
                 }
+                if event.event == "error" {
+                    let error: server::Error = serde_json::from_str(&event.data).unwrap();
+                    return Poll::Ready(Some(Err(error)));
+                }
                 match serde_json::from_str::<T>(&event.data) {
                     Ok(msg) => Poll::Ready(Some(Ok(msg))),
-                    Err(error) => Poll::Ready(Some(Err(error.into()))),
+                    Err(error) => {
+                        let error = server::Error {
+                            code: http::StatusCode::INTERNAL_SERVER_ERROR,
+                            details: format!(
+                                "sse_stream error: `event.data` deserialization failed {error}"
+                            ),
+                        };
+                        Poll::Ready(Some(Err(error)))
+                    }
                 }
             }
-            Poll::Ready(Some(Err(error))) => Poll::Ready(Some(Err(error.into()))),
+            Poll::Ready(Some(Err(error))) => {
+                let error = server::Error {
+                    code: http::StatusCode::INTERNAL_SERVER_ERROR,
+                    details: format!("sse_stream error: error parsing event {error}"),
+                };
+                Poll::Ready(Some(Err(error)))
+            }
             Poll::Ready(None) => Poll::Ready(None),
             Poll::Pending => Poll::Pending,
         }

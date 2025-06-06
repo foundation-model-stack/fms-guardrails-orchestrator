@@ -27,7 +27,7 @@ use common::{
         DETECTOR_NAME_PARENTHESIS_SENTENCE, FACT_CHECKING_DETECTOR_SENTENCE, NON_EXISTING_DETECTOR,
         TEXT_CONTENTS_DETECTOR_ENDPOINT,
     },
-    errors::{DetectorError, OrchestratorError},
+    errors::DetectorError,
     generation::{
         GENERATION_NLP_MODEL_ID_HEADER_NAME, GENERATION_NLP_STREAMING_ENDPOINT,
         GENERATION_NLP_TOKENIZATION_ENDPOINT,
@@ -37,7 +37,6 @@ use common::{
         ORCHESTRATOR_UNSUITABLE_INPUT_MESSAGE, SseStream, TestOrchestratorServer,
     },
 };
-use eventsource_stream::Eventsource;
 use fms_guardrails_orchestr8::{
     clients::detector::{ContentAnalysisRequest, ContentAnalysisResponse},
     models::{
@@ -56,6 +55,7 @@ use fms_guardrails_orchestr8::{
             ChunkerTokenizationStreamResult, GeneratedTextStreamResult, Token, TokenizationResults,
         },
     },
+    server,
 };
 use futures::{StreamExt, TryStreamExt};
 use mocktail::prelude::*;
@@ -570,7 +570,10 @@ async fn input_detector_client_error() -> Result<(), anyhow::Error> {
     let detector_error_input = "Detector should return an error";
     let generation_server_error_input = "Generation should return an error";
 
-    let orchestrator_error_500 = OrchestratorError::internal();
+    let orchestrator_error_500 = server::Error {
+        code: http::StatusCode::INTERNAL_SERVER_ERROR,
+        details: "unexpected error occurred while processing request".into(),
+    };
 
     let mut chunker_mocks = MockSet::new();
     chunker_mocks.mock(|when, then| {
@@ -679,13 +682,17 @@ async fn input_detector_client_error() -> Result<(), anyhow::Error> {
 
     debug!(?response, "RESPONSE RECEIVED FROM ORCHESTRATOR");
 
-    let sse_stream: SseStream<OrchestratorError> = SseStream::new(response.bytes_stream());
-    let messages = sse_stream.try_collect::<Vec<_>>().await?;
+    let sse_stream: SseStream<ClassifiedGeneratedTextStreamResult> =
+        SseStream::new(response.bytes_stream());
+    let messages = sse_stream.collect::<Vec<_>>().await;
     debug!("{messages:#?}");
 
     assert_eq!(messages.len(), 1);
-    assert_eq!(messages[0], orchestrator_error_500);
-
+    assert!(
+        messages[0]
+            .as_ref()
+            .is_err_and(|error| *error == orchestrator_error_500)
+    );
     // Test error from detector
     let response = orchestrator_server
         .post(ORCHESTRATOR_STREAMING_ENDPOINT)
@@ -706,12 +713,17 @@ async fn input_detector_client_error() -> Result<(), anyhow::Error> {
 
     debug!(?response, "RESPONSE RECEIVED FROM ORCHESTRATOR");
 
-    let sse_stream: SseStream<OrchestratorError> = SseStream::new(response.bytes_stream());
-    let messages = sse_stream.try_collect::<Vec<_>>().await?;
+    let sse_stream: SseStream<ClassifiedGeneratedTextStreamResult> =
+        SseStream::new(response.bytes_stream());
+    let messages = sse_stream.collect::<Vec<_>>().await;
     debug!("{messages:#?}");
 
     assert_eq!(messages.len(), 1);
-    assert_eq!(messages[0], orchestrator_error_500);
+    assert!(
+        messages[0]
+            .as_ref()
+            .is_err_and(|error| *error == orchestrator_error_500)
+    );
 
     // Test error from generation server
     let response = orchestrator_server
@@ -733,12 +745,17 @@ async fn input_detector_client_error() -> Result<(), anyhow::Error> {
 
     debug!(?response, "RESPONSE RECEIVED FROM ORCHESTRATOR");
 
-    let sse_stream: SseStream<OrchestratorError> = SseStream::new(response.bytes_stream());
-    let messages = sse_stream.try_collect::<Vec<_>>().await?;
+    let sse_stream: SseStream<ClassifiedGeneratedTextStreamResult> =
+        SseStream::new(response.bytes_stream());
+    let messages = sse_stream.collect::<Vec<_>>().await;
     debug!("{messages:#?}");
 
     assert_eq!(messages.len(), 1);
-    assert_eq!(messages[0], orchestrator_error_500);
+    assert!(
+        messages[0]
+            .as_ref()
+            .is_err_and(|error| *error == orchestrator_error_500)
+    );
 
     Ok(())
 }
@@ -771,7 +788,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     debug!(?response);
 
     assert_eq!(response.status(), 422);
-    let response_body = response.json::<OrchestratorError>().await?;
+    let response_body = response.json::<server::Error>().await?;
     assert_eq!(response_body.code, 422);
     assert!(
         response_body
@@ -802,13 +819,19 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     debug!(?response);
 
     assert_eq!(response.status(), 200);
-    let sse_stream: SseStream<OrchestratorError> = SseStream::new(response.bytes_stream());
-    let messages = sse_stream.try_collect::<Vec<_>>().await?;
+    let sse_stream: SseStream<ClassifiedGeneratedTextStreamResult> =
+        SseStream::new(response.bytes_stream());
+    let messages = sse_stream.collect::<Vec<_>>().await;
     debug!("{messages:#?}");
     assert_eq!(messages.len(), 1);
     assert_eq!(
         messages[0],
-        OrchestratorError::detector_not_supported(FACT_CHECKING_DETECTOR_SENTENCE),
+        Err(server::Error {
+            code: http::StatusCode::UNPROCESSABLE_ENTITY,
+            details: format!(
+                "detector `{FACT_CHECKING_DETECTOR_SENTENCE}` is not supported by this endpoint"
+            )
+        }),
         "failed at invalid input detector scenario"
     );
 
@@ -832,13 +855,17 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     debug!(?response);
 
     assert_eq!(response.status(), 200);
-    let sse_stream: SseStream<OrchestratorError> = SseStream::new(response.bytes_stream());
-    let messages = sse_stream.try_collect::<Vec<_>>().await?;
+    let sse_stream: SseStream<ClassifiedGeneratedTextStreamResult> =
+        SseStream::new(response.bytes_stream());
+    let messages = sse_stream.collect::<Vec<_>>().await;
     debug!("{messages:#?}");
     assert_eq!(messages.len(), 1);
     assert_eq!(
         messages[0],
-        OrchestratorError::detector_not_found(NON_EXISTING_DETECTOR),
+        Err(server::Error {
+            code: http::StatusCode::NOT_FOUND,
+            details: format!("detector `{NON_EXISTING_DETECTOR}` not found")
+        }),
         "failed at non-existing input detector scenario"
     );
 
@@ -864,13 +891,19 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     debug!(?response);
 
     assert_eq!(response.status(), 200);
-    let sse_stream: SseStream<OrchestratorError> = SseStream::new(response.bytes_stream());
-    let messages = sse_stream.try_collect::<Vec<_>>().await?;
+    let sse_stream: SseStream<ClassifiedGeneratedTextStreamResult> =
+        SseStream::new(response.bytes_stream());
+    let messages = sse_stream.collect::<Vec<_>>().await;
     debug!("{messages:#?}");
     assert_eq!(messages.len(), 1);
     assert_eq!(
         messages[0],
-        OrchestratorError::detector_not_supported(FACT_CHECKING_DETECTOR_SENTENCE),
+        Err(server::Error {
+            code: http::StatusCode::UNPROCESSABLE_ENTITY,
+            details: format!(
+                "detector `{FACT_CHECKING_DETECTOR_SENTENCE}` is not supported by this endpoint"
+            )
+        }),
         "failed at invalid output detector scenario"
     );
 
@@ -896,13 +929,19 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     debug!("{response:#?}");
 
     assert_eq!(response.status(), 200);
-    let sse_stream: SseStream<OrchestratorError> = SseStream::new(response.bytes_stream());
-    let messages = sse_stream.try_collect::<Vec<_>>().await?;
+    let sse_stream: SseStream<ClassifiedGeneratedTextStreamResult> =
+        SseStream::new(response.bytes_stream());
+    let messages = sse_stream.collect::<Vec<_>>().await;
     debug!("{messages:#?}");
     assert_eq!(messages.len(), 1);
     assert_eq!(
         messages[0],
-        OrchestratorError::chunker_not_supported(DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC),
+        Err(server::Error {
+            code: http::StatusCode::UNPROCESSABLE_ENTITY,
+            details: format!(
+                "detector `{DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC}` uses chunker `whole_doc_chunker`, which is not supported by this endpoint"
+            )
+        }),
         "failed on output detector with invalid chunker scenario"
     );
 
@@ -925,13 +964,17 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     debug!(?response);
 
     assert_eq!(response.status(), 200);
-    let sse_stream: SseStream<OrchestratorError> = SseStream::new(response.bytes_stream());
-    let messages = sse_stream.try_collect::<Vec<_>>().await?;
+    let sse_stream: SseStream<ClassifiedGeneratedTextStreamResult> =
+        SseStream::new(response.bytes_stream());
+    let messages = sse_stream.collect::<Vec<_>>().await;
     debug!("{messages:#?}");
     assert_eq!(messages.len(), 1);
     assert_eq!(
         messages[0],
-        OrchestratorError::detector_not_found(NON_EXISTING_DETECTOR),
+        Err(server::Error {
+            code: http::StatusCode::NOT_FOUND,
+            details: format!("detector `{NON_EXISTING_DETECTOR}` not found")
+        }),
         "failed at non-existing output detector scenario"
     );
 
@@ -1108,11 +1151,7 @@ async fn output_detectors_no_detections() -> Result<(), anyhow::Error> {
 
     let sse_stream: SseStream<ClassifiedGeneratedTextStreamResult> =
         SseStream::new(response.bytes_stream());
-    let messages = sse_stream
-        .collect::<Vec<_>>()
-        .await
-        .into_iter()
-        .collect::<Result<Vec<_>, anyhow::Error>>()?;
+    let messages = sse_stream.try_collect::<Vec<_>>().await?;
     debug!("{messages:#?}");
 
     assert_eq!(messages.len(), 2);
@@ -1156,11 +1195,7 @@ async fn output_detectors_no_detections() -> Result<(), anyhow::Error> {
 
     let sse_stream: SseStream<ClassifiedGeneratedTextStreamResult> =
         SseStream::new(response.bytes_stream());
-    let messages = sse_stream
-        .collect::<Vec<_>>()
-        .await
-        .into_iter()
-        .collect::<Result<Vec<_>, anyhow::Error>>()?;
+    let messages = sse_stream.try_collect::<Vec<_>>().await?;
     debug!("{messages:#?}");
 
     assert_eq!(messages.len(), 2);
@@ -1397,11 +1432,7 @@ async fn output_detectors_detections() -> Result<(), anyhow::Error> {
 
     let sse_stream: SseStream<ClassifiedGeneratedTextStreamResult> =
         SseStream::new(response.bytes_stream());
-    let messages = sse_stream
-        .collect::<Vec<_>>()
-        .await
-        .into_iter()
-        .collect::<Result<Vec<_>, anyhow::Error>>()?;
+    let messages = sse_stream.try_collect::<Vec<_>>().await?;
     debug!("{messages:#?}");
 
     let expected_messages = vec![
@@ -1469,11 +1500,7 @@ async fn output_detectors_detections() -> Result<(), anyhow::Error> {
 
     let sse_stream: SseStream<ClassifiedGeneratedTextStreamResult> =
         SseStream::new(response.bytes_stream());
-    let messages = sse_stream
-        .collect::<Vec<_>>()
-        .await
-        .into_iter()
-        .collect::<Result<Vec<_>, anyhow::Error>>()?;
+    let messages = sse_stream.try_collect::<Vec<_>>().await?;
     debug!("{messages:#?}");
 
     let expected_messages = vec![
@@ -1535,7 +1562,10 @@ async fn output_detectors_detections() -> Result<(), anyhow::Error> {
 async fn output_detector_client_error() -> Result<(), anyhow::Error> {
     let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE;
 
-    let orchestrator_error_500 = OrchestratorError::internal();
+    let orchestrator_error_500 = server::Error {
+        code: http::StatusCode::INTERNAL_SERVER_ERROR,
+        details: "unexpected error occurred while processing request".into(),
+    };
 
     // Add generation mock
     let model_id = "my-super-model-8B";
@@ -1751,12 +1781,17 @@ async fn output_detector_client_error() -> Result<(), anyhow::Error> {
         .await?;
     debug!("{response:#?}");
 
-    let sse_stream: SseStream<OrchestratorError> = SseStream::new(response.bytes_stream());
-    let messages = sse_stream.try_collect::<Vec<_>>().await?;
+    let sse_stream: SseStream<ClassifiedGeneratedTextStreamResult> =
+        SseStream::new(response.bytes_stream());
+    let messages = sse_stream.collect::<Vec<_>>().await;
     debug!("{messages:#?}");
 
     assert_eq!(messages.len(), 1);
-    assert_eq!(messages[0], orchestrator_error_500);
+    assert!(
+        messages[0]
+            .as_ref()
+            .is_err_and(|error| *error == orchestrator_error_500)
+    );
 
     // assert detector error
     let response = orchestrator_server
@@ -1775,40 +1810,23 @@ async fn output_detector_client_error() -> Result<(), anyhow::Error> {
         .send()
         .await?;
 
-    debug!("{response:#?}");
+    let sse_stream: SseStream<ClassifiedGeneratedTextStreamResult> =
+        SseStream::new(response.bytes_stream());
+    let messages = sse_stream.collect::<Vec<_>>().await;
+    debug!("{messages:#?}");
 
-    let mut events = Vec::new();
-    let mut event_stream = response.bytes_stream().eventsource();
-    while let Some(event) = event_stream.next().await {
-        match event {
-            Ok(event) => {
-                if event.data == "[DONE]" {
-                    break;
-                }
-                debug!("recv: {event:?}");
-                events.push(event.data);
-            }
-            Err(_) => {
-                panic!("received error from event stream");
-            }
-        }
-    }
-    debug!("{events:?}");
-
-    let first_response =
-        serde_json::from_str::<ClassifiedGeneratedTextStreamResult>(events[0].as_str())?;
-    let second_response = serde_json::from_str::<OrchestratorError>(events[1].as_str())?;
-
-    assert_eq!(events.len(), 2);
-    assert_eq!(first_response.generated_text, Some("I am great!".into()));
-    assert_eq!(
-        first_response.token_classification_results.output,
-        Some(vec![])
+    assert_eq!(messages.len(), 2);
+    assert!(messages[0].as_ref().is_ok_and(|msg| {
+        msg.generated_text == Some("I am great!".into())
+            && msg.token_classification_results.output == Some(vec![])
+            && msg.start_index == Some(0)
+            && msg.processed_index == Some(11)
+    }),);
+    assert!(
+        messages[1]
+            .as_ref()
+            .is_err_and(|error| *error == orchestrator_error_500)
     );
-    assert_eq!(first_response.start_index, Some(0));
-    assert_eq!(first_response.processed_index, Some(11));
-
-    assert_eq!(second_response, orchestrator_error_500);
 
     Ok(())
 }

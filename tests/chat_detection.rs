@@ -21,7 +21,7 @@ use common::{
         ANSWER_RELEVANCE_DETECTOR_SENTENCE, CHAT_DETECTOR_ENDPOINT, NON_EXISTING_DETECTOR,
         PII_DETECTOR,
     },
-    errors::{DetectorError, OrchestratorError},
+    errors::DetectorError,
     orchestrator::{
         ORCHESTRATOR_CHAT_DETECTION_ENDPOINT, ORCHESTRATOR_CONFIG_FILE_PATH, TestOrchestratorServer,
     },
@@ -34,6 +34,7 @@ use fms_guardrails_orchestr8::{
     models::{
         ChatDetectionHttpRequest, ChatDetectionResult, DetectionResult, DetectorParams, Metadata,
     },
+    server,
 };
 use hyper::StatusCode;
 use mocktail::prelude::*;
@@ -251,9 +252,15 @@ async fn client_errors() -> Result<(), anyhow::Error> {
 
     // assertions
     assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
-    let response = response.json::<OrchestratorError>().await?;
+    let response = response.json::<server::Error>().await?;
     debug!("{response:#?}");
-    assert_eq!(response, OrchestratorError::internal());
+    assert_eq!(
+        response,
+        server::Error {
+            code: http::StatusCode::INTERNAL_SERVER_ERROR,
+            details: "unexpected error occurred while processing request".into()
+        }
+    );
 
     Ok(())
 }
@@ -291,7 +298,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     debug!("{response:#?}");
 
     assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
-    let response = response.json::<OrchestratorError>().await?;
+    let response = response.json::<server::Error>().await?;
     debug!("{response:#?}");
     assert_eq!(response.code, 422);
     assert!(response.details.contains("unknown field `extra_args`"));
@@ -307,7 +314,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     debug!("{response:#?}");
 
     assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
-    let response = response.json::<OrchestratorError>().await?;
+    let response = response.json::<server::Error>().await?;
     debug!("{response:#?}");
     assert_eq!(response.code, 422);
     assert!(response.details.contains("missing field `messages`"));
@@ -332,7 +339,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     debug!("{response:#?}");
 
     assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
-    let response = response.json::<OrchestratorError>().await?;
+    let response = response.json::<server::Error>().await?;
     debug!("{response:#?}");
     assert_eq!(response.code, 422);
     assert!(response.details.contains("missing field `detectors`"));
@@ -358,7 +365,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     debug!("{response:#?}");
 
     assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
-    let response = response.json::<OrchestratorError>().await?;
+    let response = response.json::<server::Error>().await?;
     debug!("{response:#?}");
     assert_eq!(response.code, 422);
     assert!(response.details.contains("`detectors` is required"));
@@ -382,7 +389,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
         .await?;
 
     assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
-    let response = response.json::<OrchestratorError>().await?;
+    let response = response.json::<server::Error>().await?;
     debug!("{response:#?}");
     assert_eq!(response.code, 422);
     assert!(response.details.contains("Message content cannot be empty"));
@@ -415,11 +422,16 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
         .await?;
 
     assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
-    let response = response.json::<OrchestratorError>().await?;
+    let response = response.json::<server::Error>().await?;
     debug!("{response:#?}");
     assert_eq!(
         response,
-        OrchestratorError::detector_not_supported(ANSWER_RELEVANCE_DETECTOR_SENTENCE),
+        server::Error {
+            code: http::StatusCode::UNPROCESSABLE_ENTITY,
+            details: format!(
+                "detector `{ANSWER_RELEVANCE_DETECTOR_SENTENCE}` is not supported by this endpoint"
+            ),
+        },
         "failed on detector with invalid type scenario"
     );
 
@@ -435,11 +447,14 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
         .await?;
 
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
-    let response = response.json::<OrchestratorError>().await?;
+    let response = response.json::<server::Error>().await?;
     debug!("{response:#?}");
     assert_eq!(
         response,
-        OrchestratorError::detector_not_found(NON_EXISTING_DETECTOR),
+        server::Error {
+            code: http::StatusCode::NOT_FOUND,
+            details: format!("detector `{NON_EXISTING_DETECTOR}` not found"),
+        },
         "failed on non-existing detector scenario"
     );
 
