@@ -27,7 +27,7 @@ use serde::{Deserialize, Serialize};
 use crate::{models::ValidationError, orchestrator};
 
 /// High-level errors to return to clients.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Error {
     #[serde(with = "http_serde::status_code")]
     pub code: StatusCode,
