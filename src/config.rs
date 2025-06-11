@@ -195,6 +195,7 @@ pub struct OrchestratorConfig {
     /// Generation service and associated configuration, can be omitted if configuring for generation is not wanted
     pub generation: Option<GenerationConfig>,
     /// Chat generation service and associated configuration, can be omitted if configuring for chat generation is not wanted
+    #[serde(alias = "chat_completions")]
     pub chat_generation: Option<ChatGenerationConfig>,
     /// Chunker services and associated configurations, if omitted the default value "whole_doc_chunker" is used
     pub chunkers: Option<HashMap<String, ChunkerConfig>>,
@@ -224,6 +225,11 @@ impl OrchestratorConfig {
                 error,
             }
         })?;
+        if config_yaml.contains("chat_generation") {
+            warn!(
+                "`chat_generation` is deprecated and will be removed in 1.0. Rename it to `chat_completions`."
+            )
+        }
         let mut config: OrchestratorConfig =
             serde_yml::from_str(&config_yaml).map_err(Error::InvalidConfigFile)?;
         debug!(?config, "loaded orchestrator config");
