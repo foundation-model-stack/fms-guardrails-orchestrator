@@ -86,10 +86,10 @@ pub fn configure_mock_servers(
         config.generation = Some(generation_config);
     }
     if let Some(server) = chat_generation_server {
-        let mut chat_generation_config = crate::config::ChatGenerationConfig::default();
+        let mut chat_generation_config = crate::config::OpenAiConfig::default();
         chat_generation_config.service.hostname = "localhost".into();
         chat_generation_config.service.port = Some(server.addr().unwrap().port());
-        config.chat_generation = Some(chat_generation_config);
+        config.chat_completions = Some(chat_generation_config);
     };
     if let Some(servers) = detector_servers {
         for server in servers {

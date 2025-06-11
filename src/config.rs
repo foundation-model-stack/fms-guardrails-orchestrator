@@ -135,9 +135,9 @@ pub struct GenerationConfig {
     pub service: ServiceConfig,
 }
 
-/// Chat generation service configuration
+/// OpenAI service configuration
 #[derive(Default, Clone, Debug, Deserialize)]
-pub struct ChatGenerationConfig {
+pub struct OpenAiConfig {
     /// Generation service connection information
     pub service: ServiceConfig,
     /// Generation health service connection information
@@ -195,8 +195,8 @@ pub struct OrchestratorConfig {
     /// Generation service and associated configuration, can be omitted if configuring for generation is not wanted
     pub generation: Option<GenerationConfig>,
     /// Chat generation service and associated configuration, can be omitted if configuring for chat generation is not wanted
-    #[serde(alias = "chat_completions")]
-    pub chat_generation: Option<ChatGenerationConfig>,
+    #[serde(alias = "chat_generation")]
+    pub chat_completions: Option<OpenAiConfig>,
     /// Chunker services and associated configurations, if omitted the default value "whole_doc_chunker" is used
     pub chunkers: Option<HashMap<String, ChunkerConfig>>,
     /// Detector services and associated configurations
@@ -276,7 +276,7 @@ impl OrchestratorConfig {
                 apply_named_tls_config(&mut generation.service, tls_configs)?;
             }
             // Chat generation
-            if let Some(chat_generation) = &mut self.chat_generation {
+            if let Some(chat_generation) = &mut self.chat_completions {
                 apply_named_tls_config(&mut chat_generation.service, tls_configs)?;
             }
             // Chunkers
@@ -323,7 +323,7 @@ impl OrchestratorConfig {
 
     /// Validates chat generation config.
     fn validate_chat_generation_config(&self) -> Result<(), Error> {
-        if let Some(chat_generation) = &self.chat_generation {
+        if let Some(chat_generation) = &self.chat_completions {
             // Hostname is valid
             if !is_valid_hostname(&chat_generation.service.hostname) {
                 return Err(Error::InvalidHostname(
@@ -400,7 +400,7 @@ impl Default for OrchestratorConfig {
     fn default() -> Self {
         Self {
             generation: None,
-            chat_generation: None,
+            chat_completions: None,
             chunkers: None,
             detectors: HashMap::default(),
             tls: None,

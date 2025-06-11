@@ -220,7 +220,7 @@ async fn initialize_chat_generation_server(
 ) -> Result<(), anyhow::Error> {
     if let Some(chat_generation_server) = chat_generation_server {
         chat_generation_server.start().await?;
-        config.chat_generation.as_mut().unwrap().service.port =
+        config.chat_completions.as_mut().unwrap().service.port =
             Some(chat_generation_server.addr().unwrap().port());
     };
     Ok(())
