@@ -20,11 +20,11 @@ use axum::{Router, extract::Request};
 use hyper::body::Incoming;
 use hyper_util::rt::{TokioExecutor, TokioIo};
 use rustls::{RootCertStore, ServerConfig, server::WebPkiClientVerifier};
+use rustls_pki_types::{CertificateDer, PrivateKeyDer};
 use tokio::net::TcpListener;
 use tokio_rustls::TlsAcceptor;
 use tower::Service;
 use tracing::{debug, error, info, warn};
-use webpki::types::{CertificateDer, PrivateKeyDer};
 
 /// Loads certificates and configures TLS.
 pub fn configure_tls(

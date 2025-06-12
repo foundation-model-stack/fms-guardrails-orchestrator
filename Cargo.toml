@@ -57,7 +57,8 @@ rustls = { version = "0.23.27", default-features = false, features = [
     "std",
 ] }
 rustls-pemfile = "2.2.0"
-rustls-webpki = "0.102.8"
+rustls-pki-types = "1.12.0"
+rustls-webpki = "0.103.3"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = { version = "1.0.140", features = ["preserve_order"] }
 serde_yml = "0.0.12"
