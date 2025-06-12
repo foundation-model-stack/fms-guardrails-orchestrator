@@ -89,7 +89,7 @@ pub fn guardrails_router(state: Arc<ServerState>) -> Router {
             post(detect_context_documents),
         )
         .route("/api/v2/text/detection/generated", post(detect_generated));
-    if state.orchestrator.config().chat_generation.is_some() {
+    if state.orchestrator.config().chat_completions.is_some() {
         info!("Enabling chat completions detection endpoint");
         router = router.route(
             "/api/v2/chat/completions-detection",

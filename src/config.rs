@@ -135,9 +135,9 @@ pub struct GenerationConfig {
     pub service: ServiceConfig,
 }
 
-/// Chat generation service configuration
+/// OpenAI service configuration
 #[derive(Default, Clone, Debug, Deserialize)]
-pub struct ChatGenerationConfig {
+pub struct OpenAiConfig {
     /// Generation service connection information
     pub service: ServiceConfig,
     /// Generation health service connection information
@@ -194,8 +194,11 @@ pub enum DetectorType {
 pub struct OrchestratorConfig {
     /// Generation service and associated configuration, can be omitted if configuring for generation is not wanted
     pub generation: Option<GenerationConfig>,
-    /// Chat generation service and associated configuration, can be omitted if configuring for chat generation is not wanted
-    pub chat_generation: Option<ChatGenerationConfig>,
+    /// Chat Completions service and associated configuration, can be omitted if configuring for chat generation is not wanted
+    #[serde(alias = "chat_generation")]
+    pub chat_completions: Option<OpenAiConfig>,
+    /// Completions service and associated configuration, can be omitted if configuring for chat generation is not wanted
+    pub completions: Option<OpenAiConfig>,
     /// Chunker services and associated configurations, if omitted the default value "whole_doc_chunker" is used
     pub chunkers: Option<HashMap<String, ChunkerConfig>>,
     /// Detector services and associated configurations
@@ -224,6 +227,11 @@ impl OrchestratorConfig {
                 error,
             }
         })?;
+        if config_yaml.contains("chat_generation") {
+            warn!(
+                "`chat_generation` is deprecated and will be removed in 1.0. Rename it to `chat_completions`."
+            )
+        }
         let mut config: OrchestratorConfig =
             serde_yml::from_str(&config_yaml).map_err(Error::InvalidConfigFile)?;
         debug!(?config, "loaded orchestrator config");
@@ -269,9 +277,13 @@ impl OrchestratorConfig {
             if let Some(generation) = &mut self.generation {
                 apply_named_tls_config(&mut generation.service, tls_configs)?;
             }
-            // Chat generation
-            if let Some(chat_generation) = &mut self.chat_generation {
-                apply_named_tls_config(&mut chat_generation.service, tls_configs)?;
+            // Chat completions
+            if let Some(chat_completions) = &mut self.chat_completions {
+                apply_named_tls_config(&mut chat_completions.service, tls_configs)?;
+            }
+            // Completions
+            if let Some(completions) = &mut self.completions {
+                apply_named_tls_config(&mut completions.service, tls_configs)?;
             }
             // Chunkers
             if let Some(chunkers) = &mut self.chunkers {
@@ -295,7 +307,7 @@ impl OrchestratorConfig {
 
         // Apply validation rules
         self.validate_generation_config()?;
-        self.validate_chat_generation_config()?;
+        self.validate_openai_configs()?;
         self.validate_detector_configs()?;
         self.validate_chunker_configs()?;
 
@@ -316,12 +328,21 @@ impl OrchestratorConfig {
     }
 
     /// Validates chat generation config.
-    fn validate_chat_generation_config(&self) -> Result<(), Error> {
-        if let Some(chat_generation) = &self.chat_generation {
+    fn validate_openai_configs(&self) -> Result<(), Error> {
+        if let Some(chat_completions) = &self.chat_completions {
             // Hostname is valid
-            if !is_valid_hostname(&chat_generation.service.hostname) {
+            if !is_valid_hostname(&chat_completions.service.hostname) {
                 return Err(Error::InvalidHostname(
-                    "`chat_generation` has an invalid hostname".into(),
+                    "`chat_completions` has an invalid hostname".into(),
+                ));
+            }
+        }
+
+        if let Some(completions) = &self.completions {
+            // Hostname is valid
+            if !is_valid_hostname(&completions.service.hostname) {
+                return Err(Error::InvalidHostname(
+                    "`completions` has an invalid hostname".into(),
                 ));
             }
         }
@@ -394,7 +415,8 @@ impl Default for OrchestratorConfig {
     fn default() -> Self {
         Self {
             generation: None,
-            chat_generation: None,
+            chat_completions: None,
+            completions: None,
             chunkers: None,
             detectors: HashMap::default(),
             tls: None,

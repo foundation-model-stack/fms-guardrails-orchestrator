@@ -16,7 +16,7 @@
 */
 
 use common::{
-    chat_generation::CHAT_COMPLETIONS_ENDPOINT,
+    chat_completions::CHAT_COMPLETIONS_ENDPOINT,
     chunker::CHUNKER_UNARY_ENDPOINT,
     detectors::{
         ANSWER_RELEVANCE_DETECTOR, DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE,
@@ -129,7 +129,7 @@ async fn no_detectors() -> Result<(), anyhow::Error> {
 
     let orchestrator_server = TestOrchestratorServer::builder()
         .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
-        .chat_generation_server(&mock_chat_completions_server)
+        .chat_completions_server(&mock_chat_completions_server)
         .build()
         .await?;
 
@@ -349,7 +349,7 @@ async fn no_detections() -> Result<(), anyhow::Error> {
     let orchestrator_server = TestOrchestratorServer::builder()
         .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
         .detector_servers([&mock_detector_server])
-        .chat_generation_server(&mock_chat_completions_server)
+        .chat_completions_server(&mock_chat_completions_server)
         .build()
         .await?;
 
@@ -558,7 +558,7 @@ async fn input_detections() -> Result<(), anyhow::Error> {
         .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
         .detector_servers([&mock_detector_server])
         .chunker_servers([&mock_chunker_server])
-        .chat_generation_server(&mock_chat_completions_server)
+        .chat_completions_server(&mock_chat_completions_server)
         .build()
         .await?;
 
@@ -717,7 +717,7 @@ async fn input_client_error() -> Result<(), anyhow::Error> {
         .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
         .detector_servers([&mock_detector_server])
         .chunker_servers([&mock_chunker_server])
-        .chat_generation_server(&mock_chat_completions_server)
+        .chat_completions_server(&mock_chat_completions_server)
         .build()
         .await?;
 
@@ -944,7 +944,7 @@ async fn output_detections() -> Result<(), anyhow::Error> {
         .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
         .detector_servers([&mock_detector_server])
         .chunker_servers([&mock_chunker_server])
-        .chat_generation_server(&mock_chat_completions_server)
+        .chat_completions_server(&mock_chat_completions_server)
         .build()
         .await?;
 
@@ -1122,7 +1122,7 @@ async fn output_client_error() -> Result<(), anyhow::Error> {
         .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
         .detector_servers([&mock_detector_server])
         .chunker_servers([&mock_chunker_server])
-        .chat_generation_server(&mock_chat_completions_server)
+        .chat_completions_server(&mock_chat_completions_server)
         .build()
         .await?;
 

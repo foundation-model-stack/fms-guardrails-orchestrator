@@ -140,14 +140,14 @@ async fn create_clients(config: &OrchestratorConfig) -> Result<ClientMap, Error>
         }
     }
 
-    // Create chat generation client
-    if let Some(chat_generation) = &config.chat_generation {
+    // Create chat completions client
+    if let Some(chat_completions) = &config.chat_completions {
         let openai_client = OpenAiClient::new(
-            &chat_generation.service,
-            chat_generation.health_service.as_ref(),
+            &chat_completions.service,
+            chat_completions.health_service.as_ref(),
         )
         .await?;
-        clients.insert("chat_generation".to_string(), openai_client);
+        clients.insert("chat_completions".to_string(), openai_client);
     }
 
     // Create chunker clients

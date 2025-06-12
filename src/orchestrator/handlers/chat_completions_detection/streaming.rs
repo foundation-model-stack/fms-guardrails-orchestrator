@@ -105,7 +105,7 @@ pub async fn handle_streaming(
             // Create chat completions stream
             let client = ctx
                 .clients
-                .get_as::<OpenAiClient>("chat_generation")
+                .get_as::<OpenAiClient>("chat_completions")
                 .unwrap();
             let chat_completion_stream = match common::chat_completion_stream(client, task.headers.clone(), task.request.clone()).await {
                 Ok(stream) => stream,
