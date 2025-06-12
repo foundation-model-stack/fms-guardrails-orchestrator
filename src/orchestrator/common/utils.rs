@@ -75,7 +75,7 @@ pub fn current_timestamp() -> std::time::Duration {
 pub fn configure_mock_servers(
     config: &mut crate::config::OrchestratorConfig,
     generation_server: Option<&mocktail::server::MockServer>,
-    chat_generation_server: Option<&mocktail::server::MockServer>,
+    chat_completions_server: Option<&mocktail::server::MockServer>,
     detector_servers: Option<Vec<&mocktail::server::MockServer>>,
     chunker_servers: Option<Vec<&mocktail::server::MockServer>>,
 ) {
@@ -85,11 +85,11 @@ pub fn configure_mock_servers(
         generation_config.service.port = Some(server.addr().unwrap().port());
         config.generation = Some(generation_config);
     }
-    if let Some(server) = chat_generation_server {
-        let mut chat_generation_config = crate::config::OpenAiConfig::default();
-        chat_generation_config.service.hostname = "localhost".into();
-        chat_generation_config.service.port = Some(server.addr().unwrap().port());
-        config.chat_completions = Some(chat_generation_config);
+    if let Some(server) = chat_completions_server {
+        let mut chat_completions_config = crate::config::OpenAiConfig::default();
+        chat_completions_config.service.hostname = "localhost".into();
+        chat_completions_config.service.port = Some(server.addr().unwrap().port());
+        config.chat_completions = Some(chat_completions_config);
     };
     if let Some(servers) = detector_servers {
         for server in servers {

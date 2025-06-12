@@ -72,7 +72,7 @@ pub struct TestOrchestratorServerBuilder<'a> {
     port: Option<u16>,
     health_port: Option<u16>,
     generation_server: Option<&'a MockServer>,
-    chat_generation_server: Option<&'a MockServer>,
+    chat_completions_server: Option<&'a MockServer>,
     detector_servers: Option<Vec<&'a MockServer>>,
     chunker_servers: Option<Vec<&'a MockServer>>,
 }
@@ -102,8 +102,8 @@ impl<'a> TestOrchestratorServerBuilder<'a> {
         self
     }
 
-    pub fn chat_generation_server(mut self, server: &'a MockServer) -> Self {
-        self.chat_generation_server = Some(server);
+    pub fn chat_completions_server(mut self, server: &'a MockServer) -> Self {
+        self.chat_completions_server = Some(server);
         self
     }
 
@@ -126,7 +126,7 @@ impl<'a> TestOrchestratorServerBuilder<'a> {
 
         // Start & configure mock servers
         initialize_generation_server(self.generation_server, &mut config).await?;
-        initialize_chat_generation_server(self.chat_generation_server, &mut config).await?;
+        initialize_chat_completions_server(self.chat_completions_server, &mut config).await?;
         initialize_detectors(self.detector_servers.as_deref(), &mut config).await?;
         initialize_chunkers(self.chunker_servers.as_deref(), &mut config).await?;
 
@@ -214,14 +214,14 @@ async fn initialize_generation_server(
 }
 
 /// Starts and configures chat generation server.
-async fn initialize_chat_generation_server(
-    chat_generation_server: Option<&MockServer>,
+async fn initialize_chat_completions_server(
+    chat_completions_server: Option<&MockServer>,
     config: &mut OrchestratorConfig,
 ) -> Result<(), anyhow::Error> {
-    if let Some(chat_generation_server) = chat_generation_server {
-        chat_generation_server.start().await?;
+    if let Some(chat_completions_server) = chat_completions_server {
+        chat_completions_server.start().await?;
         config.chat_completions.as_mut().unwrap().service.port =
-            Some(chat_generation_server.addr().unwrap().port());
+            Some(chat_completions_server.addr().unwrap().port());
     };
     Ok(())
 }

@@ -78,7 +78,7 @@ pub async fn handle_unary(
     // Handle chat completion
     let client = ctx
         .clients
-        .get_as::<OpenAiClient>("chat_generation")
+        .get_as::<OpenAiClient>("chat_completions")
         .unwrap();
     let chat_completion =
         match common::chat_completion(client, task.headers.clone(), task.request.clone()).await {
