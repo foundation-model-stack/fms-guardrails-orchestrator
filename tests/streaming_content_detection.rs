@@ -23,7 +23,7 @@ use common::{
         DETECTOR_NAME_PARENTHESIS_SENTENCE, FACT_CHECKING_DETECTOR_SENTENCE, NON_EXISTING_DETECTOR,
         TEXT_CONTENTS_DETECTOR_ENDPOINT,
     },
-    errors::{DetectorError, OrchestratorError},
+    errors::DetectorError,
     orchestrator::{
         ORCHESTRATOR_CONFIG_FILE_PATH, ORCHESTRATOR_STREAM_CONTENT_DETECTION_ENDPOINT,
         TestOrchestratorServer, json_lines_stream,
@@ -39,6 +39,7 @@ use fms_guardrails_orchestr8::{
         caikit::runtime::chunkers::BidiStreamingChunkerTokenizationTaskRequest,
         caikit_data_model::nlp::{ChunkerTokenizationStreamResult, Token},
     },
+    server,
 };
 use futures::StreamExt;
 use mocktail::{MockSet, server::MockServer};
@@ -505,7 +506,10 @@ async fn client_error() -> Result<(), anyhow::Error> {
     let chunker_error_payload = "Chunker should return an error.";
     let detector_error_payload = "Detector should return an error.";
 
-    let orchestrator_error_500 = OrchestratorError::internal();
+    let orchestrator_error_500 = server::Error {
+        code: http::StatusCode::INTERNAL_SERVER_ERROR,
+        details: "unexpected error occurred while processing request".into(),
+    };
 
     let mut chunker_mocks = MockSet::new();
     chunker_mocks.mock(|when, then| {
@@ -578,7 +582,7 @@ async fn client_error() -> Result<(), anyhow::Error> {
         ])))
         .send()
         .await?;
-    let mut messages = Vec::<OrchestratorError>::with_capacity(1);
+    let mut messages = Vec::<server::Error>::with_capacity(1);
     let mut stream = response.bytes_stream();
     while let Some(Ok(msg)) = stream.next().await {
         debug!("recv: {msg:?}");
@@ -602,7 +606,7 @@ async fn client_error() -> Result<(), anyhow::Error> {
         ])))
         .send()
         .await?;
-    let mut messages = Vec::<OrchestratorError>::with_capacity(1);
+    let mut messages = Vec::<server::Error>::with_capacity(1);
     let mut stream = response.bytes_stream();
     while let Some(Ok(msg)) = stream.next().await {
         debug!("recv: {msg:?}");
@@ -635,7 +639,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
         })])))
         .send()
         .await?;
-    let mut messages = Vec::<OrchestratorError>::with_capacity(1);
+    let mut messages = Vec::<server::Error>::with_capacity(1);
     let mut stream = response.bytes_stream();
     while let Some(Ok(msg)) = stream.next().await {
         debug!("recv: {msg:?}");
@@ -654,7 +658,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
         })])))
         .send()
         .await?;
-    let mut messages = Vec::<OrchestratorError>::with_capacity(1);
+    let mut messages = Vec::<server::Error>::with_capacity(1);
     let mut stream = response.bytes_stream();
     while let Some(Ok(msg)) = stream.next().await {
         debug!("recv: {msg:?}");
@@ -676,14 +680,14 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
         ])))
         .send()
         .await?;
-    let mut messages = Vec::<OrchestratorError>::with_capacity(1);
+    let mut messages = Vec::<server::Error>::with_capacity(1);
     let mut stream = response.bytes_stream();
     while let Some(Ok(msg)) = stream.next().await {
         debug!("recv: {msg:?}");
         messages.push(serde_json::from_slice(&msg[..]).unwrap());
     }
-    let expected_messages = [OrchestratorError {
-        code: 422,
+    let expected_messages = [server::Error {
+        code: http::StatusCode::UNPROCESSABLE_ENTITY,
         details: "`detectors` is required for the first message".into(),
     }];
     assert_eq!(
@@ -703,14 +707,14 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
         ])))
         .send()
         .await?;
-    let mut messages = Vec::<OrchestratorError>::with_capacity(1);
+    let mut messages = Vec::<server::Error>::with_capacity(1);
     let mut stream = response.bytes_stream();
     while let Some(Ok(msg)) = stream.next().await {
         debug!("recv: {msg:?}");
         messages.push(serde_json::from_slice(&msg[..]).unwrap());
     }
-    let expected_messages = [OrchestratorError {
-        code: 422,
+    let expected_messages = [server::Error {
+        code: http::StatusCode::UNPROCESSABLE_ENTITY,
         details: "`detectors` must not be empty".into(),
     }];
     assert_eq!(
@@ -735,7 +739,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
         .await?;
 
     assert_eq!(response.status(), 200);
-    let mut messages = Vec::<OrchestratorError>::with_capacity(1);
+    let mut messages = Vec::<server::Error>::with_capacity(1);
     let mut stream = response.bytes_stream();
     while let Some(Ok(msg)) = stream.next().await {
         debug!("recv: {msg:?}");
@@ -745,8 +749,8 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     assert_eq!(messages.len(), 1);
     assert_eq!(
         messages[0],
-        OrchestratorError {
-            code: 422,
+        server::Error {
+            code: http::StatusCode::UNPROCESSABLE_ENTITY,
             details: format!(
                 "detector `{}` is not supported by this endpoint",
                 FACT_CHECKING_DETECTOR_SENTENCE
@@ -772,7 +776,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
         .await?;
 
     assert_eq!(response.status(), 200);
-    let mut messages = Vec::<OrchestratorError>::with_capacity(1);
+    let mut messages = Vec::<server::Error>::with_capacity(1);
     let mut stream = response.bytes_stream();
     while let Some(Ok(msg)) = stream.next().await {
         debug!("recv: {msg:?}");
@@ -782,8 +786,8 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     assert_eq!(messages.len(), 1);
     assert_eq!(
         messages[0],
-        OrchestratorError {
-            code: 422,
+        server::Error {
+            code: http::StatusCode::UNPROCESSABLE_ENTITY,
             details: format!(
                 "detector `{}` uses chunker `whole_doc_chunker`, which is not supported by this endpoint",
                 DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC
@@ -809,7 +813,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
         .await?;
 
     assert_eq!(response.status(), 200);
-    let mut messages = Vec::<OrchestratorError>::with_capacity(1);
+    let mut messages = Vec::<server::Error>::with_capacity(1);
     let mut stream = response.bytes_stream();
     while let Some(Ok(msg)) = stream.next().await {
         debug!("recv: {msg:?}");
@@ -819,8 +823,8 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     assert_eq!(messages.len(), 1);
     assert_eq!(
         messages[0],
-        OrchestratorError {
-            code: 404,
+        server::Error {
+            code: http::StatusCode::NOT_FOUND,
             details: format!("detector `{}` not found", NON_EXISTING_DETECTOR)
         },
         "failed at non-existing input detector scenario"
