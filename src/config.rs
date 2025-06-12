@@ -281,6 +281,10 @@ impl OrchestratorConfig {
             if let Some(chat_completions) = &mut self.chat_completions {
                 apply_named_tls_config(&mut chat_completions.service, tls_configs)?;
             }
+            // Completions
+            if let Some(completions) = &mut self.completions {
+                apply_named_tls_config(&mut completions.service, tls_configs)?;
+            }
             // Chunkers
             if let Some(chunkers) = &mut self.chunkers {
                 for chunker in chunkers.values_mut() {
