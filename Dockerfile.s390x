@@ -31,15 +31,16 @@ COPY build.rs *.toml LICENSE /app/
 COPY ${CONFIG_FILE} /app/config/config.yaml
 COPY protos/ /app/protos/
 COPY src/ /app/src/
+COPY tests/ /app/tests/
 
 WORKDIR /app
 
 # TODO: Make releases via cargo-release
 RUN cargo install --root /app/ --path .
+RUN cargo test
 
 ## Tests stage ##################################################################
 FROM fms-guardrails-orchestr8-builder AS tests
-RUN cargo test
 
 ## Lint stage ###################################################################
 FROM fms-guardrails-orchestr8-builder AS lint
