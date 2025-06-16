@@ -12,7 +12,7 @@ generation:
         hostname: localhost
         port: 8033
 # Generation server used for chat endpoints
-# chat_generation:
+# chat_completions:
 #   service:
 #     hostname: localhost
 #     port: 8080
@@ -33,6 +33,8 @@ detectors:
     # Detector ID/name to be used in user requests
     hap-en:
         # Detector type (text_contents, text_generation, text_chat, text_context_doc)
+        # NOTE: The same detector ID/name cannot be used for multiple detector types
+        # at the same time. The detector IDs/names will have to be unique.
         type: text_contents
         service:
             hostname: localhost
