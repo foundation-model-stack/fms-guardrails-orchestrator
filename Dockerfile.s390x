@@ -39,17 +39,6 @@ WORKDIR /app
 RUN cargo install --root /app/ --path .
 RUN cargo test
 
-## Tests stage ##################################################################
-FROM fms-guardrails-orchestr8-builder AS tests
-
-## Lint stage ###################################################################
-FROM fms-guardrails-orchestr8-builder AS lint
-RUN cargo clippy --all-targets --all-features -- -D warnings
-
-## Formatting check stage #######################################################
-FROM fms-guardrails-orchestr8-builder AS format
-RUN cargo +nightly fmt --check
-
 ## Release Image ################################################################
 
 FROM ${UBI_MINIMAL_BASE_IMAGE}:${UBI_BASE_IMAGE_TAG} AS fms-guardrails-orchestr8-release
