@@ -41,7 +41,7 @@ WORKDIR /app
 # TODO: Make releases via cargo-release
 RUN cargo build --release
 
-#Copy test resources required for executing unit tests
+# Copy test resources required for executing unit tests
 COPY tests/resources /app/tests/resources
 RUN cargo test
 
