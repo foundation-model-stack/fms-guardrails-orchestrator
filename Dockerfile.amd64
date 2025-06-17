@@ -31,13 +31,13 @@ COPY ${CONFIG_FILE} /app/config/config.yaml
 COPY protos/ /app/protos/
 COPY src/ /app/src/
 COPY tests/ /app/tests/
-#Copy test resources required for executing unit tests
-COPY tests/resources /app/tests/resources
 
 WORKDIR /app
 
 # TODO: Make releases via cargo-release
 RUN cargo build --release
+#Copy test resources required for executing unit tests
+COPY tests/resources /app/tests/resources
 RUN cargo test
 
 ## Release Image ################################################################
