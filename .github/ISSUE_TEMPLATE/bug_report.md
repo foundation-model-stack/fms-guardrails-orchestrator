@@ -12,10 +12,17 @@ A clear and concise description of what the bug is.
 
 ## Platform
 
-Please provide details about the environment you are using, including the following:
+Please provide details about the environment you are using (run `scripts/collect_env.sh`).
 
-- Interpreter version:
-- Library version:
+Hint: In case you cannot run script due to permissions, try `chmod u+x scripts/collect_env.sh`, then run again.
+
+<!--
+Example output:
+
+rustc 1.81.0 (eeb90cda1 2024-09-04)
+Orchestrator version: 1.0.0 (279934c)
+-->
+
 
 ## Sample Code
 
