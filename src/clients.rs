@@ -218,10 +218,10 @@ pub async fn create_http_client(
         None => "http",
     };
     let mut base_url = Url::parse(&format!("{}://{}", protocol, &service_config.hostname))
-        .unwrap_or_else(|e| panic!("error parsing base url: {}", e));
+        .unwrap_or_else(|e| panic!("error parsing base url: {e}"));
     base_url
         .set_port(Some(port))
-        .unwrap_or_else(|_| panic!("error setting port: {}", port));
+        .unwrap_or_else(|_| panic!("error setting port: {port}"));
 
     let connect_timeout = Duration::from_secs(DEFAULT_CONNECT_TIMEOUT_SEC);
     let request_timeout = Duration::from_secs(

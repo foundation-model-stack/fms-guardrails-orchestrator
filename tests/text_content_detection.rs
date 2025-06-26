@@ -502,8 +502,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
         server::Error {
             code: http::StatusCode::UNPROCESSABLE_ENTITY,
             details: format!(
-                "detector `{}` is not supported by this endpoint",
-                FACT_CHECKING_DETECTOR_SENTENCE
+                "detector `{FACT_CHECKING_DETECTOR_SENTENCE}` is not supported by this endpoint"
             )
         },
         "failed on invalid detector type scenario"
@@ -527,7 +526,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
         response,
         server::Error {
             code: http::StatusCode::NOT_FOUND,
-            details: format!("detector `{}` not found", NON_EXISTING_DETECTOR)
+            details: format!("detector `{NON_EXISTING_DETECTOR}` not found")
         },
         "failed on non-existing detector scenario"
     );

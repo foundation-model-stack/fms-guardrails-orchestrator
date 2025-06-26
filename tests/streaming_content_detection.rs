@@ -752,8 +752,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
         server::Error {
             code: http::StatusCode::UNPROCESSABLE_ENTITY,
             details: format!(
-                "detector `{}` is not supported by this endpoint",
-                FACT_CHECKING_DETECTOR_SENTENCE
+                "detector `{FACT_CHECKING_DETECTOR_SENTENCE}` is not supported by this endpoint"
             )
         },
         "failed at invalid input detector scenario"
@@ -789,8 +788,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
         server::Error {
             code: http::StatusCode::UNPROCESSABLE_ENTITY,
             details: format!(
-                "detector `{}` uses chunker `whole_doc_chunker`, which is not supported by this endpoint",
-                DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC
+                "detector `{DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC}` uses chunker `whole_doc_chunker`, which is not supported by this endpoint"
             )
         },
         "failed at detector with invalid chunker scenario"
@@ -825,7 +823,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
         messages[0],
         server::Error {
             code: http::StatusCode::NOT_FOUND,
-            details: format!("detector `{}` not found", NON_EXISTING_DETECTOR)
+            details: format!("detector `{NON_EXISTING_DETECTOR}` not found")
         },
         "failed at non-existing input detector scenario"
     );
