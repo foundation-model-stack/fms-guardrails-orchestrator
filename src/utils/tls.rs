@@ -31,7 +31,7 @@ impl Error {
     pub fn into_client_error(self) -> clients::Error {
         clients::Error::Http {
             code: StatusCode::INTERNAL_SERVER_ERROR,
-            message: format!("client TLS configuration failed: {}", self),
+            message: format!("client TLS configuration failed: {self}"),
         }
     }
 }

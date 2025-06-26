@@ -89,8 +89,7 @@ impl From<String> for OtlpExport {
             "traces" => OtlpExport::Traces,
             "metrics" => OtlpExport::Metrics,
             _ => panic!(
-                "Invalid OTLP export type {}, orchestrator only supports exporting traces and metrics via OTLP",
-                s
+                "Invalid OTLP export type {s}, orchestrator only supports exporting traces and metrics via OTLP"
             ),
         }
     }

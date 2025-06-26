@@ -74,7 +74,7 @@ impl Response {
             .to_bytes();
         serde_json::from_slice::<T>(&data).map_err(|e| Error::Http {
             code: StatusCode::INTERNAL_SERVER_ERROR,
-            message: format!("client response deserialization failed: {}", e),
+            message: format!("client response deserialization failed: {e}"),
         })
     }
 }
@@ -177,7 +177,7 @@ impl HttpClient {
                     Full::new(Bytes::from(serde_json::to_vec(&body).map_err(|e| {
                         Error::Http {
                             code: StatusCode::INTERNAL_SERVER_ERROR,
-                            message: format!("client request serialization failed: {}", e)
+                            message: format!("client request serialization failed: {e}")
                         }
                     })?))
                         .map_err(|err| match err {});
@@ -186,7 +186,7 @@ impl HttpClient {
                     .map_err(|e| {
                         Error::Http {
                             code: StatusCode::INTERNAL_SERVER_ERROR,
-                            message: format!("client request serialization failed: {}", e)
+                            message: format!("client request serialization failed: {e}")
                         }
                     })?;
                 let response = match self
@@ -197,12 +197,12 @@ impl HttpClient {
                         Ok(response) => Ok(response.map_err(|e| {
                             Error::Http {
                                 code: StatusCode::INTERNAL_SERVER_ERROR,
-                                message: format!("sending client request failed: {}", e)
+                                message: format!("sending client request failed: {e}")
                             }
                         }).into_inner()),
                         Err(e) => Err(Error::Http {
                             code: StatusCode::REQUEST_TIMEOUT,
-                            message: format!("client request timeout: {}", e),
+                            message: format!("client request timeout: {e}"),
                         }),
                 }?;
                 let span = Span::current();
@@ -213,7 +213,7 @@ impl HttpClient {
                 || panic!("unexpected request builder error - headers missing in builder but no errors found"),
                 |e| Error::Http {
                     code: StatusCode::INTERNAL_SERVER_ERROR,
-                    message: format!("client request creation failed: {}", e),
+                    message: format!("client request creation failed: {e}"),
                 }
             )),
         }
