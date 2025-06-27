@@ -1447,10 +1447,93 @@ async fn output_detectors_n2() -> Result<(), anyhow::Error> {
 
     let sse_stream: SseStream<ChatCompletionChunk> = SseStream::new(response.bytes_stream());
     let messages = sse_stream.try_collect::<Vec<_>>().await?;
-    debug!("{messages:#?}");
-    for msg in messages {
-        dbg!(&msg);
-    }
+    let (choice0_messages, choice1_messages): (Vec<_>, Vec<_>) = messages
+        .into_iter()
+        .partition(|chunk| chunk.choices[0].index == 0);
+
+    // Validate choice0 messages:
+    // Validate length
+    assert_eq!(
+        choice0_messages.len(),
+        4,
+        "choice0: unexpected number of messages"
+    );
+    // Validate msg-0 choice
+    assert_eq!(
+        choice0_messages[0].choices,
+        vec![ChatCompletionChunkChoice {
+            index: 0,
+            delta: ChatCompletionDelta {
+                role: Some(Role::Assistant,),
+                content: Some("Here are two random phone numbers:".into()),
+                refusal: None,
+                tool_calls: vec![],
+            },
+            ..Default::default()
+        }],
+        "choice0: unexpected msg-0 choice"
+    );
+    // Validate msg-0 detections
+    assert_eq!(
+        choice0_messages[0].detections,
+        Some(ChatDetections {
+            input: vec![],
+            output: vec![OutputDetectionResult {
+                choice_index: 0,
+                results: vec![],
+            }],
+        }),
+        "choice0: unexpected msg-0 detections"
+    );
+    // Validate stop message
+    assert!(
+        choice0_messages
+            .last()
+            .is_some_and(|msg| msg.choices[0].finish_reason.is_some()),
+        "choice0: missing stop message"
+    );
+
+    // Validate choice1 messages:
+    // Validate length
+    assert_eq!(
+        choice1_messages.len(),
+        4,
+        "choice1: unexpected number of messages"
+    );
+    // Validate msg-0 choice
+    assert_eq!(
+        choice1_messages[0].choices,
+        vec![ChatCompletionChunkChoice {
+            index: 1,
+            delta: ChatCompletionDelta {
+                role: Some(Role::Assistant,),
+                content: Some("Here are 2 random phone numbers:".into()),
+                refusal: None,
+                tool_calls: vec![],
+            },
+            ..Default::default()
+        }],
+        "choice1: unexpected msg-0 choice"
+    );
+    // Validate msg-0 detections
+    assert_eq!(
+        choice1_messages[0].detections,
+        Some(ChatDetections {
+            input: vec![],
+            output: vec![OutputDetectionResult {
+                choice_index: 1,
+                results: vec![],
+            }],
+        }),
+        "choice1: unexpected msg-0 detections"
+    );
+    // Validate stop message
+    assert!(
+        choice1_messages
+            .last()
+            .is_some_and(|msg| msg.choices[0].finish_reason.is_some()),
+        "choice1: missing stop message"
+    );
 
     Ok(())
 }
