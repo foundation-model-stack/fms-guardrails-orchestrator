@@ -516,6 +516,8 @@ fn output_detection_response(
     // Build response using the last chat completion received for this chunk
     if let Some(chat_completion) = chat_completions.last() {
         let mut chat_completion = chat_completion.clone();
+        // Set role
+        chat_completion.choices[0].delta.role = Some(Role::Assistant);
         // Set content
         chat_completion.choices[0].delta.content = content;
         // TODO: if applicable, set tool_calls and refusal
@@ -574,6 +576,7 @@ async fn process_detection_batch_stream(
     while let Some(result) = detection_batch_stream.next().await {
         match result {
             Ok((choice_index, chunk, detections)) => {
+                let input_end_index = chunk.input_end_index;
                 match output_detection_response(
                     &chat_completion_state,
                     choice_index,
@@ -582,9 +585,30 @@ async fn process_detection_batch_stream(
                 ) {
                     Ok(chat_completion) => {
                         // Send chat completion to response channel
+                        debug!(%trace_id, %choice_index, ?chat_completion, "sending chat completion chunk to response channel");
                         if response_tx.send(Ok(Some(chat_completion))).await.is_err() {
                             info!(%trace_id, "task completed: client disconnected");
                             return;
+                        }
+                        // If this is the final chat completion chunk with content, send chat completion chunk with finish reason
+                        let chat_completions = chat_completion_state
+                            .chat_completions
+                            .get(&choice_index)
+                            .unwrap();
+                        if chat_completions.keys().rev().nth(1) == Some(&input_end_index) {
+                            if let Some((_, chat_completion)) = chat_completions.last_key_value() {
+                                if chat_completion
+                                    .choices
+                                    .first()
+                                    .is_some_and(|choice| choice.finish_reason.is_some())
+                                {
+                                    let mut chat_completion = chat_completion.clone();
+                                    // Set role
+                                    chat_completion.choices[0].delta.role = Some(Role::Assistant);
+                                    debug!(%trace_id, %choice_index, ?chat_completion, "sending chat completion chunk with finish reason to response channel");
+                                    let _ = response_tx.send(Ok(Some(chat_completion))).await;
+                                }
+                            }
                         }
                     }
                     Err(error) => {
