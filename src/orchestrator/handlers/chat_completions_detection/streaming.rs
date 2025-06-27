@@ -403,7 +403,9 @@ async fn process_chat_completion_stream(
                         if let Some(input_tx) =
                             input_txs.as_ref().and_then(|txs| txs.get(&choice.index))
                         {
-                            let _ = input_tx.send(Ok((message_index, choice_text))).await;
+                            if !choice_text.is_empty() {
+                                let _ = input_tx.send(Ok((message_index, choice_text))).await;
+                            }
                         }
                     } else {
                         debug!(%trace_id, %message_index, ?chat_completion, "chat completion chunk contains no choice");
