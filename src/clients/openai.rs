@@ -802,7 +802,7 @@ impl Default for ChatCompletionChunk {
 }
 
 /// Streaming chat completion chunk choice.
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ChatCompletionChunkChoice {
     /// The index of the choice in the list of choices.
     pub index: u32,
@@ -817,7 +817,7 @@ pub struct ChatCompletionChunkChoice {
 }
 
 /// Streaming chat completion delta.
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ChatCompletionDelta {
     /// The role of the author of this message.
     #[serde(skip_serializing_if = "Option::is_none")]
