@@ -116,7 +116,7 @@ impl ContentAnalysisRequest {
 }
 
 /// Response of text content analysis endpoint
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 pub struct ContentAnalysisResponse {
     /// Start index of detection
     pub start: usize,
