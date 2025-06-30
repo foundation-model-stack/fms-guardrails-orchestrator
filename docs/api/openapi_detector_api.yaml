@@ -250,7 +250,7 @@ components:
           type: array
           items:
             allOf:
-              - $ref: https://raw.githubusercontent.com/openai/openai-openapi/master/openapi.yaml#/components/schemas/ChatCompletionRequestMessage
+              - $ref: https://raw.githubusercontent.com/openai/openai-openapi/manual_spec/openapi.yaml#/components/schemas/ChatCompletionRequestMessage
               - type: object
         tools:
           type: array
@@ -260,7 +260,7 @@ components:
             the model may generate JSON inputs for. A max of 128 functions
             are supported.
           items:
-            $ref: https://raw.githubusercontent.com/openai/openai-openapi/master/openapi.yaml#/components/schemas/ChatCompletionTool
+            $ref: https://raw.githubusercontent.com/openai/openai-openapi/manual_spec/openapi.yaml#/components/schemas/ChatCompletionTool
         detector_params:
           type: object
           default: {}
