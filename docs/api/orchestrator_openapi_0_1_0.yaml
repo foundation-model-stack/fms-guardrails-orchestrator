@@ -8,7 +8,9 @@ tags:
   - name: Task - Detection
     description: Standalone detections
   - name: Task - Chat Completions, with detection
-    description: Detections on list of messages comprising a conversation and/or completions from a model
+    description: Detections on list of messages comprising a conversation and/or chat completions from a model
+  - name: Task - Completions, with detection
+    description: Detections on model prompt and/or completions from a model
 paths:
   /health:
     get:
