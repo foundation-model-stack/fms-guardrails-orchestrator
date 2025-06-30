@@ -76,6 +76,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ClassifiedGeneratedTextResult"
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           description: Resource Not Found
           content:
@@ -108,6 +114,12 @@ paths:
             text/event-stream:
               schema:
                 $ref: "#/components/schemas/ClassifiedGeneratedTextStreamResult"
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           description: Resource Not Found
           content:
@@ -353,6 +365,51 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/GuardrailsCreateChatCompletionResponse"
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Resource Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v2/text/completions-detection:
+    post:
+      tags:
+        - Task - Completions, with detection
+      operationId: >-
+        api_v2_text_completions_detection_handler
+      summary: Creates a model response with detections for the given prompt
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GuardrailsCreateCompletionRequest"
+      responses:
+        "200":
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuardrailsCreateCompletionResponse"
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           description: Resource Not Found
           content:
@@ -867,7 +924,7 @@ components:
     ########################## Chat Completion #################################
     GuardrailsCreateChatCompletionRequest:
       title: Guardrails Chat Completion Request
-      description: Guardrails chat completion request (adds detectors on OpenAI chat completion)
+      description: Guardrails chat completion request (adds detectors on OpenAI chat completions)
       allOf:
         - $ref: https://raw.githubusercontent.com/openai/openai-openapi/manual_spec/openapi.yaml#/components/schemas/CreateChatCompletionRequest
         - type: object
@@ -880,7 +937,7 @@ components:
 
     GuardrailsCreateChatCompletionResponse:
       title: Guardrails Chat Completion Response
-      description: Guardrails chat completion response (adds detections on OpenAI chat completion)
+      description: Guardrails chat completion response (adds detections on OpenAI chat completions)
       allOf:
         - $ref: https://raw.githubusercontent.com/openai/openai-openapi/manual_spec/openapi.yaml#/components/schemas/CreateChatCompletionResponse
         - type: object
@@ -893,25 +950,6 @@ components:
             $ref: "#/components/schemas/Warning"
       required:
         - detections
-
-    Detectors:
-      title: Guardrails Detectors
-      description: Specify detectors for guardrails
-      properties:
-        input:
-          type: object
-          title: Input Detectors
-          default: {}
-        output:
-          type: object
-          title: Output Detectors
-          default: {}
-      example:
-        input:
-          hap-v1-model-en: {}
-        output:
-          pii-v1: {}
-          conversation-detector: {}
 
     ChatCompletionsDetections:
       title: Chat Completions Detections
@@ -999,7 +1037,56 @@ components:
       required:
         - choice_index
 
+    ########################## Completion #################################
+    GuardrailsCreateCompletionRequest:
+      title: Guardrails Completion Request
+      description: Guardrails text completion request (adds detectors on OpenAI completions)
+      allOf:
+        - $ref: https://raw.githubusercontent.com/openai/openai-openapi/manual_spec/openapi.yaml#/components/schemas/CreateCompletionRequest
+        - type: object
+      properties:
+        detectors:
+          $ref: "#/components/schemas/Detectors"
+          default: {}
+      required:
+        - detectors
+
+    GuardrailsCreateCompletionResponse:
+      title: Guardrails Completion Response
+      description: Guardrails completion response (adds detections on OpenAI completions)
+      allOf:
+        - $ref: https://raw.githubusercontent.com/openai/openai-openapi/manual_spec/openapi.yaml#/components/schemas/CreateCompletionResponse
+        - type: object
+      properties:
+        detections:
+          # TODO: EDIT
+          $ref: "#/components/schemas/ChatCompletionsDetections"
+        warnings:
+          type: array
+          items:
+            $ref: "#/components/schemas/Warning"
+      required:
+        - detections
+
     ########################## General #################################
+    Detectors:
+      title: Guardrails Detectors
+      description: Specify detectors for guardrails
+      properties:
+        input:
+          type: object
+          title: Input Detectors
+          default: {}
+        output:
+          type: object
+          title: Output Detectors
+          default: {}
+      example:
+        input:
+          hap-v1-model-en: {}
+        output:
+          pii-v1: {}
+          conversation-detector: {}
     Error:
       type: object
       properties:
