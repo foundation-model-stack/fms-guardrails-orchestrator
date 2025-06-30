@@ -867,7 +867,7 @@ components:
       title: Guardrails Chat Completion Request
       description: Guardrails chat completion request (adds detectors on OpenAI chat completion)
       allOf:
-        - $ref: https://raw.githubusercontent.com/openai/openai-openapi/master/openapi.yaml#/components/schemas/CreateChatCompletionRequest
+        - $ref: https://raw.githubusercontent.com/openai/openai-openapi/manual_spec/openapi.yaml#/components/schemas/CreateChatCompletionRequest
         - type: object
       properties:
         detectors:
@@ -880,7 +880,7 @@ components:
       title: Guardrails Chat Completion Response
       description: Guardrails chat completion response (adds detections on OpenAI chat completion)
       allOf:
-        - $ref: https://raw.githubusercontent.com/openai/openai-openapi/master/openapi.yaml#/components/schemas/CreateChatCompletionResponse
+        - $ref: https://raw.githubusercontent.com/openai/openai-openapi/manual_spec/openapi.yaml#/components/schemas/CreateChatCompletionResponse
         - type: object
       properties:
         detections:
