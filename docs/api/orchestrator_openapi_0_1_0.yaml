@@ -977,7 +977,7 @@ components:
                   "text": "string",
                   "detection_type": "HAP",
                   "detection": "has_HAP",
-                  "detector_id": "hap-v1-model-en", # Future addition
+                  "detector_id": "hap-v1-model-en",
                   "score": 0.999,
                 }
         output:
@@ -990,16 +990,15 @@ components:
                   "text": "string",
                   "detection_type": "HAP",
                   "detection": "has_HAP",
-                  "detector_id": "hap-v1-model-en", # Future addition
+                  "detector_id": "hap-v1-model-en",
                   "score": 0.999,
                 }
               - {
                   "detection_type": "string",
                   "detection": "string",
-                  "detector_id": "relevance-v1-en", # Future addition
+                  "detector_id": "relevance-v1-en",
                   "score": 0,
                 }
-
     MessageDetections:
       title: Message Detections
       properties:
@@ -1018,24 +1017,6 @@ components:
               - $ref: "#/components/schemas/GeneratedTextDetectionResponseObject"
       required:
         - message_index
-    ChoiceDetections:
-      title: Choice Detections
-      properties:
-        choice_index:
-          oneOf:
-            - type: string # "all"
-            - type: integer # index
-          title: Index of choice
-        results:
-          title: Detection results
-          type: array
-          items:
-            anyOf:
-              - $ref: "#/components/schemas/DetectionContentResponseObject"
-              - $ref: "#/components/schemas/DetectionContextDocsResponseObject"
-              - $ref: "#/components/schemas/GeneratedTextDetectionResponseObject"
-      required:
-        - choice_index
 
     ########################## Completion #################################
     GuardrailsCreateCompletionRequest:
@@ -1059,8 +1040,7 @@ components:
         - type: object
       properties:
         detections:
-          # TODO: EDIT
-          $ref: "#/components/schemas/ChatCompletionsDetections"
+          $ref: "#/components/schemas/CompletionsDetections"
         warnings:
           type: array
           items:
@@ -1068,7 +1048,82 @@ components:
       required:
         - detections
 
+    CompletionsDetections:
+      title: Completions Detections
+      properties:
+        input:
+          type: array
+          items:
+            $ref: "#/components/schemas/PromptDetections"
+          title: Detections on prompt for completions
+          default: {}
+        output:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChoiceDetections"
+          title: Detections on output of completions
+          default: {}
+      default: {}
+      example:
+        input:
+          - results:
+              - {
+                  "start": 0,
+                  "end": 80,
+                  "text": "string",
+                  "detection_type": "HAP",
+                  "detection": "has_HAP",
+                  "detector_id": "hap-v1-model-en",
+                  "score": 0.999,
+                }
+        output:
+          - choice_index: 0
+          - choice_index: 1
+            results:
+              - {
+                  "start": 0,
+                  "end": 20,
+                  "text": "string",
+                  "detection_type": "HAP",
+                  "detection": "has_HAP",
+                  "detector_id": "hap-v1-model-en",
+                  "score": 0.999,
+                }
+              - {
+                  "detection_type": "string",
+                  "detection": "string",
+                  "detector_id": "relevance-v1-en",
+                  "score": 0,
+                }
+    PromptDetections:
+      title: Prompt Detections
+      properties:
+        results:
+          title: Detection results
+          type: array
+          items:
+            anyOf:
+              - $ref: "#/components/schemas/DetectionContentResponseObject"
+
     ########################## General #################################
+    ChoiceDetections:
+      title: Choice Detections
+      properties:
+        choice_index:
+          oneOf:
+            - type: string # "all"
+            - type: integer # index
+          title: Index of choice
+        results:
+          title: Detection results
+          type: array
+          items:
+            anyOf:
+              - $ref: "#/components/schemas/DetectionContentResponseObject"
+              - $ref: "#/components/schemas/DetectionContextDocsResponseObject"
+              - $ref: "#/components/schemas/GeneratedTextDetectionResponseObject"
+      required:
+        - choice_index
     Detectors:
       title: Guardrails Detectors
       description: Specify detectors for guardrails
