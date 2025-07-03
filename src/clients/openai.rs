@@ -110,7 +110,7 @@ impl OpenAiClient {
         match response.status() {
             StatusCode::OK => response.json::<S>().await,
             _ => {
-                // Error from downstream server
+                // Return error with code and message from downstream server
                 let code = response.status();
                 let message = if let Ok(response) = response.json::<OpenAiError>().await {
                     response.message
@@ -147,21 +147,37 @@ impl OpenAiClient {
                                 let _ = tx.send(Ok(None)).await;
                                 break;
                             }
+                            // Attempt to deserialize to S
                             Ok(event) => match serde_json::from_str::<S>(&event.data) {
                                 Ok(message) => {
                                     let _ = tx.send(Ok(Some(message))).await;
                                 }
-                                Err(e) => {
-                                    // Deserialization error
-                                    let error = Error::Http {
-                                        code: StatusCode::INTERNAL_SERVER_ERROR,
-                                        message: format!("deserialization error: {e}"),
+                                Err(_serde_error) => {
+                                    // Failed to deserialize to S, attempt to deserialize to OpenAiErrorMessage
+                                    let error = match serde_json::from_str::<OpenAiErrorMessage>(
+                                        &event.data,
+                                    ) {
+                                        // Return error with code and message from downstream server
+                                        Ok(openai_error) => Error::Http {
+                                            code: StatusCode::from_u16(openai_error.error.code)
+                                                .unwrap(),
+                                            message: openai_error.error.message,
+                                        },
+                                        // Failed to deserialize to S and OpenAiErrorMessage
+                                        // Return internal server error
+                                        Err(serde_error) => Error::Http {
+                                            code: StatusCode::INTERNAL_SERVER_ERROR,
+                                            message: format!(
+                                                "deserialization error: {serde_error}"
+                                            ),
+                                        },
                                     };
                                     let _ = tx.send(Err(error.into())).await;
                                 }
                             },
                             Err(error) => {
                                 // Event stream error
+                                // Return internal server error
                                 let error = Error::Http {
                                     code: StatusCode::INTERNAL_SERVER_ERROR,
                                     message: error.to_string(),
@@ -174,7 +190,7 @@ impl OpenAiClient {
                 Ok(rx)
             }
             _ => {
-                // Error from downstream server
+                // Return error with code and message from downstream server
                 let code = response.status();
                 let message = if let Ok(response) = response.json::<OpenAiError>().await {
                     response.message
@@ -868,6 +884,12 @@ pub struct OpenAiError {
     pub r#type: Option<String>,
     pub param: Option<String>,
     pub code: u16,
+}
+
+/// OpenAI streaming error message.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OpenAiErrorMessage {
+    pub error: OpenAiError,
 }
 
 /// Guardrails chat detections.
