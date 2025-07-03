@@ -68,6 +68,8 @@ pub async fn handle_streaming(
                 true,
             ) {
                 let _ = response_tx.send(Err(error)).await;
+                // Send None to signal completion
+                let _ = response_tx.send(Ok(None)).await;
                 return;
             }
             // Validate output detectors
@@ -78,6 +80,8 @@ pub async fn handle_streaming(
                 true,
             ) {
                 let _ = response_tx.send(Err(error)).await;
+                // Send None to signal completion
+                let _ = response_tx.send(Ok(None)).await;
                 return;
             }
 
@@ -97,6 +101,8 @@ pub async fn handle_streaming(
                         // Input detections failed
                         // Send error to response channel and terminate
                         let _ = response_tx.send(Err(error)).await;
+                        // Send None to signal completion
+                        let _ = response_tx.send(Ok(None)).await;
                         return;
                     }
                 }
@@ -113,6 +119,8 @@ pub async fn handle_streaming(
                     error!(%trace_id, %error, "task failed: error creating chat completions stream");
                     // Send error to response channel and terminate
                     let _ = response_tx.send(Err(error)).await;
+                    // Send None to signal completion
+                    let _ = response_tx.send(Ok(None)).await;
                     return;
                 }
             };
@@ -328,6 +336,8 @@ async fn handle_output_detection(
                     error!(%error, "task failed: error processing whole doc output detections");
                     // Send error to response channel
                     let _ = response_tx.send(Err(error)).await;
+                    // Send None to signal completion
+                    let _ = response_tx.send(Ok(None)).await;
                     return;
                 }
             }
@@ -617,6 +627,8 @@ async fn process_detection_batch_stream(
                         error!(%trace_id, %error, "task failed: error building output detection response");
                         // Send error to response channel and terminate
                         let _ = response_tx.send(Err(error)).await;
+                        // Send None to signal completion
+                        let _ = response_tx.send(Ok(None)).await;
                         return;
                     }
                 }
@@ -625,6 +637,8 @@ async fn process_detection_batch_stream(
                 error!(%trace_id, %error, "task failed: error received from detection batch stream");
                 // Send error to response channel and terminate
                 let _ = response_tx.send(Err(error)).await;
+                // Send None to signal completion
+                let _ = response_tx.send(Ok(None)).await;
                 return;
             }
         }
