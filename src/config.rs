@@ -194,11 +194,9 @@ pub enum DetectorType {
 pub struct OrchestratorConfig {
     /// Generation service and associated configuration, can be omitted if configuring for generation is not wanted
     pub generation: Option<GenerationConfig>,
-    /// Chat Completions service and associated configuration, can be omitted if configuring for chat generation is not wanted
+    /// Open AI service and associated configuration, can be omitted if configuring for chat generation is not wanted
     #[serde(alias = "chat_generation")]
-    pub chat_completions: Option<OpenAiConfig>,
-    /// Completions service and associated configuration, can be omitted if configuring for chat generation is not wanted
-    pub completions: Option<OpenAiConfig>,
+    pub openai: Option<OpenAiConfig>,
     /// Chunker services and associated configurations, if omitted the default value "whole_doc_chunker" is used
     pub chunkers: Option<HashMap<String, ChunkerConfig>>,
     /// Detector services and associated configurations
@@ -229,7 +227,7 @@ impl OrchestratorConfig {
         })?;
         if config_yaml.contains("chat_generation") {
             warn!(
-                "`chat_generation` is deprecated and will be removed in 1.0. Rename it to `chat_completions`."
+                "`chat_generation` is deprecated and will be removed in 1.0. Rename it to `openai`."
             )
         }
         let mut config: OrchestratorConfig =
@@ -277,13 +275,9 @@ impl OrchestratorConfig {
             if let Some(generation) = &mut self.generation {
                 apply_named_tls_config(&mut generation.service, tls_configs)?;
             }
-            // Chat completions
-            if let Some(chat_completions) = &mut self.chat_completions {
-                apply_named_tls_config(&mut chat_completions.service, tls_configs)?;
-            }
-            // Completions
-            if let Some(completions) = &mut self.completions {
-                apply_named_tls_config(&mut completions.service, tls_configs)?;
+            // Open AI
+            if let Some(openai) = &mut self.openai {
+                apply_named_tls_config(&mut openai.service, tls_configs)?;
             }
             // Chunkers
             if let Some(chunkers) = &mut self.chunkers {
@@ -329,23 +323,15 @@ impl OrchestratorConfig {
 
     /// Validates chat generation config.
     fn validate_openai_configs(&self) -> Result<(), Error> {
-        if let Some(chat_completions) = &self.chat_completions {
+        if let Some(openai) = &self.openai {
             // Hostname is valid
-            if !is_valid_hostname(&chat_completions.service.hostname) {
+            if !is_valid_hostname(&openai.service.hostname) {
                 return Err(Error::InvalidHostname(
-                    "`chat_completions` has an invalid hostname".into(),
+                    "`openai` has an invalid hostname".into(),
                 ));
             }
         }
 
-        if let Some(completions) = &self.completions {
-            // Hostname is valid
-            if !is_valid_hostname(&completions.service.hostname) {
-                return Err(Error::InvalidHostname(
-                    "`completions` has an invalid hostname".into(),
-                ));
-            }
-        }
         Ok(())
     }
 
@@ -415,8 +401,7 @@ impl Default for OrchestratorConfig {
     fn default() -> Self {
         Self {
             generation: None,
-            chat_completions: None,
-            completions: None,
+            openai: None,
             chunkers: None,
             detectors: HashMap::default(),
             tls: None,

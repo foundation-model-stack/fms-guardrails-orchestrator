@@ -124,12 +124,11 @@ async fn no_detectors() -> Result<(), anyhow::Error> {
     });
 
     // Start orchestrator server and its dependencies
-    let mut mock_chat_completions_server =
-        MockServer::new("chat_completions").with_mocks(chat_mocks);
+    let mut mock_openai_server = MockServer::new("chat_completions").with_mocks(chat_mocks);
 
     let orchestrator_server = TestOrchestratorServer::builder()
         .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
-        .chat_completions_server(&mock_chat_completions_server)
+        .openai_server(&mock_openai_server)
         .build()
         .await?;
 
@@ -223,7 +222,7 @@ async fn no_detectors() -> Result<(), anyhow::Error> {
     ];
 
     // add new mock
-    mock_chat_completions_server.mock(|when, then| {
+    mock_openai_server.mock(|when, then| {
         when.post().path(CHAT_COMPLETIONS_ENDPOINT).json(json!({
             "model": MODEL_ID,
             "messages": messages,
@@ -344,12 +343,12 @@ async fn no_detections() -> Result<(), anyhow::Error> {
 
     // Start orchestrator server and its dependencies
     let mock_detector_server = MockServer::new(detector_name).with_mocks(detector_mocks);
-    let mock_chat_completions_server = MockServer::new("chat_completions").with_mocks(chat_mocks);
+    let mock_openai_server = MockServer::new("chat_completions").with_mocks(chat_mocks);
 
     let orchestrator_server = TestOrchestratorServer::builder()
         .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
         .detector_servers([&mock_detector_server])
-        .chat_completions_server(&mock_chat_completions_server)
+        .openai_server(&mock_openai_server)
         .build()
         .await?;
 
@@ -430,7 +429,7 @@ async fn no_detections() -> Result<(), anyhow::Error> {
         ..Default::default()
     };
 
-    mock_chat_completions_server.mocks().mock(|when, then| {
+    mock_openai_server.mocks().mock(|when, then| {
         when.post().path(CHAT_COMPLETIONS_ENDPOINT).json(json!({
             "model": MODEL_ID,
             "messages": messages,
@@ -549,7 +548,7 @@ async fn input_detections() -> Result<(), anyhow::Error> {
 
     // Start orchestrator server and its dependencies
     let mock_detector_server = MockServer::new(detector_name).with_mocks(detector_mocks);
-    let mock_chat_completions_server = MockServer::new("chat_completions").with_mocks(chat_mocks);
+    let mock_openai_server = MockServer::new("chat_completions").with_mocks(chat_mocks);
     let mock_chunker_server = MockServer::new(CHUNKER_NAME_SENTENCE)
         .grpc()
         .with_mocks(chunker_mocks);
@@ -558,7 +557,7 @@ async fn input_detections() -> Result<(), anyhow::Error> {
         .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
         .detector_servers([&mock_detector_server])
         .chunker_servers([&mock_chunker_server])
-        .chat_completions_server(&mock_chat_completions_server)
+        .openai_server(&mock_openai_server)
         .build()
         .await?;
 
@@ -708,7 +707,7 @@ async fn input_client_error() -> Result<(), anyhow::Error> {
 
     // Start orchestrator server and its dependencies
     let mock_detector_server = MockServer::new(detector_name).with_mocks(detector_mocks);
-    let mock_chat_completions_server = MockServer::new("chat_completions").with_mocks(chat_mocks);
+    let mock_openai_server = MockServer::new("chat_completions").with_mocks(chat_mocks);
     let mock_chunker_server = MockServer::new(CHUNKER_NAME_SENTENCE)
         .grpc()
         .with_mocks(chunker_mocks);
@@ -717,7 +716,7 @@ async fn input_client_error() -> Result<(), anyhow::Error> {
         .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
         .detector_servers([&mock_detector_server])
         .chunker_servers([&mock_chunker_server])
-        .chat_completions_server(&mock_chat_completions_server)
+        .openai_server(&mock_openai_server)
         .build()
         .await?;
 
@@ -935,7 +934,7 @@ async fn output_detections() -> Result<(), anyhow::Error> {
 
     // Start orchestrator server and its dependencies
     let mock_detector_server = MockServer::new(detector_name).with_mocks(detector_mocks);
-    let mock_chat_completions_server = MockServer::new("chat_completions").with_mocks(chat_mocks);
+    let mock_openai_server = MockServer::new("chat_completions").with_mocks(chat_mocks);
     let mock_chunker_server = MockServer::new(CHUNKER_NAME_SENTENCE)
         .grpc()
         .with_mocks(chunker_mocks);
@@ -944,7 +943,7 @@ async fn output_detections() -> Result<(), anyhow::Error> {
         .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
         .detector_servers([&mock_detector_server])
         .chunker_servers([&mock_chunker_server])
-        .chat_completions_server(&mock_chat_completions_server)
+        .openai_server(&mock_openai_server)
         .build()
         .await?;
 
@@ -1113,7 +1112,7 @@ async fn output_client_error() -> Result<(), anyhow::Error> {
 
     // Start orchestrator server and its dependencies
     let mock_detector_server = MockServer::new(detector_name).with_mocks(detector_mocks);
-    let mock_chat_completions_server = MockServer::new("chat_completions").with_mocks(chat_mocks);
+    let mock_openai_server = MockServer::new("chat_completions").with_mocks(chat_mocks);
     let mock_chunker_server = MockServer::new(CHUNKER_NAME_SENTENCE)
         .grpc()
         .with_mocks(chunker_mocks);
@@ -1122,7 +1121,7 @@ async fn output_client_error() -> Result<(), anyhow::Error> {
         .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
         .detector_servers([&mock_detector_server])
         .chunker_servers([&mock_chunker_server])
-        .chat_completions_server(&mock_chat_completions_server)
+        .openai_server(&mock_openai_server)
         .build()
         .await?;
 
