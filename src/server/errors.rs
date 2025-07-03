@@ -104,7 +104,8 @@ impl From<orchestrator::Error> for Error {
             | ChunkerRequestFailed { ref error, .. }
             | GenerateRequestFailed { ref error, .. }
             | ChatCompletionRequestFailed { ref error, .. }
-            | TokenizeRequestFailed { ref error, .. } => match error.status_code() {
+            | TokenizeRequestFailed { ref error, .. }
+            | Client(ref error) => match error.status_code() {
                 // return actual error for subset of errors
                 StatusCode::BAD_REQUEST
                 | StatusCode::UNPROCESSABLE_ENTITY
