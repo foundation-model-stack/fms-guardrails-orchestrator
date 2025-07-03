@@ -41,11 +41,16 @@ use tracing::info;
 
 use super::{Error, ServerState};
 use crate::{
-    clients::openai::{ChatCompletionsRequest, ChatCompletionsResponse},
+    clients::openai::{
+        ChatCompletionsRequest, ChatCompletionsResponse, CompletionsRequest, CompletionsResponse,
+    },
     models::{self, InfoParams, InfoResponse, StreamingContentDetectionRequest},
     orchestrator::{
         self,
-        handlers::{chat_completions_detection::ChatCompletionsDetectionTask, *},
+        handlers::{
+            chat_completions_detection::ChatCompletionsDetectionTask,
+            completions_detection::CompletionsDetectionTask, *,
+        },
     },
     utils::{self, trace::current_trace_id},
 };
@@ -95,6 +100,10 @@ pub fn guardrails_router(state: Arc<ServerState>) -> Router {
             "/api/v2/chat/completions-detection",
             post(chat_completions_detection),
         );
+    }
+    if state.orchestrator.config().completions.is_some() {
+        info!("Enabling completions detection endpoint");
+        router = router.route("/api/v2/chat/completions", post(completions_detection));
     }
     router.with_state(state)
 }
@@ -326,6 +335,43 @@ async fn chat_completions_detection(
     request.validate()?;
     let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
     let task = ChatCompletionsDetectionTask::new(trace_id, request, headers);
+    match state.orchestrator.handle(task).await {
+        Ok(response) => match response {
+            Unary(response) => Ok(Json(response).into_response()),
+            Streaming(response_rx) => {
+                let response_stream = ReceiverStream::new(response_rx);
+                // Convert response stream to a stream of SSE events
+                let event_stream: BoxStream<Result<Event, Infallible>> = response_stream
+                    .map(|message| match message {
+                        Ok(Some(chunk)) => Ok(Event::default().json_data(chunk).unwrap()),
+                        Ok(None) => {
+                            // The stream completed, send [DONE] message
+                            Ok(Event::default().data("[DONE]"))
+                        }
+                        Err(error) => {
+                            let error: Error = error.into();
+                            Ok(Event::default().event("error").json_data(error).unwrap())
+                        }
+                    })
+                    .boxed();
+                let sse = Sse::new(event_stream).keep_alive(KeepAlive::default());
+                Ok(sse.into_response())
+            }
+        },
+        Err(error) => Err(error.into()),
+    }
+}
+
+async fn completions_detection(
+    State(state): State<Arc<ServerState>>,
+    headers: HeaderMap,
+    WithRejection(Json(request), _): WithRejection<Json<CompletionsRequest>, Error>,
+) -> Result<impl IntoResponse, Error> {
+    use CompletionsResponse::*;
+    let trace_id = current_trace_id();
+    request.validate()?;
+    let headers = filter_headers(&state.orchestrator.config().passthrough_headers, headers);
+    let task = CompletionsDetectionTask::new(trace_id, request, headers);
     match state.orchestrator.handle(task).await {
         Ok(response) => match response {
             Unary(response) => Ok(Json(response).into_response()),

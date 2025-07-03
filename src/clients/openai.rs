@@ -323,6 +323,9 @@ impl ChatCompletionsRequest {
 /// the downstream server implementation.
 #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CompletionsRequest {
+    /// Detector config.
+    #[serde(default, skip_serializing)]
+    pub detectors: DetectorConfig,
     /// Stream parameter.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stream: Option<bool>,
