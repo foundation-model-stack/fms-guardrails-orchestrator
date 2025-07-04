@@ -29,22 +29,21 @@ use uuid::Uuid;
 use super::CompletionsDetectionTask;
 use crate::{
     clients::openai::*,
-    config::DetectorType,
     models::{
         DetectionWarningReason, DetectorParams, UNSUITABLE_INPUT_MESSAGE, UNSUITABLE_OUTPUT_MESSAGE,
     },
     orchestrator::{
         Context, Error,
-        common::{self, text_contents_detections, validate_detectors},
+        common::{self, text_contents_detections},
         types::{
-            ChatCompletionBatcher, ChatCompletionStream, ChatMessageIterator, ChoiceIndex, Chunk,
-            DetectionBatchStream, Detections,
+            ChatCompletionBatcher, ChatCompletionStream, ChoiceIndex, Chunk, DetectionBatchStream,
+            Detections,
         },
     },
 };
 
 pub async fn handle_streaming(
-    ctx: Arc<Context>,
+    _ctx: Arc<Context>,
     task: CompletionsDetectionTask,
 ) -> Result<CompletionsResponse, Error> {
     let trace_id = task.trace_id;
@@ -52,89 +51,16 @@ pub async fn handle_streaming(
     info!(%trace_id, config = ?detectors, "task started");
 
     // Create response channel
-    let (response_tx, response_rx) =
-        mpsc::channel::<Result<Option<ChatCompletionChunk>, Error>>(128);
+    let (response_tx, response_rx) = mpsc::channel::<Result<Option<Completion>, Error>>(128);
 
     tokio::spawn(
         async move {
-            let input_detectors = detectors.input;
-            let output_detectors = detectors.output;
-
-            // Validate input detectors
-            if let Err(error) = validate_detectors(
-                &input_detectors,
-                &ctx.config.detectors,
-                &[DetectorType::TextContents],
-                true,
-            ) {
-                let _ = response_tx.send(Err(error)).await;
-                return;
-            }
-            // Validate output detectors
-            if let Err(error) = validate_detectors(
-                &output_detectors,
-                &ctx.config.detectors,
-                &[DetectorType::TextContents],
-                true,
-            ) {
-                let _ = response_tx.send(Err(error)).await;
-                return;
-            }
-
-            // Handle input detection (unary)
-            if !input_detectors.is_empty() {
-                match handle_input_detection(ctx.clone(), &task, input_detectors).await {
-                    Ok(Some(chunk)) => {
-                        info!(%trace_id, "task completed: returning response with input detections");
-                        // Send message with input detections to response channel and terminate
-                        let _ = response_tx.send(Ok(Some(chunk))).await;
-                        // Send None to signal completion
-                        let _ = response_tx.send(Ok(None)).await;
-                        return;
-                    }
-                    Ok(None) => (), // No input detections
-                    Err(error) => {
-                        // Input detections failed
-                        // Send error to response channel and terminate
-                        let _ = response_tx.send(Err(error)).await;
-                        return;
-                    }
-                }
-            }
-
-            // Create chat completions stream
-            let client = ctx
-                .clients
-                .get_as::<OpenAiClient>("chat_completions")
-                .unwrap();
-            let chat_completion_stream = match common::chat_completion_stream(client, task.headers.clone(), task.request.clone()).await {
-                Ok(stream) => stream,
-                Err(error) => {
-                    error!(%trace_id, %error, "task failed: error creating chat completions stream");
-                    // Send error to response channel and terminate
-                    let _ = response_tx.send(Err(error)).await;
-                    return;
-                }
-            };
-
-            if output_detectors.is_empty() {
-                // No output detectors, forward chat completion chunks to response channel
-                process_chat_completion_stream(trace_id, chat_completion_stream, None, None, Some(response_tx.clone())).await;
-                info!(%trace_id, "task completed: chat completion stream closed");
-            } else {
-                // Handle output detection
-                handle_output_detection(
-                    ctx.clone(),
-                    &task,
-                    output_detectors,
-                    chat_completion_stream,
-                    response_tx.clone(),
-                )
+            // TODO
+            let _ = response_tx
+                .send(Err(Error::Validation(
+                    "streaming is not yet supported".into(),
+                )))
                 .await;
-            }
-
-            // Send None to signal completion
-            let _ = response_tx.send(Ok(None)).await;
         }
         .in_current_span(),
     );
@@ -151,25 +77,8 @@ async fn handle_input_detection(
     let trace_id = task.trace_id;
     let model_id = task.request.model.clone();
 
-    // Input detectors are only applied to the last message
-    // Get the last message
-    let messages = task.request.messages();
-    let message = if let Some(message) = messages.last() {
-        message
-    } else {
-        return Err(Error::Validation("No messages provided".into()));
-    };
-    // Validate role
-    if !matches!(
-        message.role,
-        Some(Role::User) | Some(Role::Assistant) | Some(Role::System)
-    ) {
-        return Err(Error::Validation(
-            "Last message role must be user, assistant, or system".into(),
-        ));
-    }
-    let input_id = message.index;
-    let input_text = message.text.map(|s| s.to_string()).unwrap_or_default();
+    let input_id = 0;
+    let input_text = task.request.prompt.clone();
     let detections = match common::text_contents_detections(
         ctx.clone(),
         task.headers.clone(),
@@ -193,7 +102,7 @@ async fn handle_input_detection(
             created: common::current_timestamp().as_secs() as i64,
             detections: Some(ChatDetections {
                 input: vec![InputDetectionResult {
-                    message_index: message.index,
+                    message_index: input_id, // TODO:double-check this
                     results: detections.into(),
                 }],
                 ..Default::default()
@@ -229,7 +138,7 @@ async fn handle_output_detection(
         detectors.into_iter().partition(|(detector_id, _)| {
             ctx.config.get_chunker_id(detector_id).unwrap() == "whole_doc_chunker"
         });
-    let chat_completion_state = Arc::new(ChatCompletionState::new());
+    let chat_completion_state = Arc::new(_ChatCompletionState::_new());
 
     if !detectors.is_empty() {
         // Set up streaming detection pipeline
@@ -268,7 +177,7 @@ async fn handle_output_detection(
         }
 
         // Spawn task to consume chat completions stream and send choice text to detection pipeline
-        tokio::spawn(process_chat_completion_stream(
+        tokio::spawn(_process_chat_completion_stream(
             trace_id,
             chat_completion_stream,
             Some(chat_completion_state.clone()),
@@ -280,7 +189,7 @@ async fn handle_output_detection(
             ChatCompletionBatcher::new(detectors.len()),
             detection_streams,
         );
-        process_detection_batch_stream(
+        _process_detection_batch_stream(
             trace_id,
             chat_completion_state.clone(),
             detection_batch_stream,
@@ -290,7 +199,7 @@ async fn handle_output_detection(
     } else {
         // We only have whole doc detectors, so the streaming detection pipeline is disabled
         // Consume chat completions stream and await completion
-        process_chat_completion_stream(
+        _process_chat_completion_stream(
             trace_id,
             chat_completion_stream,
             Some(chat_completion_state.clone()),
@@ -302,12 +211,12 @@ async fn handle_output_detection(
     // NOTE: at this point, the chat completions stream has been fully consumed and chat completion state is final
 
     // If whole doc output detections or usage is requested, a final message is sent with these items
-    if !whole_doc_detectors.is_empty() || chat_completion_state.usage().is_some() {
+    if !whole_doc_detectors.is_empty() || chat_completion_state._usage().is_some() {
         let mut chat_completion = ChatCompletionChunk {
-            id: chat_completion_state.id(),
-            created: chat_completion_state.created(),
-            model: chat_completion_state.model(),
-            usage: chat_completion_state.usage(),
+            id: chat_completion_state._id(),
+            created: chat_completion_state._created(),
+            model: chat_completion_state._model(),
+            usage: chat_completion_state._usage(),
             ..Default::default()
         };
         if !whole_doc_detectors.is_empty() {
@@ -339,10 +248,10 @@ async fn handle_output_detection(
 
 /// Processes chat completion stream.
 #[allow(clippy::type_complexity)]
-async fn process_chat_completion_stream(
+async fn _process_chat_completion_stream(
     trace_id: TraceId,
     mut chat_completion_stream: ChatCompletionStream,
-    chat_completion_state: Option<Arc<ChatCompletionState>>,
+    chat_completion_state: Option<Arc<_ChatCompletionState>>,
     input_txs: Option<HashMap<u32, mpsc::Sender<Result<(usize, String), Error>>>>,
     response_tx: Option<mpsc::Sender<Result<Option<ChatCompletionChunk>, Error>>>,
 ) {
@@ -436,7 +345,7 @@ async fn handle_whole_doc_output_detection(
     ctx: Arc<Context>,
     task: &CompletionsDetectionTask,
     detectors: HashMap<String, DetectorParams>,
-    chat_completion_state: Arc<ChatCompletionState>,
+    chat_completion_state: Arc<_ChatCompletionState>,
 ) -> Result<(ChatDetections, Vec<OrchestratorWarning>), Error> {
     // Create vec of choice_index->inputs, where inputs contains the concatenated text for the choice
     let choice_inputs = chat_completion_state
@@ -497,8 +406,8 @@ async fn handle_whole_doc_output_detection(
 }
 
 /// Builds a response with output detections.
-fn output_detection_response(
-    chat_completion_state: &Arc<ChatCompletionState>,
+fn _output_detection_response(
+    chat_completion_state: &Arc<_ChatCompletionState>,
     choice_index: u32,
     chunk: Chunk,
     detections: Detections,
@@ -514,7 +423,7 @@ fn output_detection_response(
         .map(|(_index, chat_completion)| chat_completion.clone())
         .collect::<Vec<_>>();
     let content = Some(chunk.text);
-    let logprobs = merge_logprobs(&chat_completions);
+    let logprobs = _merge_logprobs(&chat_completions);
     // Build response using the last chat completion received for this chunk
     if let Some(chat_completion) = chat_completions.last() {
         let mut chat_completion = chat_completion.clone();
@@ -553,7 +462,7 @@ fn output_detection_response(
 }
 
 /// Combines logprobs from chat completion chunks to a single [`ChatCompletionLogprobs`].
-fn merge_logprobs(chat_completions: &[ChatCompletionChunk]) -> Option<ChatCompletionLogprobs> {
+fn _merge_logprobs(chat_completions: &[ChatCompletionChunk]) -> Option<ChatCompletionLogprobs> {
     let mut content: Vec<ChatCompletionLogprob> = Vec::new();
     let mut refusal: Vec<ChatCompletionLogprob> = Vec::new();
     for chat_completion in chat_completions {
@@ -569,9 +478,9 @@ fn merge_logprobs(chat_completions: &[ChatCompletionChunk]) -> Option<ChatComple
 }
 
 /// Consumes a detection batch stream, builds responses, and sends them to a response channel.
-async fn process_detection_batch_stream(
+async fn _process_detection_batch_stream(
     trace_id: TraceId,
-    chat_completion_state: Arc<ChatCompletionState>,
+    chat_completion_state: Arc<_ChatCompletionState>,
     mut detection_batch_stream: DetectionBatchStream,
     response_tx: mpsc::Sender<Result<Option<ChatCompletionChunk>, Error>>,
 ) {
@@ -579,7 +488,7 @@ async fn process_detection_batch_stream(
         match result {
             Ok((choice_index, chunk, detections)) => {
                 let input_end_index = chunk.input_end_index;
-                match output_detection_response(
+                match _output_detection_response(
                     &chat_completion_state,
                     choice_index,
                     chunk,
@@ -633,7 +542,7 @@ async fn process_detection_batch_stream(
 }
 
 #[derive(Debug, Default)]
-struct ChatCompletionMetadata {
+struct _ChatCompletionMetadata {
     /// A unique identifier for the chat completion. Each chunk has the same ID.
     pub id: String,
     /// The Unix timestamp (in seconds) of when the chat completion was created. Each chunk has the same timestamp.
@@ -645,31 +554,31 @@ struct ChatCompletionMetadata {
 }
 
 #[derive(Debug, Default)]
-struct ChatCompletionState {
+struct _ChatCompletionState {
     /// Chat completion metadata.
-    pub metadata: Mutex<ChatCompletionMetadata>,
+    pub metadata: Mutex<_ChatCompletionMetadata>,
     /// A map of chat completion chunks received for each choice.
     pub chat_completions: DashMap<ChoiceIndex, BTreeMap<usize, ChatCompletionChunk>>,
 }
 
-impl ChatCompletionState {
-    pub fn new() -> Self {
+impl _ChatCompletionState {
+    pub fn _new() -> Self {
         Self::default()
     }
 
-    pub fn id(&self) -> String {
+    pub fn _id(&self) -> String {
         self.metadata.lock().unwrap().id.clone()
     }
 
-    pub fn created(&self) -> i64 {
+    pub fn _created(&self) -> i64 {
         self.metadata.lock().unwrap().created
     }
 
-    pub fn model(&self) -> String {
+    pub fn _model(&self) -> String {
         self.metadata.lock().unwrap().model.clone()
     }
 
-    pub fn usage(&self) -> Option<Usage> {
+    pub fn _usage(&self) -> Option<Usage> {
         self.metadata.lock().unwrap().usage.clone()
     }
 }

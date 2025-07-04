@@ -100,8 +100,7 @@ pub fn guardrails_router(state: Arc<ServerState>) -> Router {
             "/api/v2/chat/completions-detection",
             post(chat_completions_detection),
         );
-    }
-    if state.orchestrator.config().completions.is_some() {
+
         info!("Enabling completions detection endpoint");
         router = router.route("/api/v2/chat/completions", post(completions_detection));
     }

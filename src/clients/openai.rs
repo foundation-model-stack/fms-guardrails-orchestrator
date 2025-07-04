@@ -795,6 +795,12 @@ pub struct Completion {
     /// This fingerprint represents the backend configuration that the model runs with.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub system_fingerprint: Option<String>,
+    /// Detections
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detections: Option<ChatDetections>,
+    /// Warnings
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<OrchestratorWarning>,
 }
 
 /// Completion (legacy) choice.

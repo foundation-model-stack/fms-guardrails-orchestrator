@@ -30,7 +30,6 @@ use crate::{
     orchestrator::{
         Context, Error,
         common::{self, validate_detectors},
-        types::ChatMessageIterator,
     },
 };
 
@@ -81,9 +80,9 @@ pub async fn handle_unary(
         .get_as::<OpenAiClient>("chat_completions")
         .unwrap();
     let chat_completion =
-        match common::chat_completion(client, task.headers.clone(), task.request.clone()).await {
-            Ok(ChatCompletionsResponse::Unary(chat_completion)) => *chat_completion,
-            Ok(ChatCompletionsResponse::Streaming(_)) => unimplemented!(),
+        match common::completion(client, task.headers.clone(), task.request.clone()).await {
+            Ok(CompletionsResponse::Unary(completion)) => *completion,
+            Ok(CompletionsResponse::Streaming(_)) => unimplemented!(),
             Err(error) => return Err(error),
         };
 
@@ -103,36 +102,16 @@ async fn handle_input_detection(
     ctx: Arc<Context>,
     task: &CompletionsDetectionTask,
     detectors: HashMap<String, DetectorParams>,
-) -> Result<Option<ChatCompletion>, Error> {
+) -> Result<Option<Completion>, Error> {
     let trace_id = task.trace_id;
     let model_id = task.request.model.clone();
 
-    // Input detectors are only applied to the last message
-    // If this changes, the empty content validation in [`ChatCompletionsRequest::validate`]
-    // should also change.
-    // Get the last message
-    let messages = task.request.messages();
-    let message = if let Some(message) = messages.last() {
-        message
-    } else {
-        return Err(Error::Validation("No messages provided".into()));
-    };
-    // Validate role
-    if !matches!(
-        message.role,
-        Some(Role::User) | Some(Role::Assistant) | Some(Role::System)
-    ) {
-        return Err(Error::Validation(
-            "Last message role must be user, assistant, or system".into(),
-        ));
-    }
-    let input_id = message.index;
-    let input_text = message.text.map(|s| s.to_string()).unwrap_or_default();
+    let input_text = task.request.prompt.clone();
     let detections = match common::text_contents_detections(
         ctx.clone(),
         task.headers.clone(),
         detectors.clone(),
-        input_id,
+        0, // TODO: this should be an array index?
         vec![(0, input_text)],
     )
     .await
@@ -144,14 +123,15 @@ async fn handle_input_detection(
         }
     };
     if !detections.is_empty() {
-        // Build chat completion with input detections
-        let chat_completion = ChatCompletion {
+        // Build completion with input detections
+        let completion = Completion {
             id: Uuid::new_v4().simple().to_string(),
-            model: model_id,
+            object: "text_completion".into(), // TODO: ref: https://platform.openai.com/docs/api-reference/completions/object#completions/object-object
             created: common::current_timestamp().as_secs() as i64,
+            model: model_id,
             detections: Some(ChatDetections {
                 input: vec![InputDetectionResult {
-                    message_index: message.index,
+                    message_index: 0,
                     results: detections.into(),
                 }],
                 ..Default::default()
@@ -160,9 +140,9 @@ async fn handle_input_detection(
                 DetectionWarningReason::UnsuitableInput,
                 UNSUITABLE_INPUT_MESSAGE,
             )],
-            ..Default::default()
+            ..Default::default() // TODO: figure out system_fingerprint and usage. `choices` must be empty at this point
         };
-        Ok(Some(chat_completion))
+        Ok(Some(completion))
     } else {
         // No input detections
         Ok(None)
@@ -174,17 +154,12 @@ async fn handle_output_detection(
     ctx: Arc<Context>,
     task: CompletionsDetectionTask,
     detectors: HashMap<String, DetectorParams>,
-    mut chat_completion: ChatCompletion,
-) -> Result<ChatCompletion, Error> {
-    let mut tasks = Vec::with_capacity(chat_completion.choices.len());
-    for choice in &chat_completion.choices {
-        if choice
-            .message
-            .content
-            .as_ref()
-            .is_none_or(|content| content.is_empty())
-        {
-            chat_completion.warnings.push(OrchestratorWarning::new(
+    mut completion: Completion,
+) -> Result<Completion, Error> {
+    let mut tasks = Vec::with_capacity(completion.choices.len());
+    for choice in &completion.choices {
+        if choice.text.is_empty() {
+            completion.warnings.push(OrchestratorWarning::new(
                 DetectionWarningReason::EmptyOutput,
                 &format!(
                     "Choice of index {} has no content. Output detection was not executed",
@@ -194,7 +169,7 @@ async fn handle_output_detection(
             continue;
         }
         let input_id = choice.index;
-        let input_text = choice.message.content.clone().unwrap_or_default();
+        let input_text = choice.text.clone();
         tasks.push(tokio::spawn(
             common::text_contents_detections(
                 ctx.clone(),
@@ -221,15 +196,15 @@ async fn handle_output_detection(
             })
             .collect::<Vec<_>>();
         if !output.is_empty() {
-            chat_completion.detections = Some(ChatDetections {
+            completion.detections = Some(ChatDetections {
                 output,
                 ..Default::default()
             });
-            chat_completion.warnings = vec![OrchestratorWarning::new(
+            completion.warnings = vec![OrchestratorWarning::new(
                 DetectionWarningReason::UnsuitableOutput,
                 UNSUITABLE_OUTPUT_MESSAGE,
             )];
         }
     }
-    Ok(chat_completion)
+    Ok(completion)
 }
