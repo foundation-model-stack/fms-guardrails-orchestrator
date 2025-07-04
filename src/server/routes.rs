@@ -102,7 +102,10 @@ pub fn guardrails_router(state: Arc<ServerState>) -> Router {
         );
 
         info!("Enabling completions detection endpoint");
-        router = router.route("/api/v2/chat/completions", post(completions_detection));
+        router = router.route(
+            "/api/v2/text/completions-detection",
+            post(completions_detection),
+        );
     }
     router.with_state(state)
 }
