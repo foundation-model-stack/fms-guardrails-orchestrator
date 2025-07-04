@@ -22,6 +22,7 @@ pub use classification_with_gen::ClassificationWithGenTask;
 pub mod streaming_classification_with_gen;
 pub use streaming_classification_with_gen::StreamingClassificationWithGenTask;
 pub mod chat_completions_detection;
+pub mod completions_detection;
 pub mod streaming_content_detection;
 pub use streaming_content_detection::StreamingContentDetectionTask;
 pub mod generation_with_detection;

@@ -104,6 +104,7 @@ impl From<orchestrator::Error> for Error {
             | ChunkerRequestFailed { ref error, .. }
             | GenerateRequestFailed { ref error, .. }
             | ChatCompletionRequestFailed { ref error, .. }
+            | CompletionRequestFailed { ref error, .. }
             | TokenizeRequestFailed { ref error, .. }
             | Client(ref error) => match error.status_code() {
                 // return actual error for subset of errors
