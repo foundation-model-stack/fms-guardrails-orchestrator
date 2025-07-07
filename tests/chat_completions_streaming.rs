@@ -7,7 +7,7 @@ use fms_guardrails_orchestr8::{
             ChatCompletionChunk, ChatCompletionChunkChoice, ChatCompletionDelta, ChatCompletionLogprob, ChatCompletionLogprobs, ChatDetections, Content, Message, OutputDetectionResult, Role
         },
     },
-    models::DetectorParams,
+    models::{DetectorParams},
     pb::{
         caikit::runtime::chunkers::BidiStreamingChunkerTokenizationTaskRequest,
         caikit_data_model::nlp::{ChunkerTokenizationStreamResult, Token},
@@ -667,7 +667,7 @@ async fn output_detectors_n1() -> Result<(), anyhow::Error> {
     debug!("{messages:#?}");
 
     // Validate length
-    assert_eq!(messages.len(), 3, "unexpected number of messages");
+    assert_eq!(messages.len(), 4, "unexpected number of messages");
 
     // Validate msg-0 choices
     assert_eq!(
@@ -675,7 +675,7 @@ async fn output_detectors_n1() -> Result<(), anyhow::Error> {
         vec![ChatCompletionChunkChoice {
             index: 0,
             delta: ChatCompletionDelta {
-                role: None,
+                role: Some(Role::Assistant),
                 content: Some("Here are 2 random phone numbers:".into(),),
                 refusal: None,
                 tool_calls: vec![],
@@ -703,7 +703,7 @@ async fn output_detectors_n1() -> Result<(), anyhow::Error> {
         vec![ChatCompletionChunkChoice {
             index: 0,
             delta: ChatCompletionDelta {
-                role: None,
+                role: Some(Role::Assistant),
                 content: Some("\n\n1. (503) 272-8192".into(),),
                 refusal: None,
                 tool_calls: vec![],
@@ -740,7 +740,7 @@ async fn output_detectors_n1() -> Result<(), anyhow::Error> {
         vec![ChatCompletionChunkChoice {
             index: 0,
             delta: ChatCompletionDelta {
-                role: None,
+                role: Some(Role::Assistant),
                 content: Some("\n2. (617) 985-3519.".into(),),
                 refusal: None,
                 tool_calls: vec![],
@@ -782,11 +782,11 @@ async fn output_detectors_n1_logprobs() -> Result<(), anyhow::Error> {
             .path("/v1/chat/completions")
             .json(json!({
                 "stream": true,
-                "logprobs": true,
                 "model": "test-0B",
                 "messages": [
                     Message { role: Role::User, content: Some(Content::Text("Can you generate 2 random phone numbers?".into())), ..Default::default() },
-                ]
+                ],
+                "logprobs": true,
             })
         );
         then.text_stream(sse([
@@ -1216,6 +1216,7 @@ async fn output_detectors_n1_logprobs() -> Result<(), anyhow::Error> {
         .post("/api/v2/chat/completions-detection")
         .json(&json!({
             "stream": true,
+            "logprobs": true,
             "model": "test-0B",
             "detectors": {
                 "input": {},
@@ -1236,109 +1237,213 @@ async fn output_detectors_n1_logprobs() -> Result<(), anyhow::Error> {
     debug!("{messages:#?}");
 
     // Validate length
-    assert_eq!(messages.len(), 3, "unexpected number of messages");
+    assert_eq!(messages.len(), 4, "unexpected number of messages");
 
-    // // Validate msg-0 choices
-    // assert_eq!(
-    //     messages[0].choices,
-    //     vec![ChatCompletionChunkChoice {
-    //         index: 0,
-    //         delta: ChatCompletionDelta {
-    //             role: None,
-    //             content: Some("Here are 2 random phone numbers:".into(),),
-    //             refusal: None,
-    //             tool_calls: vec![],
-    //         },
-    //         ..Default::default()
-    //     }],
-    //     "unexpected choices for msg-0"
-    // );
-    // // Validate msg-0 detections
-    // assert_eq!(
-    //     messages[0].detections,
-    //     Some(ChatDetections {
-    //         input: vec![],
-    //         output: vec![OutputDetectionResult {
-    //             choice_index: 0,
-    //             results: vec![],
-    //         }],
-    //     }),
-    //     "unexpected detections for msg-0"
-    // );
+    // Validate msg-0 choices
+    assert_eq!(
+        messages[0].choices,
+        vec![ChatCompletionChunkChoice {
+            index: 0,
+            delta: ChatCompletionDelta {
+                role: Some(Role::Assistant),
+                content: Some("Here are 2 random phone numbers:".into(),),
+                refusal: None,
+                tool_calls: vec![],
+            },
+            logprobs: Some(
+                ChatCompletionLogprobs {
+                    content: vec![
+                        ChatCompletionLogprob {
+                            token: "Here".into(),
+                            logprob: -0.021,
+                            bytes: None,
+                            top_logprobs: None,
+                        },
+                        ChatCompletionLogprob {
+                            token: " are".into(),
+                            logprob: -0.011,
+                            bytes: None,
+                            top_logprobs: None,
+                        },
+                        ChatCompletionLogprob {
+                            token: " ".into(),
+                            logprob: -0.001,
+                            bytes: None,
+                            top_logprobs: None,
+                        },
+                        ChatCompletionLogprob {
+                            token: "2".into(),
+                            logprob: -0.003,
+                            bytes: None,
+                            top_logprobs: None,
+                        },
+                        ChatCompletionLogprob {
+                            token: " random".into(),
+                            logprob: -0.044,
+                            bytes: None,
+                            top_logprobs: None,
+                        },
+                        ChatCompletionLogprob {
+                            token: " phone".into(),
+                            logprob: -0.004,
+                            bytes: None,
+                            top_logprobs: None,
+                        },
+                        ChatCompletionLogprob {
+                            token: " numbers".into(),
+                            logprob: -0.005,
+                            bytes: None,
+                            top_logprobs: None,
+                        },
+                        ChatCompletionLogprob {
+                            token: ":\n\n".into(),
+                            logprob: -0.001,
+                            bytes: None,
+                            top_logprobs: None,
+                        },
+                    ],
+                    refusal: vec![],
+                },
+            ),
+            ..Default::default()
+        }],
+        "unexpected choices for msg-0"
+    );
+    // Validate msg-0 detections
+    assert_eq!(
+        messages[0].detections,
+        Some(ChatDetections {
+            input: vec![],
+            output: vec![OutputDetectionResult {
+                choice_index: 0,
+                results: vec![],
+            }],
+        }),
+        "unexpected detections for msg-0"
+    );
 
-    // // Validate msg-1 choices
-    // assert_eq!(
-    //     messages[1].choices,
-    //     vec![ChatCompletionChunkChoice {
-    //         index: 0,
-    //         delta: ChatCompletionDelta {
-    //             role: None,
-    //             content: Some("\n\n1. (503) 272-8192".into(),),
-    //             refusal: None,
-    //             tool_calls: vec![],
-    //         },
-    //         ..Default::default()
-    //     }],
-    //     "unexpected choices for msg-1"
-    // );
-    // // Validate msg-2 detections
-    // assert_eq!(
-    //     messages[1].detections,
-    //     Some(ChatDetections {
-    //         input: vec![],
-    //         output: vec![OutputDetectionResult {
-    //             choice_index: 0,
-    //             results: vec![ContentAnalysisResponse {
-    //                 start: 5,
-    //                 end: 19,
-    //                 text: "(503) 272-8192".into(),
-    //                 detection: "PhoneNumber".into(),
-    //                 detection_type: "pii".into(),
-    //                 detector_id: Some("pii_detector_sentence".into()),
-    //                 score: 0.8,
-    //                 ..Default::default()
-    //             }],
-    //         }],
-    //     }),
-    //     "unexpected detections for msg-1"
-    // );
+    // Validate msg-1 choices
+    assert_eq!(
+        messages[1].choices,
+        vec![ChatCompletionChunkChoice {
+            index: 0,
+            delta: ChatCompletionDelta {
+                role: Some(Role::Assistant),
+                content: Some("\n\n1. (503) 272-8192".into(),),
+                refusal: None,
+                tool_calls: vec![],
+            },
+            logprobs: Some(
+                ChatCompletionLogprobs {
+                    content: vec![
+                        ChatCompletionLogprob {
+                            token: "1. (503) 272-8192\n".into(),
+                            logprob: -0.066,
+                            bytes: None,
+                            top_logprobs: None,
+                        },
+                    ],
+                    refusal: vec![],
+                },
+            ),
+            ..Default::default()
+        }],
+        "unexpected choices for msg-1"
+    );
+    // Validate msg-1 detections
+    assert_eq!(
+        messages[1].detections,
+        Some(ChatDetections {
+            input: vec![],
+            output: vec![OutputDetectionResult {
+                choice_index: 0,
+                results: vec![ContentAnalysisResponse {
+                    start: 5,
+                    end: 19,
+                    text: "(503) 272-8192".into(),
+                    detection: "PhoneNumber".into(),
+                    detection_type: "pii".into(),
+                    detector_id: Some("pii_detector_sentence".into()),
+                    score: 0.8,
+                    ..Default::default()
+                }],
+            }],
+        }),
+        "unexpected detections for msg-1"
+    );
 
-    // // Validate msg-2 choices
-    // assert_eq!(
-    //     messages[2].choices,
-    //     vec![ChatCompletionChunkChoice {
-    //         index: 0,
-    //         delta: ChatCompletionDelta {
-    //             role: None,
-    //             content: Some("\n2. (617) 985-3519.".into(),),
-    //             refusal: None,
-    //             tool_calls: vec![],
-    //         },
-    //         ..Default::default()
-    //     }],
-    //     "unexpected choices for msg-2"
-    // );
-    // // Validate msg-2 detections
-    // assert_eq!(
-    //     messages[2].detections,
-    //     Some(ChatDetections {
-    //         input: vec![],
-    //         output: vec![OutputDetectionResult {
-    //             choice_index: 0,
-    //             results: vec![ContentAnalysisResponse {
-    //                 start: 4,
-    //                 end: 18,
-    //                 text: "(617) 985-3519".into(),
-    //                 detection: "PhoneNumber".into(),
-    //                 detection_type: "pii".into(),
-    //                 detector_id: Some("pii_detector_sentence".into()),
-    //                 score: 0.8,
-    //                 ..Default::default()
-    //             }],
-    //         }],
-    //     }),
-    //     "unexpected detections for msg-2"
-    // );
+    // Validate msg-2 choices
+    assert_eq!(
+        messages[2].choices,
+        vec![ChatCompletionChunkChoice {
+            index: 0,
+            delta: ChatCompletionDelta {
+                role: Some(Role::Assistant),
+                content: Some("\n2. (617) 985-3519.".into(),),
+                refusal: None,
+                tool_calls: vec![],
+            },
+            logprobs: Some(
+                ChatCompletionLogprobs {
+                    content: vec![
+                        ChatCompletionLogprob {
+                            token: "2. (617) 985-3519.".into(),
+                            logprob: -0.055,
+                            bytes: None,
+                            top_logprobs: None,
+                        },
+                    ],
+                    refusal: vec![],
+                },
+            ),
+            ..Default::default()
+        }],
+        "unexpected choices for msg-2"
+    );
+    // Validate msg-2 detections
+    assert_eq!(
+        messages[2].detections,
+        Some(ChatDetections {
+            input: vec![],
+            output: vec![OutputDetectionResult {
+                choice_index: 0,
+                results: vec![ContentAnalysisResponse {
+                    start: 4,
+                    end: 18,
+                    text: "(617) 985-3519".into(),
+                    detection: "PhoneNumber".into(),
+                    detection_type: "pii".into(),
+                    detector_id: Some("pii_detector_sentence".into()),
+                    score: 0.8,
+                    ..Default::default()
+                }],
+            }],
+        }),
+        "unexpected detections for msg-2"
+    );
+
+    // Validate msg-3 choices
+    assert_eq!(
+        messages[3].choices,
+        vec![ChatCompletionChunkChoice {
+            index: 0,
+            delta: ChatCompletionDelta {
+                role: Some(Role::Assistant),
+                content: None,
+                refusal: None,
+                tool_calls: vec![],
+            },
+            finish_reason: Some("stop".into()),
+            ..Default::default()
+        }],
+        "unexpected choices for msg-3"
+    );
+    // Validate msg-3 detections
+    assert_eq!(
+        messages[3].detections,
+        None,
+        "unexpected detections for msg-3"
+    );
 
     Ok(())
 }
