@@ -58,6 +58,7 @@ pub const ORCHESTRATOR_CHAT_DETECTION_ENDPOINT: &str = "/api/v2/text/detection/c
 
 pub const ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT: &str =
     "/api/v2/chat/completions-detection";
+pub const ORCHESTRATOR_COMPLETIONS_DETECTION_ENDPOINT: &str = "/api/v2/text/completions-detection";
 
 // Messages
 pub const ORCHESTRATOR_UNSUITABLE_INPUT_MESSAGE: &str = "Unsuitable input detected. Please check the detected entities on your input and try again with the unsuitable input removed.";
