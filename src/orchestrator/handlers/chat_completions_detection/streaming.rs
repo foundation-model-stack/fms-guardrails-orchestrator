@@ -199,7 +199,7 @@ async fn handle_input_detection(
             id: Uuid::new_v4().simple().to_string(),
             model: model_id,
             created: common::current_timestamp().as_secs() as i64,
-            detections: Some(ChatDetections {
+            detections: Some(OpenAiDetections {
                 input: vec![InputDetectionResult {
                     message_index: message.index,
                     results: detections.into(),
@@ -447,7 +447,7 @@ async fn handle_whole_doc_output_detection(
     task: &ChatCompletionsDetectionTask,
     detectors: HashMap<String, DetectorParams>,
     chat_completion_state: Arc<ChatCompletionState>,
-) -> Result<(ChatDetections, Vec<OrchestratorWarning>), Error> {
+) -> Result<(OpenAiDetections, Vec<OrchestratorWarning>), Error> {
     // Create vec of choice_index->inputs, where inputs contains the concatenated text for the choice
     let choice_inputs = chat_completion_state
         .chat_completions
@@ -499,7 +499,7 @@ async fn handle_whole_doc_output_detection(
     } else {
         Vec::new()
     };
-    let detections = ChatDetections {
+    let detections = OpenAiDetections {
         output,
         ..Default::default()
     };
@@ -543,7 +543,7 @@ fn output_detection_response(
             )];
         }
         // Set detections
-        chat_completion.detections = Some(ChatDetections {
+        chat_completion.detections = Some(OpenAiDetections {
             output: vec![OutputDetectionResult {
                 choice_index,
                 results: detections.into(),

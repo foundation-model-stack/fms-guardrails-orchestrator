@@ -14,9 +14,9 @@
  limitations under the License.
 
 */
-pub mod chat_completions;
 pub mod chunker;
 pub mod detectors;
 pub mod errors;
 pub mod generation;
+pub mod openai;
 pub mod orchestrator;

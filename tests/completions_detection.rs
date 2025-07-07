@@ -16,7 +16,7 @@
 */
 
 use common::{
-    chat_completions::COMPLETIONS_ENDPOINT,
+    openai::COMPLETIONS_ENDPOINT,
     orchestrator::{
         ORCHESTRATOR_COMPLETIONS_DETECTION_ENDPOINT, ORCHESTRATOR_CONFIG_FILE_PATH,
         TestOrchestratorServer,
@@ -27,7 +27,7 @@ use fms_guardrails_orchestr8::{
         chunker::MODEL_ID_HEADER_NAME as CHUNKER_MODEL_ID_HEADER_NAME,
         detector::{ContentAnalysisRequest, ContentAnalysisResponse},
         openai::{
-            ChatDetections, Completion, CompletionChoice, InputDetectionResult,
+            Completion, CompletionChoice, InputDetectionResult, OpenAiDetections,
             OrchestratorWarning, OutputDetectionResult, Usage,
         },
     },
@@ -404,7 +404,7 @@ async fn input_detections() -> Result<(), anyhow::Error> {
         created: current_timestamp().as_secs() as i64,
         model: MODEL_ID.into(),
         choices: vec![],
-        detections: Some(ChatDetections {
+        detections: Some(OpenAiDetections {
             input: vec![InputDetectionResult {
                 message_index: 0,
                 results: expected_detections.clone(),
@@ -727,7 +727,7 @@ async fn output_detections() -> Result<(), anyhow::Error> {
         created: current_timestamp().as_secs() as i64,
         model: MODEL_ID.into(),
         choices: expected_choices,
-        detections: Some(ChatDetections {
+        detections: Some(OpenAiDetections {
             input: vec![],
             output: vec![OutputDetectionResult {
                 choice_index: 1,
@@ -881,7 +881,7 @@ async fn output_client_error() -> Result<(), anyhow::Error> {
     // Add input for error scenarios
     let chunker_error_input = "This should return a 500 error on chunker";
     let detector_error_input = "This should return a 500 error on detector";
-    let completions_error_input = "This should return a 500 error on chat completions";
+    let completions_error_input = "This should return a 500 error on completions";
 
     // Add mocksets
     let mut chunker_mocks = MockSet::new();

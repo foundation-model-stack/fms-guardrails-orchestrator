@@ -16,7 +16,6 @@
 */
 
 use common::{
-    chat_completions::CHAT_COMPLETIONS_ENDPOINT,
     chunker::CHUNKER_UNARY_ENDPOINT,
     detectors::{
         ANSWER_RELEVANCE_DETECTOR, DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE,
@@ -24,6 +23,7 @@ use common::{
         TEXT_CONTENTS_DETECTOR_ENDPOINT,
     },
     errors::DetectorError,
+    openai::CHAT_COMPLETIONS_ENDPOINT,
     orchestrator::{
         ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT, ORCHESTRATOR_CONFIG_FILE_PATH,
         TestOrchestratorServer,
@@ -34,8 +34,8 @@ use fms_guardrails_orchestr8::{
         chunker::MODEL_ID_HEADER_NAME as CHUNKER_MODEL_ID_HEADER_NAME,
         detector::{ContentAnalysisRequest, ContentAnalysisResponse},
         openai::{
-            ChatCompletion, ChatCompletionChoice, ChatCompletionMessage, ChatDetections, Content,
-            ContentPart, ContentType, InputDetectionResult, Message, OrchestratorWarning,
+            ChatCompletion, ChatCompletionChoice, ChatCompletionMessage, Content, ContentPart,
+            ContentType, InputDetectionResult, Message, OpenAiDetections, OrchestratorWarning,
             OutputDetectionResult, Role,
         },
     },
@@ -495,7 +495,7 @@ async fn input_detections() -> Result<(), anyhow::Error> {
     let chat_completions_response = ChatCompletion {
         model: MODEL_ID.into(),
         choices: vec![],
-        detections: Some(ChatDetections {
+        detections: Some(OpenAiDetections {
             input: vec![InputDetectionResult {
                 message_index: 0,
                 results: expected_detections.clone(),
@@ -853,7 +853,7 @@ async fn output_detections() -> Result<(), anyhow::Error> {
     let chat_completions_response = ChatCompletion {
         model: MODEL_ID.into(),
         choices: expected_choices.clone(),
-        detections: Some(ChatDetections {
+        detections: Some(OpenAiDetections {
             input: vec![],
             output: vec![OutputDetectionResult {
                 choice_index: 1,

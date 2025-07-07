@@ -627,7 +627,7 @@ pub struct ChatCompletion {
     pub service_tier: Option<String>,
     /// Detections
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub detections: Option<ChatDetections>,
+    pub detections: Option<OpenAiDetections>,
     /// Warnings
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub warnings: Vec<OrchestratorWarning>,
@@ -722,7 +722,7 @@ pub struct ChatCompletionChunk {
     pub usage: Option<Usage>,
     /// Detections
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub detections: Option<ChatDetections>,
+    pub detections: Option<OpenAiDetections>,
     /// Warnings
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub warnings: Vec<OrchestratorWarning>,
@@ -797,7 +797,7 @@ pub struct Completion {
     pub system_fingerprint: Option<String>,
     /// Detections
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub detections: Option<ChatDetections>,
+    pub detections: Option<OpenAiDetections>,
     /// Warnings
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub warnings: Vec<OrchestratorWarning>,
@@ -901,16 +901,16 @@ pub struct OpenAiErrorMessage {
     pub error: OpenAiError,
 }
 
-/// Guardrails chat detections.
+/// Guardrails Open AI detections.
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
-pub struct ChatDetections {
+pub struct OpenAiDetections {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub input: Vec<InputDetectionResult>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub output: Vec<OutputDetectionResult>,
 }
 
-/// Guardrails chat input detections.
+/// Guardrails Open AI input detections.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct InputDetectionResult {
     pub message_index: u32,
@@ -918,7 +918,7 @@ pub struct InputDetectionResult {
     pub results: Vec<ContentAnalysisResponse>,
 }
 
-/// Guardrails chat output detections.
+/// Guardrails Open AI output detections.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct OutputDetectionResult {
     pub choice_index: u32,

@@ -126,7 +126,7 @@ async fn handle_input_detection(
             object: "text_completion".into(), // TODO: ref: https://platform.openai.com/docs/api-reference/completions/object#completions/object-object
             created: common::current_timestamp().as_secs() as i64,
             model: model_id,
-            detections: Some(ChatDetections {
+            detections: Some(OpenAiDetections {
                 input: vec![InputDetectionResult {
                     message_index: 0,
                     results: detections.into(),
@@ -193,7 +193,7 @@ async fn handle_output_detection(
             })
             .collect::<Vec<_>>();
         if !output.is_empty() {
-            completion.detections = Some(ChatDetections {
+            completion.detections = Some(OpenAiDetections {
                 output,
                 ..Default::default()
             });

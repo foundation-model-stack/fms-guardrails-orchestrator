@@ -146,7 +146,7 @@ async fn handle_input_detection(
             id: Uuid::new_v4().simple().to_string(),
             model: model_id,
             created: common::current_timestamp().as_secs() as i64,
-            detections: Some(ChatDetections {
+            detections: Some(OpenAiDetections {
                 input: vec![InputDetectionResult {
                     message_index: message.index,
                     results: detections.into(),
@@ -218,7 +218,7 @@ async fn handle_output_detection(
             })
             .collect::<Vec<_>>();
         if !output.is_empty() {
-            chat_completion.detections = Some(ChatDetections {
+            chat_completion.detections = Some(OpenAiDetections {
                 output,
                 ..Default::default()
             });
