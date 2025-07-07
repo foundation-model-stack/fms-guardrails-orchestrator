@@ -116,7 +116,7 @@ async fn no_detectors() -> Result<(), anyhow::Error> {
     });
 
     // Start orchestrator server and its dependencies
-    let mock_openai_server = MockServer::new("completions").with_mocks(completion_mocks);
+    let mock_openai_server = MockServer::new("openai").with_mocks(completion_mocks);
 
     let orchestrator_server = TestOrchestratorServer::builder()
         .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
@@ -262,7 +262,7 @@ async fn no_detections() -> Result<(), anyhow::Error> {
 
     // Start orchestrator server and its dependencies
     let mock_detector_server = MockServer::new(detector_name).with_mocks(detector_mocks);
-    let mock_openai_server = MockServer::new("completions").with_mocks(completion_mocks);
+    let mock_openai_server = MockServer::new("openai").with_mocks(completion_mocks);
 
     let orchestrator_server = TestOrchestratorServer::builder()
         .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
@@ -457,7 +457,7 @@ async fn input_detections() -> Result<(), anyhow::Error> {
 
     // Start orchestrator server and its dependencies
     let mock_detector_server = MockServer::new(detector_name).with_mocks(detector_mocks);
-    let mock_openai_server = MockServer::new("completions").with_mocks(completion_mocks);
+    let mock_openai_server = MockServer::new("openai").with_mocks(completion_mocks);
     let mock_chunker_server = MockServer::new(CHUNKER_NAME_SENTENCE)
         .grpc()
         .with_mocks(chunker_mocks);
@@ -514,7 +514,7 @@ async fn input_client_error() -> Result<(), anyhow::Error> {
     // Add input for error scenarios
     let chunker_error_input = "This should return a 500 error on chunker";
     let detector_error_input = "This should return a 500 error on detector";
-    let completions_error_input = "This should return a 500 error on completions";
+    let completions_error_input = "This should return a 500 error on openai";
 
     // Add mocksets
     let mut chunker_mocks = MockSet::new();
@@ -598,7 +598,7 @@ async fn input_client_error() -> Result<(), anyhow::Error> {
 
     // Start orchestrator server and its dependencies
     let mock_detector_server = MockServer::new(detector_name).with_mocks(detector_mocks);
-    let mock_openai_server = MockServer::new("completions").with_mocks(completions_mocks);
+    let mock_openai_server = MockServer::new("openai").with_mocks(completions_mocks);
     let mock_chunker_server = MockServer::new(CHUNKER_NAME_SENTENCE)
         .grpc()
         .with_mocks(chunker_mocks);
@@ -823,7 +823,7 @@ async fn output_detections() -> Result<(), anyhow::Error> {
 
     // Start orchestrator server and its dependencies
     let mock_detector_server = MockServer::new(detector_name).with_mocks(detector_mocks);
-    let mock_openai_server = MockServer::new("completions").with_mocks(completion_mocks);
+    let mock_openai_server = MockServer::new("openai").with_mocks(completion_mocks);
     let mock_chunker_server = MockServer::new(CHUNKER_NAME_SENTENCE)
         .grpc()
         .with_mocks(chunker_mocks);
@@ -881,7 +881,7 @@ async fn output_client_error() -> Result<(), anyhow::Error> {
     // Add input for error scenarios
     let chunker_error_input = "This should return a 500 error on chunker";
     let detector_error_input = "This should return a 500 error on detector";
-    let completions_error_input = "This should return a 500 error on completions";
+    let completions_error_input = "This should return a 500 error on openai";
 
     // Add mocksets
     let mut chunker_mocks = MockSet::new();
@@ -983,7 +983,7 @@ async fn output_client_error() -> Result<(), anyhow::Error> {
 
     // Start orchestrator server and its dependencies
     let mock_detector_server = MockServer::new(detector_name).with_mocks(detector_mocks);
-    let mock_openai_server = MockServer::new("completions").with_mocks(completion_mocks);
+    let mock_openai_server = MockServer::new("openai").with_mocks(completion_mocks);
     let mock_chunker_server = MockServer::new(CHUNKER_NAME_SENTENCE)
         .grpc()
         .with_mocks(chunker_mocks);
