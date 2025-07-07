@@ -52,7 +52,8 @@ use uuid::Uuid;
 use crate::common::{
     chunker::CHUNKER_UNARY_ENDPOINT,
     detectors::{
-        DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE, DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC,
+        ANSWER_RELEVANCE_DETECTOR, DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE,
+        DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC, NON_EXISTING_DETECTOR,
         TEXT_CONTENTS_DETECTOR_ENDPOINT,
     },
     errors::DetectorError,
@@ -1054,6 +1055,174 @@ async fn output_client_error() -> Result<(), anyhow::Error> {
     // Assertions for completions error scenario
     let results = response.json::<server::Error>().await?;
     assert_eq!(results, expected_orchestrator_error);
+
+    Ok(())
+}
+
+// Validate that invalid orchestrator requests returns 422 error
+#[test(tokio::test)]
+async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
+    // Start orchestrator server and its dependencies
+    let orchestrator_server = TestOrchestratorServer::builder()
+        .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
+        .build()
+        .await?;
+
+    let prompt = "Hi there!";
+
+    // Invalid input detector scenario
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_COMPLETIONS_DETECTION_ENDPOINT)
+        .json(&json!({
+            "model": MODEL_ID,
+            "detectors": {
+                "input": {
+                    ANSWER_RELEVANCE_DETECTOR: {},
+                },
+                "output": {}
+            },
+            "prompt": prompt,
+        }))
+        .send()
+        .await?;
+
+    let results = response.json::<server::Error>().await?;
+    debug!("{results:#?}");
+    assert_eq!(
+        results,
+        server::Error {
+            code: http::StatusCode::UNPROCESSABLE_ENTITY,
+            details: format!(
+                "detector `{ANSWER_RELEVANCE_DETECTOR}` is not supported by this endpoint",
+            )
+        },
+        "failed on invalid input detector scenario"
+    );
+
+    // Non-existing input detector scenario
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_COMPLETIONS_DETECTION_ENDPOINT)
+        .json(&json!({
+            "model": MODEL_ID,
+            "detectors": {
+                "input": {
+                    NON_EXISTING_DETECTOR: {},
+                },
+                "output": {}
+            },
+            "prompt": prompt,
+        }))
+        .send()
+        .await?;
+
+    let results = response.json::<server::Error>().await?;
+    debug!("{results:#?}");
+    assert_eq!(
+        results,
+        server::Error {
+            code: http::StatusCode::NOT_FOUND,
+            details: format!("detector `{NON_EXISTING_DETECTOR}` not found"),
+        },
+        "failed on non-existing input detector scenario"
+    );
+
+    // Invalid output detector scenario
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_COMPLETIONS_DETECTION_ENDPOINT)
+        .json(&json!({
+            "model": MODEL_ID,
+            "detectors": {
+                "input": {},
+                "output": {
+                    ANSWER_RELEVANCE_DETECTOR: {},
+                },
+            },
+            "prompt": prompt,
+        }))
+        .send()
+        .await?;
+
+    let results = response.json::<server::Error>().await?;
+    debug!("{results:#?}");
+    assert_eq!(
+        results,
+        server::Error {
+            code: http::StatusCode::UNPROCESSABLE_ENTITY,
+            details: format!(
+                "detector `{ANSWER_RELEVANCE_DETECTOR}` is not supported by this endpoint"
+            )
+        },
+        "failed on invalid output detector scenario"
+    );
+
+    // Non-existing output detector scenario
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_COMPLETIONS_DETECTION_ENDPOINT)
+        .json(&json!({
+            "model": MODEL_ID,
+            "detectors": {
+                "input": {},
+                "output": {
+                    NON_EXISTING_DETECTOR: {},
+                }
+            },
+            "prompt": prompt,
+        }))
+        .send()
+        .await?;
+
+    let results = response.json::<server::Error>().await?;
+    debug!("{results:#?}");
+    assert_eq!(
+        results,
+        server::Error {
+            code: http::StatusCode::NOT_FOUND,
+            details: format!("detector `{NON_EXISTING_DETECTOR}` not found"),
+        },
+        "failed on non-existing input detector scenario"
+    );
+
+    // Empty `prompt` scenario
+    let no_content_prompt = "";
+
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_COMPLETIONS_DETECTION_ENDPOINT)
+        .json(&json!({
+            "model": MODEL_ID,
+            "prompt": no_content_prompt,
+        }))
+        .send()
+        .await?;
+
+    let results = response.json::<server::Error>().await?;
+    debug!("{results:#?}");
+    assert_eq!(
+        results,
+        server::Error {
+            code: http::StatusCode::UNPROCESSABLE_ENTITY,
+            details: "`prompt` must not be empty".into()
+        }
+    );
+
+    // Empty `model` scenario
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_COMPLETIONS_DETECTION_ENDPOINT)
+        .json(&json!({
+            "model": "",
+            "prompt": prompt,
+        }))
+        .send()
+        .await?;
+
+    let results = response.json::<server::Error>().await?;
+    debug!("{results:#?}");
+    assert_eq!(
+        results,
+        server::Error {
+            code: http::StatusCode::UNPROCESSABLE_ENTITY,
+            details: "`model` must not be empty".into()
+        }
+    );
 
     Ok(())
 }
