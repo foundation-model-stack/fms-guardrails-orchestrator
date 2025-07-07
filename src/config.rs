@@ -196,6 +196,7 @@ pub struct OrchestratorConfig {
     pub generation: Option<GenerationConfig>,
     /// Open AI service and associated configuration, can be omitted if configuring for chat generation is not wanted
     #[serde(alias = "chat_generation")]
+    #[serde(alias = "chat_completions")]
     pub openai: Option<OpenAiConfig>,
     /// Chunker services and associated configurations, if omitted the default value "whole_doc_chunker" is used
     pub chunkers: Option<HashMap<String, ChunkerConfig>>,
@@ -225,9 +226,15 @@ impl OrchestratorConfig {
                 error,
             }
         })?;
+        // TODO: Remove if conditions once aliases are deprecated
         if config_yaml.contains("chat_generation") {
             warn!(
                 "`chat_generation` is deprecated and will be removed in 1.0. Rename it to `openai`."
+            )
+        }
+        if config_yaml.contains("chat_completions") {
+            warn!(
+                "`chat_completions` is deprecated and will be removed in 1.0. Rename it to `openai`."
             )
         }
         let mut config: OrchestratorConfig =
