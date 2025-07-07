@@ -194,7 +194,7 @@ pub enum DetectorType {
 pub struct OrchestratorConfig {
     /// Generation service and associated configuration, can be omitted if configuring for generation is not wanted
     pub generation: Option<GenerationConfig>,
-    /// Open AI service and associated configuration, can be omitted if configuring for chat generation is not wanted
+    /// OpenAI service and associated configuration, can be omitted if configuring for chat generation is not wanted
     #[serde(alias = "chat_generation")]
     #[serde(alias = "chat_completions")]
     pub openai: Option<OpenAiConfig>,
