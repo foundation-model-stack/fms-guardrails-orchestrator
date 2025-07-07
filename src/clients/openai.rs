@@ -43,6 +43,7 @@ const DEFAULT_PORT: u16 = 8080;
 
 const CHAT_COMPLETIONS_ENDPOINT: &str = "/v1/chat/completions";
 const COMPLETIONS_ENDPOINT: &str = "/v1/completions";
+const TOKENIZE_ENDPOINT: &str = "/tokenize"; // This endpoint is vLLM-specific
 
 #[derive(Clone)]
 pub struct OpenAiClient {
@@ -99,6 +100,16 @@ impl OpenAiClient {
             let completion = self.handle_unary(url, request, headers).await?;
             Ok(CompletionsResponse::Unary(completion))
         }
+    }
+
+    pub async fn tokenize(
+        &self,
+        request: TokenizeRequest,
+        headers: HeaderMap,
+    ) -> Result<TokenizeResponse, Error> {
+        let url = self.client.endpoint(TOKENIZE_ENDPOINT);
+        let response = self.handle_unary(url, request, headers).await?;
+        Ok(response)
     }
 
     async fn handle_unary<R, S>(&self, url: Url, request: R, headers: HeaderMap) -> Result<S, Error>
@@ -250,6 +261,23 @@ impl From<Completion> for CompletionsResponse {
     }
 }
 
+/// Tokenize response.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TokenizeResponse {
+    pub count: u32,
+    pub max_model_len: u32,
+    pub tokens: Vec<u32>,
+}
+
+impl From<TokenizeResponse> for Usage {
+    fn from(tokenize_response: TokenizeResponse) -> Self {
+        Self {
+            prompt_tokens: tokenize_response.count,
+            ..Default::default()
+        }
+    }
+}
+
 /// Chat completions request.
 ///
 /// As orchestrator is only concerned with a limited subset
@@ -339,6 +367,34 @@ pub struct CompletionsRequest {
 }
 
 impl CompletionsRequest {
+    pub fn validate(&self) -> Result<(), ValidationError> {
+        if self.model.is_empty() {
+            return Err(ValidationError::Invalid("`model` must not be empty".into()));
+        }
+        if self.prompt.is_empty() {
+            return Err(ValidationError::Invalid(
+                "`prompt` must not be empty".into(),
+            ));
+        }
+        Ok(())
+    }
+}
+
+/// Tokenize request.
+///
+/// Required when there are input detections.
+#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TokenizeRequest {
+    /// Model name.
+    pub model: String,
+    /// Prompt text.
+    pub prompt: String,
+    /// Extra fields not captured above.
+    #[serde(flatten)]
+    pub extra: Map<String, Value>,
+}
+
+impl TokenizeRequest {
     pub fn validate(&self) -> Result<(), ValidationError> {
         if self.model.is_empty() {
             return Err(ValidationError::Invalid("`model` must not be empty".into()));
