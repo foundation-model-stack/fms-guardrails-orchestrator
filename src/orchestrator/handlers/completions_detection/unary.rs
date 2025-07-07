@@ -74,9 +74,9 @@ pub async fn handle_unary(
         }
     }
 
-    // Handle chat completion
+    // Handle completion
     let client = ctx.clients.get_as::<OpenAiClient>("openai").unwrap();
-    let chat_completion =
+    let completion =
         match common::completion(client, task.headers.clone(), task.request.clone()).await {
             Ok(CompletionsResponse::Unary(completion)) => *completion,
             Ok(CompletionsResponse::Streaming(_)) => unimplemented!(),
@@ -85,12 +85,12 @@ pub async fn handle_unary(
 
     if !output_detectors.is_empty() {
         // Handle output detection
-        let chat_completion =
-            handle_output_detection(ctx.clone(), task, output_detectors, chat_completion).await?;
-        Ok(chat_completion.into())
+        let completion =
+            handle_output_detection(ctx.clone(), task, output_detectors, completion).await?;
+        Ok(completion.into())
     } else {
-        // No output detectors, send chat completion response
-        Ok(chat_completion.into())
+        // No output detectors, send completion response
+        Ok(completion.into())
     }
 }
 
@@ -183,7 +183,7 @@ async fn handle_output_detection(
         .into_iter()
         .collect::<Result<Vec<_>, Error>>()?;
     if !detections.is_empty() {
-        // Update chat completion with detections
+        // Update completion with detections
         let output = detections
             .into_iter()
             .filter(|(_, detections)| !detections.is_empty())
