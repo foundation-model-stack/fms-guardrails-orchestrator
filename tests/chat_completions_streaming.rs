@@ -771,6 +771,29 @@ async fn output_detectors_n1() -> Result<(), anyhow::Error> {
         "unexpected detections for msg-2"
     );
 
+    // Validate msg-3 choices
+    assert_eq!(
+        messages[3].choices,
+        vec![ChatCompletionChunkChoice {
+            index: 0,
+            delta: ChatCompletionDelta {
+                role: Some(Role::Assistant),
+                content: None,
+                refusal: None,
+                tool_calls: vec![],
+            },
+            finish_reason: Some("stop".into()),
+            ..Default::default()
+        }],
+        "unexpected choices for msg-3"
+    );
+    // Validate msg-3 detections
+    assert_eq!(
+        messages[3].detections,
+        None,
+        "unexpected detections for msg-3"
+    );
+
     Ok(())
 }
 
