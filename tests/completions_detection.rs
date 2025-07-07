@@ -37,6 +37,7 @@ use fms_guardrails_orchestr8::{
         caikit::runtime::chunkers::ChunkerTokenizationTaskRequest,
         caikit_data_model::nlp::{Token, TokenizationResults},
     },
+    server,
 };
 use hyper::StatusCode;
 use mocktail::prelude::*;
@@ -51,6 +52,7 @@ use crate::common::{
         DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE, DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC,
         TEXT_CONTENTS_DETECTOR_ENDPOINT,
     },
+    errors::DetectorError,
 };
 
 pub mod common;
@@ -486,6 +488,184 @@ async fn input_detections() -> Result<(), anyhow::Error> {
     assert_eq!(results.detections, completions_response.detections);
     assert_eq!(results.choices, completions_response.choices);
     assert_eq!(results.warnings, completions_response.warnings);
+
+    Ok(())
+}
+
+// Validates that requests with input detector configured returns propagated errors
+#[test(tokio::test)]
+async fn input_client_error() -> Result<(), anyhow::Error> {
+    let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE;
+    // Add 500 expected input detector mock response
+    let expected_detector_error = DetectorError {
+        code: 500,
+        message: "Internal detector error.".into(),
+    };
+    // Add 500 expected orchestrator error response
+    let expected_orchestrator_error = server::Error {
+        code: http::StatusCode::INTERNAL_SERVER_ERROR,
+        details: "unexpected error occurred while processing request".into(),
+    };
+
+    // Add input for error scenarios
+    let chunker_error_input = "This should return a 500 error on chunker";
+    let detector_error_input = "This should return a 500 error on detector";
+    let completions_error_input = "This should return a 500 error on completions";
+
+    // Add mocksets
+    let mut chunker_mocks = MockSet::new();
+    let mut detector_mocks = MockSet::new();
+    let mut completions_mocks = MockSet::new();
+
+    // Add chunker tokenization mock for detector internal server error scenario
+    chunker_mocks.mock(|when, then| {
+        when.path(CHUNKER_UNARY_ENDPOINT)
+            .header(CHUNKER_MODEL_ID_HEADER_NAME, CHUNKER_NAME_SENTENCE)
+            .pb(ChunkerTokenizationTaskRequest {
+                text: detector_error_input.into(),
+            });
+        then.pb(TokenizationResults {
+            results: vec![Token {
+                start: 0,
+                end: detector_error_input.len() as i64,
+                text: detector_error_input.into(),
+            }],
+            token_count: 0,
+        });
+    });
+
+    // Add chunker tokenization mock for completions internal server error scenario
+    chunker_mocks.mock(|when, then| {
+        when.path(CHUNKER_UNARY_ENDPOINT)
+            .header(CHUNKER_MODEL_ID_HEADER_NAME, CHUNKER_NAME_SENTENCE)
+            .pb(ChunkerTokenizationTaskRequest {
+                text: completions_error_input.into(),
+            });
+        then.pb(TokenizationResults {
+            results: vec![Token {
+                start: 0,
+                end: completions_error_input.len() as i64,
+                text: completions_error_input.into(),
+            }],
+            token_count: 0,
+        });
+    });
+
+    // Add chunker tokenization mock for chunker internal server error scenario
+    chunker_mocks.mock(|when, then| {
+        when.path(CHUNKER_UNARY_ENDPOINT)
+            .header(CHUNKER_MODEL_ID_HEADER_NAME, CHUNKER_NAME_SENTENCE)
+            .pb(ChunkerTokenizationTaskRequest {
+                text: chunker_error_input.into(),
+            });
+        then.internal_server_error();
+    });
+
+    // Add detector mock for completions error scenario
+    detector_mocks.mock(|when, then| {
+        when.post()
+            .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
+            .json(ContentAnalysisRequest {
+                contents: vec![completions_error_input.into()],
+                detector_params: DetectorParams::new(),
+            });
+        then.json([Vec::<ContentAnalysisResponse>::new()]);
+    });
+
+    // Add detector mock for detector error scenario
+    detector_mocks.mock(|when, then| {
+        when.post()
+            .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
+            .json(ContentAnalysisRequest {
+                contents: vec![detector_error_input.into()],
+                detector_params: DetectorParams::new(),
+            });
+        then.internal_server_error().json(&expected_detector_error);
+    });
+
+    // Add completions mock for completions error scenario
+    completions_mocks.mock(|when, then| {
+        when.post().path(COMPLETIONS_ENDPOINT).json(json!({
+            "model": MODEL_ID,
+            "prompt": completions_error_input,
+        }));
+        then.internal_server_error();
+    });
+
+    // Start orchestrator server and its dependencies
+    let mock_detector_server = MockServer::new(detector_name).with_mocks(detector_mocks);
+    let mock_openai_server = MockServer::new("completions").with_mocks(completions_mocks);
+    let mock_chunker_server = MockServer::new(CHUNKER_NAME_SENTENCE)
+        .grpc()
+        .with_mocks(chunker_mocks);
+
+    let orchestrator_server = TestOrchestratorServer::builder()
+        .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
+        .detector_servers([&mock_detector_server])
+        .chunker_servers([&mock_chunker_server])
+        .openai_server(&mock_openai_server)
+        .build()
+        .await?;
+
+    // Make orchestrator call for chunker error scenario
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_COMPLETIONS_DETECTION_ENDPOINT)
+        .json(&json!({
+            "model": MODEL_ID,
+            "detectors": {
+                "input": {
+                    detector_name: {},
+                },
+                "output": {}
+            },
+            "prompt": chunker_error_input,
+        }))
+        .send()
+        .await?;
+
+    // Assertions for chunker error scenario
+    let results = response.json::<server::Error>().await?;
+    assert_eq!(results, expected_orchestrator_error);
+
+    // Make orchestrator call for detector error scenario
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_COMPLETIONS_DETECTION_ENDPOINT)
+        .json(&json!({
+            "model": MODEL_ID,
+            "detectors": {
+                "input": {
+                    detector_name: {},
+                },
+                "output": {}
+            },
+            "prompt": detector_error_input
+        }))
+        .send()
+        .await?;
+
+    // Assertions for detector error scenario
+    let results = response.json::<server::Error>().await?;
+    assert_eq!(results, expected_orchestrator_error);
+
+    // Make orchestrator call for completions error scenario
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_COMPLETIONS_DETECTION_ENDPOINT)
+        .json(&json!({
+            "model": MODEL_ID,
+            "detectors": {
+                "input": {
+                    detector_name: {},
+                },
+                "output": {}
+            },
+            "prompt": completions_error_input,
+        }))
+        .send()
+        .await?;
+
+    // Assertions for completions error scenario
+    let results = response.json::<server::Error>().await?;
+    assert_eq!(results, expected_orchestrator_error);
 
     Ok(())
 }
