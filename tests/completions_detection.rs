@@ -16,16 +16,9 @@
 */
 
 use common::{
-    chunker::CHUNKER_UNARY_ENDPOINT,
-    detectors::{
-        ANSWER_RELEVANCE_DETECTOR, DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE,
-        DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC, NON_EXISTING_DETECTOR,
-        TEXT_CONTENTS_DETECTOR_ENDPOINT,
-    },
-    errors::DetectorError,
-    openai::CHAT_COMPLETIONS_ENDPOINT,
+    openai::COMPLETIONS_ENDPOINT,
     orchestrator::{
-        ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT, ORCHESTRATOR_CONFIG_FILE_PATH,
+        ORCHESTRATOR_COMPLETIONS_DETECTION_ENDPOINT, ORCHESTRATOR_CONFIG_FILE_PATH,
         TestOrchestratorServer,
     },
 };
@@ -34,15 +27,15 @@ use fms_guardrails_orchestr8::{
         chunker::MODEL_ID_HEADER_NAME as CHUNKER_MODEL_ID_HEADER_NAME,
         detector::{ContentAnalysisRequest, ContentAnalysisResponse},
         openai::{
-            ChatCompletion, ChatCompletionChoice, ChatCompletionMessage, Content, ContentPart,
-            ContentType, InputDetectionResult, Message, OpenAiDetections, OrchestratorWarning,
-            OutputDetectionResult, Role,
+            Completion, CompletionChoice, InputDetectionResult, OpenAiDetections,
+            OrchestratorWarning, OutputDetectionResult, Usage,
         },
     },
     models::{
         DetectionWarningReason, DetectorParams, Metadata, UNSUITABLE_INPUT_MESSAGE,
         UNSUITABLE_OUTPUT_MESSAGE,
     },
+    orchestrator::common::current_timestamp,
     pb::{
         caikit::runtime::chunkers::ChunkerTokenizationTaskRequest,
         caikit_data_model::nlp::{Token, TokenizationResults},
@@ -54,6 +47,17 @@ use mocktail::prelude::*;
 use serde_json::json;
 use test_log::test;
 use tracing::debug;
+use uuid::Uuid;
+
+use crate::common::{
+    chunker::CHUNKER_UNARY_ENDPOINT,
+    detectors::{
+        ANSWER_RELEVANCE_DETECTOR, DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE,
+        DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC, NON_EXISTING_DETECTOR,
+        TEXT_CONTENTS_DETECTOR_ENDPOINT,
+    },
+    errors::DetectorError,
+};
 
 pub mod common;
 
@@ -64,67 +68,55 @@ const MODEL_ID: &str = "my-super-model-8B";
 // Validate passthrough scenario
 #[test(tokio::test)]
 async fn no_detectors() -> Result<(), anyhow::Error> {
-    let messages = vec![
-        Message {
-            content: Some(Content::Text("Hi there!".to_string())),
-            role: Role::User,
-            ..Default::default()
-        },
-        Message {
-            content: Some(Content::Text("".to_string())),
-            role: Role::Assistant,
-            ..Default::default()
-        },
-    ];
+    let prompt = "Hi there!";
 
     // Add mocksets
-    let mut chat_mocks = MockSet::new();
+    let mut completion_mocks = MockSet::new();
 
     let expected_choices = vec![
-        ChatCompletionChoice {
-            message: ChatCompletionMessage {
-                role: messages[0].role.clone(),
-                content: Some("Hi there!".to_string()),
-                refusal: None,
-                tool_calls: vec![],
-            },
+        CompletionChoice {
             index: 0,
+            text: "Hi there!".into(),
             logprobs: None,
-            finish_reason: "NOT_FINISHED".to_string(),
+            finish_reason: Some("length".into()),
             stop_reason: None,
+            prompt_logprobs: None,
         },
-        ChatCompletionChoice {
-            message: ChatCompletionMessage {
-                role: messages[1].role.clone(),
-                content: Some("Hello!".to_string()),
-                refusal: None,
-                tool_calls: vec![],
-            },
+        CompletionChoice {
             index: 1,
+            text: "Hello!".into(),
             logprobs: None,
-            finish_reason: "EOS_TOKEN".to_string(),
+            finish_reason: Some("length".into()),
             stop_reason: None,
+            prompt_logprobs: None,
         },
     ];
-    let chat_completions_response = ChatCompletion {
+    let completions_response = Completion {
+        id: Uuid::new_v4().simple().to_string(),
+        object: "text_completion".into(),
+        created: current_timestamp().as_secs() as i64,
         model: MODEL_ID.into(),
-        choices: expected_choices.clone(),
-        detections: None,
-        warnings: vec![],
+        choices: expected_choices,
+        usage: Some(Usage {
+            prompt_tokens: 4,
+            total_tokens: 36,
+            completion_tokens: 32,
+            ..Default::default()
+        }),
         ..Default::default()
     };
 
-    // Add chat completions mock
-    chat_mocks.mock(|when, then| {
-        when.post().path(CHAT_COMPLETIONS_ENDPOINT).json(json!({
+    // Add completions mock
+    completion_mocks.mock(|when, then| {
+        when.post().path(COMPLETIONS_ENDPOINT).json(json!({
             "model": MODEL_ID,
-            "messages": messages,
+            "prompt": prompt,
         }));
-        then.json(&chat_completions_response);
+        then.json(&completions_response);
     });
 
     // Start orchestrator server and its dependencies
-    let mut mock_openai_server = MockServer::new("openai").with_mocks(chat_mocks);
+    let mock_openai_server = MockServer::new("openai").with_mocks(completion_mocks);
 
     let orchestrator_server = TestOrchestratorServer::builder()
         .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
@@ -134,45 +126,46 @@ async fn no_detectors() -> Result<(), anyhow::Error> {
 
     // Empty `detectors` scenario
     let response = orchestrator_server
-        .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
+        .post(ORCHESTRATOR_COMPLETIONS_DETECTION_ENDPOINT)
         .json(&json!({
             "model": MODEL_ID,
             "detectors": {},
-            "messages": messages,
+            "prompt": prompt,
         }))
         .send()
         .await?;
+    dbg!(&response);
 
     assert_eq!(response.status(), StatusCode::OK);
-    let results = response.json::<ChatCompletion>().await?;
-    assert_eq!(results.choices[0], chat_completions_response.choices[0]);
-    assert_eq!(results.choices[1], chat_completions_response.choices[1]);
+    let results = response.json::<Completion>().await?;
+    assert_eq!(results.choices[0], completions_response.choices[0]);
+    assert_eq!(results.choices[1], completions_response.choices[1]);
     assert_eq!(results.warnings, vec![]);
     assert!(results.detections.is_none());
 
     // Missing `detectors` scenario
     let response = orchestrator_server
-        .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
+        .post(ORCHESTRATOR_COMPLETIONS_DETECTION_ENDPOINT)
         .json(&json!({
             "model": MODEL_ID,
-            "messages": messages,
+            "prompt": prompt,
         }))
         .send()
         .await?;
 
     assert_eq!(response.status(), StatusCode::OK);
-    let results = response.json::<ChatCompletion>().await?;
-    assert_eq!(results.choices[0], chat_completions_response.choices[0]);
-    assert_eq!(results.choices[1], chat_completions_response.choices[1]);
+    let results = response.json::<Completion>().await?;
+    assert_eq!(results.choices[0], completions_response.choices[0]);
+    assert_eq!(results.choices[1], completions_response.choices[1]);
     assert_eq!(results.warnings, vec![]);
     assert!(results.detections.is_none());
 
     // `detectors` with empty `input` and `output` scenario
     let response = orchestrator_server
-        .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
+        .post(ORCHESTRATOR_COMPLETIONS_DETECTION_ENDPOINT)
         .json(&json!({
             "model": MODEL_ID,
-            "messages": messages,
+            "prompt": prompt,
             "detectors": {
                 "input": {},
                 "output": {},
@@ -182,71 +175,9 @@ async fn no_detectors() -> Result<(), anyhow::Error> {
         .await?;
 
     assert_eq!(response.status(), StatusCode::OK);
-    let results = response.json::<ChatCompletion>().await?;
-    assert_eq!(results.choices[0], chat_completions_response.choices[0]);
-    assert_eq!(results.choices[1], chat_completions_response.choices[1]);
-    assert_eq!(results.warnings, vec![]);
-    assert!(results.detections.is_none());
-
-    // message content as array, `detectors` with empty `input` and `output` scenario
-    let messages = vec![
-        Message {
-            content: Some(Content::Text("Hi there!".to_string())),
-            role: Role::User,
-            ..Default::default()
-        },
-        Message {
-            content: Some(Content::Array(vec![
-                ContentPart {
-                    r#type: ContentType::Text,
-                    text: Some("How".into()),
-                    image_url: None,
-                    refusal: None,
-                },
-                ContentPart {
-                    r#type: ContentType::Text,
-                    text: Some("are".into()),
-                    image_url: None,
-                    refusal: None,
-                },
-                ContentPart {
-                    r#type: ContentType::Text,
-                    text: Some("you?".into()),
-                    image_url: None,
-                    refusal: None,
-                },
-            ])),
-            role: Role::Assistant,
-            ..Default::default()
-        },
-    ];
-
-    // add new mock
-    mock_openai_server.mock(|when, then| {
-        when.post().path(CHAT_COMPLETIONS_ENDPOINT).json(json!({
-            "model": MODEL_ID,
-            "messages": messages,
-        }));
-        then.json(&chat_completions_response);
-    });
-
-    let response = orchestrator_server
-        .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
-        .json(&json!({
-            "model": MODEL_ID,
-            "messages": messages,
-            "detectors": {
-                "input": {},
-                "output": {},
-            },
-        }))
-        .send()
-        .await?;
-
-    assert_eq!(response.status(), StatusCode::OK);
-    let results = response.json::<ChatCompletion>().await?;
-    assert_eq!(results.choices[0], chat_completions_response.choices[0]);
-    assert_eq!(results.choices[1], chat_completions_response.choices[1]);
+    let results = response.json::<Completion>().await?;
+    assert_eq!(results.choices[0], completions_response.choices[0]);
+    assert_eq!(results.choices[1], completions_response.choices[1]);
     assert_eq!(results.warnings, vec![]);
     assert!(results.detections.is_none());
 
@@ -259,55 +190,43 @@ async fn no_detectors() -> Result<(), anyhow::Error> {
 async fn no_detections() -> Result<(), anyhow::Error> {
     let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC;
 
-    let messages = vec![
-        Message {
-            content: Some(Content::Text("Hi there!".to_string())),
-            role: Role::User,
-            ..Default::default()
-        },
-        Message {
-            content: Some(Content::Text("Hello!".to_string())),
-            role: Role::Assistant,
-            ..Default::default()
-        },
-    ];
+    let prompt = "Hi there!";
 
     // Add mocksets
     let mut detector_mocks = MockSet::new();
-    let mut chat_mocks = MockSet::new();
+    let mut completion_mocks = MockSet::new();
 
     let expected_choices = vec![
-        ChatCompletionChoice {
-            message: ChatCompletionMessage {
-                role: messages[0].role.clone(),
-                content: Some("Hi there!".to_string()),
-                refusal: None,
-                tool_calls: vec![],
-            },
+        CompletionChoice {
             index: 0,
+            text: "Hi there!".into(),
             logprobs: None,
-            finish_reason: "NOT_FINISHED".to_string(),
+            finish_reason: Some("length".into()),
             stop_reason: None,
+            prompt_logprobs: None,
         },
-        ChatCompletionChoice {
-            message: ChatCompletionMessage {
-                role: messages[1].role.clone(),
-                content: Some("Hello!".to_string()),
-                refusal: None,
-                tool_calls: vec![],
-            },
+        CompletionChoice {
             index: 1,
+            text: "Hello!".into(),
             logprobs: None,
-            finish_reason: "EOS_TOKEN".to_string(),
+            finish_reason: Some("length".into()),
             stop_reason: None,
+            prompt_logprobs: None,
         },
     ];
 
-    let chat_completions_response = ChatCompletion {
+    let completions_response = Completion {
+        id: Uuid::new_v4().simple().to_string(),
+        object: "text_completion".into(),
+        created: current_timestamp().as_secs() as i64,
         model: MODEL_ID.into(),
-        choices: expected_choices.clone(),
-        detections: None,
-        warnings: vec![],
+        choices: expected_choices,
+        usage: Some(Usage {
+            prompt_tokens: 4,
+            total_tokens: 36,
+            completion_tokens: 32,
+            ..Default::default()
+        }),
         ..Default::default()
     };
 
@@ -332,18 +251,18 @@ async fn no_detections() -> Result<(), anyhow::Error> {
         then.json([Vec::<ContentAnalysisResponse>::new()]);
     });
 
-    // Add chat completions mock
-    chat_mocks.mock(|when, then| {
-        when.post().path(CHAT_COMPLETIONS_ENDPOINT).json(json!({
+    // Add completions mock
+    completion_mocks.mock(|when, then| {
+        when.post().path(COMPLETIONS_ENDPOINT).json(json!({
             "model": MODEL_ID,
-            "messages": messages,
+            "prompt": prompt,
         }));
-        then.json(&chat_completions_response);
+        then.json(&completions_response);
     });
 
     // Start orchestrator server and its dependencies
     let mock_detector_server = MockServer::new(detector_name).with_mocks(detector_mocks);
-    let mock_openai_server = MockServer::new("openai").with_mocks(chat_mocks);
+    let mock_openai_server = MockServer::new("openai").with_mocks(completion_mocks);
 
     let orchestrator_server = TestOrchestratorServer::builder()
         .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
@@ -354,7 +273,7 @@ async fn no_detections() -> Result<(), anyhow::Error> {
 
     // Make orchestrator call for input/output no detections
     let response = orchestrator_server
-        .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
+        .post(ORCHESTRATOR_COMPLETIONS_DETECTION_ENDPOINT)
         .json(&json!({
             "model": MODEL_ID,
             "detectors": {
@@ -365,53 +284,38 @@ async fn no_detections() -> Result<(), anyhow::Error> {
                     detector_name: {},
                 },
             },
-            "messages": messages,
+            "prompt": prompt
         }))
         .send()
         .await?;
 
     assert_eq!(response.status(), StatusCode::OK);
-    let results = response.json::<ChatCompletion>().await?;
-    assert_eq!(results.choices[0], chat_completions_response.choices[0]);
-    assert_eq!(results.choices[1], chat_completions_response.choices[1]);
+    let results = response.json::<Completion>().await?;
+    assert_eq!(results.choices[0], completions_response.choices[0]);
+    assert_eq!(results.choices[1], completions_response.choices[1]);
     assert_eq!(results.warnings, vec![]);
     assert!(results.detections.is_none());
 
     // Scenario: output detectors on empty choices responses
-    let messages = vec![Message {
-        content: Some(Content::Text(
-            "Please provide me an empty message".to_string(),
-        )),
-        role: Role::User,
-        ..Default::default()
-    }];
+    let prompt = "Please provide me an empty message";
     let expected_choices = vec![
-        ChatCompletionChoice {
-            message: ChatCompletionMessage {
-                role: Role::Assistant,
-                content: Some("".to_string()),
-                refusal: None,
-                tool_calls: vec![],
-            },
+        CompletionChoice {
             index: 0,
+            text: "".into(),
             logprobs: None,
-            finish_reason: "EOS_TOKEN".to_string(),
+            finish_reason: Some("length".into()),
             stop_reason: None,
+            prompt_logprobs: None,
         },
-        ChatCompletionChoice {
-            message: ChatCompletionMessage {
-                role: Role::Assistant,
-                content: None,
-                refusal: None,
-                tool_calls: vec![],
-            },
+        CompletionChoice {
             index: 1,
+            text: "".into(),
             logprobs: None,
-            finish_reason: "EOS_TOKEN".to_string(),
+            finish_reason: Some("length".into()),
             stop_reason: None,
+            prompt_logprobs: None,
         },
     ];
-
     let expected_warnings = vec![
         OrchestratorWarning::new(
             DetectionWarningReason::EmptyOutput,
@@ -422,23 +326,31 @@ async fn no_detections() -> Result<(), anyhow::Error> {
             "Choice of index 1 has no content. Output detection was not executed",
         ),
     ];
-    let chat_completions_response = ChatCompletion {
+    let completions_response = Completion {
+        id: Uuid::new_v4().simple().to_string(),
+        object: "text_completion".into(),
+        created: current_timestamp().as_secs() as i64,
         model: MODEL_ID.into(),
-        choices: expected_choices.clone(),
-        detections: None,
+        choices: expected_choices,
+        usage: Some(Usage {
+            prompt_tokens: 4,
+            total_tokens: 36,
+            completion_tokens: 32,
+            ..Default::default()
+        }),
         ..Default::default()
     };
 
     mock_openai_server.mocks().mock(|when, then| {
-        when.post().path(CHAT_COMPLETIONS_ENDPOINT).json(json!({
+        when.post().path(COMPLETIONS_ENDPOINT).json(json!({
             "model": MODEL_ID,
-            "messages": messages,
+            "prompt": prompt,
         }));
-        then.json(&chat_completions_response);
+        then.json(&completions_response);
     });
 
     let response = orchestrator_server
-        .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
+        .post(ORCHESTRATOR_COMPLETIONS_DETECTION_ENDPOINT)
         .json(&json!({
             "model": MODEL_ID,
             "detectors": {
@@ -446,16 +358,16 @@ async fn no_detections() -> Result<(), anyhow::Error> {
                     detector_name: {},
                 },
             },
-            "messages": messages,
+            "prompt": prompt
         }))
         .send()
         .await?;
 
     assert_eq!(response.status(), StatusCode::OK);
-    let results = response.json::<ChatCompletion>().await?;
+    let results = response.json::<Completion>().await?;
     debug!("{}", serde_json::to_string_pretty(&results)?);
-    assert_eq!(results.choices[0], chat_completions_response.choices[0]);
-    assert_eq!(results.choices[1], chat_completions_response.choices[1]);
+    assert_eq!(results.choices[0], completions_response.choices[0]);
+    assert_eq!(results.choices[1], completions_response.choices[1]);
     assert_eq!(results.warnings, expected_warnings);
     assert!(results.detections.is_none());
 
@@ -466,18 +378,12 @@ async fn no_detections() -> Result<(), anyhow::Error> {
 #[test(tokio::test)]
 async fn input_detections() -> Result<(), anyhow::Error> {
     let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE;
-    let input_text = "Hi there! Can you help me with <something>?";
-
-    let messages = vec![Message {
-        content: Some(Content::Text(input_text.to_string())),
-        role: Role::User,
-        ..Default::default()
-    }];
+    let prompt = "Hi there! Can you help me with <something>?";
 
     // Add mocksets
     let mut detector_mocks = MockSet::new();
     let mut chunker_mocks = MockSet::new();
-    let mut chat_mocks = MockSet::new();
+    let mut completion_mocks = MockSet::new();
 
     // Add input detection mock response for input detection
     let expected_detections = vec![ContentAnalysisResponse {
@@ -492,7 +398,10 @@ async fn input_detections() -> Result<(), anyhow::Error> {
         metadata: Metadata::new(),
     }];
 
-    let chat_completions_response = ChatCompletion {
+    let completions_response = Completion {
+        id: Uuid::new_v4().simple().to_string(),
+        object: "text_completion".into(),
+        created: current_timestamp().as_secs() as i64,
         model: MODEL_ID.into(),
         choices: vec![],
         detections: Some(OpenAiDetections {
@@ -514,13 +423,13 @@ async fn input_detections() -> Result<(), anyhow::Error> {
         when.path(CHUNKER_UNARY_ENDPOINT)
             .header(CHUNKER_MODEL_ID_HEADER_NAME, CHUNKER_NAME_SENTENCE)
             .pb(ChunkerTokenizationTaskRequest {
-                text: input_text.into(),
+                text: prompt.into(),
             });
         then.pb(TokenizationResults {
             results: vec![Token {
                 start: 0,
-                end: input_text.len() as i64,
-                text: input_text.into(),
+                end: prompt.len() as i64,
+                text: prompt.into(),
             }],
             token_count: 0,
         });
@@ -531,24 +440,24 @@ async fn input_detections() -> Result<(), anyhow::Error> {
         when.post()
             .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
             .json(ContentAnalysisRequest {
-                contents: vec![input_text.into()],
+                contents: vec![prompt.into()],
                 detector_params: DetectorParams::new(),
             });
         then.json([&expected_detections]);
     });
 
-    // Add chat completions mock
-    chat_mocks.mock(|when, then| {
-        when.post().path(CHAT_COMPLETIONS_ENDPOINT).json(json!({
+    // Add completions mock
+    completion_mocks.mock(|when, then| {
+        when.post().path(COMPLETIONS_ENDPOINT).json(json!({
             "model": MODEL_ID,
-            "messages": messages,
+            "prompt": prompt,
         }));
-        then.json(&chat_completions_response);
+        then.json(&completions_response);
     });
 
     // Start orchestrator server and its dependencies
     let mock_detector_server = MockServer::new(detector_name).with_mocks(detector_mocks);
-    let mock_openai_server = MockServer::new("openai").with_mocks(chat_mocks);
+    let mock_openai_server = MockServer::new("openai").with_mocks(completion_mocks);
     let mock_chunker_server = MockServer::new(CHUNKER_NAME_SENTENCE)
         .grpc()
         .with_mocks(chunker_mocks);
@@ -563,7 +472,7 @@ async fn input_detections() -> Result<(), anyhow::Error> {
 
     // Make orchestrator call for input/output no detections
     let response = orchestrator_server
-        .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
+        .post(ORCHESTRATOR_COMPLETIONS_DETECTION_ENDPOINT)
         .json(&json!({
             "model": MODEL_ID,
             "detectors": {
@@ -572,17 +481,17 @@ async fn input_detections() -> Result<(), anyhow::Error> {
                 },
                 "output": {}
             },
-            "messages": messages,
+            "prompt": prompt
         }))
         .send()
         .await?;
 
     // Assertions for input detections
     assert_eq!(response.status(), StatusCode::OK);
-    let results = response.json::<ChatCompletion>().await?;
-    assert_eq!(results.detections, chat_completions_response.detections);
-    assert_eq!(results.choices, chat_completions_response.choices);
-    assert_eq!(results.warnings, chat_completions_response.warnings);
+    let results = response.json::<Completion>().await?;
+    assert_eq!(results.detections, completions_response.detections);
+    assert_eq!(results.choices, completions_response.choices);
+    assert_eq!(results.warnings, completions_response.warnings);
 
     Ok(())
 }
@@ -605,30 +514,12 @@ async fn input_client_error() -> Result<(), anyhow::Error> {
     // Add input for error scenarios
     let chunker_error_input = "This should return a 500 error on chunker";
     let detector_error_input = "This should return a 500 error on detector";
-    let chat_completions_error_input = "This should return a 500 error on chat completions";
+    let completions_error_input = "This should return a 500 error on openai";
 
     // Add mocksets
     let mut chunker_mocks = MockSet::new();
     let mut detector_mocks = MockSet::new();
-    let mut chat_mocks = MockSet::new();
-
-    let messages_chunker_error = vec![Message {
-        content: Some(Content::Text(chunker_error_input.to_string())),
-        role: Role::User,
-        ..Default::default()
-    }];
-
-    let messages_detector_error = vec![Message {
-        content: Some(Content::Text(detector_error_input.to_string())),
-        role: Role::User,
-        ..Default::default()
-    }];
-
-    let messages_chat_completions_error = vec![Message {
-        content: Some(Content::Text(chat_completions_error_input.to_string())),
-        role: Role::User,
-        ..Default::default()
-    }];
+    let mut completions_mocks = MockSet::new();
 
     // Add chunker tokenization mock for detector internal server error scenario
     chunker_mocks.mock(|when, then| {
@@ -652,13 +543,13 @@ async fn input_client_error() -> Result<(), anyhow::Error> {
         when.path(CHUNKER_UNARY_ENDPOINT)
             .header(CHUNKER_MODEL_ID_HEADER_NAME, CHUNKER_NAME_SENTENCE)
             .pb(ChunkerTokenizationTaskRequest {
-                text: chat_completions_error_input.into(),
+                text: completions_error_input.into(),
             });
         then.pb(TokenizationResults {
             results: vec![Token {
                 start: 0,
-                end: chat_completions_error_input.len() as i64,
-                text: chat_completions_error_input.into(),
+                end: completions_error_input.len() as i64,
+                text: completions_error_input.into(),
             }],
             token_count: 0,
         });
@@ -674,12 +565,12 @@ async fn input_client_error() -> Result<(), anyhow::Error> {
         then.internal_server_error();
     });
 
-    // Add detector mock for chat completions error scenario
+    // Add detector mock for completions error scenario
     detector_mocks.mock(|when, then| {
         when.post()
             .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
             .json(ContentAnalysisRequest {
-                contents: vec![chat_completions_error_input.into()],
+                contents: vec![completions_error_input.into()],
                 detector_params: DetectorParams::new(),
             });
         then.json([Vec::<ContentAnalysisResponse>::new()]);
@@ -696,18 +587,18 @@ async fn input_client_error() -> Result<(), anyhow::Error> {
         then.internal_server_error().json(&expected_detector_error);
     });
 
-    // Add chat completions mock for chat completions error scenario
-    chat_mocks.mock(|when, then| {
-        when.post().path(CHAT_COMPLETIONS_ENDPOINT).json(json!({
+    // Add completions mock for completions error scenario
+    completions_mocks.mock(|when, then| {
+        when.post().path(COMPLETIONS_ENDPOINT).json(json!({
             "model": MODEL_ID,
-            "messages": messages_chat_completions_error,
+            "prompt": completions_error_input,
         }));
         then.internal_server_error();
     });
 
     // Start orchestrator server and its dependencies
     let mock_detector_server = MockServer::new(detector_name).with_mocks(detector_mocks);
-    let mock_openai_server = MockServer::new("openai").with_mocks(chat_mocks);
+    let mock_openai_server = MockServer::new("openai").with_mocks(completions_mocks);
     let mock_chunker_server = MockServer::new(CHUNKER_NAME_SENTENCE)
         .grpc()
         .with_mocks(chunker_mocks);
@@ -722,7 +613,7 @@ async fn input_client_error() -> Result<(), anyhow::Error> {
 
     // Make orchestrator call for chunker error scenario
     let response = orchestrator_server
-        .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
+        .post(ORCHESTRATOR_COMPLETIONS_DETECTION_ENDPOINT)
         .json(&json!({
             "model": MODEL_ID,
             "detectors": {
@@ -731,7 +622,7 @@ async fn input_client_error() -> Result<(), anyhow::Error> {
                 },
                 "output": {}
             },
-            "messages": messages_chunker_error,
+            "prompt": chunker_error_input,
         }))
         .send()
         .await?;
@@ -742,7 +633,7 @@ async fn input_client_error() -> Result<(), anyhow::Error> {
 
     // Make orchestrator call for detector error scenario
     let response = orchestrator_server
-        .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
+        .post(ORCHESTRATOR_COMPLETIONS_DETECTION_ENDPOINT)
         .json(&json!({
             "model": MODEL_ID,
             "detectors": {
@@ -751,7 +642,7 @@ async fn input_client_error() -> Result<(), anyhow::Error> {
                 },
                 "output": {}
             },
-            "messages": messages_detector_error,
+            "prompt": detector_error_input
         }))
         .send()
         .await?;
@@ -760,9 +651,9 @@ async fn input_client_error() -> Result<(), anyhow::Error> {
     let results = response.json::<server::Error>().await?;
     assert_eq!(results, expected_orchestrator_error);
 
-    // Make orchestrator call for chat completions error scenario
+    // Make orchestrator call for completions error scenario
     let response = orchestrator_server
-        .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
+        .post(ORCHESTRATOR_COMPLETIONS_DETECTION_ENDPOINT)
         .json(&json!({
             "model": MODEL_ID,
             "detectors": {
@@ -771,12 +662,12 @@ async fn input_client_error() -> Result<(), anyhow::Error> {
                 },
                 "output": {}
             },
-            "messages": messages_chat_completions_error,
+            "prompt": completions_error_input,
         }))
         .send()
         .await?;
 
-    // Assertions for chat completions error scenario
+    // Assertions for completions error scenario
     let results = response.json::<server::Error>().await?;
     assert_eq!(results, expected_orchestrator_error);
 
@@ -787,25 +678,14 @@ async fn input_client_error() -> Result<(), anyhow::Error> {
 #[test(tokio::test)]
 async fn output_detections() -> Result<(), anyhow::Error> {
     let detector_name = DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE;
-    let input_text = "Hi there! Can you help me with something?";
-    let output_text = "Sure! Let me help you with <something>, just tell me what you need.";
-
-    let messages = vec![
-        Message {
-            content: Some(Content::Text(input_text.to_string())),
-            role: Role::User,
-            ..Default::default()
-        },
-        Message {
-            content: Some(Content::Text(output_text.to_string())),
-            role: Role::Assistant,
-            ..Default::default()
-        },
-    ];
+    let prompt = "Hi there! Can you help me with something?";
+    let output_no_detection = "Sure! Let me help you with something, just tell me what you need.";
+    let output_with_detection =
+        "Sure! Let me help you with <something>, just tell me what you need.";
 
     // Add mocksets
     let mut detector_mocks = MockSet::new();
-    let mut chat_mocks = MockSet::new();
+    let mut completion_mocks = MockSet::new();
     let mut chunker_mocks = MockSet::new();
 
     // Add output detection mock response for output detection
@@ -821,38 +701,32 @@ async fn output_detections() -> Result<(), anyhow::Error> {
         metadata: Metadata::new(),
     }];
 
-    // Add chat completion choices response for output detection
+    // Add completion choices response for output detection
     let expected_choices = vec![
-        ChatCompletionChoice {
-            message: ChatCompletionMessage {
-                role: messages[0].role.clone(),
-                content: Some(input_text.to_string()),
-                refusal: None,
-                tool_calls: vec![],
-            },
+        CompletionChoice {
             index: 0,
+            text: output_no_detection.into(),
             logprobs: None,
-            finish_reason: "NOT_FINISHED".to_string(),
+            finish_reason: Some("length".into()),
             stop_reason: None,
+            prompt_logprobs: None,
         },
-        ChatCompletionChoice {
-            message: ChatCompletionMessage {
-                role: messages[1].role.clone(),
-                content: Some(output_text.to_string()),
-                refusal: None,
-                tool_calls: vec![],
-            },
+        CompletionChoice {
             index: 1,
+            text: output_with_detection.into(),
             logprobs: None,
-            finish_reason: "EOS_TOKEN".to_string(),
+            finish_reason: Some("length".into()),
             stop_reason: None,
+            prompt_logprobs: None,
         },
     ];
 
-    // Add chat completion response for output detection
-    let chat_completions_response = ChatCompletion {
+    let completions_response = Completion {
+        id: Uuid::new_v4().simple().to_string(),
+        object: "text_completion".into(),
+        created: current_timestamp().as_secs() as i64,
         model: MODEL_ID.into(),
-        choices: expected_choices.clone(),
+        choices: expected_choices,
         detections: Some(OpenAiDetections {
             input: vec![],
             output: vec![OutputDetectionResult {
@@ -872,7 +746,7 @@ async fn output_detections() -> Result<(), anyhow::Error> {
         when.post()
             .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
             .json(ContentAnalysisRequest {
-                contents: vec![input_text.into()],
+                contents: vec![output_no_detection.into()],
                 detector_params: DetectorParams::new(),
             });
         then.json([Vec::<ContentAnalysisResponse>::new()]);
@@ -883,7 +757,7 @@ async fn output_detections() -> Result<(), anyhow::Error> {
         when.post()
             .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
             .json(ContentAnalysisRequest {
-                contents: vec![output_text.into()],
+                contents: vec![output_with_detection.into()],
                 detector_params: DetectorParams::new(),
             });
         then.json([&expected_detections]);
@@ -894,13 +768,13 @@ async fn output_detections() -> Result<(), anyhow::Error> {
         when.path(CHUNKER_UNARY_ENDPOINT)
             .header(CHUNKER_MODEL_ID_HEADER_NAME, CHUNKER_NAME_SENTENCE)
             .pb(ChunkerTokenizationTaskRequest {
-                text: input_text.into(),
+                text: prompt.into(),
             });
         then.pb(TokenizationResults {
             results: vec![Token {
                 start: 0,
-                end: input_text.len() as i64,
-                text: input_text.into(),
+                end: prompt.len() as i64,
+                text: prompt.into(),
             }],
             token_count: 0,
         });
@@ -911,30 +785,45 @@ async fn output_detections() -> Result<(), anyhow::Error> {
         when.path(CHUNKER_UNARY_ENDPOINT)
             .header(CHUNKER_MODEL_ID_HEADER_NAME, CHUNKER_NAME_SENTENCE)
             .pb(ChunkerTokenizationTaskRequest {
-                text: output_text.into(),
+                text: output_no_detection.into(),
             });
         then.pb(TokenizationResults {
             results: vec![Token {
                 start: 0,
-                end: output_text.len() as i64,
-                text: output_text.into(),
+                end: output_no_detection.len() as i64,
+                text: output_no_detection.into(),
+            }],
+            token_count: 0,
+        });
+    });
+    chunker_mocks.mock(|when, then| {
+        when.path(CHUNKER_UNARY_ENDPOINT)
+            .header(CHUNKER_MODEL_ID_HEADER_NAME, CHUNKER_NAME_SENTENCE)
+            .pb(ChunkerTokenizationTaskRequest {
+                text: output_with_detection.into(),
+            });
+        then.pb(TokenizationResults {
+            results: vec![Token {
+                start: 0,
+                end: output_with_detection.len() as i64,
+                text: output_with_detection.into(),
             }],
             token_count: 0,
         });
     });
 
-    // Add chat completions mock
-    chat_mocks.mock(|when, then| {
-        when.post().path(CHAT_COMPLETIONS_ENDPOINT).json(json!({
+    // Add completions mock
+    completion_mocks.mock(|when, then| {
+        when.post().path(COMPLETIONS_ENDPOINT).json(json!({
             "model": MODEL_ID,
-            "messages": messages,
+            "prompt": prompt,
         }));
-        then.json(&chat_completions_response);
+        then.json(&completions_response);
     });
 
     // Start orchestrator server and its dependencies
     let mock_detector_server = MockServer::new(detector_name).with_mocks(detector_mocks);
-    let mock_openai_server = MockServer::new("openai").with_mocks(chat_mocks);
+    let mock_openai_server = MockServer::new("openai").with_mocks(completion_mocks);
     let mock_chunker_server = MockServer::new(CHUNKER_NAME_SENTENCE)
         .grpc()
         .with_mocks(chunker_mocks);
@@ -949,7 +838,7 @@ async fn output_detections() -> Result<(), anyhow::Error> {
 
     // Make orchestrator call for output detections
     let response = orchestrator_server
-        .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
+        .post(ORCHESTRATOR_COMPLETIONS_DETECTION_ENDPOINT)
         .json(&json!({
             "model": MODEL_ID,
             "detectors": {
@@ -958,17 +847,17 @@ async fn output_detections() -> Result<(), anyhow::Error> {
                     detector_name: {},
                 },
             },
-            "messages": messages,
+            "prompt": prompt,
         }))
         .send()
         .await?;
 
     // Assertions for output detections
     assert_eq!(response.status(), StatusCode::OK);
-    let results = response.json::<ChatCompletion>().await?;
-    assert_eq!(results.detections, chat_completions_response.detections);
-    assert_eq!(results.choices, chat_completions_response.choices);
-    assert_eq!(results.warnings, chat_completions_response.warnings);
+    let results = response.json::<Completion>().await?;
+    assert_eq!(results.detections, completions_response.detections);
+    assert_eq!(results.choices, completions_response.choices);
+    assert_eq!(results.warnings, completions_response.warnings);
 
     Ok(())
 }
@@ -992,30 +881,12 @@ async fn output_client_error() -> Result<(), anyhow::Error> {
     // Add input for error scenarios
     let chunker_error_input = "This should return a 500 error on chunker";
     let detector_error_input = "This should return a 500 error on detector";
-    let chat_completions_error_input = "This should return a 500 error on chat completions";
+    let completions_error_input = "This should return a 500 error on openai";
 
     // Add mocksets
     let mut chunker_mocks = MockSet::new();
     let mut detector_mocks = MockSet::new();
-    let mut chat_mocks = MockSet::new();
-
-    let messages_chunker_error = vec![Message {
-        content: Some(Content::Text(chunker_error_input.to_string())),
-        role: Role::User,
-        ..Default::default()
-    }];
-
-    let messages_detector_error = vec![Message {
-        content: Some(Content::Text(detector_error_input.to_string())),
-        role: Role::User,
-        ..Default::default()
-    }];
-
-    let messages_chat_completions_error = vec![Message {
-        content: Some(Content::Text(chat_completions_error_input.to_string())),
-        role: Role::User,
-        ..Default::default()
-    }];
+    let mut completion_mocks = MockSet::new();
 
     // Add chunker tokenization mock for detector internal server error scenario
     chunker_mocks.mock(|when, then| {
@@ -1039,13 +910,13 @@ async fn output_client_error() -> Result<(), anyhow::Error> {
         when.path(CHUNKER_UNARY_ENDPOINT)
             .header(CHUNKER_MODEL_ID_HEADER_NAME, CHUNKER_NAME_SENTENCE)
             .pb(ChunkerTokenizationTaskRequest {
-                text: chat_completions_error_input.into(),
+                text: completions_error_input.into(),
             });
         then.pb(TokenizationResults {
             results: vec![Token {
                 start: 0,
-                end: chat_completions_error_input.len() as i64,
-                text: chat_completions_error_input.into(),
+                end: completions_error_input.len() as i64,
+                text: completions_error_input.into(),
             }],
             token_count: 0,
         });
@@ -1061,12 +932,12 @@ async fn output_client_error() -> Result<(), anyhow::Error> {
         then.internal_server_error();
     });
 
-    // Add detector mock for chat completions error scenario
+    // Add detector mock for completions error scenario
     detector_mocks.mock(|when, then| {
         when.post()
             .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
             .json(ContentAnalysisRequest {
-                contents: vec![chat_completions_error_input.into()],
+                contents: vec![completions_error_input.into()],
                 detector_params: DetectorParams::new(),
             });
         then.json([Vec::<ContentAnalysisResponse>::new()]);
@@ -1083,36 +954,36 @@ async fn output_client_error() -> Result<(), anyhow::Error> {
         then.internal_server_error().json(&expected_detector_error);
     });
 
-    // Add chat completions mock for chunker error scenario
-    chat_mocks.mock(|when, then| {
-        when.post().path(CHAT_COMPLETIONS_ENDPOINT).json(json!({
+    // Add completions mock for chunker error scenario
+    completion_mocks.mock(|when, then| {
+        when.post().path(COMPLETIONS_ENDPOINT).json(json!({
             "model": MODEL_ID,
-            "messages": messages_chunker_error,
+            "prompt": chunker_error_input,
         }));
         then.internal_server_error();
     });
 
-    // Add chat completions mock for detector error scenario
-    chat_mocks.mock(|when, then| {
-        when.post().path(CHAT_COMPLETIONS_ENDPOINT).json(json!({
+    // Add completions mock for detector error scenario
+    completion_mocks.mock(|when, then| {
+        when.post().path(COMPLETIONS_ENDPOINT).json(json!({
             "model": MODEL_ID,
-            "messages": messages_detector_error,
+            "prompt": detector_error_input,
         }));
         then.internal_server_error().json(&expected_detector_error);
     });
 
-    // Add chat completions mock for chat completions error scenario
-    chat_mocks.mock(|when, then| {
-        when.post().path(CHAT_COMPLETIONS_ENDPOINT).json(json!({
+    // Add completions mock for completions error scenario
+    completion_mocks.mock(|when, then| {
+        when.post().path(COMPLETIONS_ENDPOINT).json(json!({
             "model": MODEL_ID,
-            "messages": messages_chat_completions_error,
+            "prompt": completions_error_input,
         }));
         then.internal_server_error();
     });
 
     // Start orchestrator server and its dependencies
     let mock_detector_server = MockServer::new(detector_name).with_mocks(detector_mocks);
-    let mock_openai_server = MockServer::new("openai").with_mocks(chat_mocks);
+    let mock_openai_server = MockServer::new("openai").with_mocks(completion_mocks);
     let mock_chunker_server = MockServer::new(CHUNKER_NAME_SENTENCE)
         .grpc()
         .with_mocks(chunker_mocks);
@@ -1127,7 +998,7 @@ async fn output_client_error() -> Result<(), anyhow::Error> {
 
     // Make orchestrator call for chunker error scenario
     let response = orchestrator_server
-        .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
+        .post(ORCHESTRATOR_COMPLETIONS_DETECTION_ENDPOINT)
         .json(&json!({
             "model": MODEL_ID,
             "detectors": {
@@ -1136,7 +1007,7 @@ async fn output_client_error() -> Result<(), anyhow::Error> {
                     detector_name: {},
                 },
             },
-            "messages": messages_chunker_error,
+            "prompt": chunker_error_input
         }))
         .send()
         .await?;
@@ -1147,7 +1018,7 @@ async fn output_client_error() -> Result<(), anyhow::Error> {
 
     // Make orchestrator call for detector error scenario
     let response = orchestrator_server
-        .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
+        .post(ORCHESTRATOR_COMPLETIONS_DETECTION_ENDPOINT)
         .json(&json!({
             "model": MODEL_ID,
             "detectors": {
@@ -1156,7 +1027,7 @@ async fn output_client_error() -> Result<(), anyhow::Error> {
                     detector_name: {},
                 },
             },
-            "messages": messages_detector_error,
+            "prompt": detector_error_input,
         }))
         .send()
         .await?;
@@ -1165,9 +1036,9 @@ async fn output_client_error() -> Result<(), anyhow::Error> {
     let results = response.json::<server::Error>().await?;
     assert_eq!(results, expected_orchestrator_error);
 
-    // Make orchestrator call for chat completions error scenario
+    // Make orchestrator call for completions error scenario
     let response = orchestrator_server
-        .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
+        .post(ORCHESTRATOR_COMPLETIONS_DETECTION_ENDPOINT)
         .json(&json!({
             "model": MODEL_ID,
             "detectors": {
@@ -1176,12 +1047,12 @@ async fn output_client_error() -> Result<(), anyhow::Error> {
                     detector_name: {},
                 },
             },
-            "messages": messages_chat_completions_error,
+            "prompt": completions_error_input,
         }))
         .send()
         .await?;
 
-    // Assertions for chat completions error scenario
+    // Assertions for completions error scenario
     let results = response.json::<server::Error>().await?;
     assert_eq!(results, expected_orchestrator_error);
 
@@ -1197,15 +1068,11 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
         .build()
         .await?;
 
-    let messages = vec![Message {
-        content: Some(Content::Text("Hi there!".to_string())),
-        role: Role::User,
-        ..Default::default()
-    }];
+    let prompt = "Hi there!";
 
     // Invalid input detector scenario
     let response = orchestrator_server
-        .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
+        .post(ORCHESTRATOR_COMPLETIONS_DETECTION_ENDPOINT)
         .json(&json!({
             "model": MODEL_ID,
             "detectors": {
@@ -1214,7 +1081,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
                 },
                 "output": {}
             },
-            "messages": messages,
+            "prompt": prompt,
         }))
         .send()
         .await?;
@@ -1234,7 +1101,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
 
     // Non-existing input detector scenario
     let response = orchestrator_server
-        .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
+        .post(ORCHESTRATOR_COMPLETIONS_DETECTION_ENDPOINT)
         .json(&json!({
             "model": MODEL_ID,
             "detectors": {
@@ -1243,7 +1110,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
                 },
                 "output": {}
             },
-            "messages": messages,
+            "prompt": prompt,
         }))
         .send()
         .await?;
@@ -1261,7 +1128,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
 
     // Invalid output detector scenario
     let response = orchestrator_server
-        .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
+        .post(ORCHESTRATOR_COMPLETIONS_DETECTION_ENDPOINT)
         .json(&json!({
             "model": MODEL_ID,
             "detectors": {
@@ -1270,7 +1137,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
                     ANSWER_RELEVANCE_DETECTOR: {},
                 },
             },
-            "messages": messages,
+            "prompt": prompt,
         }))
         .send()
         .await?;
@@ -1290,7 +1157,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
 
     // Non-existing output detector scenario
     let response = orchestrator_server
-        .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
+        .post(ORCHESTRATOR_COMPLETIONS_DETECTION_ENDPOINT)
         .json(&json!({
             "model": MODEL_ID,
             "detectors": {
@@ -1299,7 +1166,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
                     NON_EXISTING_DETECTOR: {},
                 }
             },
-            "messages": messages,
+            "prompt": prompt,
         }))
         .send()
         .await?;
@@ -1315,30 +1182,14 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
         "failed on non-existing input detector scenario"
     );
 
-    // input detectors and last message without `content` scenario
-    let no_content_messages = vec![
-        Message {
-            content: Some(Content::Text("Hi there!".to_string())),
-            role: Role::User,
-            ..Default::default()
-        },
-        Message {
-            role: Role::User,
-            ..Default::default()
-        },
-    ];
+    // Empty `prompt` scenario
+    let no_content_prompt = "";
 
     let response = orchestrator_server
-        .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
+        .post(ORCHESTRATOR_COMPLETIONS_DETECTION_ENDPOINT)
         .json(&json!({
             "model": MODEL_ID,
-            "detectors": {
-                "input": {
-                    DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC: {}
-
-                }
-            },
-            "messages": no_content_messages,
+            "prompt": no_content_prompt,
         }))
         .send()
         .await?;
@@ -1349,36 +1200,16 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
         results,
         server::Error {
             code: http::StatusCode::UNPROCESSABLE_ENTITY,
-            details: "if input detectors are provided, `content` must not be empty on last message"
-                .into()
+            details: "`prompt` must not be empty".into()
         }
     );
 
-    // input detectors and last message with empty string as `content` scenario
-    let no_content_messages = vec![
-        Message {
-            content: Some(Content::Text("Hi there!".to_string())),
-            role: Role::User,
-            ..Default::default()
-        },
-        Message {
-            content: Some(Content::Text("".into())),
-            role: Role::User,
-            ..Default::default()
-        },
-    ];
-
+    // Empty `model` scenario
     let response = orchestrator_server
-        .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
+        .post(ORCHESTRATOR_COMPLETIONS_DETECTION_ENDPOINT)
         .json(&json!({
-            "model": MODEL_ID,
-            "detectors": {
-                "input": {
-                    DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC: {}
-
-                }
-            },
-            "messages": no_content_messages,
+            "model": "",
+            "prompt": prompt,
         }))
         .send()
         .await?;
@@ -1389,99 +1220,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
         results,
         server::Error {
             code: http::StatusCode::UNPROCESSABLE_ENTITY,
-            details: "if input detectors are provided, `content` must not be empty on last message"
-                .into()
-        }
-    );
-
-    // input detectors and last message with empty array as `content` scenario
-    let no_content_messages = vec![
-        Message {
-            content: Some(Content::Text("Hi there!".to_string())),
-            role: Role::User,
-            ..Default::default()
-        },
-        Message {
-            content: Some(Content::Array(Vec::new())),
-            role: Role::User,
-            ..Default::default()
-        },
-    ];
-
-    let response = orchestrator_server
-        .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
-        .json(&json!({
-            "model": MODEL_ID,
-            "detectors": {
-                "input": {
-                    DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC: {}
-
-                }
-            },
-            "messages": no_content_messages,
-        }))
-        .send()
-        .await?;
-
-    let results = response.json::<server::Error>().await?;
-    debug!("{results:#?}");
-    assert_eq!(
-        results,
-        server::Error {
-            code: http::StatusCode::UNPROCESSABLE_ENTITY,
-            details: "Detection on array is not supported".into()
-        }
-    );
-
-    // input detectors and last message with array of empty strings as `content` scenario
-    let no_content_messages = vec![
-        Message {
-            content: Some(Content::Text("Hi there!".to_string())),
-            role: Role::User,
-            ..Default::default()
-        },
-        Message {
-            content: Some(Content::Array(vec![
-                ContentPart {
-                    r#type: ContentType::Text,
-                    text: Some("".into()),
-                    image_url: None,
-                    refusal: None,
-                },
-                ContentPart {
-                    r#type: ContentType::Text,
-                    text: Some("".into()),
-                    image_url: None,
-                    refusal: None,
-                },
-            ])),
-            role: Role::User,
-            ..Default::default()
-        },
-    ];
-
-    let response = orchestrator_server
-        .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
-        .json(&json!({
-            "model": MODEL_ID,
-            "detectors": {
-                "input": {
-                    DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC: {}
-
-                }
-            },
-            "messages": no_content_messages,
-        }))
-        .send()
-        .await?;
-
-    let results = response.json::<server::Error>().await?;
-    debug!("{results:#?}");
-    assert_eq!(
-        results,
-        server::Error {
-            code: http::StatusCode::UNPROCESSABLE_ENTITY,
-            details: "Detection on array is not supported".into()
+            details: "`model` must not be empty".into()
         }
     );
 
