@@ -108,7 +108,7 @@ async fn handle_input_detection(
         ctx.clone(),
         task.headers.clone(),
         detectors.clone(),
-        0, // TODO: this should be an array index?
+        0,
         vec![(0, input_text)],
     )
     .await
@@ -123,7 +123,7 @@ async fn handle_input_detection(
         // Build completion with input detections
         let completion = Completion {
             id: Uuid::new_v4().simple().to_string(),
-            object: "text_completion".into(), // TODO: ref: https://platform.openai.com/docs/api-reference/completions/object#completions/object-object
+            object: "text_completion".into(), // This value is constant: https://platform.openai.com/docs/api-reference/completions/object#completions/object-object
             created: common::current_timestamp().as_secs() as i64,
             model: model_id,
             detections: Some(OpenAiDetections {
@@ -137,7 +137,7 @@ async fn handle_input_detection(
                 DetectionWarningReason::UnsuitableInput,
                 UNSUITABLE_INPUT_MESSAGE,
             )],
-            ..Default::default() // TODO: figure out system_fingerprint and usage. `choices` must be empty at this point
+            ..Default::default()
         };
         Ok(Some(completion))
     } else {
