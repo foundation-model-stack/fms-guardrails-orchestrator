@@ -262,7 +262,7 @@ impl From<Completion> for CompletionsResponse {
 }
 
 /// Tokenize response.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct TokenizeResponse {
     pub count: u32,
     pub max_model_len: u32,
