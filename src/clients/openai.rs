@@ -387,8 +387,12 @@ impl CompletionsRequest {
 pub struct TokenizeRequest {
     /// Model name.
     pub model: String,
-    /// Prompt text.
-    pub prompt: String,
+    /// Prompt (for completions).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt: Option<String>,
+    /// Messages (for chat completions)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub messages: Option<Vec<Message>>,
     /// Extra fields not captured above.
     #[serde(flatten)]
     pub extra: Map<String, Value>,
@@ -399,9 +403,14 @@ impl TokenizeRequest {
         if self.model.is_empty() {
             return Err(ValidationError::Invalid("`model` must not be empty".into()));
         }
-        if self.prompt.is_empty() {
+        if self.prompt.is_some() && self.messages.is_some() {
             return Err(ValidationError::Invalid(
-                "`prompt` must not be empty".into(),
+                "`prompt` and `messages` cannot be used at the same time".into(),
+            ));
+        }
+        if self.prompt.is_none() && self.messages.is_none() {
+            return Err(ValidationError::Invalid(
+                "Either `prompt` or `messages` must be supplied".into(),
             ));
         }
         Ok(())

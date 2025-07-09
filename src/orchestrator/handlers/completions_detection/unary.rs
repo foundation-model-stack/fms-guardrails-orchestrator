@@ -124,7 +124,7 @@ async fn handle_input_detection(
         let client = ctx.clients.get_as::<OpenAiClient>("openai").unwrap();
         let tokenize_request = TokenizeRequest {
             model: model_id.clone(),
-            prompt: task.request.prompt.clone(),
+            prompt: Some(task.request.prompt.clone()),
             ..Default::default()
         };
         let usage = common::tokenize_openai(client, task.headers.clone(), tokenize_request)
