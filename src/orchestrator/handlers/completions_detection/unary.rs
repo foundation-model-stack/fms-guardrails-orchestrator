@@ -127,9 +127,12 @@ async fn handle_input_detection(
             prompt: Some(task.request.prompt.clone()),
             ..Default::default()
         };
-        let usage = common::tokenize_openai(client, task.headers.clone(), tokenize_request)
-            .await?
-            .into();
+        let tokenize_response =
+            common::tokenize_openai(client, task.headers.clone(), tokenize_request).await?;
+        let usage = Usage {
+            prompt_tokens: tokenize_response.count,
+            ..Default::default()
+        };
 
         // Build completion with input detections
         let completion = Completion {

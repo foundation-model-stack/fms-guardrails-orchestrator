@@ -269,15 +269,6 @@ pub struct TokenizeResponse {
     pub tokens: Vec<u32>,
 }
 
-impl From<TokenizeResponse> for Usage {
-    fn from(tokenize_response: TokenizeResponse) -> Self {
-        Self {
-            prompt_tokens: tokenize_response.count,
-            ..Default::default()
-        }
-    }
-}
-
 /// Chat completions request.
 ///
 /// As orchestrator is only concerned with a limited subset
