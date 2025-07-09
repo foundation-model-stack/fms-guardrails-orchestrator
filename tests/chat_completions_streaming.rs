@@ -4,7 +4,7 @@ use fms_guardrails_orchestr8::{
     clients::{
         detector::{ContentAnalysisRequest, ContentAnalysisResponse},
         openai::{
-            ChatCompletionChunk, ChatCompletionChunkChoice, ChatCompletionDelta, ChatCompletionLogprob, ChatCompletionLogprobs, ChatDetections, Content, Message, OutputDetectionResult, Role
+            ChatCompletionChunk, ChatCompletionChunkChoice, ChatCompletionDelta, ChatCompletionLogprob, ChatCompletionLogprobs, OpenAiDetections, Content, Message, OutputDetectionResult, Role
         },
     },
     models::{DetectorParams},
@@ -22,8 +22,8 @@ use tracing::debug;
 
 #[test(tokio::test)]
 async fn no_detectors_n1() -> Result<(), anyhow::Error> {
-    let mut chat_completions_server = MockServer::new("chat_completions");
-    chat_completions_server.mock(|when, then| {
+    let mut openai_server = MockServer::new("chat_completions");
+    openai_server.mock(|when, then| {
         when
         .post()
         .path("/v1/chat/completions")
@@ -98,7 +98,7 @@ async fn no_detectors_n1() -> Result<(), anyhow::Error> {
 
     let test_server = TestOrchestratorServer::builder()
         .config_path("tests/test_config.yaml")
-        .chat_completions_server(&chat_completions_server)
+        .openai_server(&openai_server)
         .build()
         .await?;
 
@@ -131,8 +131,8 @@ async fn no_detectors_n1() -> Result<(), anyhow::Error> {
 
 #[test(tokio::test)]
 async fn no_detectors_n2() -> Result<(), anyhow::Error> {
-    let mut chat_completions_server = MockServer::new("chat_completions");
-    chat_completions_server.mock(|when, then| {
+    let mut openai_server = MockServer::new("chat_completions");
+    openai_server.mock(|when, then| {
         when.post()
             .path("/v1/chat/completions")
             .json(json!({
@@ -249,7 +249,7 @@ async fn no_detectors_n2() -> Result<(), anyhow::Error> {
 
     let test_server = TestOrchestratorServer::builder()
         .config_path("tests/test_config.yaml")
-        .chat_completions_server(&chat_completions_server)
+        .openai_server(&openai_server)
         .build()
         .await?;
 
@@ -298,8 +298,8 @@ async fn no_detectors_n2() -> Result<(), anyhow::Error> {
 
 #[test(tokio::test)]
 async fn output_detectors_n1() -> Result<(), anyhow::Error> {
-    let mut chat_completions_server = MockServer::new("chat_completions");
-    chat_completions_server.mock(|when, then| {
+    let mut openai_server = MockServer::new("chat_completions");
+    openai_server.mock(|when, then| {
         when.post()
             .path("/v1/chat/completions")
             .json(json!({
@@ -637,7 +637,7 @@ async fn output_detectors_n1() -> Result<(), anyhow::Error> {
 
     let test_server = TestOrchestratorServer::builder()
         .config_path("tests/test_config.yaml")
-        .chat_completions_server(&chat_completions_server)
+        .openai_server(&openai_server)
         .chunker_servers([&sentence_chunker_server])
         .detector_servers([&pii_detector_server])
         .build()
@@ -687,7 +687,7 @@ async fn output_detectors_n1() -> Result<(), anyhow::Error> {
     // Validate msg-0 detections
     assert_eq!(
         messages[0].detections,
-        Some(ChatDetections {
+        Some(OpenAiDetections {
             input: vec![],
             output: vec![OutputDetectionResult {
                 choice_index: 0,
@@ -715,7 +715,7 @@ async fn output_detectors_n1() -> Result<(), anyhow::Error> {
     // Validate msg-2 detections
     assert_eq!(
         messages[1].detections,
-        Some(ChatDetections {
+        Some(OpenAiDetections {
             input: vec![],
             output: vec![OutputDetectionResult {
                 choice_index: 0,
@@ -752,7 +752,7 @@ async fn output_detectors_n1() -> Result<(), anyhow::Error> {
     // Validate msg-2 detections
     assert_eq!(
         messages[2].detections,
-        Some(ChatDetections {
+        Some(OpenAiDetections {
             input: vec![],
             output: vec![OutputDetectionResult {
                 choice_index: 0,
@@ -799,8 +799,8 @@ async fn output_detectors_n1() -> Result<(), anyhow::Error> {
 
 #[test(tokio::test)]
 async fn output_detectors_n1_logprobs() -> Result<(), anyhow::Error> {
-    let mut chat_completions_server = MockServer::new("chat_completions");
-    chat_completions_server.mock(|when, then| {
+    let mut openai_server = MockServer::new("chat_completions");
+    openai_server.mock(|when, then| {
         when.post()
             .path("/v1/chat/completions")
             .json(json!({
@@ -1229,7 +1229,7 @@ async fn output_detectors_n1_logprobs() -> Result<(), anyhow::Error> {
 
     let test_server = TestOrchestratorServer::builder()
         .config_path("tests/test_config.yaml")
-        .chat_completions_server(&chat_completions_server)
+        .openai_server(&openai_server)
         .chunker_servers([&sentence_chunker_server])
         .detector_servers([&pii_detector_server])
         .build()
@@ -1335,7 +1335,7 @@ async fn output_detectors_n1_logprobs() -> Result<(), anyhow::Error> {
     // Validate msg-0 detections
     assert_eq!(
         messages[0].detections,
-        Some(ChatDetections {
+        Some(OpenAiDetections {
             input: vec![],
             output: vec![OutputDetectionResult {
                 choice_index: 0,
@@ -1376,7 +1376,7 @@ async fn output_detectors_n1_logprobs() -> Result<(), anyhow::Error> {
     // Validate msg-1 detections
     assert_eq!(
         messages[1].detections,
-        Some(ChatDetections {
+        Some(OpenAiDetections {
             input: vec![],
             output: vec![OutputDetectionResult {
                 choice_index: 0,
@@ -1426,7 +1426,7 @@ async fn output_detectors_n1_logprobs() -> Result<(), anyhow::Error> {
     // Validate msg-2 detections
     assert_eq!(
         messages[2].detections,
-        Some(ChatDetections {
+        Some(OpenAiDetections {
             input: vec![],
             output: vec![OutputDetectionResult {
                 choice_index: 0,
@@ -1473,8 +1473,8 @@ async fn output_detectors_n1_logprobs() -> Result<(), anyhow::Error> {
 
 #[test(tokio::test)]
 async fn output_detectors_n2() -> Result<(), anyhow::Error> {
-    let mut chat_completions_server = MockServer::new("chat_completions");
-    chat_completions_server.mock(|when, then| {
+    let mut openai_server = MockServer::new("chat_completions");
+    openai_server.mock(|when, then| {
         when.post()
             .path("/v1/chat/completions")
             .json(json!({
@@ -2115,7 +2115,7 @@ async fn output_detectors_n2() -> Result<(), anyhow::Error> {
 
     let test_server = TestOrchestratorServer::builder()
         .config_path("tests/test_config.yaml")
-        .chat_completions_server(&chat_completions_server)
+        .openai_server(&openai_server)
         .chunker_servers([&sentence_chunker_server])
         .detector_servers([&pii_detector_server])
         .build()
@@ -2172,7 +2172,7 @@ async fn output_detectors_n2() -> Result<(), anyhow::Error> {
     // Validate msg-0 detections
     assert_eq!(
         choice0_messages[0].detections,
-        Some(ChatDetections {
+        Some(OpenAiDetections {
             input: vec![],
             output: vec![OutputDetectionResult {
                 choice_index: 0,
@@ -2214,7 +2214,7 @@ async fn output_detectors_n2() -> Result<(), anyhow::Error> {
     // Validate msg-0 detections
     assert_eq!(
         choice1_messages[0].detections,
-        Some(ChatDetections {
+        Some(OpenAiDetections {
             input: vec![],
             output: vec![OutputDetectionResult {
                 choice_index: 1,
@@ -2236,8 +2236,8 @@ async fn output_detectors_n2() -> Result<(), anyhow::Error> {
 
 #[test(tokio::test)]
 async fn whole_doc_output_detectors() -> Result<(), anyhow::Error> {
-    let mut chat_completions_server = MockServer::new("chat_completions");
-    chat_completions_server.mock(|when, then| {
+    let mut openai_server = MockServer::new("chat_completions");
+    openai_server.mock(|when, then| {
         when.post()
             .path("/v1/chat/completions")
             .json(json!({
@@ -2463,7 +2463,7 @@ async fn whole_doc_output_detectors() -> Result<(), anyhow::Error> {
 
     let test_server = TestOrchestratorServer::builder()
         .config_path("tests/test_config.yaml")
-        .chat_completions_server(&chat_completions_server)
+        .openai_server(&openai_server)
         .detector_servers([&pii_detector_server])
         .build()
         .await?;
@@ -2498,7 +2498,7 @@ async fn whole_doc_output_detectors() -> Result<(), anyhow::Error> {
     let last = messages.last().unwrap();
     assert_eq!(
         last.detections,
-        Some(ChatDetections {
+        Some(OpenAiDetections {
             input: vec![],
             output: vec![OutputDetectionResult {
                 choice_index: 0,
