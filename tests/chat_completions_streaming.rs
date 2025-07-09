@@ -15,10 +15,11 @@ use fms_guardrails_orchestr8::{
 };
 use futures::TryStreamExt;
 use mocktail::prelude::*;
-use serde::Serialize;
 use serde_json::json;
 use test_log::test;
 use tracing::debug;
+
+use crate::common::sse;
 
 #[test(tokio::test)]
 async fn no_detectors() -> Result<(), anyhow::Error> {
@@ -3655,10 +3656,3 @@ async fn output_detectors_and_whole_doc_output_detectors() -> Result<(), anyhow:
     Ok(())
 }
 
-/// Converts an iterator of serializable messages into an iterator of SSE data messages.
-fn sse(messages: impl IntoIterator<Item = impl Serialize>) -> impl IntoIterator<Item = String> {
-    messages.into_iter().map(|msg| {
-        let msg = serde_json::to_string(&msg).unwrap();
-        format!("data: {msg}\n\n")
-    })
-}
