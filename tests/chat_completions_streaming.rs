@@ -2234,6 +2234,302 @@ async fn output_detectors_n2() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
+#[test(tokio::test)]
+async fn whole_doc_output_detectors() -> Result<(), anyhow::Error> {
+    let mut chat_completions_server = MockServer::new("chat_completions");
+    chat_completions_server.mock(|when, then| {
+        when.post()
+            .path("/v1/chat/completions")
+            .json(json!({
+                "stream": true,
+                "model": "test-0B",
+                "messages": [
+                    Message { role: Role::User, content: Some(Content::Text("Can you generate 2 random phone numbers?".into())), ..Default::default() },
+                ]
+            })
+        );
+        then.text_stream(sse([
+            ChatCompletionChunk {
+                id: "chatcmpl-test".into(),
+                object: "chat.completion.chunk".into(),
+                created: 1749227854,
+                model: "test-0B".into(),
+                choices: vec![ChatCompletionChunkChoice {
+                    index: 0,
+                    delta: ChatCompletionDelta {
+                        role: Some(Role::Assistant),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+            ChatCompletionChunk {
+                id: "chatcmpl-test".into(),
+                object: "chat.completion.chunk".into(),
+                created: 1749227854,
+                model: "test-0B".into(),
+                choices: vec![ChatCompletionChunkChoice {
+                    index: 0,
+                    delta: ChatCompletionDelta {
+                        content: Some("Here".into()),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+            ChatCompletionChunk {
+                id: "chatcmpl-test".into(),
+                object: "chat.completion.chunk".into(),
+                created: 1749227854,
+                model: "test-0B".into(),
+                choices: vec![ChatCompletionChunkChoice {
+                    index: 0,
+                    delta: ChatCompletionDelta {
+                        content: Some(" are".into()),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+            ChatCompletionChunk {
+                id: "chatcmpl-test".into(),
+                object: "chat.completion.chunk".into(),
+                created: 1749227854,
+                model: "test-0B".into(),
+                choices: vec![ChatCompletionChunkChoice {
+                    index: 0,
+                    delta: ChatCompletionDelta {
+                        content: Some(" ".into()),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+            ChatCompletionChunk {
+                id: "chatcmpl-test".into(),
+                object: "chat.completion.chunk".into(),
+                created: 1749227854,
+                model: "test-0B".into(),
+                choices: vec![ChatCompletionChunkChoice {
+                    index: 0,
+                    delta: ChatCompletionDelta {
+                        content: Some("2".into()),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+            ChatCompletionChunk {
+                id: "chatcmpl-test".into(),
+                object: "chat.completion.chunk".into(),
+                created: 1749227854,
+                model: "test-0B".into(),
+                choices: vec![ChatCompletionChunkChoice {
+                    index: 0,
+                    delta: ChatCompletionDelta {
+                        content: Some(" random".into()),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+            ChatCompletionChunk {
+                id: "chatcmpl-test".into(),
+                object: "chat.completion.chunk".into(),
+                created: 1749227854,
+                model: "test-0B".into(),
+                choices: vec![ChatCompletionChunkChoice {
+                    index: 0,
+                    delta: ChatCompletionDelta {
+                        content: Some(" phone".into()),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+            ChatCompletionChunk {
+                id: "chatcmpl-test".into(),
+                object: "chat.completion.chunk".into(),
+                created: 1749227854,
+                model: "test-0B".into(),
+                choices: vec![ChatCompletionChunkChoice {
+                    index: 0,
+                    delta: ChatCompletionDelta {
+                        content: Some(" numbers".into()),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+            ChatCompletionChunk {
+                id: "chatcmpl-test".into(),
+                object: "chat.completion.chunk".into(),
+                created: 1749227854,
+                model: "test-0B".into(),
+                choices: vec![ChatCompletionChunkChoice {
+                    index: 0,
+                    delta: ChatCompletionDelta {
+                        content: Some(":\n\n".into()),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+            ChatCompletionChunk {
+                id: "chatcmpl-test".into(),
+                object: "chat.completion.chunk".into(),
+                created: 1749227854,
+                model: "test-0B".into(),
+                choices: vec![ChatCompletionChunkChoice {
+                    index: 0,
+                    delta: ChatCompletionDelta {
+                        content: Some("1. (503) 272-8192\n".into()),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+            ChatCompletionChunk {
+                id: "chatcmpl-test".into(),
+                object: "chat.completion.chunk".into(),
+                created: 1749227854,
+                model: "test-0B".into(),
+                choices: vec![ChatCompletionChunkChoice {
+                    index: 0,
+                    delta: ChatCompletionDelta {
+                        content: Some("2. (617) 985-3519.".into()),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+            ChatCompletionChunk {
+                id: "chatcmpl-test".into(),
+                object: "chat.completion.chunk".into(),
+                created: 1749227854,
+                model: "test-0B".into(),
+                choices: vec![ChatCompletionChunkChoice {
+                    index: 0,
+                    finish_reason: Some("stop".into()),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+        ]));
+    });
+
+    let mut pii_detector_server = MockServer::new("pii_detector_whole_doc");
+    pii_detector_server.mock(|when, then| {
+        when.post()
+            .path("/api/v1/text/contents")
+            .header("detector-id", "pii_detector_whole_doc")
+            .json(ContentAnalysisRequest {
+                contents: vec!["Here are 2 random phone numbers:\n\n1. (503) 272-8192\n2. (617) 985-3519.".into()],
+                detector_params: DetectorParams::default(),
+            });
+        then.json(json!([
+        [
+            {
+                "start": 37,
+                "end": 53,
+                "detection": "PhoneNumber",
+                "detection_type": "pii",
+                "score": 0.8,
+                "text": "(503) 272-8192\n2",
+                "evidences": []
+            },
+            {
+                "start": 55,
+                "end": 69,
+                "detection": "PhoneNumber",
+                "detection_type": "pii",
+                "score": 0.8,
+                "text": "(617) 985-3519",
+                "evidences": []
+		    }
+        ]]));
+    });
+
+    let test_server = TestOrchestratorServer::builder()
+        .config_path("tests/test_config.yaml")
+        .chat_completions_server(&chat_completions_server)
+        .detector_servers([&pii_detector_server])
+        .build()
+        .await?;
+
+    let response = test_server
+        .post("/api/v2/chat/completions-detection")
+        .json(&json!({
+            "stream": true,
+            "model": "test-0B",
+            "detectors": {
+                "input": {},
+                "output": {
+                    "pii_detector_whole_doc": {},
+                },
+            },
+            "messages": [
+                Message { role: Role::User, content: Some(Content::Text("Can you generate 2 random phone numbers?".into())), ..Default::default() },
+            ],
+        }))
+        .send()
+        .await?;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let sse_stream: SseStream<ChatCompletionChunk> = SseStream::new(response.bytes_stream());
+    let messages = sse_stream.try_collect::<Vec<_>>().await?;
+    debug!("{messages:#?}");
+
+    // Validate length
+    assert_eq!(messages.len(), 13, "unexpected number of messages");
+
+    // Validate whole doc detections on the last message
+    let last = messages.last().unwrap();
+    assert_eq!(
+        last.detections,
+        Some(ChatDetections {
+            input: vec![],
+            output: vec![OutputDetectionResult {
+                choice_index: 0,
+                results: vec![ContentAnalysisResponse {
+                    start: 37,
+                    end: 53,
+                    text: "(503) 272-8192\n2".into(),
+                    detection: "PhoneNumber".into(),
+                    detection_type: "pii".into(),
+                    detector_id: Some("pii_detector_whole_doc".into()),
+                    score: 0.8,
+                    ..Default::default()
+                },
+                ContentAnalysisResponse {
+                    start: 55,
+                    end: 69,
+                    text: "(617) 985-3519".into(),
+                    detection: "PhoneNumber".into(),
+                    detection_type: "pii".into(),
+                    detector_id: Some("pii_detector_whole_doc".into()),
+                    score: 0.8,
+                    ..Default::default()
+                }],
+            }],
+        }),
+        "unexpected whole doc detections"
+    );
+
+    Ok(())
+}
+
 /// Converts an iterator of serializable messages into an iterator of SSE data messages.
 fn sse(messages: impl IntoIterator<Item = impl Serialize>) -> impl IntoIterator<Item = String> {
     messages.into_iter().map(|msg| {
