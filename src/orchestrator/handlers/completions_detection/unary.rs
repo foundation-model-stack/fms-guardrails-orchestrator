@@ -120,6 +120,20 @@ async fn handle_input_detection(
         }
     };
     if !detections.is_empty() {
+        // invoke tokenize endpoint to get input tokens
+        let client = ctx.clients.get_as::<OpenAiClient>("openai").unwrap();
+        let tokenize_request = TokenizeRequest {
+            model: model_id.clone(),
+            prompt: Some(task.request.prompt.clone()),
+            ..Default::default()
+        };
+        let tokenize_response =
+            common::tokenize_openai(client, task.headers.clone(), tokenize_request).await?;
+        let usage = Usage {
+            prompt_tokens: tokenize_response.count,
+            ..Default::default()
+        };
+
         // Build completion with input detections
         let completion = Completion {
             id: Uuid::new_v4().simple().to_string(),
@@ -137,6 +151,7 @@ async fn handle_input_detection(
                 DetectionWarningReason::UnsuitableInput,
                 UNSUITABLE_INPUT_MESSAGE,
             )],
+            usage: Some(usage),
             ..Default::default()
         };
         Ok(Some(completion))

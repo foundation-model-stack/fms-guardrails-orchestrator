@@ -28,7 +28,7 @@ use fms_guardrails_orchestr8::{
         detector::{ContentAnalysisRequest, ContentAnalysisResponse},
         openai::{
             Completion, CompletionChoice, InputDetectionResult, OpenAiDetections,
-            OrchestratorWarning, OutputDetectionResult, Usage,
+            OrchestratorWarning, OutputDetectionResult, TokenizeResponse, Usage,
         },
     },
     models::{
@@ -57,6 +57,7 @@ use crate::common::{
         TEXT_CONTENTS_DETECTOR_ENDPOINT,
     },
     errors::DetectorError,
+    openai::TOKENIZE_ENDPOINT,
 };
 
 pub mod common;
@@ -383,7 +384,7 @@ async fn input_detections() -> Result<(), anyhow::Error> {
     // Add mocksets
     let mut detector_mocks = MockSet::new();
     let mut chunker_mocks = MockSet::new();
-    let mut completion_mocks = MockSet::new();
+    let mut tokenize_mocks = MockSet::new();
 
     // Add input detection mock response for input detection
     let expected_detections = vec![ContentAnalysisResponse {
@@ -415,6 +416,10 @@ async fn input_detections() -> Result<(), anyhow::Error> {
             DetectionWarningReason::UnsuitableInput,
             UNSUITABLE_INPUT_MESSAGE,
         )],
+        usage: Some(Usage {
+            prompt_tokens: 43,
+            ..Default::default()
+        }),
         ..Default::default()
     };
 
@@ -446,18 +451,21 @@ async fn input_detections() -> Result<(), anyhow::Error> {
         then.json([&expected_detections]);
     });
 
-    // Add completions mock
-    completion_mocks.mock(|when, then| {
-        when.post().path(COMPLETIONS_ENDPOINT).json(json!({
+    // Add Tokenize mock
+    tokenize_mocks.mock(|when, then| {
+        when.post().path(TOKENIZE_ENDPOINT).json(json!({
             "model": MODEL_ID,
             "prompt": prompt,
         }));
-        then.json(&completions_response);
+        then.json(&TokenizeResponse {
+            count: 43,
+            ..Default::default()
+        });
     });
 
     // Start orchestrator server and its dependencies
     let mock_detector_server = MockServer::new(detector_name).with_mocks(detector_mocks);
-    let mock_openai_server = MockServer::new("openai").with_mocks(completion_mocks);
+    let mock_openai_server = MockServer::new("openai").with_mocks(tokenize_mocks);
     let mock_chunker_server = MockServer::new(CHUNKER_NAME_SENTENCE)
         .grpc()
         .with_mocks(chunker_mocks);

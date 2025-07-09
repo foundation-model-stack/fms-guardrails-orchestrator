@@ -31,7 +31,7 @@ use crate::{
             TextGenerationDetectorClient,
         },
         http::JSON_CONTENT_TYPE,
-        openai::{self, OpenAiClient},
+        openai::{self, OpenAiClient, TokenizeRequest},
     },
     models::{
         ClassifiedGeneratedTextResult as GenerateResponse, DetectorParams,
@@ -335,6 +335,27 @@ pub async fn completion_stream(
     .enumerate()
     .boxed();
     Ok(stream)
+}
+
+/// Sends tokenize request to OpenAI client.
+#[instrument(skip_all, fields(model_id))]
+pub async fn tokenize_openai(
+    client: &OpenAiClient,
+    mut headers: HeaderMap,
+    request: TokenizeRequest,
+) -> Result<openai::TokenizeResponse, Error> {
+    let model_id = request.model.clone();
+    debug!(%model_id, ?request, "sending tokenize request");
+    headers.append(CONTENT_TYPE, JSON_CONTENT_TYPE);
+    let response = client.tokenize(request, headers).await.map_err(|error| {
+        tracing::error!("Tokenize request failed: {error}");
+        Error::TokenizeRequestFailed {
+            id: model_id.clone(),
+            error,
+        }
+    })?;
+    debug!(%model_id, ?response, "received tokenize response");
+    Ok(response)
 }
 
 /// Sends tokenize request to generation client.
