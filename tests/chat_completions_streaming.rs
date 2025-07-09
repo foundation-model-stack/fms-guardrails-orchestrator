@@ -21,7 +21,7 @@ use test_log::test;
 use tracing::debug;
 
 #[test(tokio::test)]
-async fn no_detectors_n1() -> Result<(), anyhow::Error> {
+async fn no_detectors() -> Result<(), anyhow::Error> {
     let mut openai_server = MockServer::new("chat_completions");
     openai_server.mock(|when, then| {
         when
@@ -297,7 +297,7 @@ async fn no_detectors_n2() -> Result<(), anyhow::Error> {
 }
 
 #[test(tokio::test)]
-async fn output_detectors_n1() -> Result<(), anyhow::Error> {
+async fn output_detectors() -> Result<(), anyhow::Error> {
     let mut openai_server = MockServer::new("chat_completions");
     openai_server.mock(|when, then| {
         when.post()
@@ -798,7 +798,7 @@ async fn output_detectors_n1() -> Result<(), anyhow::Error> {
 }
 
 #[test(tokio::test)]
-async fn output_detectors_n1_logprobs() -> Result<(), anyhow::Error> {
+async fn output_detectors_logprobs() -> Result<(), anyhow::Error> {
     let mut openai_server = MockServer::new("chat_completions");
     openai_server.mock(|when, then| {
         when.post()
