@@ -77,6 +77,7 @@ impl OpenAiClient {
         request: ChatCompletionsRequest,
         headers: HeaderMap,
     ) -> Result<ChatCompletionsResponse, Error> {
+        tracing::debug!(?headers, "chat_completions headers");
         let url = self.client.endpoint(CHAT_COMPLETIONS_ENDPOINT);
         if let Some(true) = request.stream {
             let rx = self.handle_streaming(url, request, headers).await?;
@@ -755,7 +756,7 @@ pub struct ChatCompletionTopLogprob {
 }
 
 /// Streaming chat completion chunk.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ChatCompletionChunk {
     /// A unique identifier for the chat completion. Each chunk has the same ID.
     pub id: String,
