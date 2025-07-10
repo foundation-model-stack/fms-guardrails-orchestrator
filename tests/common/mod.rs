@@ -20,3 +20,13 @@ pub mod errors;
 pub mod generation;
 pub mod openai;
 pub mod orchestrator;
+
+/// Converts an iterator of serializable messages into an iterator of SSE data messages.
+pub fn sse(
+    messages: impl IntoIterator<Item = impl serde::Serialize>,
+) -> impl IntoIterator<Item = String> {
+    messages.into_iter().map(|msg| {
+        let msg = serde_json::to_string(&msg).unwrap();
+        format!("data: {msg}\n\n")
+    })
+}
