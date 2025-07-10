@@ -21,6 +21,7 @@ use async_trait::async_trait;
 use eventsource_stream::Eventsource;
 use futures::StreamExt;
 use http_body_util::BodyExt;
+use http::header::CONTENT_TYPE;
 use hyper::{HeaderMap, StatusCode};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Map, Value};
@@ -30,7 +31,7 @@ use url::Url;
 use super::{
     Client, Error, HttpClient, create_http_client,
     detector::ContentAnalysisResponse,
-    http::{HttpClientExt, RequestBody},
+    http::{JSON_CONTENT_TYPE, HttpClientExt, RequestBody},
 };
 use crate::{
     config::ServiceConfig,
@@ -75,9 +76,10 @@ impl OpenAiClient {
     pub async fn chat_completions(
         &self,
         request: ChatCompletionsRequest,
-        headers: HeaderMap,
+        mut headers: HeaderMap,
     ) -> Result<ChatCompletionsResponse, Error> {
         let url = self.client.endpoint(CHAT_COMPLETIONS_ENDPOINT);
+        headers.insert(CONTENT_TYPE, JSON_CONTENT_TYPE);
         if let Some(true) = request.stream {
             let rx = self.handle_streaming(url, request, headers).await?;
             Ok(ChatCompletionsResponse::Streaming(rx))
@@ -90,9 +92,10 @@ impl OpenAiClient {
     pub async fn completions(
         &self,
         request: CompletionsRequest,
-        headers: HeaderMap,
+        mut headers: HeaderMap,
     ) -> Result<CompletionsResponse, Error> {
         let url = self.client.endpoint(COMPLETIONS_ENDPOINT);
+        headers.insert(CONTENT_TYPE, JSON_CONTENT_TYPE);
         if let Some(true) = request.stream {
             let rx = self.handle_streaming(url, request, headers).await?;
             Ok(CompletionsResponse::Streaming(rx))
