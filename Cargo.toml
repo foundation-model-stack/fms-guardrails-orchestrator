@@ -1,6 +1,6 @@
 [package]
 name = "fms-guardrails-orchestr8"
-version = "0.10.0"
+version = "0.12.0"
 edition = "2024"
 authors = ["Evaline Ju", "Gaurav Kumbhat", "Dan Clark"]
 description = "Foundation models orchestration server"
@@ -19,7 +19,7 @@ async-trait = "0.1.88"
 axum = { version = "0.8.4", features = ["json"] }
 axum-extra = { version = "0.10.1", features = ["json-lines"] }
 bytes = "1.10.1"
-clap = { version = "4.5.40", features = ["derive", "env"] }
+clap = { version = "4.5.41", features = ["derive", "env"] }
 dashmap = "6.1.0"
 eventsource-stream = "0.2.3"
 futures = "0.3.31"
@@ -32,7 +32,7 @@ http-serde = "2.1.1"
 hyper = { version = "1.6.0", features = ["http1", "http2", "server"] }
 hyper-rustls = { version = "0.27.7", features = ["ring"] }
 hyper-timeout = "0.5.2"
-hyper-util = { version = "0.1.14", features = [
+hyper-util = { version = "0.1.15", features = [
     "server-auto",
     "server-graceful",
     "tokio",
@@ -46,24 +46,24 @@ opentelemetry-otlp = { version = "0.30.0", features = [
 opentelemetry_sdk = { version = "0.30.0", features = ["rt-tokio", "metrics"] }
 pin-project-lite = "0.2.16"
 prost = "0.13.5"
-reqwest = { version = "0.12.20", features = [
+reqwest = { version = "0.12.22", features = [
     "blocking",
     "rustls-tls",
     "json",
     "stream",
 ] }
-rustls = { version = "0.23.28", default-features = false, features = [
+rustls = { version = "0.23.29", default-features = false, features = [
     "ring",
     "std",
 ] }
 rustls-pemfile = "2.2.0"
 rustls-pki-types = "1.12.0"
-rustls-webpki = "0.103.3"
+rustls-webpki = "0.103.4"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = { version = "1.0.140", features = ["preserve_order"] }
 serde_yml = "0.0.12"
 thiserror = "2.0.12"
-tokio = { version = "1.45.1", features = [
+tokio = { version = "1.46.1", features = [
     "rt",
     "rt-multi-thread",
     "parking_lot",
@@ -93,7 +93,7 @@ tonic-build = "0.13.1"
 axum-test = "17.3.0"
 mocktail = { git = "https://github.com/IBM/mocktail" }
 rand = "0.9.1"
-test-log = "0.2.17"
+test-log = "0.2.18"
 
 [profile.release]
 debug = false
