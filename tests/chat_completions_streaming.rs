@@ -3711,7 +3711,6 @@ async fn openai_bad_request_error() -> Result<(), anyhow::Error> {
     assert_eq!(messages.len(), 1, "unexpected number of messages");
 
     // Validate error message
-    // assert!(messages[0].as_ref().is_err_and(|e| e.code == StatusCode::BAD_REQUEST));
     assert_eq!(
         messages[0],
         Err(server::Error { 
@@ -3719,6 +3718,292 @@ async fn openai_bad_request_error() -> Result<(), anyhow::Error> {
             details: r#"chat completion request failed for `test-0B`: [{'type': 'value_error', 'loc': ('body',), 'msg': 'Value error, `prompt_logprobs` are not available when `stream=True`.', 'input': {'model': 'test-0B', 'messages': [{'role': 'user', 'content': 'Hey'}], 'n': 1, 'seed': 1337, 'stream': True, 'prompt_logprobs': True}, 'ctx': {'error': ValueError('`prompt_logprobs` are not available when `stream=True`.')}}]"#.into(),
         })
     );
+
+    Ok(())
+}
+
+#[test(tokio::test)]
+async fn chunker_internal_server_error() -> Result<(), anyhow::Error> {
+    let mut openai_server = MockServer::new("chat_completions");
+    openai_server.mock(|when, then| {
+        when.post()
+            .path("/v1/chat/completions")
+            .json(json!({
+                "stream": true,
+                "model": "test-0B",
+                "messages": [
+                    Message { role: Role::User, content: Some(Content::Text("Can you generate 2 random phone numbers?".into())), ..Default::default() },
+                ]
+            })
+        );
+        then.text_stream(sse([
+            ChatCompletionChunk {
+                id: "chatcmpl-test".into(),
+                object: "chat.completion.chunk".into(),
+                created: 1749227854,
+                model: "test-0B".into(),
+                choices: vec![ChatCompletionChunkChoice {
+                    index: 0,
+                    delta: ChatCompletionDelta {
+                        role: Some(Role::Assistant),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+            ChatCompletionChunk {
+                id: "chatcmpl-test".into(),
+                object: "chat.completion.chunk".into(),
+                created: 1749227854,
+                model: "test-0B".into(),
+                choices: vec![ChatCompletionChunkChoice {
+                    index: 0,
+                    delta: ChatCompletionDelta {
+                        content: Some("Here".into()),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+            ChatCompletionChunk {
+                id: "chatcmpl-test".into(),
+                object: "chat.completion.chunk".into(),
+                created: 1749227854,
+                model: "test-0B".into(),
+                choices: vec![ChatCompletionChunkChoice {
+                    index: 0,
+                    delta: ChatCompletionDelta {
+                        content: Some(" are".into()),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+            ChatCompletionChunk {
+                id: "chatcmpl-test".into(),
+                object: "chat.completion.chunk".into(),
+                created: 1749227854,
+                model: "test-0B".into(),
+                choices: vec![ChatCompletionChunkChoice {
+                    index: 0,
+                    delta: ChatCompletionDelta {
+                        content: Some(" ".into()),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+            ChatCompletionChunk {
+                id: "chatcmpl-test".into(),
+                object: "chat.completion.chunk".into(),
+                created: 1749227854,
+                model: "test-0B".into(),
+                choices: vec![ChatCompletionChunkChoice {
+                    index: 0,
+                    delta: ChatCompletionDelta {
+                        content: Some("2".into()),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+            ChatCompletionChunk {
+                id: "chatcmpl-test".into(),
+                object: "chat.completion.chunk".into(),
+                created: 1749227854,
+                model: "test-0B".into(),
+                choices: vec![ChatCompletionChunkChoice {
+                    index: 0,
+                    delta: ChatCompletionDelta {
+                        content: Some(" random".into()),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+            ChatCompletionChunk {
+                id: "chatcmpl-test".into(),
+                object: "chat.completion.chunk".into(),
+                created: 1749227854,
+                model: "test-0B".into(),
+                choices: vec![ChatCompletionChunkChoice {
+                    index: 0,
+                    delta: ChatCompletionDelta {
+                        content: Some(" phone".into()),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+            ChatCompletionChunk {
+                id: "chatcmpl-test".into(),
+                object: "chat.completion.chunk".into(),
+                created: 1749227854,
+                model: "test-0B".into(),
+                choices: vec![ChatCompletionChunkChoice {
+                    index: 0,
+                    delta: ChatCompletionDelta {
+                        content: Some(" numbers".into()),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+            ChatCompletionChunk {
+                id: "chatcmpl-test".into(),
+                object: "chat.completion.chunk".into(),
+                created: 1749227854,
+                model: "test-0B".into(),
+                choices: vec![ChatCompletionChunkChoice {
+                    index: 0,
+                    delta: ChatCompletionDelta {
+                        content: Some(":\n\n".into()),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+            ChatCompletionChunk {
+                id: "chatcmpl-test".into(),
+                object: "chat.completion.chunk".into(),
+                created: 1749227854,
+                model: "test-0B".into(),
+                choices: vec![ChatCompletionChunkChoice {
+                    index: 0,
+                    delta: ChatCompletionDelta {
+                        content: Some("1. (503) 272-8192\n".into()),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+            ChatCompletionChunk {
+                id: "chatcmpl-test".into(),
+                object: "chat.completion.chunk".into(),
+                created: 1749227854,
+                model: "test-0B".into(),
+                choices: vec![ChatCompletionChunkChoice {
+                    index: 0,
+                    delta: ChatCompletionDelta {
+                        content: Some("2. (617) 985-3519.".into()),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+            ChatCompletionChunk {
+                id: "chatcmpl-test".into(),
+                object: "chat.completion.chunk".into(),
+                created: 1749227854,
+                model: "test-0B".into(),
+                choices: vec![ChatCompletionChunkChoice {
+                    index: 0,
+                    finish_reason: Some("stop".into()),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+        ]));
+    });
+
+    let mut sentence_chunker_server = MockServer::new("sentence_chunker").grpc();
+    sentence_chunker_server.mock(|when, then| {
+        when.post()
+            .path("/caikit.runtime.Chunkers.ChunkersService/BidiStreamingChunkerTokenizationTaskPredict")
+            .header("mm-model-id", "sentence_chunker")
+            .pb_stream(vec![
+            BidiStreamingChunkerTokenizationTaskRequest {
+                text_stream: "Here".into(),
+                input_index_stream: 1,
+            },
+            BidiStreamingChunkerTokenizationTaskRequest {
+                text_stream: " are".into(),
+                input_index_stream: 2,
+            },
+            BidiStreamingChunkerTokenizationTaskRequest {
+                text_stream: " ".into(),
+                input_index_stream: 3,
+            },
+            BidiStreamingChunkerTokenizationTaskRequest {
+                text_stream: "2".into(),
+                input_index_stream: 4,
+            },
+            BidiStreamingChunkerTokenizationTaskRequest {
+                text_stream: " random".into(),
+                input_index_stream: 5,
+            },
+            BidiStreamingChunkerTokenizationTaskRequest {
+                text_stream: " phone".into(),
+                input_index_stream: 6,
+            },
+            BidiStreamingChunkerTokenizationTaskRequest {
+                text_stream: " numbers".into(),
+                input_index_stream: 7,
+            },
+            BidiStreamingChunkerTokenizationTaskRequest {
+                text_stream: ":\n\n".into(),
+                input_index_stream: 8,
+            },
+            BidiStreamingChunkerTokenizationTaskRequest {
+                text_stream: "1. (503) 272-8192\n".into(),
+                input_index_stream: 9,
+            },
+            BidiStreamingChunkerTokenizationTaskRequest {
+                text_stream: "2. (617) 985-3519.".into(),
+                input_index_stream: 10,
+            },
+            ]);
+        then.internal_server_error();
+    });
+
+    let pii_detector_sentence_server = MockServer::new("pii_detector_sentence");
+
+    let test_server = TestOrchestratorServer::builder()
+        .config_path("tests/test_config.yaml")
+        .openai_server(&openai_server)
+        .chunker_servers([&sentence_chunker_server])
+        .detector_servers([&pii_detector_sentence_server])
+        .build()
+        .await?;
+
+    let response = test_server
+        .post("/api/v2/chat/completions-detection")
+        .json(&json!({
+            "stream": true,
+            "model": "test-0B",
+            "detectors": {
+                "input": {},
+                "output": {
+                    "pii_detector_sentence": {},
+                },
+            },
+            "messages": [
+                Message { role: Role::User, content: Some(Content::Text("Can you generate 2 random phone numbers?".into())), ..Default::default() },
+            ],
+        }))
+        .send()
+        .await?;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let sse_stream: SseStream<ChatCompletionChunk> = SseStream::new(response.bytes_stream());
+    let messages = sse_stream.collect::<Vec<_>>().await;
+
+    // Validate length
+    assert_eq!(messages.len(), 1, "unexpected number of messages");
+
+    // Validate error message
+    assert!(messages[0].as_ref().is_err_and(|e| e.code == StatusCode::INTERNAL_SERVER_ERROR));
 
     Ok(())
 }
