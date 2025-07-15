@@ -4,14 +4,19 @@ use fms_guardrails_orchestr8::{
     clients::{
         detector::{ContentAnalysisRequest, ContentAnalysisResponse},
         openai::{
-            ChatCompletionChunk, ChatCompletionChunkChoice, ChatCompletionDelta, ChatCompletionLogprob, ChatCompletionLogprobs, Content, InputDetectionResult, Message, OpenAiDetections, OpenAiError, OpenAiErrorMessage, OutputDetectionResult, Role, Usage
+            ChatCompletionChunk, ChatCompletionChunkChoice, ChatCompletionDelta,
+            ChatCompletionLogprob, ChatCompletionLogprobs, Content, InputDetectionResult, Message,
+            OpenAiDetections, OpenAiError, OpenAiErrorMessage, OutputDetectionResult, Role, Usage,
         },
     },
     models::DetectorParams,
     pb::{
-        caikit::runtime::chunkers::{BidiStreamingChunkerTokenizationTaskRequest, ChunkerTokenizationTaskRequest},
+        caikit::runtime::chunkers::{
+            BidiStreamingChunkerTokenizationTaskRequest, ChunkerTokenizationTaskRequest,
+        },
         caikit_data_model::nlp::{ChunkerTokenizationStreamResult, Token, TokenizationResults},
-    }, server,
+    },
+    server,
 };
 use futures::{StreamExt, TryStreamExt};
 use mocktail::prelude::*;
@@ -32,8 +37,8 @@ async fn no_detectors() -> Result<(), anyhow::Error> {
             "stream": true,
             "model": "test-0B",
             "messages": [
-                Message { role: Role::Assistant, content: Some(Content::Text("You are a helpful assistant.".into())), ..Default::default() },
-                Message { role: Role::User, content: Some(Content::Text("Hey".into())), ..Default::default() },
+                Message { role: Role::Assistant, content: Some(Content::Text("You are a helpful assistant.".into())), ..Default::default()},
+                Message { role: Role::User, content: Some(Content::Text("Hey".into())), ..Default::default()},
             ]
         }));
         then.text_stream(sse([
@@ -109,8 +114,8 @@ async fn no_detectors() -> Result<(), anyhow::Error> {
             "stream": true,
             "model": "test-0B",
             "messages": [
-                Message { role: Role::Assistant, content: Some(Content::Text("You are a helpful assistant.".into())), ..Default::default() },
-                Message { role: Role::User, content: Some(Content::Text("Hey".into())), ..Default::default() },
+                Message { role: Role::Assistant, content: Some(Content::Text("You are a helpful assistant.".into())), ..Default::default()},
+                Message { role: Role::User, content: Some(Content::Text("Hey".into())), ..Default::default()},
             ],
         }))
         .send()
@@ -122,10 +127,18 @@ async fn no_detectors() -> Result<(), anyhow::Error> {
     debug!("{messages:#?}");
 
     assert_eq!(messages.len(), 4);
-    assert_eq!(messages[0].choices[0].delta.role, Some(Role::Assistant), "missing role message");
+    assert_eq!(
+        messages[0].choices[0].delta.role,
+        Some(Role::Assistant),
+        "missing role message"
+    );
     assert_eq!(messages[1].choices[0].delta.content, Some("Hey".into()));
     assert_eq!(messages[2].choices[0].delta.content, Some("!".into()));
-    assert_eq!(messages[3].choices[0].finish_reason, Some("stop".into()), "missing finish reason message");
+    assert_eq!(
+        messages[3].choices[0].finish_reason,
+        Some("stop".into()),
+        "missing finish reason message"
+    );
 
     Ok(())
 }
@@ -140,7 +153,7 @@ async fn no_detectors_n2() -> Result<(), anyhow::Error> {
                 "stream": true,
                 "model": "test-0B",
                 "messages": [
-                    Message { role: Role::User, content: Some(Content::Text("Hey".into())), ..Default::default() },
+                    Message { role: Role::User, content: Some(Content::Text("Hey".into())), ..Default::default()},
                 ],
                 "n": 2,
             })
@@ -261,7 +274,7 @@ async fn no_detectors_n2() -> Result<(), anyhow::Error> {
             "stream": true,
             "model": "test-0B",
             "messages": [
-                Message { role: Role::User, content: Some(Content::Text("Hey".into())), ..Default::default() },
+                Message { role: Role::User, content: Some(Content::Text("Hey".into())), ..Default::default()},
             ]
         }))
         .send()
@@ -276,9 +289,17 @@ async fn no_detectors_n2() -> Result<(), anyhow::Error> {
 
     // Validate role messages for both choices
     assert_eq!(messages[0].choices[0].index, 0);
-    assert_eq!(messages[0].choices[0].delta.role, Some(Role::Assistant), "choice0: missing role message");
+    assert_eq!(
+        messages[0].choices[0].delta.role,
+        Some(Role::Assistant),
+        "choice0: missing role message"
+    );
     assert_eq!(messages[1].choices[0].index, 1);
-    assert_eq!(messages[1].choices[0].delta.role, Some(Role::Assistant), "choice1: missing role message");
+    assert_eq!(
+        messages[1].choices[0].delta.role,
+        Some(Role::Assistant),
+        "choice1: missing role message"
+    );
 
     // Validate content messages for both choices
     assert_eq!(messages[2].choices[0].index, 0);
@@ -290,9 +311,17 @@ async fn no_detectors_n2() -> Result<(), anyhow::Error> {
 
     // Validate stop messages for both choices
     assert_eq!(messages[5].choices[0].index, 0);
-    assert_eq!(messages[5].choices[0].finish_reason, Some("stop".into()), "choice0: missing finish reason message");
+    assert_eq!(
+        messages[5].choices[0].finish_reason,
+        Some("stop".into()),
+        "choice0: missing finish reason message"
+    );
     assert_eq!(messages[6].choices[0].index, 1);
-    assert_eq!(messages[6].choices[0].finish_reason, Some("stop".into()), "choice1: missing finish reason message");
+    assert_eq!(
+        messages[6].choices[0].finish_reason,
+        Some("stop".into()),
+        "choice1: missing finish reason message"
+    );
 
     Ok(())
 }
@@ -307,11 +336,11 @@ async fn input_detectors() -> Result<(), anyhow::Error> {
             .path("/caikit.runtime.Chunkers.ChunkersService/ChunkerTokenizationTaskPredict")
             .header("mm-model-id", "sentence_chunker")
             .pb(ChunkerTokenizationTaskRequest { text: "Here is my social security number: 123-45-6789. Can you generate another one like it?".into() });
-        then.pb(TokenizationResults { 
+        then.pb(TokenizationResults {
             results: vec![
                 Token { start: 0, end: 47, text: "Here is my social security number: 123-45-6789.".into() },
                 Token { start: 48, end: 85, text: "Can you generate another one like it?".into() },
-            ], 
+            ],
             token_count: 0
         });
     });
@@ -324,7 +353,7 @@ async fn input_detectors() -> Result<(), anyhow::Error> {
             .json(ContentAnalysisRequest {
                 contents: vec![
                     "Here is my social security number: 123-45-6789.".into(),
-                    "Can you generate another one like it?".into()
+                    "Can you generate another one like it?".into(),
                 ],
                 detector_params: DetectorParams::default(),
             });
@@ -362,7 +391,7 @@ async fn input_detectors() -> Result<(), anyhow::Error> {
                 "output": {}
             },
             "messages": [
-                Message { role: Role::User, content: Some(Content::Text("Here is my social security number: 123-45-6789. Can you generate another one like it?".into())), ..Default::default() },
+                Message { role: Role::User, content: Some(Content::Text("Here is my social security number: 123-45-6789. Can you generate another one like it?".into())), ..Default::default()},
             ],
         }))
         .send()
@@ -410,7 +439,7 @@ async fn output_detectors() -> Result<(), anyhow::Error> {
                 "stream": true,
                 "model": "test-0B",
                 "messages": [
-                    Message { role: Role::User, content: Some(Content::Text("Can you generate 2 random phone numbers?".into())), ..Default::default() },
+                    Message { role: Role::User, content: Some(Content::Text("Can you generate 2 random phone numbers?".into())), ..Default::default()},
                 ]
             })
         );
@@ -759,7 +788,7 @@ async fn output_detectors() -> Result<(), anyhow::Error> {
                 },
             },
             "messages": [
-                Message { role: Role::User, content: Some(Content::Text("Can you generate 2 random phone numbers?".into())), ..Default::default() },
+                Message { role: Role::User, content: Some(Content::Text("Can you generate 2 random phone numbers?".into())), ..Default::default()},
             ],
         }))
         .send()
@@ -876,7 +905,11 @@ async fn output_detectors() -> Result<(), anyhow::Error> {
     );
 
     // Validate finish reason message
-    assert_eq!(messages[3].choices[0].finish_reason, Some("stop".into()), "missing finish reason message");
+    assert_eq!(
+        messages[3].choices[0].finish_reason,
+        Some("stop".into()),
+        "missing finish reason message"
+    );
 
     Ok(())
 }
@@ -891,7 +924,7 @@ async fn output_detectors_with_logprobs() -> Result<(), anyhow::Error> {
                 "stream": true,
                 "model": "test-0B",
                 "messages": [
-                    Message { role: Role::User, content: Some(Content::Text("Can you generate 2 random phone numbers?".into())), ..Default::default() },
+                    Message { role: Role::User, content: Some(Content::Text("Can you generate 2 random phone numbers?".into())), ..Default::default()},
                 ],
                 "logprobs": true,
             })
@@ -923,14 +956,14 @@ async fn output_detectors_with_logprobs() -> Result<(), anyhow::Error> {
                         content: Some("Here".into()),
                         ..Default::default()
                     },
-                    logprobs: Some(ChatCompletionLogprobs { 
-                        content: vec![ChatCompletionLogprob { 
+                    logprobs: Some(ChatCompletionLogprobs {
+                        content: vec![ChatCompletionLogprob {
                                 token: "Here".into(), 
-                                logprob: -0.021, 
-                                bytes: None, 
-                                top_logprobs: None, 
-                            }], 
-                        ..Default::default() 
+                                logprob: -0.021,
+                                bytes: None,
+                                top_logprobs: None,
+                            }],
+                        ..Default::default()
                     }),
                     ..Default::default()
                 }],
@@ -947,14 +980,14 @@ async fn output_detectors_with_logprobs() -> Result<(), anyhow::Error> {
                         content: Some(" are".into()),
                         ..Default::default()
                     },
-                    logprobs: Some(ChatCompletionLogprobs { 
-                        content: vec![ChatCompletionLogprob { 
+                    logprobs: Some(ChatCompletionLogprobs {
+                        content: vec![ChatCompletionLogprob {
                                 token: " are".into(), 
-                                logprob: -0.011, 
-                                bytes: None, 
-                                top_logprobs: None, 
-                            }], 
-                        ..Default::default() 
+                                logprob: -0.011,
+                                bytes: None,
+                                top_logprobs: None,
+                            }],
+                        ..Default::default()
                     }),
                     ..Default::default()
                 }],
@@ -971,14 +1004,14 @@ async fn output_detectors_with_logprobs() -> Result<(), anyhow::Error> {
                         content: Some(" ".into()),
                         ..Default::default()
                     },
-                    logprobs: Some(ChatCompletionLogprobs { 
-                        content: vec![ChatCompletionLogprob { 
+                    logprobs: Some(ChatCompletionLogprobs {
+                        content: vec![ChatCompletionLogprob {
                                 token: " ".into(), 
-                                logprob: -0.001, 
-                                bytes: None, 
-                                top_logprobs: None, 
-                            }], 
-                        ..Default::default() 
+                                logprob: -0.001,
+                                bytes: None,
+                                top_logprobs: None,
+                            }],
+                        ..Default::default()
                     }),
                     ..Default::default()
                 }],
@@ -995,14 +1028,14 @@ async fn output_detectors_with_logprobs() -> Result<(), anyhow::Error> {
                         content: Some("2".into()),
                         ..Default::default()
                     },
-                    logprobs: Some(ChatCompletionLogprobs { 
-                        content: vec![ChatCompletionLogprob { 
+                    logprobs: Some(ChatCompletionLogprobs {
+                        content: vec![ChatCompletionLogprob {
                                 token: "2".into(), 
-                                logprob: -0.003, 
-                                bytes: None, 
-                                top_logprobs: None, 
-                            }], 
-                        ..Default::default() 
+                                logprob: -0.003,
+                                bytes: None,
+                                top_logprobs: None,
+                            }],
+                        ..Default::default()
                     }),
                     ..Default::default()
                 }],
@@ -1019,14 +1052,14 @@ async fn output_detectors_with_logprobs() -> Result<(), anyhow::Error> {
                         content: Some(" random".into()),
                         ..Default::default()
                     },
-                    logprobs: Some(ChatCompletionLogprobs { 
-                        content: vec![ChatCompletionLogprob { 
+                    logprobs: Some(ChatCompletionLogprobs {
+                        content: vec![ChatCompletionLogprob {
                                 token: " random".into(), 
-                                logprob: -0.044, 
-                                bytes: None, 
-                                top_logprobs: None, 
-                            }], 
-                        ..Default::default() 
+                                logprob: -0.044,
+                                bytes: None,
+                                top_logprobs: None,
+                            }],
+                        ..Default::default()
                     }),
                     ..Default::default()
                 }],
@@ -1043,14 +1076,14 @@ async fn output_detectors_with_logprobs() -> Result<(), anyhow::Error> {
                         content: Some(" phone".into()),
                         ..Default::default()
                     },
-                    logprobs: Some(ChatCompletionLogprobs { 
-                        content: vec![ChatCompletionLogprob { 
+                    logprobs: Some(ChatCompletionLogprobs {
+                        content: vec![ChatCompletionLogprob {
                                 token: " phone".into(), 
-                                logprob: -0.004, 
-                                bytes: None, 
-                                top_logprobs: None, 
-                            }], 
-                        ..Default::default() 
+                                logprob: -0.004,
+                                bytes: None,
+                                top_logprobs: None,
+                            }],
+                        ..Default::default()
                     }),
                     ..Default::default()
                 }],
@@ -1067,14 +1100,14 @@ async fn output_detectors_with_logprobs() -> Result<(), anyhow::Error> {
                         content: Some(" numbers".into()),
                         ..Default::default()
                     },
-                    logprobs: Some(ChatCompletionLogprobs { 
-                        content: vec![ChatCompletionLogprob { 
+                    logprobs: Some(ChatCompletionLogprobs {
+                        content: vec![ChatCompletionLogprob {
                                 token: " numbers".into(), 
-                                logprob: -0.005, 
-                                bytes: None, 
-                                top_logprobs: None, 
-                            }], 
-                        ..Default::default() 
+                                logprob: -0.005,
+                                bytes: None,
+                                top_logprobs: None,
+                            }],
+                        ..Default::default()
                     }),
                     ..Default::default()
                 }],
@@ -1091,14 +1124,14 @@ async fn output_detectors_with_logprobs() -> Result<(), anyhow::Error> {
                         content: Some(":\n\n".into()),
                         ..Default::default()
                     },
-                    logprobs: Some(ChatCompletionLogprobs { 
-                        content: vec![ChatCompletionLogprob { 
-                                token: ":\n\n".into(), 
-                                logprob: -0.001, 
-                                bytes: None, 
-                                top_logprobs: None, 
-                            }], 
-                        ..Default::default() 
+                    logprobs: Some(ChatCompletionLogprobs {
+                        content: vec![ChatCompletionLogprob {
+                                token: ":\n\n".into(),
+                                logprob: -0.001,
+                                bytes: None,
+                                top_logprobs: None,
+                            }],
+                        ..Default::default()
                     }),
                     ..Default::default()
                 }],
@@ -1115,14 +1148,14 @@ async fn output_detectors_with_logprobs() -> Result<(), anyhow::Error> {
                         content: Some("1. (503) 272-8192\n".into()),
                         ..Default::default()
                     },
-                    logprobs: Some(ChatCompletionLogprobs { 
-                        content: vec![ChatCompletionLogprob { 
+                    logprobs: Some(ChatCompletionLogprobs {
+                        content: vec![ChatCompletionLogprob {
                                 token: "1. (503) 272-8192\n".into(), 
-                                logprob: -0.066, 
-                                bytes: None, 
-                                top_logprobs: None, 
-                            }], 
-                        ..Default::default() 
+                                logprob: -0.066,
+                                bytes: None,
+                                top_logprobs: None,
+                            }],
+                        ..Default::default()
                     }),
                     ..Default::default()
                 }],
@@ -1139,14 +1172,14 @@ async fn output_detectors_with_logprobs() -> Result<(), anyhow::Error> {
                         content: Some("2. (617) 985-3519.".into()),
                         ..Default::default()
                     },
-                    logprobs: Some(ChatCompletionLogprobs { 
-                        content: vec![ChatCompletionLogprob { 
+                    logprobs: Some(ChatCompletionLogprobs {
+                        content: vec![ChatCompletionLogprob {
                                 token: "2. (617) 985-3519.".into(), 
-                                logprob: -0.055, 
-                                bytes: None, 
-                                top_logprobs: None, 
-                            }], 
-                        ..Default::default() 
+                                logprob: -0.055,
+                                bytes: None,
+                                top_logprobs: None,
+                            }],
+                        ..Default::default()
                     }),
                     ..Default::default()
                 }],
@@ -1332,7 +1365,7 @@ async fn output_detectors_with_logprobs() -> Result<(), anyhow::Error> {
                 },
             },
             "messages": [
-                Message { role: Role::User, content: Some(Content::Text("Can you generate 2 random phone numbers?".into())), ..Default::default() },
+                Message { role: Role::User, content: Some(Content::Text("Can you generate 2 random phone numbers?".into())), ..Default::default()},
             ],
         }))
         .send()
@@ -1357,61 +1390,59 @@ async fn output_detectors_with_logprobs() -> Result<(), anyhow::Error> {
                 refusal: None,
                 tool_calls: vec![],
             },
-            logprobs: Some(
-                ChatCompletionLogprobs {
-                    content: vec![
-                        ChatCompletionLogprob {
-                            token: "Here".into(),
-                            logprob: -0.021,
-                            bytes: None,
-                            top_logprobs: None,
-                        },
-                        ChatCompletionLogprob {
-                            token: " are".into(),
-                            logprob: -0.011,
-                            bytes: None,
-                            top_logprobs: None,
-                        },
-                        ChatCompletionLogprob {
-                            token: " ".into(),
-                            logprob: -0.001,
-                            bytes: None,
-                            top_logprobs: None,
-                        },
-                        ChatCompletionLogprob {
-                            token: "2".into(),
-                            logprob: -0.003,
-                            bytes: None,
-                            top_logprobs: None,
-                        },
-                        ChatCompletionLogprob {
-                            token: " random".into(),
-                            logprob: -0.044,
-                            bytes: None,
-                            top_logprobs: None,
-                        },
-                        ChatCompletionLogprob {
-                            token: " phone".into(),
-                            logprob: -0.004,
-                            bytes: None,
-                            top_logprobs: None,
-                        },
-                        ChatCompletionLogprob {
-                            token: " numbers".into(),
-                            logprob: -0.005,
-                            bytes: None,
-                            top_logprobs: None,
-                        },
-                        ChatCompletionLogprob {
-                            token: ":\n\n".into(),
-                            logprob: -0.001,
-                            bytes: None,
-                            top_logprobs: None,
-                        },
-                    ],
-                    refusal: vec![],
-                },
-            ),
+            logprobs: Some(ChatCompletionLogprobs {
+                content: vec![
+                    ChatCompletionLogprob {
+                        token: "Here".into(),
+                        logprob: -0.021,
+                        bytes: None,
+                        top_logprobs: None,
+                    },
+                    ChatCompletionLogprob {
+                        token: " are".into(),
+                        logprob: -0.011,
+                        bytes: None,
+                        top_logprobs: None,
+                    },
+                    ChatCompletionLogprob {
+                        token: " ".into(),
+                        logprob: -0.001,
+                        bytes: None,
+                        top_logprobs: None,
+                    },
+                    ChatCompletionLogprob {
+                        token: "2".into(),
+                        logprob: -0.003,
+                        bytes: None,
+                        top_logprobs: None,
+                    },
+                    ChatCompletionLogprob {
+                        token: " random".into(),
+                        logprob: -0.044,
+                        bytes: None,
+                        top_logprobs: None,
+                    },
+                    ChatCompletionLogprob {
+                        token: " phone".into(),
+                        logprob: -0.004,
+                        bytes: None,
+                        top_logprobs: None,
+                    },
+                    ChatCompletionLogprob {
+                        token: " numbers".into(),
+                        logprob: -0.005,
+                        bytes: None,
+                        top_logprobs: None,
+                    },
+                    ChatCompletionLogprob {
+                        token: ":\n\n".into(),
+                        logprob: -0.001,
+                        bytes: None,
+                        top_logprobs: None,
+                    },
+                ],
+                refusal: vec![],
+            },),
             ..Default::default()
         }],
         "unexpected choices for msg-0"
@@ -1440,19 +1471,15 @@ async fn output_detectors_with_logprobs() -> Result<(), anyhow::Error> {
                 refusal: None,
                 tool_calls: vec![],
             },
-            logprobs: Some(
-                ChatCompletionLogprobs {
-                    content: vec![
-                        ChatCompletionLogprob {
-                            token: "1. (503) 272-8192\n".into(),
-                            logprob: -0.066,
-                            bytes: None,
-                            top_logprobs: None,
-                        },
-                    ],
-                    refusal: vec![],
-                },
-            ),
+            logprobs: Some(ChatCompletionLogprobs {
+                content: vec![ChatCompletionLogprob {
+                    token: "1. (503) 272-8192\n".into(),
+                    logprob: -0.066,
+                    bytes: None,
+                    top_logprobs: None,
+                },],
+                refusal: vec![],
+            },),
             ..Default::default()
         }],
         "unexpected choices for msg-1"
@@ -1490,19 +1517,15 @@ async fn output_detectors_with_logprobs() -> Result<(), anyhow::Error> {
                 refusal: None,
                 tool_calls: vec![],
             },
-            logprobs: Some(
-                ChatCompletionLogprobs {
-                    content: vec![
-                        ChatCompletionLogprob {
-                            token: "2. (617) 985-3519.".into(),
-                            logprob: -0.055,
-                            bytes: None,
-                            top_logprobs: None,
-                        },
-                    ],
-                    refusal: vec![],
-                },
-            ),
+            logprobs: Some(ChatCompletionLogprobs {
+                content: vec![ChatCompletionLogprob {
+                    token: "2. (617) 985-3519.".into(),
+                    logprob: -0.055,
+                    bytes: None,
+                    top_logprobs: None,
+                },],
+                refusal: vec![],
+            },),
             ..Default::default()
         }],
         "unexpected choices for msg-2"
@@ -1530,7 +1553,11 @@ async fn output_detectors_with_logprobs() -> Result<(), anyhow::Error> {
     );
 
     // Validate finish reason message
-    assert_eq!(messages[3].choices[0].finish_reason, Some("stop".into()), "missing finish reason message");
+    assert_eq!(
+        messages[3].choices[0].finish_reason,
+        Some("stop".into()),
+        "missing finish reason message"
+    );
 
     Ok(())
 }
@@ -1545,7 +1572,7 @@ async fn output_detectors_with_usage() -> Result<(), anyhow::Error> {
                 "stream": true,
                 "model": "test-0B",
                 "messages": [
-                    Message { role: Role::User, content: Some(Content::Text("Can you generate 2 random phone numbers?".into())), ..Default::default() },
+                    Message { role: Role::User, content: Some(Content::Text("Can you generate 2 random phone numbers?".into())), ..Default::default()},
                 ],
                 "stream_options": {
                     "include_usage": true
@@ -1735,9 +1762,9 @@ async fn output_detectors_with_usage() -> Result<(), anyhow::Error> {
                 object: "chat.completion.chunk".into(),
                 created: 1749227854,
                 model: "test-0B".into(),
-                usage: Some(Usage { 
-                    prompt_tokens: 18, 
-                    total_tokens: 64, 
+                usage: Some(Usage {
+                    prompt_tokens: 18,
+                    total_tokens: 64,
                     completion_tokens: 46,
                     ..Default::default()
                 }),
@@ -1910,7 +1937,7 @@ async fn output_detectors_with_usage() -> Result<(), anyhow::Error> {
                 },
             },
             "messages": [
-                Message { role: Role::User, content: Some(Content::Text("Can you generate 2 random phone numbers?".into())), ..Default::default() },
+                Message { role: Role::User, content: Some(Content::Text("Can you generate 2 random phone numbers?".into())), ..Default::default()},
             ],
             "stream_options": {
                 "include_usage": true
@@ -2030,14 +2057,18 @@ async fn output_detectors_with_usage() -> Result<(), anyhow::Error> {
     );
 
     // Validate finish reason message
-    assert_eq!(messages[3].choices[0].finish_reason, Some("stop".into()), "missing finish reason message");
+    assert_eq!(
+        messages[3].choices[0].finish_reason,
+        Some("stop".into()),
+        "missing finish reason message"
+    );
 
     // Validate usage message
     assert_eq!(
         messages[4].usage,
-        Some(Usage { 
-            prompt_tokens: 18, 
-            total_tokens: 64, 
+        Some(Usage {
+            prompt_tokens: 18,
+            total_tokens: 64,
             completion_tokens: 46,
             ..Default::default()
         }),
@@ -2057,7 +2088,7 @@ async fn output_detectors_n2() -> Result<(), anyhow::Error> {
                 "stream": true,
                 "model": "test-0B",
                 "messages": [
-                    Message { role: Role::User, content: Some(Content::Text("Can you generate 2 random phone numbers?".into())), ..Default::default() },
+                    Message { role: Role::User, content: Some(Content::Text("Can you generate 2 random phone numbers?".into())), ..Default::default()},
                 ],
                 "n": 2,
             })
@@ -2710,7 +2741,7 @@ async fn output_detectors_n2() -> Result<(), anyhow::Error> {
                 },
             },
             "messages": [
-                Message { role: Role::User, content: Some(Content::Text("Can you generate 2 random phone numbers?".into())), ..Default::default() },
+                Message { role: Role::User, content: Some(Content::Text("Can you generate 2 random phone numbers?".into())), ..Default::default()},
             ],
         }))
         .send()
@@ -2820,7 +2851,7 @@ async fn whole_doc_output_detectors() -> Result<(), anyhow::Error> {
                 "stream": true,
                 "model": "test-0B",
                 "messages": [
-                    Message { role: Role::User, content: Some(Content::Text("Can you generate 2 random phone numbers?".into())), ..Default::default() },
+                    Message { role: Role::User, content: Some(Content::Text("Can you generate 2 random phone numbers?".into())), ..Default::default()},
                 ]
             })
         );
@@ -3011,7 +3042,10 @@ async fn whole_doc_output_detectors() -> Result<(), anyhow::Error> {
             .path("/api/v1/text/contents")
             .header("detector-id", "pii_detector_whole_doc")
             .json(ContentAnalysisRequest {
-                contents: vec!["Here are 2 random phone numbers:\n\n1. (503) 272-8192\n2. (617) 985-3519.".into()],
+                contents: vec![
+                    "Here are 2 random phone numbers:\n\n1. (503) 272-8192\n2. (617) 985-3519."
+                        .into(),
+                ],
                 detector_params: DetectorParams::default(),
             });
         then.json(json!([
@@ -3033,7 +3067,7 @@ async fn whole_doc_output_detectors() -> Result<(), anyhow::Error> {
                 "score": 0.8,
                 "text": "(617) 985-3519",
                 "evidences": []
-		    }
+            }
         ]]));
     });
 
@@ -3056,7 +3090,7 @@ async fn whole_doc_output_detectors() -> Result<(), anyhow::Error> {
                 },
             },
             "messages": [
-                Message { role: Role::User, content: Some(Content::Text("Can you generate 2 random phone numbers?".into())), ..Default::default() },
+                Message { role: Role::User, content: Some(Content::Text("Can you generate 2 random phone numbers?".into())), ..Default::default()},
             ],
         }))
         .send()
@@ -3071,7 +3105,11 @@ async fn whole_doc_output_detectors() -> Result<(), anyhow::Error> {
     assert_eq!(messages.len(), 13, "unexpected number of messages");
 
     // Validate finish reason message
-    assert_eq!(messages[11].choices[0].finish_reason, Some("stop".into()), "missing finish reason message");
+    assert_eq!(
+        messages[11].choices[0].finish_reason,
+        Some("stop".into()),
+        "missing finish reason message"
+    );
 
     // Validate whole doc detections message
     let last = &messages[12];
@@ -3081,26 +3119,28 @@ async fn whole_doc_output_detectors() -> Result<(), anyhow::Error> {
             input: vec![],
             output: vec![OutputDetectionResult {
                 choice_index: 0,
-                results: vec![ContentAnalysisResponse {
-                    start: 37,
-                    end: 53,
-                    text: "(503) 272-8192\n2".into(),
-                    detection: "PhoneNumber".into(),
-                    detection_type: "pii".into(),
-                    detector_id: Some("pii_detector_whole_doc".into()),
-                    score: 0.8,
-                    ..Default::default()
-                },
-                ContentAnalysisResponse {
-                    start: 55,
-                    end: 69,
-                    text: "(617) 985-3519".into(),
-                    detection: "PhoneNumber".into(),
-                    detection_type: "pii".into(),
-                    detector_id: Some("pii_detector_whole_doc".into()),
-                    score: 0.8,
-                    ..Default::default()
-                }],
+                results: vec![
+                    ContentAnalysisResponse {
+                        start: 37,
+                        end: 53,
+                        text: "(503) 272-8192\n2".into(),
+                        detection: "PhoneNumber".into(),
+                        detection_type: "pii".into(),
+                        detector_id: Some("pii_detector_whole_doc".into()),
+                        score: 0.8,
+                        ..Default::default()
+                    },
+                    ContentAnalysisResponse {
+                        start: 55,
+                        end: 69,
+                        text: "(617) 985-3519".into(),
+                        detection: "PhoneNumber".into(),
+                        detection_type: "pii".into(),
+                        detector_id: Some("pii_detector_whole_doc".into()),
+                        score: 0.8,
+                        ..Default::default()
+                    }
+                ],
             }],
         }),
         "unexpected whole doc detections message"
@@ -3119,7 +3159,7 @@ async fn output_detectors_and_whole_doc_output_detectors() -> Result<(), anyhow:
                 "stream": true,
                 "model": "test-0B",
                 "messages": [
-                    Message { role: Role::User, content: Some(Content::Text("Can you generate 2 random phone numbers?".into())), ..Default::default() },
+                    Message { role: Role::User, content: Some(Content::Text("Can you generate 2 random phone numbers?".into())), ..Default::default()},
                 ]
             })
         );
@@ -3454,7 +3494,10 @@ async fn output_detectors_and_whole_doc_output_detectors() -> Result<(), anyhow:
             .path("/api/v1/text/contents")
             .header("detector-id", "pii_detector_whole_doc")
             .json(ContentAnalysisRequest {
-                contents: vec!["Here are 2 random phone numbers:\n\n1. (503) 272-8192\n2. (617) 985-3519.".into()],
+                contents: vec![
+                    "Here are 2 random phone numbers:\n\n1. (503) 272-8192\n2. (617) 985-3519."
+                        .into(),
+                ],
                 detector_params: DetectorParams::default(),
             });
         then.json(json!([
@@ -3476,7 +3519,7 @@ async fn output_detectors_and_whole_doc_output_detectors() -> Result<(), anyhow:
                 "score": 0.8,
                 "text": "(617) 985-3519",
                 "evidences": []
-		    }
+            }
         ]]));
     });
 
@@ -3484,7 +3527,10 @@ async fn output_detectors_and_whole_doc_output_detectors() -> Result<(), anyhow:
         .config_path("tests/test_config.yaml")
         .openai_server(&openai_server)
         .chunker_servers([&sentence_chunker_server])
-        .detector_servers([&pii_detector_sentence_server, &pii_detector_whole_doc_server])
+        .detector_servers([
+            &pii_detector_sentence_server,
+            &pii_detector_whole_doc_server,
+        ])
         .build()
         .await?;
 
@@ -3501,7 +3547,7 @@ async fn output_detectors_and_whole_doc_output_detectors() -> Result<(), anyhow:
                 },
             },
             "messages": [
-                Message { role: Role::User, content: Some(Content::Text("Can you generate 2 random phone numbers?".into())), ..Default::default() },
+                Message { role: Role::User, content: Some(Content::Text("Can you generate 2 random phone numbers?".into())), ..Default::default()},
             ],
         }))
         .send()
@@ -3618,7 +3664,11 @@ async fn output_detectors_and_whole_doc_output_detectors() -> Result<(), anyhow:
     );
 
     // Validate finish reason message
-    assert_eq!(messages[3].choices[0].finish_reason, Some("stop".into()), "missing finish reason message");
+    assert_eq!(
+        messages[3].choices[0].finish_reason,
+        Some("stop".into()),
+        "missing finish reason message"
+    );
 
     // Validate whole doc detections message
     let last = &messages[4];
@@ -3628,26 +3678,28 @@ async fn output_detectors_and_whole_doc_output_detectors() -> Result<(), anyhow:
             input: vec![],
             output: vec![OutputDetectionResult {
                 choice_index: 0,
-                results: vec![ContentAnalysisResponse {
-                    start: 37,
-                    end: 53,
-                    text: "(503) 272-8192\n2".into(),
-                    detection: "PhoneNumber".into(),
-                    detection_type: "pii".into(),
-                    detector_id: Some("pii_detector_whole_doc".into()),
-                    score: 0.8,
-                    ..Default::default()
-                },
-                ContentAnalysisResponse {
-                    start: 55,
-                    end: 69,
-                    text: "(617) 985-3519".into(),
-                    detection: "PhoneNumber".into(),
-                    detection_type: "pii".into(),
-                    detector_id: Some("pii_detector_whole_doc".into()),
-                    score: 0.8,
-                    ..Default::default()
-                }],
+                results: vec![
+                    ContentAnalysisResponse {
+                        start: 37,
+                        end: 53,
+                        text: "(503) 272-8192\n2".into(),
+                        detection: "PhoneNumber".into(),
+                        detection_type: "pii".into(),
+                        detector_id: Some("pii_detector_whole_doc".into()),
+                        score: 0.8,
+                        ..Default::default()
+                    },
+                    ContentAnalysisResponse {
+                        start: 55,
+                        end: 69,
+                        text: "(617) 985-3519".into(),
+                        detection: "PhoneNumber".into(),
+                        detection_type: "pii".into(),
+                        detector_id: Some("pii_detector_whole_doc".into()),
+                        score: 0.8,
+                        ..Default::default()
+                    }
+                ],
             }],
         }),
         "unexpected whole doc detections message"
@@ -3666,14 +3718,14 @@ async fn openai_bad_request_error() -> Result<(), anyhow::Error> {
                 "stream": true,
                 "model": "test-0B",
                 "messages": [
-                    Message { role: Role::User, content: Some(Content::Text("Hey".into())), ..Default::default() },
+                    Message { role: Role::User, content: Some(Content::Text("Hey".into())), ..Default::default()},
                 ],
                 "prompt_logprobs": true
             })
         );
         then.bad_request().json(OpenAiError {
             object: Some("error".into()),
-            message: r#"[{'type': 'value_error', 'loc': ('body',), 'msg': 'Value error, `prompt_logprobs` are not available when `stream=True`.', 'input': {'model': 'test-0B', 'messages': [{'role': 'user', 'content': 'Hey'}], 'n': 1, 'seed': 1337, 'stream': True, 'prompt_logprobs': True}, 'ctx': {'error': ValueError('`prompt_logprobs` are not available when `stream=True`.')}}]"#.into(),
+            message: r#"[{'type': 'value_error', 'loc': ('body',), 'msg': 'Value error, `prompt_logprobs` are not available when `stream=True`.', 'input': {'model': 'test-0B', 'messages': [{'role': 'user', 'content': 'Hey'}],'n': 1, 'seed': 1337, 'stream': True, 'prompt_logprobs': True}, 'ctx': {'error': ValueError('`prompt_logprobs` are not available when `stream=True`.')}}]"#.into(),
             r#type: Some("BadRequestError".into()),
             param: None,
             code: 400,
@@ -3696,7 +3748,7 @@ async fn openai_bad_request_error() -> Result<(), anyhow::Error> {
                 "output": {},
             },
             "messages": [
-                Message { role: Role::User, content: Some(Content::Text("Hey".into())), ..Default::default() },
+                Message { role: Role::User, content: Some(Content::Text("Hey".into())), ..Default::default()},
             ],
             "prompt_logprobs": true
         }))
@@ -3713,9 +3765,9 @@ async fn openai_bad_request_error() -> Result<(), anyhow::Error> {
     // Validate error message
     assert_eq!(
         messages[0],
-        Err(server::Error { 
-            code: http::StatusCode::BAD_REQUEST, 
-            details: r#"chat completion request failed for `test-0B`: [{'type': 'value_error', 'loc': ('body',), 'msg': 'Value error, `prompt_logprobs` are not available when `stream=True`.', 'input': {'model': 'test-0B', 'messages': [{'role': 'user', 'content': 'Hey'}], 'n': 1, 'seed': 1337, 'stream': True, 'prompt_logprobs': True}, 'ctx': {'error': ValueError('`prompt_logprobs` are not available when `stream=True`.')}}]"#.into(),
+        Err(server::Error {
+            code: http::StatusCode::BAD_REQUEST,
+            details: r#"chat completion request failed for `test-0B`: [{'type': 'value_error', 'loc': ('body',), 'msg': 'Value error, `prompt_logprobs` are not available when `stream=True`.', 'input': {'model': 'test-0B', 'messages': [{'role': 'user', 'content': 'Hey'}],'n': 1, 'seed': 1337, 'stream': True, 'prompt_logprobs': True}, 'ctx': {'error': ValueError('`prompt_logprobs` are not available when `stream=True`.')}}]"#.into(),
         })
     );
 
@@ -3732,19 +3784,19 @@ async fn openai_stream_error() -> Result<(), anyhow::Error> {
                 "stream": true,
                 "model": "test-0B",
                 "messages": [
-                    Message { role: Role::User, content: Some(Content::Text("Hey".into())), ..Default::default() },
+                    Message { role: Role::User, content: Some(Content::Text("Hey".into())), ..Default::default()},
                 ]
             })
         );
         // Return an error message over the stream
         then.text_stream(sse([
             OpenAiErrorMessage {
-                error: OpenAiError { 
-                    object: Some("error".into()), 
-                    message: "".into(), 
-                    r#type: Some("InternalServerError".into()), 
-                    param: None, 
-                    code: 500 
+                error: OpenAiError {
+                    object: Some("error".into()),
+                    message: "".into(),
+                    r#type: Some("InternalServerError".into()),
+                    param: None,
+                    code: 500
                 }
             }
         ]));
@@ -3766,7 +3818,7 @@ async fn openai_stream_error() -> Result<(), anyhow::Error> {
                 "output": {},
             },
             "messages": [
-                Message { role: Role::User, content: Some(Content::Text("Hey".into())), ..Default::default() },
+                Message { role: Role::User, content: Some(Content::Text("Hey".into())), ..Default::default()},
             ]
         }))
         .send()
@@ -3780,7 +3832,11 @@ async fn openai_stream_error() -> Result<(), anyhow::Error> {
     assert_eq!(messages.len(), 1, "unexpected number of messages");
 
     // Validate error message
-    assert!(messages[0].as_ref().is_err_and(|e| e.code == StatusCode::INTERNAL_SERVER_ERROR));
+    assert!(
+        messages[0]
+            .as_ref()
+            .is_err_and(|e| e.code == StatusCode::INTERNAL_SERVER_ERROR)
+    );
 
     Ok(())
 }
@@ -3795,7 +3851,7 @@ async fn chunker_internal_server_error() -> Result<(), anyhow::Error> {
                 "stream": true,
                 "model": "test-0B",
                 "messages": [
-                    Message { role: Role::User, content: Some(Content::Text("Can you generate 2 random phone numbers?".into())), ..Default::default() },
+                    Message { role: Role::User, content: Some(Content::Text("Can you generate 2 random phone numbers?".into())), ..Default::default()},
                 ]
             })
         );
@@ -4052,7 +4108,7 @@ async fn chunker_internal_server_error() -> Result<(), anyhow::Error> {
                 },
             },
             "messages": [
-                Message { role: Role::User, content: Some(Content::Text("Can you generate 2 random phone numbers?".into())), ..Default::default() },
+                Message { role: Role::User, content: Some(Content::Text("Can you generate 2 random phone numbers?".into())), ..Default::default()},
             ],
         }))
         .send()
@@ -4066,7 +4122,11 @@ async fn chunker_internal_server_error() -> Result<(), anyhow::Error> {
     assert_eq!(messages.len(), 1, "unexpected number of messages");
 
     // Validate error message
-    assert!(messages[0].as_ref().is_err_and(|e| e.code == StatusCode::INTERNAL_SERVER_ERROR));
+    assert!(
+        messages[0]
+            .as_ref()
+            .is_err_and(|e| e.code == StatusCode::INTERNAL_SERVER_ERROR)
+    );
 
     Ok(())
 }
@@ -4081,7 +4141,7 @@ async fn detector_internal_server_error() -> Result<(), anyhow::Error> {
                 "stream": true,
                 "model": "test-0B",
                 "messages": [
-                    Message { role: Role::User, content: Some(Content::Text("Can you generate 2 random phone numbers?".into())), ..Default::default() },
+                    Message { role: Role::User, content: Some(Content::Text("Can you generate 2 random phone numbers?".into())), ..Default::default()},
                 ]
             })
         );
@@ -4388,7 +4448,7 @@ async fn detector_internal_server_error() -> Result<(), anyhow::Error> {
                 },
             },
             "messages": [
-                Message { role: Role::User, content: Some(Content::Text("Can you generate 2 random phone numbers?".into())), ..Default::default() },
+                Message { role: Role::User, content: Some(Content::Text("Can you generate 2 random phone numbers?".into())), ..Default::default()},
             ],
         }))
         .send()
@@ -4402,7 +4462,11 @@ async fn detector_internal_server_error() -> Result<(), anyhow::Error> {
     assert_eq!(messages.len(), 1, "unexpected number of messages");
 
     // Validate error message
-    assert!(messages[0].as_ref().is_err_and(|e| e.code == StatusCode::INTERNAL_SERVER_ERROR));
+    assert!(
+        messages[0]
+            .as_ref()
+            .is_err_and(|e| e.code == StatusCode::INTERNAL_SERVER_ERROR)
+    );
 
     Ok(())
 }
