@@ -28,7 +28,7 @@ use crate::common::sse;
 
 #[test(tokio::test)]
 async fn no_detectors() -> Result<(), anyhow::Error> {
-    let mut openai_server = MockServer::new("chat_completions");
+    let mut openai_server = MockServer::new("openai");
     openai_server.mock(|when, then| {
         when
         .post()
@@ -145,7 +145,7 @@ async fn no_detectors() -> Result<(), anyhow::Error> {
 
 #[test(tokio::test)]
 async fn no_detectors_n2() -> Result<(), anyhow::Error> {
-    let mut openai_server = MockServer::new("chat_completions");
+    let mut openai_server = MockServer::new("openai");
     openai_server.mock(|when, then| {
         when.post()
             .path("/v1/chat/completions")
@@ -328,7 +328,7 @@ async fn no_detectors_n2() -> Result<(), anyhow::Error> {
 
 #[test(tokio::test)]
 async fn input_detectors() -> Result<(), anyhow::Error> {
-    let openai_server = MockServer::new("chat_completions");
+    let openai_server = MockServer::new("openai");
 
     let mut sentence_chunker_server = MockServer::new("sentence_chunker").grpc();
     sentence_chunker_server.mock(|when, then| {
@@ -431,7 +431,7 @@ async fn input_detectors() -> Result<(), anyhow::Error> {
 
 #[test(tokio::test)]
 async fn output_detectors() -> Result<(), anyhow::Error> {
-    let mut openai_server = MockServer::new("chat_completions");
+    let mut openai_server = MockServer::new("openai");
     openai_server.mock(|when, then| {
         when.post()
             .path("/v1/chat/completions")
@@ -916,7 +916,7 @@ async fn output_detectors() -> Result<(), anyhow::Error> {
 
 #[test(tokio::test)]
 async fn output_detectors_with_logprobs() -> Result<(), anyhow::Error> {
-    let mut openai_server = MockServer::new("chat_completions");
+    let mut openai_server = MockServer::new("openai");
     openai_server.mock(|when, then| {
         when.post()
             .path("/v1/chat/completions")
@@ -1564,7 +1564,7 @@ async fn output_detectors_with_logprobs() -> Result<(), anyhow::Error> {
 
 #[test(tokio::test)]
 async fn output_detectors_with_usage() -> Result<(), anyhow::Error> {
-    let mut openai_server = MockServer::new("chat_completions");
+    let mut openai_server = MockServer::new("openai");
     openai_server.mock(|when, then| {
         when.post()
             .path("/v1/chat/completions")
@@ -2080,7 +2080,7 @@ async fn output_detectors_with_usage() -> Result<(), anyhow::Error> {
 
 #[test(tokio::test)]
 async fn output_detectors_n2() -> Result<(), anyhow::Error> {
-    let mut openai_server = MockServer::new("chat_completions");
+    let mut openai_server = MockServer::new("openai");
     openai_server.mock(|when, then| {
         when.post()
             .path("/v1/chat/completions")
@@ -2843,7 +2843,7 @@ async fn output_detectors_n2() -> Result<(), anyhow::Error> {
 
 #[test(tokio::test)]
 async fn whole_doc_output_detectors() -> Result<(), anyhow::Error> {
-    let mut openai_server = MockServer::new("chat_completions");
+    let mut openai_server = MockServer::new("openai");
     openai_server.mock(|when, then| {
         when.post()
             .path("/v1/chat/completions")
@@ -3151,7 +3151,7 @@ async fn whole_doc_output_detectors() -> Result<(), anyhow::Error> {
 
 #[test(tokio::test)]
 async fn output_detectors_and_whole_doc_output_detectors() -> Result<(), anyhow::Error> {
-    let mut openai_server = MockServer::new("chat_completions");
+    let mut openai_server = MockServer::new("openai");
     openai_server.mock(|when, then| {
         when.post()
             .path("/v1/chat/completions")
@@ -3710,7 +3710,7 @@ async fn output_detectors_and_whole_doc_output_detectors() -> Result<(), anyhow:
 
 #[test(tokio::test)]
 async fn openai_bad_request_error() -> Result<(), anyhow::Error> {
-    let mut openai_server = MockServer::new("chat_completions");
+    let mut openai_server = MockServer::new("openai");
     openai_server.mock(|when, then| {
         when.post()
             .path("/v1/chat/completions")
@@ -3776,7 +3776,7 @@ async fn openai_bad_request_error() -> Result<(), anyhow::Error> {
 
 #[test(tokio::test)]
 async fn openai_stream_error() -> Result<(), anyhow::Error> {
-    let mut openai_server = MockServer::new("chat_completions");
+    let mut openai_server = MockServer::new("openai");
     openai_server.mock(|when, then| {
         when.post()
             .path("/v1/chat/completions")
@@ -3843,7 +3843,7 @@ async fn openai_stream_error() -> Result<(), anyhow::Error> {
 
 #[test(tokio::test)]
 async fn chunker_internal_server_error() -> Result<(), anyhow::Error> {
-    let mut openai_server = MockServer::new("chat_completions");
+    let mut openai_server = MockServer::new("openai");
     openai_server.mock(|when, then| {
         when.post()
             .path("/v1/chat/completions")
@@ -4133,7 +4133,7 @@ async fn chunker_internal_server_error() -> Result<(), anyhow::Error> {
 
 #[test(tokio::test)]
 async fn detector_internal_server_error() -> Result<(), anyhow::Error> {
-    let mut openai_server = MockServer::new("chat_completions");
+    let mut openai_server = MockServer::new("openai");
     openai_server.mock(|when, then| {
         when.post()
             .path("/v1/chat/completions")
