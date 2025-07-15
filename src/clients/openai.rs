@@ -689,6 +689,15 @@ pub struct ChatCompletion {
     pub warnings: Vec<OrchestratorWarning>,
 }
 
+
+/// Helper to accept both string and integer for stop_reason.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(untagged)]
+pub enum StopReason {
+    String(String),
+    Integer(i64),
+}
+
 /// Chat completion choice.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ChatCompletionChoice {
@@ -701,7 +710,7 @@ pub struct ChatCompletionChoice {
     /// The reason the model stopped generating tokens.
     pub finish_reason: String,
     /// The stop string or token id that caused the completion.
-    pub stop_reason: Option<String>,
+    pub stop_reason: Option<StopReason>,
 }
 
 /// Chat completion message.
@@ -813,7 +822,7 @@ pub struct ChatCompletionChunkChoice {
     /// The reason the model stopped generating tokens.
     pub finish_reason: Option<String>,
     /// The stop string or token id that caused the completion.
-    pub stop_reason: Option<String>,
+    pub stop_reason: Option<StopReason>,
 }
 
 /// Streaming chat completion delta.
@@ -871,7 +880,7 @@ pub struct CompletionChoice {
     /// The reason the model stopped generating tokens.
     pub finish_reason: Option<String>,
     /// The stop string or token id that caused the completion.
-    pub stop_reason: Option<String>,
+    pub stop_reason: Option<StopReason>,
     /// Prompt logprobs.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prompt_logprobs: Option<Vec<Option<HashMap<String, Logprob>>>>,
