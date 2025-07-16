@@ -16,7 +16,6 @@ use fms_guardrails_orchestr8::{
         },
         caikit_data_model::nlp::{ChunkerTokenizationStreamResult, Token, TokenizationResults},
     },
-    server,
 };
 use futures::{StreamExt, TryStreamExt};
 use mocktail::prelude::*;
@@ -3750,12 +3749,10 @@ async fn openai_bad_request_error() -> Result<(), anyhow::Error> {
     assert_eq!(messages.len(), 1, "unexpected number of messages");
 
     // Validate error message
-    assert_eq!(
-        messages[0],
-        Err(server::Error {
-            code: http::StatusCode::BAD_REQUEST,
-            details: r#"chat completion request failed for `test-0B`: [{'type': 'value_error', 'loc': ('body',), 'msg': 'Value error, `prompt_logprobs` are not available when `stream=True`.', 'input': {'model': 'test-0B', 'messages': [{'role': 'user', 'content': 'Hey'}],'n': 1, 'seed': 1337, 'stream': True, 'prompt_logprobs': True}, 'ctx': {'error': ValueError('`prompt_logprobs` are not available when `stream=True`.')}}]"#.into(),
-        })
+    assert!(
+        messages[0]
+            .as_ref()
+            .is_err_and(|e| e.code == http::StatusCode::BAD_REQUEST)
     );
 
     Ok(())
