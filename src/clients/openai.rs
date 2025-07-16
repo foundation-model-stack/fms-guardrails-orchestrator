@@ -363,9 +363,9 @@ impl CompletionsRequest {
         if self.model.is_empty() {
             return Err(ValidationError::Invalid("`model` must not be empty".into()));
         }
-        if self.prompt.is_empty() {
+        if !self.detectors.input.is_empty() && self.prompt.is_empty() {
             return Err(ValidationError::Invalid(
-                "`prompt` must not be empty".into(),
+                "`prompt` must not be empty when input detectors are provided".into(),
             ));
         }
         Ok(())
