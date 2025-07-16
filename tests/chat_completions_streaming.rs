@@ -25,7 +25,7 @@ use test_log::test;
 use tracing::debug;
 
 use crate::common::{
-    chunker::{CHUNKER_STREAMING_ENDPOINT, CHUNKER_UNARY_ENDPOINT},
+    chunker::{CHUNKER_MODEL_ID_HEADER_NAME, CHUNKER_STREAMING_ENDPOINT, CHUNKER_UNARY_ENDPOINT},
     detectors::{PII_DETECTOR_SENTENCE, PII_DETECTOR_WHOLE_DOC},
     openai::CHAT_COMPLETIONS_ENDPOINT,
     sse,
@@ -339,7 +339,7 @@ async fn input_detectors() -> Result<(), anyhow::Error> {
     sentence_chunker_server.mock(|when, then| {
         when.post()
             .path(CHUNKER_UNARY_ENDPOINT)
-            .header("mm-model-id", "sentence_chunker")
+            .header(CHUNKER_MODEL_ID_HEADER_NAME, "sentence_chunker")
             .pb(ChunkerTokenizationTaskRequest { text: "Here is my social security number: 123-45-6789. Can you generate another one like it?".into() });
         then.pb(TokenizationResults {
             results: vec![
@@ -633,7 +633,7 @@ async fn output_detectors() -> Result<(), anyhow::Error> {
     sentence_chunker_server.mock(|when, then| {
         when.post()
             .path(CHUNKER_STREAMING_ENDPOINT)
-            .header("mm-model-id", "sentence_chunker")
+            .header(CHUNKER_MODEL_ID_HEADER_NAME, "sentence_chunker")
             .pb_stream(vec![
                 BidiStreamingChunkerTokenizationTaskRequest {
                     text_stream: "Here".into(),
@@ -1206,7 +1206,7 @@ async fn output_detectors_with_logprobs() -> Result<(), anyhow::Error> {
     sentence_chunker_server.mock(|when, then| {
         when.post()
             .path(CHUNKER_STREAMING_ENDPOINT)
-            .header("mm-model-id", "sentence_chunker")
+            .header(CHUNKER_MODEL_ID_HEADER_NAME, "sentence_chunker")
             .pb_stream(vec![
                 BidiStreamingChunkerTokenizationTaskRequest {
                     text_stream: "Here".into(),
@@ -1776,7 +1776,7 @@ async fn output_detectors_with_usage() -> Result<(), anyhow::Error> {
     sentence_chunker_server.mock(|when, then| {
         when.post()
             .path(CHUNKER_STREAMING_ENDPOINT)
-            .header("mm-model-id", "sentence_chunker")
+            .header(CHUNKER_MODEL_ID_HEADER_NAME, "sentence_chunker")
             .pb_stream(vec![
                 BidiStreamingChunkerTokenizationTaskRequest {
                     text_stream: "Here".into(),
@@ -2437,7 +2437,7 @@ async fn output_detectors_n2() -> Result<(), anyhow::Error> {
     sentence_chunker_server.mock(|when, then| {
         when.post()
             .path(CHUNKER_STREAMING_ENDPOINT)
-            .header("mm-model-id", "sentence_chunker")
+            .header(CHUNKER_MODEL_ID_HEADER_NAME, "sentence_chunker")
             .pb_stream(vec![
                 BidiStreamingChunkerTokenizationTaskRequest {
                     text_stream: "Here".into(),
@@ -2519,7 +2519,7 @@ async fn output_detectors_n2() -> Result<(), anyhow::Error> {
     sentence_chunker_server.mock(|when, then| {
         when.post()
             .path(CHUNKER_STREAMING_ENDPOINT)
-            .header("mm-model-id", "sentence_chunker")
+            .header(CHUNKER_MODEL_ID_HEADER_NAME, "sentence_chunker")
             .pb_stream(vec![
                 BidiStreamingChunkerTokenizationTaskRequest {
                     text_stream: "Here".into(),
@@ -3338,7 +3338,7 @@ async fn output_detectors_and_whole_doc_output_detectors() -> Result<(), anyhow:
     sentence_chunker_server.mock(|when, then| {
         when.post()
             .path(CHUNKER_STREAMING_ENDPOINT)
-            .header("mm-model-id", "sentence_chunker")
+            .header(CHUNKER_MODEL_ID_HEADER_NAME, "sentence_chunker")
             .pb_stream(vec![
                 BidiStreamingChunkerTokenizationTaskRequest {
                     text_stream: "Here".into(),
@@ -4027,7 +4027,7 @@ async fn chunker_internal_server_error() -> Result<(), anyhow::Error> {
     sentence_chunker_server.mock(|when, then| {
         when.post()
             .path(CHUNKER_STREAMING_ENDPOINT)
-            .header("mm-model-id", "sentence_chunker")
+            .header(CHUNKER_MODEL_ID_HEADER_NAME, "sentence_chunker")
             .pb_stream(vec![
                 BidiStreamingChunkerTokenizationTaskRequest {
                     text_stream: "Here".into(),
@@ -4317,7 +4317,7 @@ async fn detector_internal_server_error() -> Result<(), anyhow::Error> {
     sentence_chunker_server.mock(|when, then| {
         when.post()
             .path(CHUNKER_STREAMING_ENDPOINT)
-            .header("mm-model-id", "sentence_chunker")
+            .header(CHUNKER_MODEL_ID_HEADER_NAME, "sentence_chunker")
             .pb_stream(vec![
                 BidiStreamingChunkerTokenizationTaskRequest {
                     text_stream: "Here".into(),
