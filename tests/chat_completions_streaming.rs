@@ -109,7 +109,7 @@ async fn no_detectors() -> Result<(), anyhow::Error> {
         .await?;
 
     let response = test_server
-        .post("/api/v2/chat/completions-detection")
+        .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
         .json(&json!({
             "stream": true,
             "model": "test-0B",
@@ -268,7 +268,7 @@ async fn no_detectors_n2() -> Result<(), anyhow::Error> {
         .await?;
 
     let response = test_server
-        .post("/api/v2/chat/completions-detection")
+        .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
         .json(&json!({
             "n": 2,
             "stream": true,
@@ -380,7 +380,7 @@ async fn input_detectors() -> Result<(), anyhow::Error> {
         .await?;
 
     let response = test_server
-        .post("/api/v2/chat/completions-detection")
+        .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
         .json(&json!({
             "stream": true,
             "model": "test-0B",
@@ -777,7 +777,7 @@ async fn output_detectors() -> Result<(), anyhow::Error> {
         .await?;
 
     let response = test_server
-        .post("/api/v2/chat/completions-detection")
+        .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
         .json(&json!({
             "stream": true,
             "model": "test-0B",
@@ -1353,7 +1353,7 @@ async fn output_detectors_with_logprobs() -> Result<(), anyhow::Error> {
         .await?;
 
     let response = test_server
-        .post("/api/v2/chat/completions-detection")
+        .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
         .json(&json!({
             "stream": true,
             "logprobs": true,
@@ -1926,7 +1926,7 @@ async fn output_detectors_with_usage() -> Result<(), anyhow::Error> {
         .await?;
 
     let response = test_server
-        .post("/api/v2/chat/completions-detection")
+        .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
         .json(&json!({
             "stream": true,
             "model": "test-0B",
@@ -2729,7 +2729,7 @@ async fn output_detectors_n2() -> Result<(), anyhow::Error> {
         .await?;
 
     let response = test_server
-        .post("/api/v2/chat/completions-detection")
+        .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
         .json(&json!({
             "n": 2,
             "stream": true,
@@ -3079,7 +3079,7 @@ async fn whole_doc_output_detectors() -> Result<(), anyhow::Error> {
         .await?;
 
     let response = test_server
-        .post("/api/v2/chat/completions-detection")
+        .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
         .json(&json!({
             "stream": true,
             "model": "test-0B",
@@ -3535,7 +3535,7 @@ async fn output_detectors_and_whole_doc_output_detectors() -> Result<(), anyhow:
         .await?;
 
     let response = test_server
-        .post("/api/v2/chat/completions-detection")
+        .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
         .json(&json!({
             "stream": true,
             "model": "test-0B",
@@ -3739,7 +3739,7 @@ async fn openai_bad_request_error() -> Result<(), anyhow::Error> {
         .await?;
 
     let response = test_server
-        .post("/api/v2/chat/completions-detection")
+        .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
         .json(&json!({
             "stream": true,
             "model": "test-0B",
@@ -3809,7 +3809,7 @@ async fn openai_stream_error() -> Result<(), anyhow::Error> {
         .await?;
 
     let response = test_server
-        .post("/api/v2/chat/completions-detection")
+        .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
         .json(&json!({
             "stream": true,
             "model": "test-0B",
@@ -4097,7 +4097,7 @@ async fn chunker_internal_server_error() -> Result<(), anyhow::Error> {
         .await?;
 
     let response = test_server
-        .post("/api/v2/chat/completions-detection")
+        .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
         .json(&json!({
             "stream": true,
             "model": "test-0B",
@@ -4437,7 +4437,7 @@ async fn detector_internal_server_error() -> Result<(), anyhow::Error> {
         .await?;
 
     let response = test_server
-        .post("/api/v2/chat/completions-detection")
+        .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
         .json(&json!({
             "stream": true,
             "model": "test-0B",
