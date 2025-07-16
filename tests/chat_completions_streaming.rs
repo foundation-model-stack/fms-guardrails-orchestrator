@@ -32,7 +32,7 @@ use crate::common::{
 
 #[test(tokio::test)]
 async fn no_detectors() -> Result<(), anyhow::Error> {
-    let mut openai_server = MockServer::new("openai");
+    let mut openai_server = MockServer::new_http("openai");
     openai_server.mock(|when, then| {
         when
         .post()
@@ -149,7 +149,7 @@ async fn no_detectors() -> Result<(), anyhow::Error> {
 
 #[test(tokio::test)]
 async fn no_detectors_n2() -> Result<(), anyhow::Error> {
-    let mut openai_server = MockServer::new("openai");
+    let mut openai_server = MockServer::new_http("openai");
     openai_server.mock(|when, then| {
         when.post()
             .path(CHAT_COMPLETIONS_ENDPOINT)
@@ -332,9 +332,9 @@ async fn no_detectors_n2() -> Result<(), anyhow::Error> {
 
 #[test(tokio::test)]
 async fn input_detectors() -> Result<(), anyhow::Error> {
-    let openai_server = MockServer::new("openai");
+    let openai_server = MockServer::new_http("openai");
 
-    let mut sentence_chunker_server = MockServer::new("sentence_chunker").grpc();
+    let mut sentence_chunker_server = MockServer::new_grpc("sentence_chunker");
     sentence_chunker_server.mock(|when, then| {
         when.post()
             .path(CHUNKER_UNARY_ENDPOINT)
@@ -349,7 +349,7 @@ async fn input_detectors() -> Result<(), anyhow::Error> {
         });
     });
 
-    let mut pii_detector_sentence_server = MockServer::new("pii_detector_sentence");
+    let mut pii_detector_sentence_server = MockServer::new_http("pii_detector_sentence");
     pii_detector_sentence_server.mock(|when, then| {
         when.post()
             .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
@@ -435,7 +435,7 @@ async fn input_detectors() -> Result<(), anyhow::Error> {
 
 #[test(tokio::test)]
 async fn output_detectors() -> Result<(), anyhow::Error> {
-    let mut openai_server = MockServer::new("openai");
+    let mut openai_server = MockServer::new_http("openai");
     openai_server.mock(|when, then| {
         when.post()
             .path(CHAT_COMPLETIONS_ENDPOINT)
@@ -628,7 +628,7 @@ async fn output_detectors() -> Result<(), anyhow::Error> {
         ]));
     });
 
-    let mut sentence_chunker_server = MockServer::new("sentence_chunker").grpc();
+    let mut sentence_chunker_server = MockServer::new_grpc("sentence_chunker");
     sentence_chunker_server.mock(|when, then| {
         when.post()
             .path(CHUNKER_STREAMING_ENDPOINT)
@@ -715,7 +715,7 @@ async fn output_detectors() -> Result<(), anyhow::Error> {
         ]);
     });
 
-    let mut pii_detector_sentence_server = MockServer::new("pii_detector_sentence");
+    let mut pii_detector_sentence_server = MockServer::new_http("pii_detector_sentence");
     pii_detector_sentence_server.mock(|when, then| {
         when.post()
             .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
@@ -917,7 +917,7 @@ async fn output_detectors() -> Result<(), anyhow::Error> {
 
 #[test(tokio::test)]
 async fn output_detectors_with_logprobs() -> Result<(), anyhow::Error> {
-    let mut openai_server = MockServer::new("openai");
+    let mut openai_server = MockServer::new_http("openai");
     openai_server.mock(|when, then| {
         when.post()
             .path(CHAT_COMPLETIONS_ENDPOINT)
@@ -1201,7 +1201,7 @@ async fn output_detectors_with_logprobs() -> Result<(), anyhow::Error> {
         ]));
     });
 
-    let mut sentence_chunker_server = MockServer::new("sentence_chunker").grpc();
+    let mut sentence_chunker_server = MockServer::new_grpc("sentence_chunker");
     sentence_chunker_server.mock(|when, then| {
         when.post()
             .path(CHUNKER_STREAMING_ENDPOINT)
@@ -1288,7 +1288,7 @@ async fn output_detectors_with_logprobs() -> Result<(), anyhow::Error> {
         ]);
     });
 
-    let mut pii_detector_sentence_server = MockServer::new("pii_detector_sentence");
+    let mut pii_detector_sentence_server = MockServer::new_http("pii_detector_sentence");
     pii_detector_sentence_server.mock(|when, then| {
         when.post()
             .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
@@ -1562,7 +1562,7 @@ async fn output_detectors_with_logprobs() -> Result<(), anyhow::Error> {
 
 #[test(tokio::test)]
 async fn output_detectors_with_usage() -> Result<(), anyhow::Error> {
-    let mut openai_server = MockServer::new("openai");
+    let mut openai_server = MockServer::new_http("openai");
     openai_server.mock(|when, then| {
         when.post()
             .path(CHAT_COMPLETIONS_ENDPOINT)
@@ -1771,7 +1771,7 @@ async fn output_detectors_with_usage() -> Result<(), anyhow::Error> {
         ]));
     });
 
-    let mut sentence_chunker_server = MockServer::new("sentence_chunker").grpc();
+    let mut sentence_chunker_server = MockServer::new_grpc("sentence_chunker");
     sentence_chunker_server.mock(|when, then| {
         when.post()
             .path(CHUNKER_STREAMING_ENDPOINT)
@@ -1858,7 +1858,7 @@ async fn output_detectors_with_usage() -> Result<(), anyhow::Error> {
         ]);
     });
 
-    let mut pii_detector_sentence_server = MockServer::new("pii_detector_sentence");
+    let mut pii_detector_sentence_server = MockServer::new_http("pii_detector_sentence");
     pii_detector_sentence_server.mock(|when, then| {
         when.post()
             .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
@@ -2075,7 +2075,7 @@ async fn output_detectors_with_usage() -> Result<(), anyhow::Error> {
 
 #[test(tokio::test)]
 async fn output_detectors_n2() -> Result<(), anyhow::Error> {
-    let mut openai_server = MockServer::new("openai");
+    let mut openai_server = MockServer::new_http("openai");
     openai_server.mock(|when, then| {
         when.post()
             .path(CHAT_COMPLETIONS_ENDPOINT)
@@ -2431,7 +2431,7 @@ async fn output_detectors_n2() -> Result<(), anyhow::Error> {
         ]));
     });
 
-    let mut sentence_chunker_server = MockServer::new("sentence_chunker").grpc();
+    let mut sentence_chunker_server = MockServer::new_grpc("sentence_chunker");
     // choice 0 mocks
     sentence_chunker_server.mock(|when, then| {
         when.post()
@@ -2601,7 +2601,7 @@ async fn output_detectors_n2() -> Result<(), anyhow::Error> {
         ]);
     });
 
-    let mut pii_detector_sentence_server = MockServer::new("pii_detector_sentence");
+    let mut pii_detector_sentence_server = MockServer::new_http("pii_detector_sentence");
     // choice 0 mocks
     pii_detector_sentence_server.mock(|when, then| {
         when.post()
@@ -2832,7 +2832,7 @@ async fn output_detectors_n2() -> Result<(), anyhow::Error> {
 
 #[test(tokio::test)]
 async fn whole_doc_output_detectors() -> Result<(), anyhow::Error> {
-    let mut openai_server = MockServer::new("openai");
+    let mut openai_server = MockServer::new_http("openai");
     openai_server.mock(|when, then| {
         when.post()
             .path(CHAT_COMPLETIONS_ENDPOINT)
@@ -3025,7 +3025,7 @@ async fn whole_doc_output_detectors() -> Result<(), anyhow::Error> {
         ]));
     });
 
-    let mut pii_detector_whole_doc_server = MockServer::new("pii_detector_whole_doc");
+    let mut pii_detector_whole_doc_server = MockServer::new_http("pii_detector_whole_doc");
     pii_detector_whole_doc_server.mock(|when, then| {
         when.post()
             .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
@@ -3140,7 +3140,7 @@ async fn whole_doc_output_detectors() -> Result<(), anyhow::Error> {
 
 #[test(tokio::test)]
 async fn output_detectors_and_whole_doc_output_detectors() -> Result<(), anyhow::Error> {
-    let mut openai_server = MockServer::new("openai");
+    let mut openai_server = MockServer::new_http("openai");
     openai_server.mock(|when, then| {
         when.post()
             .path(CHAT_COMPLETIONS_ENDPOINT)
@@ -3333,7 +3333,7 @@ async fn output_detectors_and_whole_doc_output_detectors() -> Result<(), anyhow:
         ]));
     });
 
-    let mut sentence_chunker_server = MockServer::new("sentence_chunker").grpc();
+    let mut sentence_chunker_server = MockServer::new_grpc("sentence_chunker");
     sentence_chunker_server.mock(|when, then| {
         when.post()
             .path(CHUNKER_STREAMING_ENDPOINT)
@@ -3420,7 +3420,7 @@ async fn output_detectors_and_whole_doc_output_detectors() -> Result<(), anyhow:
         ]);
     });
 
-    let mut pii_detector_sentence_server = MockServer::new("pii_detector_sentence");
+    let mut pii_detector_sentence_server = MockServer::new_http("pii_detector_sentence");
     pii_detector_sentence_server.mock(|when, then| {
         when.post()
             .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
@@ -3474,7 +3474,7 @@ async fn output_detectors_and_whole_doc_output_detectors() -> Result<(), anyhow:
         ]]));
     });
 
-    let mut pii_detector_whole_doc_server = MockServer::new("pii_detector_whole_doc");
+    let mut pii_detector_whole_doc_server = MockServer::new_http("pii_detector_whole_doc");
     pii_detector_whole_doc_server.mock(|when, then| {
         when.post()
             .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
@@ -3696,7 +3696,7 @@ async fn output_detectors_and_whole_doc_output_detectors() -> Result<(), anyhow:
 
 #[test(tokio::test)]
 async fn openai_bad_request_error() -> Result<(), anyhow::Error> {
-    let mut openai_server = MockServer::new("openai");
+    let mut openai_server = MockServer::new_http("openai");
     openai_server.mock(|when, then| {
         when.post()
             .path(CHAT_COMPLETIONS_ENDPOINT)
@@ -3760,7 +3760,7 @@ async fn openai_bad_request_error() -> Result<(), anyhow::Error> {
 
 #[test(tokio::test)]
 async fn openai_stream_error() -> Result<(), anyhow::Error> {
-    let mut openai_server = MockServer::new("openai");
+    let mut openai_server = MockServer::new_http("openai");
     openai_server.mock(|when, then| {
         when.post()
             .path(CHAT_COMPLETIONS_ENDPOINT)
@@ -3827,7 +3827,7 @@ async fn openai_stream_error() -> Result<(), anyhow::Error> {
 
 #[test(tokio::test)]
 async fn chunker_internal_server_error() -> Result<(), anyhow::Error> {
-    let mut openai_server = MockServer::new("openai");
+    let mut openai_server = MockServer::new_http("openai");
     openai_server.mock(|when, then| {
         when.post()
             .path(CHAT_COMPLETIONS_ENDPOINT)
@@ -4020,7 +4020,7 @@ async fn chunker_internal_server_error() -> Result<(), anyhow::Error> {
         ]));
     });
 
-    let mut sentence_chunker_server = MockServer::new("sentence_chunker").grpc();
+    let mut sentence_chunker_server = MockServer::new_grpc("sentence_chunker");
     sentence_chunker_server.mock(|when, then| {
         when.post()
             .path(CHUNKER_STREAMING_ENDPOINT)
@@ -4070,7 +4070,7 @@ async fn chunker_internal_server_error() -> Result<(), anyhow::Error> {
         then.internal_server_error();
     });
 
-    let pii_detector_sentence_server = MockServer::new("pii_detector_sentence");
+    let pii_detector_sentence_server = MockServer::new_http("pii_detector_sentence");
 
     let test_server = TestOrchestratorServer::builder()
         .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
@@ -4117,7 +4117,7 @@ async fn chunker_internal_server_error() -> Result<(), anyhow::Error> {
 
 #[test(tokio::test)]
 async fn detector_internal_server_error() -> Result<(), anyhow::Error> {
-    let mut openai_server = MockServer::new("openai");
+    let mut openai_server = MockServer::new_http("openai");
     openai_server.mock(|when, then| {
         when.post()
             .path(CHAT_COMPLETIONS_ENDPOINT)
@@ -4310,7 +4310,7 @@ async fn detector_internal_server_error() -> Result<(), anyhow::Error> {
         ]));
     });
 
-    let mut sentence_chunker_server = MockServer::new("sentence_chunker").grpc();
+    let mut sentence_chunker_server = MockServer::new_grpc("sentence_chunker");
     sentence_chunker_server.mock(|when, then| {
         when.post()
             .path(CHUNKER_STREAMING_ENDPOINT)
@@ -4397,7 +4397,7 @@ async fn detector_internal_server_error() -> Result<(), anyhow::Error> {
         ]);
     });
 
-    let mut pii_detector_sentence_server = MockServer::new("pii_detector_sentence");
+    let mut pii_detector_sentence_server = MockServer::new_http("pii_detector_sentence");
     pii_detector_sentence_server.mock(|when, then| {
         when.post()
             .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
