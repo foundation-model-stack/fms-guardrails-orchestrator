@@ -24,7 +24,11 @@ use serde_json::json;
 use test_log::test;
 use tracing::debug;
 
-use crate::common::{chunker::CHUNKER_UNARY_ENDPOINT, openai::CHAT_COMPLETIONS_ENDPOINT, sse};
+use crate::common::{
+    chunker::{CHUNKER_STREAMING_ENDPOINT, CHUNKER_UNARY_ENDPOINT},
+    openai::CHAT_COMPLETIONS_ENDPOINT,
+    sse,
+};
 
 #[test(tokio::test)]
 async fn no_detectors() -> Result<(), anyhow::Error> {
@@ -627,57 +631,56 @@ async fn output_detectors() -> Result<(), anyhow::Error> {
     let mut sentence_chunker_server = MockServer::new("sentence_chunker").grpc();
     sentence_chunker_server.mock(|when, then| {
         when.post()
-            .path("/caikit.runtime.Chunkers.ChunkersService/BidiStreamingChunkerTokenizationTaskPredict")
+            .path(CHUNKER_STREAMING_ENDPOINT)
             .header("mm-model-id", "sentence_chunker")
             .pb_stream(vec![
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: "Here".into(),
-                input_index_stream: 1,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: " are".into(),
-                input_index_stream: 2,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: " ".into(),
-                input_index_stream: 3,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: "2".into(),
-                input_index_stream: 4,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: " random".into(),
-                input_index_stream: 5,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: " phone".into(),
-                input_index_stream: 6,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: " numbers".into(),
-                input_index_stream: 7,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: ":\n\n".into(),
-                input_index_stream: 8,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: "1. (503) 272-8192\n".into(),
-                input_index_stream: 9,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: "2. (617) 985-3519.".into(),
-                input_index_stream: 10,
-            },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: "Here".into(),
+                    input_index_stream: 1,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: " are".into(),
+                    input_index_stream: 2,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: " ".into(),
+                    input_index_stream: 3,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: "2".into(),
+                    input_index_stream: 4,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: " random".into(),
+                    input_index_stream: 5,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: " phone".into(),
+                    input_index_stream: 6,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: " numbers".into(),
+                    input_index_stream: 7,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: ":\n\n".into(),
+                    input_index_stream: 8,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: "1. (503) 272-8192\n".into(),
+                    input_index_stream: 9,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: "2. (617) 985-3519.".into(),
+                    input_index_stream: 10,
+                },
             ]);
         then.pb_stream(vec![
             ChunkerTokenizationStreamResult {
                 results: vec![Token {
                     start: 0,
                     end: 32,
-                    text: "Here are 2 random phone numbers:"
-                        .into(),
+                    text: "Here are 2 random phone numbers:".into(),
                 }],
                 token_count: 0,
                 processed_index: 32,
@@ -689,8 +692,7 @@ async fn output_detectors() -> Result<(), anyhow::Error> {
                 results: vec![Token {
                     start: 32,
                     end: 51,
-                    text: "\n\n1. (503) 272-8192"
-                        .into(),
+                    text: "\n\n1. (503) 272-8192".into(),
                 }],
                 token_count: 0,
                 processed_index: 51,
@@ -702,8 +704,7 @@ async fn output_detectors() -> Result<(), anyhow::Error> {
                 results: vec![Token {
                     start: 51,
                     end: 70,
-                    text: "\n2. (617) 985-3519."
-                        .into(),
+                    text: "\n2. (617) 985-3519.".into(),
                 }],
                 token_count: 0,
                 processed_index: 70,
@@ -1203,57 +1204,56 @@ async fn output_detectors_with_logprobs() -> Result<(), anyhow::Error> {
     let mut sentence_chunker_server = MockServer::new("sentence_chunker").grpc();
     sentence_chunker_server.mock(|when, then| {
         when.post()
-            .path("/caikit.runtime.Chunkers.ChunkersService/BidiStreamingChunkerTokenizationTaskPredict")
+            .path(CHUNKER_STREAMING_ENDPOINT)
             .header("mm-model-id", "sentence_chunker")
             .pb_stream(vec![
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: "Here".into(),
-                input_index_stream: 1,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: " are".into(),
-                input_index_stream: 2,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: " ".into(),
-                input_index_stream: 3,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: "2".into(),
-                input_index_stream: 4,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: " random".into(),
-                input_index_stream: 5,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: " phone".into(),
-                input_index_stream: 6,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: " numbers".into(),
-                input_index_stream: 7,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: ":\n\n".into(),
-                input_index_stream: 8,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: "1. (503) 272-8192\n".into(),
-                input_index_stream: 9,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: "2. (617) 985-3519.".into(),
-                input_index_stream: 10,
-            },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: "Here".into(),
+                    input_index_stream: 1,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: " are".into(),
+                    input_index_stream: 2,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: " ".into(),
+                    input_index_stream: 3,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: "2".into(),
+                    input_index_stream: 4,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: " random".into(),
+                    input_index_stream: 5,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: " phone".into(),
+                    input_index_stream: 6,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: " numbers".into(),
+                    input_index_stream: 7,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: ":\n\n".into(),
+                    input_index_stream: 8,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: "1. (503) 272-8192\n".into(),
+                    input_index_stream: 9,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: "2. (617) 985-3519.".into(),
+                    input_index_stream: 10,
+                },
             ]);
         then.pb_stream(vec![
             ChunkerTokenizationStreamResult {
                 results: vec![Token {
                     start: 0,
                     end: 32,
-                    text: "Here are 2 random phone numbers:"
-                        .into(),
+                    text: "Here are 2 random phone numbers:".into(),
                 }],
                 token_count: 0,
                 processed_index: 32,
@@ -1265,8 +1265,7 @@ async fn output_detectors_with_logprobs() -> Result<(), anyhow::Error> {
                 results: vec![Token {
                     start: 32,
                     end: 51,
-                    text: "\n\n1. (503) 272-8192"
-                        .into(),
+                    text: "\n\n1. (503) 272-8192".into(),
                 }],
                 token_count: 0,
                 processed_index: 51,
@@ -1278,8 +1277,7 @@ async fn output_detectors_with_logprobs() -> Result<(), anyhow::Error> {
                 results: vec![Token {
                     start: 51,
                     end: 70,
-                    text: "\n2. (617) 985-3519."
-                        .into(),
+                    text: "\n2. (617) 985-3519.".into(),
                 }],
                 token_count: 0,
                 processed_index: 70,
@@ -1776,57 +1774,56 @@ async fn output_detectors_with_usage() -> Result<(), anyhow::Error> {
     let mut sentence_chunker_server = MockServer::new("sentence_chunker").grpc();
     sentence_chunker_server.mock(|when, then| {
         when.post()
-            .path("/caikit.runtime.Chunkers.ChunkersService/BidiStreamingChunkerTokenizationTaskPredict")
+            .path(CHUNKER_STREAMING_ENDPOINT)
             .header("mm-model-id", "sentence_chunker")
             .pb_stream(vec![
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: "Here".into(),
-                input_index_stream: 1,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: " are".into(),
-                input_index_stream: 2,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: " ".into(),
-                input_index_stream: 3,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: "2".into(),
-                input_index_stream: 4,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: " random".into(),
-                input_index_stream: 5,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: " phone".into(),
-                input_index_stream: 6,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: " numbers".into(),
-                input_index_stream: 7,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: ":\n\n".into(),
-                input_index_stream: 8,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: "1. (503) 272-8192\n".into(),
-                input_index_stream: 9,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: "2. (617) 985-3519.".into(),
-                input_index_stream: 10,
-            },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: "Here".into(),
+                    input_index_stream: 1,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: " are".into(),
+                    input_index_stream: 2,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: " ".into(),
+                    input_index_stream: 3,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: "2".into(),
+                    input_index_stream: 4,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: " random".into(),
+                    input_index_stream: 5,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: " phone".into(),
+                    input_index_stream: 6,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: " numbers".into(),
+                    input_index_stream: 7,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: ":\n\n".into(),
+                    input_index_stream: 8,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: "1. (503) 272-8192\n".into(),
+                    input_index_stream: 9,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: "2. (617) 985-3519.".into(),
+                    input_index_stream: 10,
+                },
             ]);
         then.pb_stream(vec![
             ChunkerTokenizationStreamResult {
                 results: vec![Token {
                     start: 0,
                     end: 32,
-                    text: "Here are 2 random phone numbers:"
-                        .into(),
+                    text: "Here are 2 random phone numbers:".into(),
                 }],
                 token_count: 0,
                 processed_index: 32,
@@ -1838,8 +1835,7 @@ async fn output_detectors_with_usage() -> Result<(), anyhow::Error> {
                 results: vec![Token {
                     start: 32,
                     end: 51,
-                    text: "\n\n1. (503) 272-8192"
-                        .into(),
+                    text: "\n\n1. (503) 272-8192".into(),
                 }],
                 token_count: 0,
                 processed_index: 51,
@@ -1851,8 +1847,7 @@ async fn output_detectors_with_usage() -> Result<(), anyhow::Error> {
                 results: vec![Token {
                     start: 51,
                     end: 70,
-                    text: "\n2. (617) 985-3519."
-                        .into(),
+                    text: "\n2. (617) 985-3519.".into(),
                 }],
                 token_count: 0,
                 processed_index: 70,
@@ -2440,53 +2435,52 @@ async fn output_detectors_n2() -> Result<(), anyhow::Error> {
     // choice 0 mocks
     sentence_chunker_server.mock(|when, then| {
         when.post()
-            .path("/caikit.runtime.Chunkers.ChunkersService/BidiStreamingChunkerTokenizationTaskPredict")
+            .path(CHUNKER_STREAMING_ENDPOINT)
             .header("mm-model-id", "sentence_chunker")
             .pb_stream(vec![
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: "Here".into(),
-                input_index_stream: 2,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: " are".into(),
-                input_index_stream: 4,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: " two".into(),
-                input_index_stream: 6,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: " random".into(),
-                input_index_stream: 8,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: " phone".into(),
-                input_index_stream: 10,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: " numbers".into(),
-                input_index_stream: 12,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: ":\n\n".into(),
-                input_index_stream: 14,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: "1. (503) 278-9123\n".into(),
-                input_index_stream: 16,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: "2. (617) 854-6279.".into(),
-                input_index_stream: 18,
-            },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: "Here".into(),
+                    input_index_stream: 2,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: " are".into(),
+                    input_index_stream: 4,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: " two".into(),
+                    input_index_stream: 6,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: " random".into(),
+                    input_index_stream: 8,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: " phone".into(),
+                    input_index_stream: 10,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: " numbers".into(),
+                    input_index_stream: 12,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: ":\n\n".into(),
+                    input_index_stream: 14,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: "1. (503) 278-9123\n".into(),
+                    input_index_stream: 16,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: "2. (617) 854-6279.".into(),
+                    input_index_stream: 18,
+                },
             ]);
         then.pb_stream(vec![
             ChunkerTokenizationStreamResult {
                 results: vec![Token {
                     start: 0,
                     end: 34,
-                    text: "Here are two random phone numbers:"
-                        .into(),
+                    text: "Here are two random phone numbers:".into(),
                 }],
                 token_count: 0,
                 processed_index: 34,
@@ -2498,8 +2492,7 @@ async fn output_detectors_n2() -> Result<(), anyhow::Error> {
                 results: vec![Token {
                     start: 34,
                     end: 53,
-                    text: "\n\n1. (503) 278-9123"
-                        .into(),
+                    text: "\n\n1. (503) 278-9123".into(),
                 }],
                 token_count: 0,
                 processed_index: 53,
@@ -2511,8 +2504,7 @@ async fn output_detectors_n2() -> Result<(), anyhow::Error> {
                 results: vec![Token {
                     start: 53,
                     end: 72,
-                    text: "\n2. (617) 854-6279."
-                        .into(),
+                    text: "\n2. (617) 854-6279.".into(),
                 }],
                 token_count: 0,
                 processed_index: 72,
@@ -2525,57 +2517,56 @@ async fn output_detectors_n2() -> Result<(), anyhow::Error> {
     // choice 1 mocks
     sentence_chunker_server.mock(|when, then| {
         when.post()
-            .path("/caikit.runtime.Chunkers.ChunkersService/BidiStreamingChunkerTokenizationTaskPredict")
+            .path(CHUNKER_STREAMING_ENDPOINT)
             .header("mm-model-id", "sentence_chunker")
             .pb_stream(vec![
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: "Here".into(),
-                input_index_stream: 3,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: " are".into(),
-                input_index_stream: 5,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: " ".into(),
-                input_index_stream: 7,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: "2".into(),
-                input_index_stream: 9,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: " random".into(),
-                input_index_stream: 11,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: " phone".into(),
-                input_index_stream: 13,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: " numbers".into(),
-                input_index_stream: 15,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: ":\n\n".into(),
-                input_index_stream: 17,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: "**Phone Number 1:** (234) 567-8901\n\n".into(),
-                input_index_stream: 19,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: "**Phone Number 2:** (819) 345-2198".into(),
-                input_index_stream: 20,
-            },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: "Here".into(),
+                    input_index_stream: 3,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: " are".into(),
+                    input_index_stream: 5,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: " ".into(),
+                    input_index_stream: 7,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: "2".into(),
+                    input_index_stream: 9,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: " random".into(),
+                    input_index_stream: 11,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: " phone".into(),
+                    input_index_stream: 13,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: " numbers".into(),
+                    input_index_stream: 15,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: ":\n\n".into(),
+                    input_index_stream: 17,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: "**Phone Number 1:** (234) 567-8901\n\n".into(),
+                    input_index_stream: 19,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: "**Phone Number 2:** (819) 345-2198".into(),
+                    input_index_stream: 20,
+                },
             ]);
         then.pb_stream(vec![
             ChunkerTokenizationStreamResult {
                 results: vec![Token {
                     start: 0,
                     end: 32,
-                    text: "Here are 2 random phone numbers:"
-                        .into(),
+                    text: "Here are 2 random phone numbers:".into(),
                 }],
                 token_count: 0,
                 processed_index: 32,
@@ -2587,8 +2578,7 @@ async fn output_detectors_n2() -> Result<(), anyhow::Error> {
                 results: vec![Token {
                     start: 32,
                     end: 68,
-                    text: "\n\n**Phone Number 1:** (234) 567-8901"
-                        .into(),
+                    text: "\n\n**Phone Number 1:** (234) 567-8901".into(),
                 }],
                 token_count: 0,
                 processed_index: 68,
@@ -2600,8 +2590,7 @@ async fn output_detectors_n2() -> Result<(), anyhow::Error> {
                 results: vec![Token {
                     start: 68,
                     end: 104,
-                    text: "\n\n**Phone Number 2:** (819) 345-2198"
-                        .into(),
+                    text: "\n\n**Phone Number 2:** (819) 345-2198".into(),
                 }],
                 token_count: 0,
                 processed_index: 104,
@@ -3347,57 +3336,56 @@ async fn output_detectors_and_whole_doc_output_detectors() -> Result<(), anyhow:
     let mut sentence_chunker_server = MockServer::new("sentence_chunker").grpc();
     sentence_chunker_server.mock(|when, then| {
         when.post()
-            .path("/caikit.runtime.Chunkers.ChunkersService/BidiStreamingChunkerTokenizationTaskPredict")
+            .path(CHUNKER_STREAMING_ENDPOINT)
             .header("mm-model-id", "sentence_chunker")
             .pb_stream(vec![
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: "Here".into(),
-                input_index_stream: 1,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: " are".into(),
-                input_index_stream: 2,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: " ".into(),
-                input_index_stream: 3,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: "2".into(),
-                input_index_stream: 4,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: " random".into(),
-                input_index_stream: 5,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: " phone".into(),
-                input_index_stream: 6,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: " numbers".into(),
-                input_index_stream: 7,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: ":\n\n".into(),
-                input_index_stream: 8,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: "1. (503) 272-8192\n".into(),
-                input_index_stream: 9,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: "2. (617) 985-3519.".into(),
-                input_index_stream: 10,
-            },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: "Here".into(),
+                    input_index_stream: 1,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: " are".into(),
+                    input_index_stream: 2,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: " ".into(),
+                    input_index_stream: 3,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: "2".into(),
+                    input_index_stream: 4,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: " random".into(),
+                    input_index_stream: 5,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: " phone".into(),
+                    input_index_stream: 6,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: " numbers".into(),
+                    input_index_stream: 7,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: ":\n\n".into(),
+                    input_index_stream: 8,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: "1. (503) 272-8192\n".into(),
+                    input_index_stream: 9,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: "2. (617) 985-3519.".into(),
+                    input_index_stream: 10,
+                },
             ]);
         then.pb_stream(vec![
             ChunkerTokenizationStreamResult {
                 results: vec![Token {
                     start: 0,
                     end: 32,
-                    text: "Here are 2 random phone numbers:"
-                        .into(),
+                    text: "Here are 2 random phone numbers:".into(),
                 }],
                 token_count: 0,
                 processed_index: 32,
@@ -3409,8 +3397,7 @@ async fn output_detectors_and_whole_doc_output_detectors() -> Result<(), anyhow:
                 results: vec![Token {
                     start: 32,
                     end: 51,
-                    text: "\n\n1. (503) 272-8192"
-                        .into(),
+                    text: "\n\n1. (503) 272-8192".into(),
                 }],
                 token_count: 0,
                 processed_index: 51,
@@ -3422,8 +3409,7 @@ async fn output_detectors_and_whole_doc_output_detectors() -> Result<(), anyhow:
                 results: vec![Token {
                     start: 51,
                     end: 70,
-                    text: "\n2. (617) 985-3519."
-                        .into(),
+                    text: "\n2. (617) 985-3519.".into(),
                 }],
                 token_count: 0,
                 processed_index: 70,
@@ -4039,49 +4025,49 @@ async fn chunker_internal_server_error() -> Result<(), anyhow::Error> {
     let mut sentence_chunker_server = MockServer::new("sentence_chunker").grpc();
     sentence_chunker_server.mock(|when, then| {
         when.post()
-            .path("/caikit.runtime.Chunkers.ChunkersService/BidiStreamingChunkerTokenizationTaskPredict")
+            .path(CHUNKER_STREAMING_ENDPOINT)
             .header("mm-model-id", "sentence_chunker")
             .pb_stream(vec![
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: "Here".into(),
-                input_index_stream: 1,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: " are".into(),
-                input_index_stream: 2,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: " ".into(),
-                input_index_stream: 3,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: "2".into(),
-                input_index_stream: 4,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: " random".into(),
-                input_index_stream: 5,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: " phone".into(),
-                input_index_stream: 6,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: " numbers".into(),
-                input_index_stream: 7,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: ":\n\n".into(),
-                input_index_stream: 8,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: "1. (503) 272-8192\n".into(),
-                input_index_stream: 9,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: "2. (617) 985-3519.".into(),
-                input_index_stream: 10,
-            },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: "Here".into(),
+                    input_index_stream: 1,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: " are".into(),
+                    input_index_stream: 2,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: " ".into(),
+                    input_index_stream: 3,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: "2".into(),
+                    input_index_stream: 4,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: " random".into(),
+                    input_index_stream: 5,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: " phone".into(),
+                    input_index_stream: 6,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: " numbers".into(),
+                    input_index_stream: 7,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: ":\n\n".into(),
+                    input_index_stream: 8,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: "1. (503) 272-8192\n".into(),
+                    input_index_stream: 9,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: "2. (617) 985-3519.".into(),
+                    input_index_stream: 10,
+                },
             ]);
         then.internal_server_error();
     });
@@ -4329,57 +4315,56 @@ async fn detector_internal_server_error() -> Result<(), anyhow::Error> {
     let mut sentence_chunker_server = MockServer::new("sentence_chunker").grpc();
     sentence_chunker_server.mock(|when, then| {
         when.post()
-            .path("/caikit.runtime.Chunkers.ChunkersService/BidiStreamingChunkerTokenizationTaskPredict")
+            .path(CHUNKER_STREAMING_ENDPOINT)
             .header("mm-model-id", "sentence_chunker")
             .pb_stream(vec![
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: "Here".into(),
-                input_index_stream: 1,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: " are".into(),
-                input_index_stream: 2,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: " ".into(),
-                input_index_stream: 3,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: "2".into(),
-                input_index_stream: 4,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: " random".into(),
-                input_index_stream: 5,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: " phone".into(),
-                input_index_stream: 6,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: " numbers".into(),
-                input_index_stream: 7,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: ":\n\n".into(),
-                input_index_stream: 8,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: "1. (503) 272-8192\n".into(),
-                input_index_stream: 9,
-            },
-            BidiStreamingChunkerTokenizationTaskRequest {
-                text_stream: "2. (617) 985-3519.".into(),
-                input_index_stream: 10,
-            },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: "Here".into(),
+                    input_index_stream: 1,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: " are".into(),
+                    input_index_stream: 2,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: " ".into(),
+                    input_index_stream: 3,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: "2".into(),
+                    input_index_stream: 4,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: " random".into(),
+                    input_index_stream: 5,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: " phone".into(),
+                    input_index_stream: 6,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: " numbers".into(),
+                    input_index_stream: 7,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: ":\n\n".into(),
+                    input_index_stream: 8,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: "1. (503) 272-8192\n".into(),
+                    input_index_stream: 9,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: "2. (617) 985-3519.".into(),
+                    input_index_stream: 10,
+                },
             ]);
         then.pb_stream(vec![
             ChunkerTokenizationStreamResult {
                 results: vec![Token {
                     start: 0,
                     end: 32,
-                    text: "Here are 2 random phone numbers:"
-                        .into(),
+                    text: "Here are 2 random phone numbers:".into(),
                 }],
                 token_count: 0,
                 processed_index: 32,
@@ -4391,8 +4376,7 @@ async fn detector_internal_server_error() -> Result<(), anyhow::Error> {
                 results: vec![Token {
                     start: 32,
                     end: 51,
-                    text: "\n\n1. (503) 272-8192"
-                        .into(),
+                    text: "\n\n1. (503) 272-8192".into(),
                 }],
                 token_count: 0,
                 processed_index: 51,
@@ -4404,8 +4388,7 @@ async fn detector_internal_server_error() -> Result<(), anyhow::Error> {
                 results: vec![Token {
                     start: 51,
                     end: 70,
-                    text: "\n2. (617) 985-3519."
-                        .into(),
+                    text: "\n2. (617) 985-3519.".into(),
                 }],
                 token_count: 0,
                 processed_index: 70,
