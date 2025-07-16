@@ -24,7 +24,7 @@ use serde_json::json;
 use test_log::test;
 use tracing::debug;
 
-use crate::common::{openai::CHAT_COMPLETIONS_ENDPOINT, sse};
+use crate::common::{chunker::CHUNKER_UNARY_ENDPOINT, openai::CHAT_COMPLETIONS_ENDPOINT, sse};
 
 #[test(tokio::test)]
 async fn no_detectors() -> Result<(), anyhow::Error> {
@@ -333,7 +333,7 @@ async fn input_detectors() -> Result<(), anyhow::Error> {
     let mut sentence_chunker_server = MockServer::new("sentence_chunker").grpc();
     sentence_chunker_server.mock(|when, then| {
         when.post()
-            .path("/caikit.runtime.Chunkers.ChunkersService/ChunkerTokenizationTaskPredict")
+            .path(CHUNKER_UNARY_ENDPOINT)
             .header("mm-model-id", "sentence_chunker")
             .pb(ChunkerTokenizationTaskRequest { text: "Here is my social security number: 123-45-6789. Can you generate another one like it?".into() });
         then.pb(TokenizationResults {
