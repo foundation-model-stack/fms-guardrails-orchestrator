@@ -24,7 +24,7 @@ use serde_json::json;
 use test_log::test;
 use tracing::debug;
 
-use crate::common::sse;
+use crate::common::{openai::CHAT_COMPLETIONS_ENDPOINT, sse};
 
 #[test(tokio::test)]
 async fn no_detectors() -> Result<(), anyhow::Error> {
@@ -32,7 +32,7 @@ async fn no_detectors() -> Result<(), anyhow::Error> {
     openai_server.mock(|when, then| {
         when
         .post()
-        .path("/v1/chat/completions")
+        .path(CHAT_COMPLETIONS_ENDPOINT)
         .json(json!({
             "stream": true,
             "model": "test-0B",
@@ -148,7 +148,7 @@ async fn no_detectors_n2() -> Result<(), anyhow::Error> {
     let mut openai_server = MockServer::new("openai");
     openai_server.mock(|when, then| {
         when.post()
-            .path("/v1/chat/completions")
+            .path(CHAT_COMPLETIONS_ENDPOINT)
             .json(json!({
                 "stream": true,
                 "model": "test-0B",
@@ -434,7 +434,7 @@ async fn output_detectors() -> Result<(), anyhow::Error> {
     let mut openai_server = MockServer::new("openai");
     openai_server.mock(|when, then| {
         when.post()
-            .path("/v1/chat/completions")
+            .path(CHAT_COMPLETIONS_ENDPOINT)
             .json(json!({
                 "stream": true,
                 "model": "test-0B",
@@ -919,7 +919,7 @@ async fn output_detectors_with_logprobs() -> Result<(), anyhow::Error> {
     let mut openai_server = MockServer::new("openai");
     openai_server.mock(|when, then| {
         when.post()
-            .path("/v1/chat/completions")
+            .path(CHAT_COMPLETIONS_ENDPOINT)
             .json(json!({
                 "stream": true,
                 "model": "test-0B",
@@ -1567,7 +1567,7 @@ async fn output_detectors_with_usage() -> Result<(), anyhow::Error> {
     let mut openai_server = MockServer::new("openai");
     openai_server.mock(|when, then| {
         when.post()
-            .path("/v1/chat/completions")
+            .path(CHAT_COMPLETIONS_ENDPOINT)
             .json(json!({
                 "stream": true,
                 "model": "test-0B",
@@ -2083,7 +2083,7 @@ async fn output_detectors_n2() -> Result<(), anyhow::Error> {
     let mut openai_server = MockServer::new("openai");
     openai_server.mock(|when, then| {
         when.post()
-            .path("/v1/chat/completions")
+            .path(CHAT_COMPLETIONS_ENDPOINT)
             .json(json!({
                 "stream": true,
                 "model": "test-0B",
@@ -2846,7 +2846,7 @@ async fn whole_doc_output_detectors() -> Result<(), anyhow::Error> {
     let mut openai_server = MockServer::new("openai");
     openai_server.mock(|when, then| {
         when.post()
-            .path("/v1/chat/completions")
+            .path(CHAT_COMPLETIONS_ENDPOINT)
             .json(json!({
                 "stream": true,
                 "model": "test-0B",
@@ -3154,7 +3154,7 @@ async fn output_detectors_and_whole_doc_output_detectors() -> Result<(), anyhow:
     let mut openai_server = MockServer::new("openai");
     openai_server.mock(|when, then| {
         when.post()
-            .path("/v1/chat/completions")
+            .path(CHAT_COMPLETIONS_ENDPOINT)
             .json(json!({
                 "stream": true,
                 "model": "test-0B",
@@ -3713,7 +3713,7 @@ async fn openai_bad_request_error() -> Result<(), anyhow::Error> {
     let mut openai_server = MockServer::new("openai");
     openai_server.mock(|when, then| {
         when.post()
-            .path("/v1/chat/completions")
+            .path(CHAT_COMPLETIONS_ENDPOINT)
             .json(json!({
                 "stream": true,
                 "model": "test-0B",
@@ -3779,7 +3779,7 @@ async fn openai_stream_error() -> Result<(), anyhow::Error> {
     let mut openai_server = MockServer::new("openai");
     openai_server.mock(|when, then| {
         when.post()
-            .path("/v1/chat/completions")
+            .path(CHAT_COMPLETIONS_ENDPOINT)
             .json(json!({
                 "stream": true,
                 "model": "test-0B",
@@ -3846,7 +3846,7 @@ async fn chunker_internal_server_error() -> Result<(), anyhow::Error> {
     let mut openai_server = MockServer::new("openai");
     openai_server.mock(|when, then| {
         when.post()
-            .path("/v1/chat/completions")
+            .path(CHAT_COMPLETIONS_ENDPOINT)
             .json(json!({
                 "stream": true,
                 "model": "test-0B",
@@ -4136,7 +4136,7 @@ async fn detector_internal_server_error() -> Result<(), anyhow::Error> {
     let mut openai_server = MockServer::new("openai");
     openai_server.mock(|when, then| {
         when.post()
-            .path("/v1/chat/completions")
+            .path(CHAT_COMPLETIONS_ENDPOINT)
             .json(json!({
                 "stream": true,
                 "model": "test-0B",
