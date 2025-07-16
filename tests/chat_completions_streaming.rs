@@ -26,7 +26,7 @@ use tracing::debug;
 
 use crate::common::{
     chunker::{CHUNKER_MODEL_ID_HEADER_NAME, CHUNKER_STREAMING_ENDPOINT, CHUNKER_UNARY_ENDPOINT},
-    detectors::{PII_DETECTOR_SENTENCE, PII_DETECTOR_WHOLE_DOC},
+    detectors::{PII_DETECTOR_SENTENCE, PII_DETECTOR_WHOLE_DOC, TEXT_CONTENTS_DETECTOR_ENDPOINT},
     openai::CHAT_COMPLETIONS_ENDPOINT,
     sse,
 };
@@ -353,7 +353,7 @@ async fn input_detectors() -> Result<(), anyhow::Error> {
     let mut pii_detector_sentence_server = MockServer::new("pii_detector_sentence");
     pii_detector_sentence_server.mock(|when, then| {
         when.post()
-            .path("/api/v1/text/contents")
+            .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
             .header("detector-id", PII_DETECTOR_SENTENCE)
             .json(ContentAnalysisRequest {
                 contents: vec![
@@ -719,7 +719,7 @@ async fn output_detectors() -> Result<(), anyhow::Error> {
     let mut pii_detector_sentence_server = MockServer::new("pii_detector_sentence");
     pii_detector_sentence_server.mock(|when, then| {
         when.post()
-            .path("/api/v1/text/contents")
+            .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
             .header("detector-id", PII_DETECTOR_SENTENCE)
             .json(ContentAnalysisRequest {
                 contents: vec!["Here are 2 random phone numbers:".into()],
@@ -729,7 +729,7 @@ async fn output_detectors() -> Result<(), anyhow::Error> {
     });
     pii_detector_sentence_server.mock(|when, then| {
         when.post()
-            .path("/api/v1/text/contents")
+            .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
             .header("detector-id", PII_DETECTOR_SENTENCE)
             .json(ContentAnalysisRequest {
                 contents: vec!["\n\n1. (503) 272-8192".into()],
@@ -750,7 +750,7 @@ async fn output_detectors() -> Result<(), anyhow::Error> {
     });
     pii_detector_sentence_server.mock(|when, then| {
         when.post()
-            .path("/api/v1/text/contents")
+            .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
             .header("detector-id", PII_DETECTOR_SENTENCE)
             .json(ContentAnalysisRequest {
                 contents: vec!["\n2. (617) 985-3519.".into()],
@@ -1292,7 +1292,7 @@ async fn output_detectors_with_logprobs() -> Result<(), anyhow::Error> {
     let mut pii_detector_sentence_server = MockServer::new("pii_detector_sentence");
     pii_detector_sentence_server.mock(|when, then| {
         when.post()
-            .path("/api/v1/text/contents")
+            .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
             .header("detector-id", PII_DETECTOR_SENTENCE)
             .json(ContentAnalysisRequest {
                 contents: vec!["Here are 2 random phone numbers:".into()],
@@ -1302,7 +1302,7 @@ async fn output_detectors_with_logprobs() -> Result<(), anyhow::Error> {
     });
     pii_detector_sentence_server.mock(|when, then| {
         when.post()
-            .path("/api/v1/text/contents")
+            .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
             .header("detector-id", PII_DETECTOR_SENTENCE)
             .json(ContentAnalysisRequest {
                 contents: vec!["\n\n1. (503) 272-8192".into()],
@@ -1323,7 +1323,7 @@ async fn output_detectors_with_logprobs() -> Result<(), anyhow::Error> {
     });
     pii_detector_sentence_server.mock(|when, then| {
         when.post()
-            .path("/api/v1/text/contents")
+            .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
             .header("detector-id", PII_DETECTOR_SENTENCE)
             .json(ContentAnalysisRequest {
                 contents: vec!["\n2. (617) 985-3519.".into()],
@@ -1862,7 +1862,7 @@ async fn output_detectors_with_usage() -> Result<(), anyhow::Error> {
     let mut pii_detector_sentence_server = MockServer::new("pii_detector_sentence");
     pii_detector_sentence_server.mock(|when, then| {
         when.post()
-            .path("/api/v1/text/contents")
+            .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
             .header("detector-id", PII_DETECTOR_SENTENCE)
             .json(ContentAnalysisRequest {
                 contents: vec!["Here are 2 random phone numbers:".into()],
@@ -1872,7 +1872,7 @@ async fn output_detectors_with_usage() -> Result<(), anyhow::Error> {
     });
     pii_detector_sentence_server.mock(|when, then| {
         when.post()
-            .path("/api/v1/text/contents")
+            .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
             .header("detector-id", PII_DETECTOR_SENTENCE)
             .json(ContentAnalysisRequest {
                 contents: vec!["\n\n1. (503) 272-8192".into()],
@@ -1893,7 +1893,7 @@ async fn output_detectors_with_usage() -> Result<(), anyhow::Error> {
     });
     pii_detector_sentence_server.mock(|when, then| {
         when.post()
-            .path("/api/v1/text/contents")
+            .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
             .header("detector-id", PII_DETECTOR_SENTENCE)
             .json(ContentAnalysisRequest {
                 contents: vec!["\n2. (617) 985-3519.".into()],
@@ -2606,7 +2606,7 @@ async fn output_detectors_n2() -> Result<(), anyhow::Error> {
     // choice 0 mocks
     pii_detector_sentence_server.mock(|when, then| {
         when.post()
-            .path("/api/v1/text/contents")
+            .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
             .header("detector-id", PII_DETECTOR_SENTENCE)
             .json(ContentAnalysisRequest {
                 contents: vec!["Here are two random phone numbers:".into()],
@@ -2616,7 +2616,7 @@ async fn output_detectors_n2() -> Result<(), anyhow::Error> {
     });
     pii_detector_sentence_server.mock(|when, then| {
         when.post()
-            .path("/api/v1/text/contents")
+            .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
             .header("detector-id", PII_DETECTOR_SENTENCE)
             .json(ContentAnalysisRequest {
                 contents: vec!["\n\n1. (503) 278-9123".into()],
@@ -2637,7 +2637,7 @@ async fn output_detectors_n2() -> Result<(), anyhow::Error> {
     });
     pii_detector_sentence_server.mock(|when, then| {
         when.post()
-            .path("/api/v1/text/contents")
+            .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
             .header("detector-id", PII_DETECTOR_SENTENCE)
             .json(ContentAnalysisRequest {
                 contents: vec!["\n2. (617) 854-6279.".into()],
@@ -2659,7 +2659,7 @@ async fn output_detectors_n2() -> Result<(), anyhow::Error> {
     // choice 1 mocks
     pii_detector_sentence_server.mock(|when, then| {
         when.post()
-            .path("/api/v1/text/contents")
+            .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
             .header("detector-id", PII_DETECTOR_SENTENCE)
             .json(ContentAnalysisRequest {
                 contents: vec!["Here are 2 random phone numbers:".into()],
@@ -2669,7 +2669,7 @@ async fn output_detectors_n2() -> Result<(), anyhow::Error> {
     });
     pii_detector_sentence_server.mock(|when, then| {
         when.post()
-            .path("/api/v1/text/contents")
+            .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
             .header("detector-id", PII_DETECTOR_SENTENCE)
             .json(ContentAnalysisRequest {
                 contents: vec!["\n\n**Phone Number 1:** (234) 567-8901".into()],
@@ -2690,7 +2690,7 @@ async fn output_detectors_n2() -> Result<(), anyhow::Error> {
     });
     pii_detector_sentence_server.mock(|when, then| {
         when.post()
-            .path("/api/v1/text/contents")
+            .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
             .header("detector-id", PII_DETECTOR_SENTENCE)
             .json(ContentAnalysisRequest {
                 contents: vec!["\n\n**Phone Number 2:** (819) 345-2198".into()],
@@ -3029,7 +3029,7 @@ async fn whole_doc_output_detectors() -> Result<(), anyhow::Error> {
     let mut pii_detector_whole_doc_server = MockServer::new("pii_detector_whole_doc");
     pii_detector_whole_doc_server.mock(|when, then| {
         when.post()
-            .path("/api/v1/text/contents")
+            .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
             .header("detector-id", PII_DETECTOR_WHOLE_DOC)
             .json(ContentAnalysisRequest {
                 contents: vec![
@@ -3424,7 +3424,7 @@ async fn output_detectors_and_whole_doc_output_detectors() -> Result<(), anyhow:
     let mut pii_detector_sentence_server = MockServer::new("pii_detector_sentence");
     pii_detector_sentence_server.mock(|when, then| {
         when.post()
-            .path("/api/v1/text/contents")
+            .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
             .header("detector-id", PII_DETECTOR_SENTENCE)
             .json(ContentAnalysisRequest {
                 contents: vec!["Here are 2 random phone numbers:".into()],
@@ -3434,7 +3434,7 @@ async fn output_detectors_and_whole_doc_output_detectors() -> Result<(), anyhow:
     });
     pii_detector_sentence_server.mock(|when, then| {
         when.post()
-            .path("/api/v1/text/contents")
+            .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
             .header("detector-id", PII_DETECTOR_SENTENCE)
             .json(ContentAnalysisRequest {
                 contents: vec!["\n\n1. (503) 272-8192".into()],
@@ -3455,7 +3455,7 @@ async fn output_detectors_and_whole_doc_output_detectors() -> Result<(), anyhow:
     });
     pii_detector_sentence_server.mock(|when, then| {
         when.post()
-            .path("/api/v1/text/contents")
+            .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
             .header("detector-id", PII_DETECTOR_SENTENCE)
             .json(ContentAnalysisRequest {
                 contents: vec!["\n2. (617) 985-3519.".into()],
@@ -3478,7 +3478,7 @@ async fn output_detectors_and_whole_doc_output_detectors() -> Result<(), anyhow:
     let mut pii_detector_whole_doc_server = MockServer::new("pii_detector_whole_doc");
     pii_detector_whole_doc_server.mock(|when, then| {
         when.post()
-            .path("/api/v1/text/contents")
+            .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
             .header("detector-id", PII_DETECTOR_WHOLE_DOC)
             .json(ContentAnalysisRequest {
                 contents: vec![
@@ -4403,7 +4403,7 @@ async fn detector_internal_server_error() -> Result<(), anyhow::Error> {
     let mut pii_detector_sentence_server = MockServer::new("pii_detector_sentence");
     pii_detector_sentence_server.mock(|when, then| {
         when.post()
-            .path("/api/v1/text/contents")
+            .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
             .header("detector-id", PII_DETECTOR_SENTENCE)
             .json(ContentAnalysisRequest {
                 contents: vec!["Here are 2 random phone numbers:".into()],
