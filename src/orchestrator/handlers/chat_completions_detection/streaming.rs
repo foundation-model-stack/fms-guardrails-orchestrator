@@ -372,15 +372,15 @@ async fn process_chat_completion_stream(
                         return;
                     }
                 }
-                if chat_completion.usage.is_some() {
-                    // Set usage state from the usage message
+                if chat_completion.usage.is_some() && chat_completion.choices.is_empty() {
+                    // Update state: set final usage
                     // NOTE: this message has no choices and is not sent to detection input channel
                     if let Some(state) = &chat_completion_state {
-                        state.metadata.lock().unwrap().usage = chat_completion.usage.clone();
+                        *state.usage.lock().unwrap() = chat_completion.usage.clone();
                     }
                 } else {
                     if message_index == 0 {
-                        // Set metadata state from the first message
+                        // Update state: set metadata
                         // NOTE: these values are the same for all chat completion chunks
                         if let Some(state) = &chat_completion_state {
                             let mut metadata = state.metadata.lock().unwrap();
@@ -393,7 +393,7 @@ async fn process_chat_completion_stream(
                     if let Some(choice) = chat_completion.choices.first() {
                         // Extract choice text
                         let choice_text = choice.delta.content.clone().unwrap_or_default();
-                        // Update state for this choice index
+                        // Update state: insert chat completion for this choice index
                         if let Some(state) = &chat_completion_state {
                             match state.chat_completions.entry(choice.index) {
                                 dashmap::Entry::Occupied(mut entry) => {
@@ -654,8 +654,6 @@ struct ChatCompletionMetadata {
     pub created: i64,
     /// The model to generate the completion.
     pub model: String,
-    /// Completion usage statistics.
-    pub usage: Option<Usage>,
 }
 
 #[derive(Debug, Default)]
@@ -664,6 +662,8 @@ struct ChatCompletionState {
     pub metadata: Mutex<ChatCompletionMetadata>,
     /// A map of chat completion chunks received for each choice.
     pub chat_completions: DashMap<ChoiceIndex, BTreeMap<usize, ChatCompletionChunk>>,
+    /// Final usage statistics.
+    pub usage: Mutex<Option<Usage>>,
 }
 
 impl ChatCompletionState {
@@ -684,6 +684,6 @@ impl ChatCompletionState {
     }
 
     pub fn usage(&self) -> Option<Usage> {
-        self.metadata.lock().unwrap().usage.clone()
+        self.usage.lock().unwrap().clone()
     }
 }
