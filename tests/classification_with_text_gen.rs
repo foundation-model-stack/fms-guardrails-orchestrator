@@ -94,7 +94,7 @@ async fn no_detectors() -> Result<(), anyhow::Error> {
     });
 
     // Configure mock servers
-    let generation_server = MockServer::new("nlp").grpc().with_mocks(mocks);
+    let generation_server = MockServer::new_grpc("nlp").with_mocks(mocks);
 
     // Run test orchestrator server
     let orchestrator_server = TestOrchestratorServer::builder()
@@ -273,10 +273,8 @@ async fn no_detections() -> Result<(), anyhow::Error> {
     // Configure mock servers
     let mock_detector_server =
         MockServer::new(DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE).with_mocks(detector_mocks);
-    let mock_generation_server = MockServer::new("nlp").grpc().with_mocks(generation_mocks);
-    let mock_chunker_server = MockServer::new(CHUNKER_NAME_SENTENCE)
-        .grpc()
-        .with_mocks(chunker_mocks);
+    let mock_generation_server = MockServer::new_grpc("nlp").with_mocks(generation_mocks);
+    let mock_chunker_server = MockServer::new_grpc(CHUNKER_NAME_SENTENCE).with_mocks(chunker_mocks);
 
     // Run test orchestrator server
     let orchestrator_server = TestOrchestratorServer::builder()
@@ -515,10 +513,8 @@ async fn input_detector_detections() -> Result<(), anyhow::Error> {
     });
 
     // Configure mock servers
-    let mock_generation_server = MockServer::new("nlp").grpc().with_mocks(generation_mocks);
-    let mock_chunker_server = MockServer::new(CHUNKER_NAME_SENTENCE)
-        .grpc()
-        .with_mocks(chunker_mocks);
+    let mock_generation_server = MockServer::new_grpc("nlp").with_mocks(generation_mocks);
+    let mock_chunker_server = MockServer::new_grpc(CHUNKER_NAME_SENTENCE).with_mocks(chunker_mocks);
     let mock_detector_server =
         MockServer::new(DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE).with_mocks(detector_mocks);
 
@@ -719,10 +715,8 @@ async fn input_detector_client_error() -> Result<(), anyhow::Error> {
     });
 
     // Configure mock servers
-    let mock_generation_server = MockServer::new("nlp").grpc().with_mocks(generation_mocks);
-    let mock_chunker_server = MockServer::new(CHUNKER_NAME_SENTENCE)
-        .grpc()
-        .with_mocks(chunker_mocks);
+    let mock_generation_server = MockServer::new_grpc("nlp").with_mocks(generation_mocks);
+    let mock_chunker_server = MockServer::new_grpc(CHUNKER_NAME_SENTENCE).with_mocks(chunker_mocks);
     let mock_detector_server =
         MockServer::new(DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE).with_mocks(detector_mocks);
 
@@ -1000,12 +994,10 @@ async fn output_detector_detections() -> Result<(), anyhow::Error> {
     });
 
     // Configure mock servers
-    let mock_generation_server = MockServer::new("nlp").grpc().with_mocks(generation_mocks);
+    let mock_generation_server = MockServer::new_grpc("nlp").with_mocks(generation_mocks);
     let mock_detector_server =
         MockServer::new(DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE).with_mocks(detector_mocks);
-    let mock_chunker_server = MockServer::new(CHUNKER_NAME_SENTENCE)
-        .grpc()
-        .with_mocks(chunker_mocks);
+    let mock_chunker_server = MockServer::new_grpc(CHUNKER_NAME_SENTENCE).with_mocks(chunker_mocks);
 
     // Run test orchestrator server
     let orchestrator_server = TestOrchestratorServer::builder()
@@ -1226,10 +1218,8 @@ async fn output_detector_client_error() -> Result<(), anyhow::Error> {
     });
 
     // Configure mock servers
-    let mock_generation_server = MockServer::new("nlp").grpc().with_mocks(generation_mocks);
-    let mock_chunker_server = MockServer::new(CHUNKER_NAME_SENTENCE)
-        .grpc()
-        .with_mocks(chunker_mocks);
+    let mock_generation_server = MockServer::new_grpc("nlp").with_mocks(generation_mocks);
+    let mock_chunker_server = MockServer::new_grpc(CHUNKER_NAME_SENTENCE).with_mocks(chunker_mocks);
     let mock_detector_server =
         MockServer::new(DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE).with_mocks(detector_mocks);
 

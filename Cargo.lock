@@ -1310,7 +1310,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "07033963ba89ebaf1584d767badaa2e8fcec21aedea6b8c0346d487d49c28667"
 dependencies = [
  "cfg-if",
- "windows-targets 0.48.5",
+ "windows-targets 0.53.2",
 ]
 
 [[package]]
@@ -1433,8 +1433,9 @@ dependencies = [
 
 [[package]]
 name = "mocktail"
-version = "0.2.5-alpha"
-source = "git+https://github.com/IBM/mocktail#025d724965f5d4ee7cc6666bf22845a896b00b58"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "053f7ba52863e22dfd2970075bbc69c4224ca6ae03896a5f69a0d5982deb5e0a"
 dependencies = [
  "bytes",
  "futures",

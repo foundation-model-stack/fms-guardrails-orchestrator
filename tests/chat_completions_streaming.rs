@@ -334,7 +334,7 @@ async fn no_detectors_n2() -> Result<(), anyhow::Error> {
 async fn input_detectors() -> Result<(), anyhow::Error> {
     let openai_server = MockServer::new("openai");
 
-    let mut sentence_chunker_server = MockServer::new("sentence_chunker").grpc();
+    let mut sentence_chunker_server = MockServer::new_grpc("sentence_chunker");
     sentence_chunker_server.mock(|when, then| {
         when.post()
             .path(CHUNKER_UNARY_ENDPOINT)
@@ -628,7 +628,7 @@ async fn output_detectors() -> Result<(), anyhow::Error> {
         ]));
     });
 
-    let mut sentence_chunker_server = MockServer::new("sentence_chunker").grpc();
+    let mut sentence_chunker_server = MockServer::new_grpc("sentence_chunker");
     sentence_chunker_server.mock(|when, then| {
         when.post()
             .path(CHUNKER_STREAMING_ENDPOINT)
@@ -1201,7 +1201,7 @@ async fn output_detectors_with_logprobs() -> Result<(), anyhow::Error> {
         ]));
     });
 
-    let mut sentence_chunker_server = MockServer::new("sentence_chunker").grpc();
+    let mut sentence_chunker_server = MockServer::new_grpc("sentence_chunker");
     sentence_chunker_server.mock(|when, then| {
         when.post()
             .path(CHUNKER_STREAMING_ENDPOINT)
@@ -1771,7 +1771,7 @@ async fn output_detectors_with_usage() -> Result<(), anyhow::Error> {
         ]));
     });
 
-    let mut sentence_chunker_server = MockServer::new("sentence_chunker").grpc();
+    let mut sentence_chunker_server = MockServer::new_grpc("sentence_chunker");
     sentence_chunker_server.mock(|when, then| {
         when.post()
             .path(CHUNKER_STREAMING_ENDPOINT)
@@ -2431,7 +2431,7 @@ async fn output_detectors_n2() -> Result<(), anyhow::Error> {
         ]));
     });
 
-    let mut sentence_chunker_server = MockServer::new("sentence_chunker").grpc();
+    let mut sentence_chunker_server = MockServer::new_grpc("sentence_chunker");
     // choice 0 mocks
     sentence_chunker_server.mock(|when, then| {
         when.post()
@@ -3333,7 +3333,7 @@ async fn output_detectors_and_whole_doc_output_detectors() -> Result<(), anyhow:
         ]));
     });
 
-    let mut sentence_chunker_server = MockServer::new("sentence_chunker").grpc();
+    let mut sentence_chunker_server = MockServer::new_grpc("sentence_chunker");
     sentence_chunker_server.mock(|when, then| {
         when.post()
             .path(CHUNKER_STREAMING_ENDPOINT)
@@ -4020,7 +4020,7 @@ async fn chunker_internal_server_error() -> Result<(), anyhow::Error> {
         ]));
     });
 
-    let mut sentence_chunker_server = MockServer::new("sentence_chunker").grpc();
+    let mut sentence_chunker_server = MockServer::new_grpc("sentence_chunker");
     sentence_chunker_server.mock(|when, then| {
         when.post()
             .path(CHUNKER_STREAMING_ENDPOINT)
@@ -4310,7 +4310,7 @@ async fn detector_internal_server_error() -> Result<(), anyhow::Error> {
         ]));
     });
 
-    let mut sentence_chunker_server = MockServer::new("sentence_chunker").grpc();
+    let mut sentence_chunker_server = MockServer::new_grpc("sentence_chunker");
     sentence_chunker_server.mock(|when, then| {
         when.post()
             .path(CHUNKER_STREAMING_ENDPOINT)

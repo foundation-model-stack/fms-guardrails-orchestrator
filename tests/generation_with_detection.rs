@@ -94,7 +94,7 @@ async fn no_detections() -> Result<(), anyhow::Error> {
     });
 
     // Start orchestrator server and its dependencies
-    let mock_generation_server = MockServer::new("nlp").grpc().with_mocks(generation_mocks);
+    let mock_generation_server = MockServer::new_grpc("nlp").with_mocks(generation_mocks);
     let mock_detector_server = MockServer::new(detector_name).with_mocks(detection_mocks);
     let orchestrator_server = TestOrchestratorServer::builder()
         .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
@@ -176,7 +176,7 @@ async fn detections() -> Result<(), anyhow::Error> {
     });
 
     // Start orchestrator server and its dependencies
-    let mock_generation_server = MockServer::new("nlp").grpc().with_mocks(generation_mocks);
+    let mock_generation_server = MockServer::new_grpc("nlp").with_mocks(generation_mocks);
     let mock_detector_server = MockServer::new(detector_name).with_mocks(detection_mocks);
     let orchestrator_server = TestOrchestratorServer::builder()
         .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
@@ -266,7 +266,7 @@ async fn client_error() -> Result<(), anyhow::Error> {
     });
 
     // Start orchestrator server and its dependencies
-    let mock_generation_server = MockServer::new("nlp").grpc().with_mocks(generation_mocks);
+    let mock_generation_server = MockServer::new_grpc("nlp").with_mocks(generation_mocks);
     let mock_detector_server = MockServer::new(detector_name).with_mocks(detection_mocks);
     let orchestrator_server = TestOrchestratorServer::builder()
         .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)

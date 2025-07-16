@@ -133,7 +133,7 @@ async fn no_detections() -> Result<(), anyhow::Error> {
     });
 
     // Run test orchestrator server
-    let mock_chunker_server = MockServer::new(chunker_id).grpc().with_mocks(chunker_mocks);
+    let mock_chunker_server = MockServer::new_grpc(chunker_id).with_mocks(chunker_mocks);
     let mock_angle_brackets_detector_server =
         MockServer::new(angle_brackets_detector).with_mocks(detection_mocks.clone());
     let mock_parenthesis_detector_server =
@@ -369,7 +369,7 @@ async fn detections() -> Result<(), anyhow::Error> {
     });
 
     // Run test orchestrator server
-    let mock_chunker_server = MockServer::new(chunker_id).grpc().with_mocks(chunker_mocks);
+    let mock_chunker_server = MockServer::new_grpc(chunker_id).with_mocks(chunker_mocks);
     let mock_angle_brackets_detector_server =
         MockServer::new(angle_brackets_detector).with_mocks(angle_brackets_detection_mocks);
     let mock_parenthesis_detector_server =
@@ -558,7 +558,7 @@ async fn client_error() -> Result<(), anyhow::Error> {
     });
 
     // Run test orchestrator server
-    let mock_chunker_server = MockServer::new(chunker_id).grpc().with_mocks(chunker_mocks);
+    let mock_chunker_server = MockServer::new_grpc(chunker_id).with_mocks(chunker_mocks);
     let mock_detector_server = MockServer::new(detector_name).with_mocks(detection_mocks);
     let orchestrator_server = TestOrchestratorServer::builder()
         .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)

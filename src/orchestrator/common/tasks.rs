@@ -611,7 +611,7 @@ mod test {
                 input_end_index: 2,
             }]);
         });
-        let sentence_chunker_server = MockServer::new("sentence_chunker").grpc().with_mocks(mocks);
+        let sentence_chunker_server = MockServer::new_grpc("sentence_chunker").with_mocks(mocks);
         sentence_chunker_server.start().await.unwrap();
 
         // Create whole_doc_chunker
@@ -628,9 +628,7 @@ mod test {
                 token_count: 25,
             });
         });
-        let whole_doc_chunker_server = MockServer::new("whole_doc_chunker")
-            .grpc()
-            .with_mocks(mocks);
+        let whole_doc_chunker_server = MockServer::new_grpc("whole_doc_chunker").with_mocks(mocks);
         whole_doc_chunker_server.start().await.unwrap();
 
         // Create error chunker
@@ -639,7 +637,7 @@ mod test {
             when.path(CHUNKER_PATH);
             then.internal_server_error();
         });
-        let error_chunker_server = MockServer::new("error_chunker").grpc().with_mocks(mocks);
+        let error_chunker_server = MockServer::new_grpc("error_chunker").with_mocks(mocks);
         error_chunker_server.start().await.unwrap();
 
         // Create fake detector
