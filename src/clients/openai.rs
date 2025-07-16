@@ -690,6 +690,14 @@ pub struct ChatCompletion {
     pub warnings: Vec<OrchestratorWarning>,
 }
 
+/// Helper to accept both string and integer for stop_reason.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(untagged)]
+pub enum StopReason {
+    String(String),
+    Integer(i64),
+}
+
 /// Chat completion choice.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ChatCompletionChoice {
@@ -702,7 +710,7 @@ pub struct ChatCompletionChoice {
     /// The reason the model stopped generating tokens.
     pub finish_reason: String,
     /// The stop string or token id that caused the completion.
-    pub stop_reason: Option<String>,
+    pub stop_reason: Option<StopReason>,
 }
 
 /// Chat completion message.
@@ -814,7 +822,7 @@ pub struct ChatCompletionChunkChoice {
     /// The reason the model stopped generating tokens.
     pub finish_reason: Option<String>,
     /// The stop string or token id that caused the completion.
-    pub stop_reason: Option<String>,
+    pub stop_reason: Option<StopReason>,
 }
 
 /// Streaming chat completion delta.
@@ -872,7 +880,7 @@ pub struct CompletionChoice {
     /// The reason the model stopped generating tokens.
     pub finish_reason: Option<String>,
     /// The stop string or token id that caused the completion.
-    pub stop_reason: Option<String>,
+    pub stop_reason: Option<StopReason>,
     /// Prompt logprobs.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prompt_logprobs: Option<Vec<Option<HashMap<String, Logprob>>>>,
@@ -1107,5 +1115,58 @@ mod test {
         );
 
         Ok(())
+    }
+
+    /// Test deserialization of stop_reason as integer
+    #[test]
+    fn test_chat_completion_choice_stop_reason_integer() {
+        use serde_json::json;
+
+        use crate::clients::openai::{ChatCompletionChoice, StopReason};
+
+        let json_choice = json!({
+            "index": 0,
+            "message": {
+                "role": "assistant",
+                "content": "Hello!",
+                "tool_calls": [],
+                "refusal": null
+            },
+            "logprobs": null,
+            "finish_reason": "EOS_TOKEN",
+            "stop_reason": 32007
+        });
+
+        let choice: ChatCompletionChoice = serde_json::from_value(json_choice)
+            .expect("Should deserialize with integer stop_reason");
+        assert_eq!(choice.stop_reason, Some(StopReason::Integer(32007)));
+    }
+
+    /// Test deserialization of stop_reason as string
+    #[test]
+    fn test_chat_completion_choice_stop_reason_string() {
+        use serde_json::json;
+
+        use crate::clients::openai::{ChatCompletionChoice, StopReason};
+
+        let json_choice = json!({
+            "index": 0,
+            "message": {
+                "role": "assistant",
+                "content": "Hello!",
+                "tool_calls": [],
+                "refusal": null
+            },
+            "logprobs": null,
+            "finish_reason": "EOS_TOKEN",
+            "stop_reason": "32007"
+        });
+
+        let choice: ChatCompletionChoice = serde_json::from_value(json_choice)
+            .expect("Should deserialize with string stop_reason");
+        assert_eq!(
+            choice.stop_reason,
+            Some(StopReason::String("32007".to_string()))
+        );
     }
 }
