@@ -687,7 +687,7 @@ mod test {
             }]]);
         });
 
-        let fake_detector_server = MockServer::new("fake_detector").with_mocks(mocks);
+        let fake_detector_server = MockServer::new_http("fake_detector").with_mocks(mocks);
         fake_detector_server.start().await.unwrap();
 
         let mut config = OrchestratorConfig::default();

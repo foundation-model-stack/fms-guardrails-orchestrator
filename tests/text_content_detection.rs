@@ -113,9 +113,9 @@ async fn no_detections() -> Result<(), anyhow::Error> {
     // Start orchestrator server and its dependencies
     let mock_chunker_server = MockServer::new_grpc(chunker_id).with_mocks(chunker_mocks);
     let mock_sentence_detector_server =
-        MockServer::new(sentence_detector).with_mocks(sentence_detector_mocks);
+        MockServer::new_http(sentence_detector).with_mocks(sentence_detector_mocks);
     let mock_whole_doc_detector_server =
-        MockServer::new(whole_doc_detector).with_mocks(whole_doc_detector_mocks);
+        MockServer::new_http(whole_doc_detector).with_mocks(whole_doc_detector_mocks);
     let orchestrator_server = TestOrchestratorServer::builder()
         .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
         .chunker_servers([&mock_chunker_server])
@@ -255,9 +255,9 @@ async fn detections() -> Result<(), anyhow::Error> {
     // Start orchestrator server and its dependencies
     let mock_chunker_server = MockServer::new_grpc(chunker_id).with_mocks(chunker_mocks);
     let mock_whole_doc_detector_server =
-        MockServer::new(whole_doc_detector).with_mocks(whole_doc_detector_mocks);
+        MockServer::new_http(whole_doc_detector).with_mocks(whole_doc_detector_mocks);
     let mock_sentence_detector_server =
-        MockServer::new(sentence_detector).with_mocks(sentence_detector_mocks);
+        MockServer::new_http(sentence_detector).with_mocks(sentence_detector_mocks);
     let orchestrator_server = TestOrchestratorServer::builder()
         .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
         .chunker_servers([&mock_chunker_server])
@@ -365,7 +365,7 @@ async fn client_error() -> Result<(), anyhow::Error> {
     });
 
     // Start orchestrator server and its dependencies
-    let mock_detector_server = MockServer::new(detector_name).with_mocks(detection_mocks);
+    let mock_detector_server = MockServer::new_http(detector_name).with_mocks(detection_mocks);
     let orchestrator_server = TestOrchestratorServer::builder()
         .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
         .detector_servers([&mock_detector_server])

@@ -93,7 +93,7 @@ async fn no_detections() -> Result<(), anyhow::Error> {
     });
 
     // Start orchestrator server and its dependencies
-    let mock_detector_server = MockServer::new(detector_name).with_mocks(mocks);
+    let mock_detector_server = MockServer::new_http(detector_name).with_mocks(mocks);
 
     let orchestrator_server = TestOrchestratorServer::builder()
         .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
@@ -163,7 +163,7 @@ async fn detections() -> Result<(), anyhow::Error> {
     });
 
     // Start orchestrator server and its dependencies
-    let mock_detector_server = MockServer::new(detector_name).with_mocks(mocks);
+    let mock_detector_server = MockServer::new_http(detector_name).with_mocks(mocks);
     let orchestrator_server = TestOrchestratorServer::builder()
         .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
         .detector_servers([&mock_detector_server])
@@ -230,7 +230,7 @@ async fn client_errors() -> Result<(), anyhow::Error> {
     });
 
     // Start orchestrator server and its dependencies
-    let mock_detector_server = MockServer::new(detector_name).with_mocks(mocks);
+    let mock_detector_server = MockServer::new_http(detector_name).with_mocks(mocks);
     let orchestrator_server = TestOrchestratorServer::builder()
         .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
         .detector_servers([&mock_detector_server])

@@ -117,7 +117,7 @@ async fn no_detectors() -> Result<(), anyhow::Error> {
     });
 
     // Start orchestrator server and its dependencies
-    let mock_openai_server = MockServer::new("openai").with_mocks(completion_mocks);
+    let mock_openai_server = MockServer::new_http("openai").with_mocks(completion_mocks);
 
     let orchestrator_server = TestOrchestratorServer::builder()
         .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
@@ -262,8 +262,8 @@ async fn no_detections() -> Result<(), anyhow::Error> {
     });
 
     // Start orchestrator server and its dependencies
-    let mock_detector_server = MockServer::new(detector_name).with_mocks(detector_mocks);
-    let mock_openai_server = MockServer::new("openai").with_mocks(completion_mocks);
+    let mock_detector_server = MockServer::new_http(detector_name).with_mocks(detector_mocks);
+    let mock_openai_server = MockServer::new_http("openai").with_mocks(completion_mocks);
 
     let orchestrator_server = TestOrchestratorServer::builder()
         .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
@@ -464,8 +464,8 @@ async fn input_detections() -> Result<(), anyhow::Error> {
     });
 
     // Start orchestrator server and its dependencies
-    let mock_detector_server = MockServer::new(detector_name).with_mocks(detector_mocks);
-    let mock_openai_server = MockServer::new("openai").with_mocks(tokenize_mocks);
+    let mock_detector_server = MockServer::new_http(detector_name).with_mocks(detector_mocks);
+    let mock_openai_server = MockServer::new_http("openai").with_mocks(tokenize_mocks);
     let mock_chunker_server = MockServer::new_grpc(CHUNKER_NAME_SENTENCE).with_mocks(chunker_mocks);
 
     let orchestrator_server = TestOrchestratorServer::builder()
@@ -603,8 +603,8 @@ async fn input_client_error() -> Result<(), anyhow::Error> {
     });
 
     // Start orchestrator server and its dependencies
-    let mock_detector_server = MockServer::new(detector_name).with_mocks(detector_mocks);
-    let mock_openai_server = MockServer::new("openai").with_mocks(completions_mocks);
+    let mock_detector_server = MockServer::new_http(detector_name).with_mocks(detector_mocks);
+    let mock_openai_server = MockServer::new_http("openai").with_mocks(completions_mocks);
     let mock_chunker_server = MockServer::new_grpc(CHUNKER_NAME_SENTENCE).with_mocks(chunker_mocks);
 
     let orchestrator_server = TestOrchestratorServer::builder()
@@ -826,8 +826,8 @@ async fn output_detections() -> Result<(), anyhow::Error> {
     });
 
     // Start orchestrator server and its dependencies
-    let mock_detector_server = MockServer::new(detector_name).with_mocks(detector_mocks);
-    let mock_openai_server = MockServer::new("openai").with_mocks(completion_mocks);
+    let mock_detector_server = MockServer::new_http(detector_name).with_mocks(detector_mocks);
+    let mock_openai_server = MockServer::new_http("openai").with_mocks(completion_mocks);
     let mock_chunker_server = MockServer::new_grpc(CHUNKER_NAME_SENTENCE).with_mocks(chunker_mocks);
 
     let orchestrator_server = TestOrchestratorServer::builder()
@@ -984,8 +984,8 @@ async fn output_client_error() -> Result<(), anyhow::Error> {
     });
 
     // Start orchestrator server and its dependencies
-    let mock_detector_server = MockServer::new(detector_name).with_mocks(detector_mocks);
-    let mock_openai_server = MockServer::new("openai").with_mocks(completion_mocks);
+    let mock_detector_server = MockServer::new_http(detector_name).with_mocks(detector_mocks);
+    let mock_openai_server = MockServer::new_http("openai").with_mocks(completion_mocks);
     let mock_chunker_server = MockServer::new_grpc(CHUNKER_NAME_SENTENCE).with_mocks(chunker_mocks);
 
     let orchestrator_server = TestOrchestratorServer::builder()
