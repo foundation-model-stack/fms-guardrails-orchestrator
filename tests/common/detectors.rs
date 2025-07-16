@@ -24,6 +24,8 @@ pub const ANSWER_RELEVANCE_DETECTOR_SENTENCE: &str = "answer_relevance_detector_
 pub const FACT_CHECKING_DETECTOR: &str = "fact_checking_detector";
 pub const FACT_CHECKING_DETECTOR_SENTENCE: &str = "fact_checking_detector_sentence";
 pub const PII_DETECTOR: &str = "pii_detector";
+pub const PII_DETECTOR_SENTENCE: &str = "pii_detector_sentence";
+pub const PII_DETECTOR_WHOLE_DOC: &str = "pii_detector_whole_doc";
 pub const NON_EXISTING_DETECTOR: &str = "non_existing_detector";
 
 // Detector endpoints
