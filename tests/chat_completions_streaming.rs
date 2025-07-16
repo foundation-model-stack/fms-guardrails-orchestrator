@@ -103,7 +103,7 @@ async fn no_detectors() -> Result<(), anyhow::Error> {
     });
 
     let test_server = TestOrchestratorServer::builder()
-        .config_path("tests/test_config.yaml")
+        .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
         .openai_server(&openai_server)
         .build()
         .await?;
@@ -262,7 +262,7 @@ async fn no_detectors_n2() -> Result<(), anyhow::Error> {
     });
 
     let test_server = TestOrchestratorServer::builder()
-        .config_path("tests/test_config.yaml")
+        .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
         .openai_server(&openai_server)
         .build()
         .await?;
@@ -372,7 +372,7 @@ async fn input_detectors() -> Result<(), anyhow::Error> {
     });
 
     let test_server = TestOrchestratorServer::builder()
-        .config_path("tests/test_config.yaml")
+        .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
         .openai_server(&openai_server)
         .chunker_servers([&sentence_chunker_server])
         .detector_servers([&pii_detector_sentence_server])
@@ -769,7 +769,7 @@ async fn output_detectors() -> Result<(), anyhow::Error> {
     });
 
     let test_server = TestOrchestratorServer::builder()
-        .config_path("tests/test_config.yaml")
+        .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
         .openai_server(&openai_server)
         .chunker_servers([&sentence_chunker_server])
         .detector_servers([&pii_detector_sentence_server])
@@ -1345,7 +1345,7 @@ async fn output_detectors_with_logprobs() -> Result<(), anyhow::Error> {
     });
 
     let test_server = TestOrchestratorServer::builder()
-        .config_path("tests/test_config.yaml")
+        .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
         .openai_server(&openai_server)
         .chunker_servers([&sentence_chunker_server])
         .detector_servers([&pii_detector_sentence_server])
@@ -1918,7 +1918,7 @@ async fn output_detectors_with_usage() -> Result<(), anyhow::Error> {
     });
 
     let test_server = TestOrchestratorServer::builder()
-        .config_path("tests/test_config.yaml")
+        .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
         .openai_server(&openai_server)
         .chunker_servers([&sentence_chunker_server])
         .detector_servers([&pii_detector_sentence_server])
@@ -2721,7 +2721,7 @@ async fn output_detectors_n2() -> Result<(), anyhow::Error> {
     });
 
     let test_server = TestOrchestratorServer::builder()
-        .config_path("tests/test_config.yaml")
+        .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
         .openai_server(&openai_server)
         .chunker_servers([&sentence_chunker_server])
         .detector_servers([&pii_detector_sentence_server])
@@ -3072,7 +3072,7 @@ async fn whole_doc_output_detectors() -> Result<(), anyhow::Error> {
     });
 
     let test_server = TestOrchestratorServer::builder()
-        .config_path("tests/test_config.yaml")
+        .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
         .openai_server(&openai_server)
         .detector_servers([&pii_detector_whole_doc_server])
         .build()
@@ -3524,7 +3524,7 @@ async fn output_detectors_and_whole_doc_output_detectors() -> Result<(), anyhow:
     });
 
     let test_server = TestOrchestratorServer::builder()
-        .config_path("tests/test_config.yaml")
+        .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
         .openai_server(&openai_server)
         .chunker_servers([&sentence_chunker_server])
         .detector_servers([
@@ -3733,7 +3733,7 @@ async fn openai_bad_request_error() -> Result<(), anyhow::Error> {
     });
 
     let test_server = TestOrchestratorServer::builder()
-        .config_path("tests/test_config.yaml")
+        .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
         .openai_server(&openai_server)
         .build()
         .await?;
@@ -3803,7 +3803,7 @@ async fn openai_stream_error() -> Result<(), anyhow::Error> {
     });
 
     let test_server = TestOrchestratorServer::builder()
-        .config_path("tests/test_config.yaml")
+        .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
         .openai_server(&openai_server)
         .build()
         .await?;
@@ -4089,7 +4089,7 @@ async fn chunker_internal_server_error() -> Result<(), anyhow::Error> {
     let pii_detector_sentence_server = MockServer::new("pii_detector_sentence");
 
     let test_server = TestOrchestratorServer::builder()
-        .config_path("tests/test_config.yaml")
+        .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
         .openai_server(&openai_server)
         .chunker_servers([&sentence_chunker_server])
         .detector_servers([&pii_detector_sentence_server])
@@ -4429,7 +4429,7 @@ async fn detector_internal_server_error() -> Result<(), anyhow::Error> {
     });
 
     let test_server = TestOrchestratorServer::builder()
-        .config_path("tests/test_config.yaml")
+        .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
         .openai_server(&openai_server)
         .chunker_servers([&sentence_chunker_server])
         .detector_servers([&pii_detector_sentence_server])
