@@ -33,8 +33,8 @@ use crate::{
         Context, Error,
         common::{self, text_contents_detections, validate_detectors},
         types::{
-            ChatCompletionBatcher, ChatCompletionStream, ChatMessageIterator, Chunk,
-            CompletionState, DetectionBatchStream, Detections,
+            ChatCompletionStream, ChatMessageIterator, Chunk, CompletionBatcher, CompletionState,
+            DetectionBatchStream, Detections,
         },
     },
 };
@@ -280,10 +280,8 @@ async fn handle_output_detection(
             None,
         ));
         // Process detection streams and await completion
-        let detection_batch_stream = DetectionBatchStream::new(
-            ChatCompletionBatcher::new(detectors.len()),
-            detection_streams,
-        );
+        let detection_batch_stream =
+            DetectionBatchStream::new(CompletionBatcher::new(detectors.len()), detection_streams);
         process_detection_batch_stream(
             trace_id,
             completion_state.clone(),

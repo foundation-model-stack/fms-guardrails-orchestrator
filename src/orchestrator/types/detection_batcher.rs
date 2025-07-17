@@ -14,8 +14,8 @@
  limitations under the License.
 
 */
-pub mod chat_completion;
-pub use chat_completion::*;
+pub mod completion;
+pub use completion::*;
 pub mod max_processed_index;
 pub use max_processed_index::*;
 

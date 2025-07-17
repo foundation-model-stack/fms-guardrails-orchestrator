@@ -20,7 +20,7 @@ use super::{Batch, Chunk, DetectionBatcher, Detections};
 
 pub type ChoiceIndex = u32;
 
-/// A batcher for chat completions.
+/// A batcher for completions.
 ///
 /// A batch corresponds to a choice-chunk (where each chunk is associated
 /// with a particular choice through a ChoiceIndex). Batches are returned
@@ -36,14 +36,14 @@ pub type ChoiceIndex = u32;
 ///
 /// This batcher requires that all detectors use the same chunker.
 #[derive(Debug, Clone)]
-pub struct ChatCompletionBatcher {
+pub struct CompletionBatcher {
     n_detectors: usize,
     // We place the chunk first since chunk ordering includes where
     // the chunk is in all the processed messages.
     state: BTreeMap<(Chunk, ChoiceIndex), Vec<Detections>>,
 }
 
-impl ChatCompletionBatcher {
+impl CompletionBatcher {
     pub fn new(n_detectors: usize) -> Self {
         Self {
             n_detectors,
@@ -52,7 +52,7 @@ impl ChatCompletionBatcher {
     }
 }
 
-impl DetectionBatcher for ChatCompletionBatcher {
+impl DetectionBatcher for CompletionBatcher {
     fn push(&mut self, choice_index: ChoiceIndex, chunk: Chunk, detections: Detections) {
         match self.state.entry((chunk, choice_index)) {
             btree_map::Entry::Vacant(entry) => {
@@ -118,7 +118,7 @@ mod test {
 
         // Create a batcher that will process batches for 2 detectors
         let n_detectors = 2;
-        let mut batcher = ChatCompletionBatcher::new(n_detectors);
+        let mut batcher = CompletionBatcher::new(n_detectors);
 
         // Push chunk detections for pii detector
         batcher.push(
@@ -203,7 +203,7 @@ mod test {
 
         // Create a batcher that will process batches for 2 detectors
         let n_detectors = 2;
-        let mut batcher = ChatCompletionBatcher::new(n_detectors);
+        let mut batcher = CompletionBatcher::new(n_detectors);
 
         for choice_index in 0..choices {
             // Push chunk-2 detections for pii detector
@@ -326,7 +326,7 @@ mod test {
 
         // Create a batcher that will process batches for 2 detectors
         let n_detectors = 2;
-        let mut batcher = ChatCompletionBatcher::new(n_detectors);
+        let mut batcher = CompletionBatcher::new(n_detectors);
 
         // Intersperse choice detections
         // NOTE: There may be an edge case when chunk-2 (or later) detections are pushed
@@ -465,7 +465,7 @@ mod test {
 
         // Create a batcher that will process batches for 2 detectors
         let n_detectors = 2;
-        let batcher = ChatCompletionBatcher::new(n_detectors);
+        let batcher = CompletionBatcher::new(n_detectors);
 
         // Create detection batch stream
         let streams = vec![pii_detections_stream, hap_detections_stream];
