@@ -28,6 +28,8 @@ pub mod detection_batcher;
 pub use detection_batcher::*;
 pub mod detection_batch_stream;
 pub use detection_batch_stream::*;
+pub mod completion_state;
+pub use completion_state::*;
 
 use super::Error;
 use crate::{

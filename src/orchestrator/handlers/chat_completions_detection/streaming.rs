@@ -14,12 +14,8 @@
  limitations under the License.
 
 */
-use std::{
-    collections::{BTreeMap, HashMap},
-    sync::{Arc, Mutex},
-};
+use std::{collections::HashMap, sync::Arc};
 
-use dashmap::DashMap;
 use futures::{StreamExt, TryStreamExt, stream};
 use opentelemetry::trace::TraceId;
 use tokio::sync::mpsc;
@@ -37,8 +33,8 @@ use crate::{
         Context, Error,
         common::{self, text_contents_detections, validate_detectors},
         types::{
-            ChatCompletionBatcher, ChatCompletionStream, ChatMessageIterator, ChoiceIndex, Chunk,
-            DetectionBatchStream, Detections,
+            ChatCompletionBatcher, ChatCompletionStream, ChatMessageIterator, Chunk,
+            CompletionState, DetectionBatchStream, Detections,
         },
     },
 };
@@ -237,7 +233,7 @@ async fn handle_output_detection(
         detectors.into_iter().partition(|(detector_id, _)| {
             ctx.config.get_chunker_id(detector_id).unwrap() == "whole_doc_chunker"
         });
-    let chat_completion_state = Arc::new(ChatCompletionState::new());
+    let completion_state = Arc::new(CompletionState::new());
 
     if !detectors.is_empty() {
         // Set up streaming detection pipeline
@@ -279,7 +275,7 @@ async fn handle_output_detection(
         tokio::spawn(process_chat_completion_stream(
             trace_id,
             chat_completion_stream,
-            Some(chat_completion_state.clone()),
+            Some(completion_state.clone()),
             Some(input_txs),
             None,
         ));
@@ -290,7 +286,7 @@ async fn handle_output_detection(
         );
         process_detection_batch_stream(
             trace_id,
-            chat_completion_state.clone(),
+            completion_state.clone(),
             detection_batch_stream,
             response_tx.clone(),
         )
@@ -301,7 +297,7 @@ async fn handle_output_detection(
         process_chat_completion_stream(
             trace_id,
             chat_completion_stream,
-            Some(chat_completion_state.clone()),
+            Some(completion_state.clone()),
             None,
             Some(response_tx.clone()),
         )
@@ -310,12 +306,12 @@ async fn handle_output_detection(
     // NOTE: at this point, the chat completions stream has been fully consumed and chat completion state is final
 
     // If whole doc output detections or usage is requested, a final message is sent with these items
-    if !whole_doc_detectors.is_empty() || chat_completion_state.usage().is_some() {
+    if !whole_doc_detectors.is_empty() || completion_state.usage().is_some() {
         let mut chat_completion = ChatCompletionChunk {
-            id: chat_completion_state.id(),
-            created: chat_completion_state.created(),
-            model: chat_completion_state.model(),
-            usage: chat_completion_state.usage(),
+            id: completion_state.id().unwrap().to_string(),
+            created: completion_state.created().unwrap(),
+            model: completion_state.model().unwrap().to_string(),
+            usage: completion_state.usage().cloned(),
             ..Default::default()
         };
         if !whole_doc_detectors.is_empty() {
@@ -324,7 +320,7 @@ async fn handle_output_detection(
                 ctx.clone(),
                 task,
                 whole_doc_detectors,
-                chat_completion_state,
+                completion_state,
             )
             .await
             {
@@ -352,7 +348,7 @@ async fn handle_output_detection(
 async fn process_chat_completion_stream(
     trace_id: TraceId,
     mut chat_completion_stream: ChatCompletionStream,
-    chat_completion_state: Option<Arc<ChatCompletionState>>,
+    completion_state: Option<Arc<CompletionState<ChatCompletionChunk>>>,
     input_txs: Option<HashMap<u32, mpsc::Sender<Result<(usize, String), Error>>>>,
     response_tx: Option<mpsc::Sender<Result<Option<ChatCompletionChunk>, Error>>>,
 ) {
@@ -372,42 +368,37 @@ async fn process_chat_completion_stream(
                         return;
                     }
                 }
-                if chat_completion.usage.is_some() {
-                    // Set usage state from the usage message
+                if let Some(usage) = &chat_completion.usage
+                    && chat_completion.choices.is_empty()
+                {
+                    // Update state: set usage
                     // NOTE: this message has no choices and is not sent to detection input channel
-                    if let Some(state) = &chat_completion_state {
-                        state.metadata.lock().unwrap().usage = chat_completion.usage.clone();
+                    if let Some(state) = &completion_state {
+                        state.set_usage(usage.clone());
                     }
                 } else {
                     if message_index == 0 {
-                        // Set metadata state from the first message
+                        // Update state: set metadata
                         // NOTE: these values are the same for all chat completion chunks
-                        if let Some(state) = &chat_completion_state {
-                            let mut metadata = state.metadata.lock().unwrap();
-                            metadata.id = chat_completion.id.clone();
-                            metadata.created = chat_completion.created;
-                            metadata.model = chat_completion.model.clone();
+                        if let Some(state) = &completion_state {
+                            state.set_metadata(
+                                chat_completion.id.clone(),
+                                chat_completion.created,
+                                chat_completion.model.clone(),
+                            );
                         }
                     }
                     // NOTE: chat completion chunks should contain only 1 choice
                     if let Some(choice) = chat_completion.choices.first() {
                         // Extract choice text
                         let choice_text = choice.delta.content.clone().unwrap_or_default();
-                        // Update state for this choice index
-                        if let Some(state) = &chat_completion_state {
-                            match state.chat_completions.entry(choice.index) {
-                                dashmap::Entry::Occupied(mut entry) => {
-                                    entry
-                                        .get_mut()
-                                        .insert(message_index, chat_completion.clone());
-                                }
-                                dashmap::Entry::Vacant(entry) => {
-                                    entry.insert(BTreeMap::from([(
-                                        message_index,
-                                        chat_completion.clone(),
-                                    )]));
-                                }
-                            }
+                        // Update state: insert completion
+                        if let Some(state) = &completion_state {
+                            state.insert_completion(
+                                choice.index,
+                                message_index,
+                                chat_completion.clone(),
+                            );
                         }
                         // Send choice text to detection input channel
                         if let Some(input_tx) =
@@ -446,11 +437,11 @@ async fn handle_whole_doc_output_detection(
     ctx: Arc<Context>,
     task: &ChatCompletionsDetectionTask,
     detectors: HashMap<String, DetectorParams>,
-    chat_completion_state: Arc<ChatCompletionState>,
+    completion_state: Arc<CompletionState<ChatCompletionChunk>>,
 ) -> Result<(OpenAiDetections, Vec<OrchestratorWarning>), Error> {
     // Create vec of choice_index->inputs, where inputs contains the concatenated text for the choice
-    let choice_inputs = chat_completion_state
-        .chat_completions
+    let choice_inputs = completion_state
+        .completions
         .iter()
         .map(|entry| {
             let choice_index = *entry.key();
@@ -508,16 +499,13 @@ async fn handle_whole_doc_output_detection(
 
 /// Builds a response with output detections.
 fn output_detection_response(
-    chat_completion_state: &Arc<ChatCompletionState>,
+    completion_state: &Arc<CompletionState<ChatCompletionChunk>>,
     choice_index: u32,
     chunk: Chunk,
     detections: Detections,
 ) -> Result<ChatCompletionChunk, Error> {
     // Get chat completions for this choice index
-    let chat_completions = chat_completion_state
-        .chat_completions
-        .get(&choice_index)
-        .unwrap();
+    let chat_completions = completion_state.completions.get(&choice_index).unwrap();
     // Get range of chat completions for this chunk
     let chat_completions = chat_completions
         .range(chunk.input_start_index..=chunk.input_end_index)
@@ -581,7 +569,7 @@ fn merge_logprobs(chat_completions: &[ChatCompletionChunk]) -> Option<ChatComple
 /// Consumes a detection batch stream, builds responses, and sends them to a response channel.
 async fn process_detection_batch_stream(
     trace_id: TraceId,
-    chat_completion_state: Arc<ChatCompletionState>,
+    completion_state: Arc<CompletionState<ChatCompletionChunk>>,
     mut detection_batch_stream: DetectionBatchStream,
     response_tx: mpsc::Sender<Result<Option<ChatCompletionChunk>, Error>>,
 ) {
@@ -589,12 +577,8 @@ async fn process_detection_batch_stream(
         match result {
             Ok((choice_index, chunk, detections)) => {
                 let input_end_index = chunk.input_end_index;
-                match output_detection_response(
-                    &chat_completion_state,
-                    choice_index,
-                    chunk,
-                    detections,
-                ) {
+                match output_detection_response(&completion_state, choice_index, chunk, detections)
+                {
                     Ok(chat_completion) => {
                         // Send chat completion to response channel
                         debug!(%trace_id, %choice_index, ?chat_completion, "sending chat completion chunk to response channel");
@@ -603,10 +587,8 @@ async fn process_detection_batch_stream(
                             return;
                         }
                         // If this is the final chat completion chunk with content, send chat completion chunk with finish reason
-                        let chat_completions = chat_completion_state
-                            .chat_completions
-                            .get(&choice_index)
-                            .unwrap();
+                        let chat_completions =
+                            completion_state.completions.get(&choice_index).unwrap();
                         if chat_completions.keys().rev().nth(1) == Some(&input_end_index) {
                             if let Some((_, chat_completion)) = chat_completions.last_key_value() {
                                 if chat_completion
@@ -644,46 +626,4 @@ async fn process_detection_batch_stream(
         }
     }
     info!(%trace_id, "task completed: detection batch stream closed");
-}
-
-#[derive(Debug, Default)]
-struct ChatCompletionMetadata {
-    /// A unique identifier for the chat completion. Each chunk has the same ID.
-    pub id: String,
-    /// The Unix timestamp (in seconds) of when the chat completion was created. Each chunk has the same timestamp.
-    pub created: i64,
-    /// The model to generate the completion.
-    pub model: String,
-    /// Completion usage statistics.
-    pub usage: Option<Usage>,
-}
-
-#[derive(Debug, Default)]
-struct ChatCompletionState {
-    /// Chat completion metadata.
-    pub metadata: Mutex<ChatCompletionMetadata>,
-    /// A map of chat completion chunks received for each choice.
-    pub chat_completions: DashMap<ChoiceIndex, BTreeMap<usize, ChatCompletionChunk>>,
-}
-
-impl ChatCompletionState {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn id(&self) -> String {
-        self.metadata.lock().unwrap().id.clone()
-    }
-
-    pub fn created(&self) -> i64 {
-        self.metadata.lock().unwrap().created
-    }
-
-    pub fn model(&self) -> String {
-        self.metadata.lock().unwrap().model.clone()
-    }
-
-    pub fn usage(&self) -> Option<Usage> {
-        self.metadata.lock().unwrap().usage.clone()
-    }
 }
