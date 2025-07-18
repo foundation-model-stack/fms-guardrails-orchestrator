@@ -899,6 +899,15 @@ pub struct CompletionLogprobs {
     pub text_offset: Vec<u32>,
 }
 
+impl CompletionLogprobs {
+    pub fn is_empty(&self) -> bool {
+        self.tokens.is_empty()
+            && self.token_logprobs.is_empty()
+            && self.top_logprobs.is_empty()
+            && self.text_offset.is_empty()
+    }
+}
+
 /// Logprob.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub struct Logprob {
