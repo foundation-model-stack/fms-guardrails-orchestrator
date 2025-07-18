@@ -14,10 +14,7 @@
  limitations under the License.
 
 */
-use std::{
-    collections::{BTreeMap, HashMap},
-    sync::Arc,
-};
+use std::{collections::HashMap, sync::Arc};
 
 use futures::{StreamExt, TryStreamExt, stream};
 use opentelemetry::trace::TraceId;
@@ -529,12 +526,7 @@ fn output_detection_response(
 
 /// Combines logprobs from completion chunks to a single [`CompletionLogprobs`].
 fn merge_logprobs(completions: &[Completion]) -> Option<CompletionLogprobs> {
-    let mut merged_logprobs = CompletionLogprobs {
-        tokens: vec![],
-        token_logprobs: vec![],
-        top_logprobs: vec![],
-        text_offset: vec![],
-    };
+    let mut merged_logprobs = CompletionLogprobs::default();
     for completion in completions {
         if let Some(choice) = completion.choices.first() {
             if let Some(logprobs) = &choice.logprobs {
