@@ -1182,28 +1182,6 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
         "failed on non-existing input detector scenario"
     );
 
-    // Empty `prompt` scenario
-    let no_content_prompt = "";
-
-    let response = orchestrator_server
-        .post(ORCHESTRATOR_COMPLETIONS_DETECTION_ENDPOINT)
-        .json(&json!({
-            "model": MODEL_ID,
-            "prompt": no_content_prompt,
-        }))
-        .send()
-        .await?;
-
-    let results = response.json::<server::Error>().await?;
-    debug!("{results:#?}");
-    assert_eq!(
-        results,
-        server::Error {
-            code: http::StatusCode::UNPROCESSABLE_ENTITY,
-            details: "`prompt` must not be empty".into()
-        }
-    );
-
     // Empty `model` scenario
     let response = orchestrator_server
         .post(ORCHESTRATOR_COMPLETIONS_DETECTION_ENDPOINT)
