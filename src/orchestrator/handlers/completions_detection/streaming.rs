@@ -127,10 +127,10 @@ pub async fn handle_streaming(
             } else {
                 // Handle output detection
                 handle_output_detection(
-                    ctx.clone(),
+                   ctx.clone(),
                     &task,
                     output_detectors,
-                    completion_stream,
+                   completion_stream,
                     response_tx.clone(),
                 )
                 .await;
@@ -172,7 +172,7 @@ async fn handle_input_detection(
         }
     };
     if !detections.is_empty() {
-        // Build  completion chunk with input detections
+        // Build completion chunk with input detections
         let chunk = Completion {
             id: Uuid::new_v4().simple().to_string(),
             model: model_id,
@@ -273,7 +273,7 @@ async fn handle_output_detection(
         .await;
     } else {
         // We only have whole doc detectors, so the streaming detection pipeline is disabled
-        // Consume  completions stream and await completion
+        // Consume completions stream and await completion
         process_completion_stream(
             trace_id,
             completion_stream,
@@ -283,7 +283,7 @@ async fn handle_output_detection(
         )
         .await;
     }
-    // NOTE: at this point, the  completions stream has been fully consumed and  completion state is final
+    // NOTE: at this point, the completions stream has been fully consumed and completion state is final
 
     // If whole doc output detections or usage is requested, a final message is sent with these items
     if !whole_doc_detectors.is_empty() || completion_state.usage().is_some() {
@@ -333,8 +333,8 @@ async fn process_completion_stream(
     while let Some((message_index, result)) = completion_stream.next().await {
         match result {
             Ok(Some(completion)) => {
-                // Send  completion chunk to response channel
-                // NOTE: this forwards  completion chunks without detections and is only
+                // Send completion chunk to response channel
+                // NOTE: this forwards completion chunks without detections and is only
                 // done here for 2 cases: a) no output detectors b) only whole doc output detectors
                 if let Some(response_tx) = &response_tx {
                     if response_tx
@@ -357,7 +357,7 @@ async fn process_completion_stream(
                 } else {
                     if message_index == 0 {
                         // Update state: set metadata
-                        // NOTE: these values are the same for all  completion chunks
+                        // NOTE: these values are the same for all completion chunks
                         if let Some(state) = &completion_state {
                             state.set_metadata(
                                 completion.id.clone(),
@@ -366,7 +366,7 @@ async fn process_completion_stream(
                             );
                         }
                     }
-                    // NOTE:  completion chunks should contain only 1 choice
+                    // NOTE: completion chunks should contain only 1 choice
                     if let Some(choice) = completion.choices.first() {
                         // Extract choice text
                         let choice_text = choice.text.clone();
@@ -484,7 +484,7 @@ fn output_detection_response(
 ) -> Result<Completion, Error> {
     // Get completions for this choice index
     let completions = completion_state.completions.get(&choice_index).unwrap();
-    // Get range of  completions for this chunk
+    // Get range of completions for this chunk
     let completions = completions
         .range(chunk.input_start_index..=chunk.input_end_index)
         .map(|(_index, completion)| completion.clone())
