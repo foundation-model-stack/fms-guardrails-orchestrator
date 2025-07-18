@@ -349,11 +349,13 @@ async fn process_completion_stream(
                         return;
                     }
                 }
-                if completion.usage.is_some() {
+                if let Some(usage) = &completion.usage
+                    && completion.choices.is_empty()
+                {
                     // Update state: set usage
                     // NOTE: this message has no choices and is not sent to detection input channel
                     if let Some(state) = &completion_state {
-                        state.set_usage(completion.usage.unwrap().clone());
+                        state.set_usage(usage.clone());
                     }
                 } else {
                     if message_index == 0 {
