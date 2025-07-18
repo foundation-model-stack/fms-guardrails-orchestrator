@@ -373,19 +373,13 @@ async fn process_completion_stream(
                     if let Some(choice) = completion.choices.first() {
                         // Extract choice text
                         let choice_text = choice.text.clone();
-                        // Update state for this choice index
+                        // Update state: insert completion
                         if let Some(state) = &completion_state {
-                            match state.completions.entry(choice.index) {
-                                dashmap::Entry::Occupied(mut entry) => {
-                                    entry.get_mut().insert(message_index, completion.clone());
-                                }
-                                dashmap::Entry::Vacant(entry) => {
-                                    entry.insert(BTreeMap::from([(
-                                        message_index,
-                                        completion.clone(),
-                                    )]));
-                                }
-                            }
+                            state.insert_completion(
+                                choice.index,
+                                message_index,
+                                completion.clone(),
+                            );
                         }
                         // Send choice text to detection input channel
                         if let Some(input_tx) =
