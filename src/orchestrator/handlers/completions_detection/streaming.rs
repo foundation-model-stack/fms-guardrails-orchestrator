@@ -543,10 +543,7 @@ fn merge_logprobs(completions: &[Completion]) -> Option<CompletionLogprobs> {
             }
         }
     }
-    match merged_logprobs.is_empty() {
-        true => None,
-        false => Some(merged_logprobs),
-    }
+    merged_logprobs.is_empty().then_some(merged_logprobs)
 }
 
 /// Consumes a detection batch stream, builds responses, and sends them to a response channel.
