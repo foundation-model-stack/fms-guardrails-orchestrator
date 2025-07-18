@@ -182,7 +182,7 @@ async fn handle_input_detection(
             created: common::current_timestamp().as_secs() as i64,
             detections: Some(OpenAiDetections {
                 input: vec![InputDetectionResult {
-                    message_index: input_id, // TODO:double-check this
+                    message_index: input_id,
                     results: detections.into(),
                 }],
                 ..Default::default()
@@ -502,7 +502,6 @@ fn output_detection_response(
         let mut completion = completion.clone();
         // Set content
         completion.choices[0].text = chunk.text;
-        // TODO: if applicable, set tool_calls and refusal
         // Set logprobs
         completion.choices[0].logprobs = logprobs;
         // Set warnings
@@ -532,7 +531,6 @@ fn output_detection_response(
     }
 }
 
-/// TODO: This impl is probably wrong, and positions need to be recalculated
 /// Combines logprobs from completion chunks to a single [`CompletionLogprobs`].
 fn merge_logprobs(completions: &[Completion]) -> Option<CompletionLogprobs> {
     let mut merged_logprobs = CompletionLogprobs {
