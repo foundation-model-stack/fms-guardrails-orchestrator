@@ -16,10 +16,9 @@
 */
 use std::{
     collections::{BTreeMap, HashMap},
-    sync::{Arc, Mutex},
+    sync::Arc,
 };
 
-use dashmap::DashMap;
 use futures::{StreamExt, TryStreamExt, stream};
 use opentelemetry::trace::TraceId;
 use tokio::sync::mpsc;
@@ -37,7 +36,7 @@ use crate::{
         Context, Error,
         common::{self, text_contents_detections, validate_detectors},
         types::{
-            ChatCompletionBatcher, ChoiceIndex, Chunk, CompletionStream, DetectionBatchStream,
+            Chunk, CompletionBatcher, CompletionState, CompletionStream, DetectionBatchStream,
             Detections,
         },
     },
@@ -266,10 +265,8 @@ async fn handle_output_detection(
             None,
         ));
         // Process detection streams and await completion
-        let detection_batch_stream = DetectionBatchStream::new(
-            ChatCompletionBatcher::new(detectors.len()),
-            detection_streams,
-        );
+        let detection_batch_stream =
+            DetectionBatchStream::new(CompletionBatcher::new(detectors.len()), detection_streams);
         process_detection_batch_stream(
             trace_id,
             completion_state.clone(),
@@ -294,10 +291,10 @@ async fn handle_output_detection(
     // If whole doc output detections or usage is requested, a final message is sent with these items
     if !whole_doc_detectors.is_empty() || completion_state.usage().is_some() {
         let mut completion = Completion {
-            id: completion_state.id(),
-            created: completion_state.created(),
-            model: completion_state.model(),
-            usage: completion_state.usage(),
+            id: completion_state.id().unwrap().to_string(),
+            created: completion_state.created().unwrap(),
+            model: completion_state.model().unwrap().to_string(),
+            usage: completion_state.usage().cloned(),
             ..Default::default()
         };
         if !whole_doc_detectors.is_empty() {
@@ -332,7 +329,7 @@ async fn handle_output_detection(
 async fn process_completion_stream(
     trace_id: TraceId,
     mut completion_stream: CompletionStream,
-    completion_state: Option<Arc<CompletionState>>,
+    completion_state: Option<Arc<CompletionState<Completion>>>,
     input_txs: Option<HashMap<u32, mpsc::Sender<Result<(usize, String), Error>>>>,
     response_tx: Option<mpsc::Sender<Result<Option<Completion>, Error>>>,
 ) {
@@ -353,20 +350,21 @@ async fn process_completion_stream(
                     }
                 }
                 if completion.usage.is_some() {
-                    // Set usage state from the usage message
+                    // Update state: set usage
                     // NOTE: this message has no choices and is not sent to detection input channel
                     if let Some(state) = &completion_state {
-                        state.metadata.lock().unwrap().usage = completion.usage.clone();
+                        state.set_usage(completion.usage.unwrap().clone());
                     }
                 } else {
                     if message_index == 0 {
-                        // Set metadata state from the first message
+                        // Update state: set metadata
                         // NOTE: these values are the same for all  completion chunks
                         if let Some(state) = &completion_state {
-                            let mut metadata = state.metadata.lock().unwrap();
-                            metadata.id = completion.id.clone();
-                            metadata.created = completion.created;
-                            metadata.model = completion.model.clone();
+                            state.set_metadata(
+                                completion.id.clone(),
+                                completion.created,
+                                completion.model.clone(),
+                            );
                         }
                     }
                     // NOTE:  completion chunks should contain only 1 choice
@@ -424,7 +422,7 @@ async fn handle_whole_doc_output_detection(
     ctx: Arc<Context>,
     task: &CompletionsDetectionTask,
     detectors: HashMap<String, DetectorParams>,
-    completion_state: Arc<CompletionState>,
+    completion_state: Arc<CompletionState<Completion>>,
 ) -> Result<(OpenAiDetections, Vec<OrchestratorWarning>), Error> {
     // Create vec of choice_index->inputs, where inputs contains the concatenated text for the choice
     let choice_inputs = completion_state
@@ -486,7 +484,7 @@ async fn handle_whole_doc_output_detection(
 
 /// Builds a response with output detections.
 fn output_detection_response(
-    completion_state: &Arc<CompletionState>,
+    completion_state: &Arc<CompletionState<Completion>>,
     choice_index: u32,
     chunk: Chunk,
     detections: Detections,
@@ -565,7 +563,7 @@ fn merge_logprobs(completions: &[Completion]) -> Option<CompletionLogprobs> {
 /// Consumes a detection batch stream, builds responses, and sends them to a response channel.
 async fn process_detection_batch_stream(
     trace_id: TraceId,
-    completion_state: Arc<CompletionState>,
+    completion_state: Arc<CompletionState<Completion>>,
     mut detection_batch_stream: DetectionBatchStream,
     response_tx: mpsc::Sender<Result<Option<Completion>, Error>>,
 ) {
@@ -614,46 +612,4 @@ async fn process_detection_batch_stream(
         }
     }
     info!(%trace_id, "task completed: detection batch stream closed");
-}
-
-#[derive(Debug, Default)]
-struct CompletionMetadata {
-    /// A unique identifier for the completion. Each chunk has the same ID.
-    pub id: String,
-    /// The Unix timestamp (in seconds) of when the completion was created. Each chunk has the same timestamp.
-    pub created: i64,
-    /// The model to generate the completion.
-    pub model: String,
-    /// Completion usage statistics.
-    pub usage: Option<Usage>,
-}
-
-#[derive(Debug, Default)]
-struct CompletionState {
-    /// completion metadata.
-    pub metadata: Mutex<CompletionMetadata>,
-    /// A map of completion chunks received for each choice.
-    pub completions: DashMap<ChoiceIndex, BTreeMap<usize, Completion>>,
-}
-
-impl CompletionState {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn id(&self) -> String {
-        self.metadata.lock().unwrap().id.clone()
-    }
-
-    pub fn created(&self) -> i64 {
-        self.metadata.lock().unwrap().created
-    }
-
-    pub fn model(&self) -> String {
-        self.metadata.lock().unwrap().model.clone()
-    }
-
-    pub fn usage(&self) -> Option<Usage> {
-        self.metadata.lock().unwrap().usage.clone()
-    }
 }
