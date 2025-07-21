@@ -34,9 +34,9 @@ use fms_guardrails_orchestr8::{
         chunker::MODEL_ID_HEADER_NAME as CHUNKER_MODEL_ID_HEADER_NAME,
         detector::{ContentAnalysisRequest, ContentAnalysisResponse},
         openai::{
-            ChatCompletion, ChatCompletionChoice, ChatCompletionMessage, Content, ContentPart,
-            ContentType, InputDetectionResult, Message, OpenAiDetections, OrchestratorWarning,
-            OutputDetectionResult, Role,
+            ChatCompletion, ChatCompletionChoice, ChatCompletionMessage,
+            CompletionDetectionWarning, CompletionDetections, CompletionInputDetections,
+            CompletionOutputDetections, Content, ContentPart, ContentType, Message, Role,
         },
     },
     models::{
@@ -413,11 +413,11 @@ async fn no_detections() -> Result<(), anyhow::Error> {
     ];
 
     let expected_warnings = vec![
-        OrchestratorWarning::new(
+        CompletionDetectionWarning::new(
             DetectionWarningReason::EmptyOutput,
             "Choice of index 0 has no content. Output detection was not executed",
         ),
-        OrchestratorWarning::new(
+        CompletionDetectionWarning::new(
             DetectionWarningReason::EmptyOutput,
             "Choice of index 1 has no content. Output detection was not executed",
         ),
@@ -495,14 +495,14 @@ async fn input_detections() -> Result<(), anyhow::Error> {
     let chat_completions_response = ChatCompletion {
         model: MODEL_ID.into(),
         choices: vec![],
-        detections: Some(OpenAiDetections {
-            input: vec![InputDetectionResult {
+        detections: Some(CompletionDetections {
+            input: vec![CompletionInputDetections {
                 message_index: 0,
                 results: expected_detections.clone(),
             }],
             output: vec![],
         }),
-        warnings: vec![OrchestratorWarning::new(
+        warnings: vec![CompletionDetectionWarning::new(
             DetectionWarningReason::UnsuitableInput,
             UNSUITABLE_INPUT_MESSAGE,
         )],
@@ -849,14 +849,14 @@ async fn output_detections() -> Result<(), anyhow::Error> {
     let chat_completions_response = ChatCompletion {
         model: MODEL_ID.into(),
         choices: expected_choices.clone(),
-        detections: Some(OpenAiDetections {
+        detections: Some(CompletionDetections {
             input: vec![],
-            output: vec![OutputDetectionResult {
+            output: vec![CompletionOutputDetections {
                 choice_index: 1,
                 results: expected_detections.clone(),
             }],
         }),
-        warnings: vec![OrchestratorWarning::new(
+        warnings: vec![CompletionDetectionWarning::new(
             DetectionWarningReason::UnsuitableOutput,
             UNSUITABLE_OUTPUT_MESSAGE,
         )],

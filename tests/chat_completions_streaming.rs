@@ -5,8 +5,9 @@ use fms_guardrails_orchestr8::{
         detector::{ContentAnalysisRequest, ContentAnalysisResponse},
         openai::{
             ChatCompletionChunk, ChatCompletionChunkChoice, ChatCompletionDelta,
-            ChatCompletionLogprob, ChatCompletionLogprobs, Content, InputDetectionResult, Message,
-            OpenAiDetections, OpenAiError, OpenAiErrorMessage, OutputDetectionResult, Role, Usage,
+            ChatCompletionLogprob, ChatCompletionLogprobs, CompletionDetections,
+            CompletionInputDetections, CompletionOutputDetections, Content, Message, OpenAiError,
+            OpenAiErrorMessage, Role, Usage,
         },
     },
     models::DetectorParams,
@@ -411,8 +412,8 @@ async fn input_detectors() -> Result<(), anyhow::Error> {
     // Validate input detections
     assert_eq!(
         messages[0].detections,
-        Some(OpenAiDetections {
-            input: vec![InputDetectionResult {
+        Some(CompletionDetections {
+            input: vec![CompletionInputDetections {
                 message_index: 0,
                 results: vec![ContentAnalysisResponse {
                     start: 35,
@@ -821,9 +822,9 @@ async fn output_detectors() -> Result<(), anyhow::Error> {
     // Validate msg-0 detections
     assert_eq!(
         messages[0].detections,
-        Some(OpenAiDetections {
+        Some(CompletionDetections {
             input: vec![],
-            output: vec![OutputDetectionResult {
+            output: vec![CompletionOutputDetections {
                 choice_index: 0,
                 results: vec![],
             }],
@@ -849,9 +850,9 @@ async fn output_detectors() -> Result<(), anyhow::Error> {
     // Validate msg-2 detections
     assert_eq!(
         messages[1].detections,
-        Some(OpenAiDetections {
+        Some(CompletionDetections {
             input: vec![],
-            output: vec![OutputDetectionResult {
+            output: vec![CompletionOutputDetections {
                 choice_index: 0,
                 results: vec![ContentAnalysisResponse {
                     start: 5,
@@ -886,9 +887,9 @@ async fn output_detectors() -> Result<(), anyhow::Error> {
     // Validate msg-2 detections
     assert_eq!(
         messages[2].detections,
-        Some(OpenAiDetections {
+        Some(CompletionDetections {
             input: vec![],
-            output: vec![OutputDetectionResult {
+            output: vec![CompletionOutputDetections {
                 choice_index: 0,
                 results: vec![ContentAnalysisResponse {
                     start: 4,
@@ -1448,9 +1449,9 @@ async fn output_detectors_with_logprobs() -> Result<(), anyhow::Error> {
     // Validate msg-0 detections
     assert_eq!(
         messages[0].detections,
-        Some(OpenAiDetections {
+        Some(CompletionDetections {
             input: vec![],
-            output: vec![OutputDetectionResult {
+            output: vec![CompletionOutputDetections {
                 choice_index: 0,
                 results: vec![],
             }],
@@ -1485,9 +1486,9 @@ async fn output_detectors_with_logprobs() -> Result<(), anyhow::Error> {
     // Validate msg-1 detections
     assert_eq!(
         messages[1].detections,
-        Some(OpenAiDetections {
+        Some(CompletionDetections {
             input: vec![],
-            output: vec![OutputDetectionResult {
+            output: vec![CompletionOutputDetections {
                 choice_index: 0,
                 results: vec![ContentAnalysisResponse {
                     start: 5,
@@ -1531,9 +1532,9 @@ async fn output_detectors_with_logprobs() -> Result<(), anyhow::Error> {
     // Validate msg-2 detections
     assert_eq!(
         messages[2].detections,
-        Some(OpenAiDetections {
+        Some(CompletionDetections {
             input: vec![],
-            output: vec![OutputDetectionResult {
+            output: vec![CompletionOutputDetections {
                 choice_index: 0,
                 results: vec![ContentAnalysisResponse {
                     start: 4,
@@ -1967,9 +1968,9 @@ async fn output_detectors_with_usage() -> Result<(), anyhow::Error> {
     // Validate msg-0 detections
     assert_eq!(
         messages[0].detections,
-        Some(OpenAiDetections {
+        Some(CompletionDetections {
             input: vec![],
-            output: vec![OutputDetectionResult {
+            output: vec![CompletionOutputDetections {
                 choice_index: 0,
                 results: vec![],
             }],
@@ -1995,9 +1996,9 @@ async fn output_detectors_with_usage() -> Result<(), anyhow::Error> {
     // Validate msg-2 detections
     assert_eq!(
         messages[1].detections,
-        Some(OpenAiDetections {
+        Some(CompletionDetections {
             input: vec![],
-            output: vec![OutputDetectionResult {
+            output: vec![CompletionOutputDetections {
                 choice_index: 0,
                 results: vec![ContentAnalysisResponse {
                     start: 5,
@@ -2032,9 +2033,9 @@ async fn output_detectors_with_usage() -> Result<(), anyhow::Error> {
     // Validate msg-2 detections
     assert_eq!(
         messages[2].detections,
-        Some(OpenAiDetections {
+        Some(CompletionDetections {
             input: vec![],
-            output: vec![OutputDetectionResult {
+            output: vec![CompletionOutputDetections {
                 choice_index: 0,
                 results: vec![ContentAnalysisResponse {
                     start: 4,
@@ -2554,9 +2555,9 @@ async fn output_detectors_with_continuous_usage_stats() -> Result<(), anyhow::Er
     // Validate msg-0 detections
     assert_eq!(
         messages[0].detections,
-        Some(OpenAiDetections {
+        Some(CompletionDetections {
             input: vec![],
-            output: vec![OutputDetectionResult {
+            output: vec![CompletionOutputDetections {
                 choice_index: 0,
                 results: vec![],
             }],
@@ -2593,9 +2594,9 @@ async fn output_detectors_with_continuous_usage_stats() -> Result<(), anyhow::Er
     // Validate msg-2 detections
     assert_eq!(
         messages[1].detections,
-        Some(OpenAiDetections {
+        Some(CompletionDetections {
             input: vec![],
-            output: vec![OutputDetectionResult {
+            output: vec![CompletionOutputDetections {
                 choice_index: 0,
                 results: vec![ContentAnalysisResponse {
                     start: 5,
@@ -2641,9 +2642,9 @@ async fn output_detectors_with_continuous_usage_stats() -> Result<(), anyhow::Er
     // Validate msg-2 detections
     assert_eq!(
         messages[2].detections,
-        Some(OpenAiDetections {
+        Some(CompletionDetections {
             input: vec![],
-            output: vec![OutputDetectionResult {
+            output: vec![CompletionOutputDetections {
                 choice_index: 0,
                 results: vec![ContentAnalysisResponse {
                     start: 4,
@@ -3399,9 +3400,9 @@ async fn output_detectors_n2() -> Result<(), anyhow::Error> {
     // Validate msg-0 detections
     assert_eq!(
         choice0_messages[0].detections,
-        Some(OpenAiDetections {
+        Some(CompletionDetections {
             input: vec![],
-            output: vec![OutputDetectionResult {
+            output: vec![CompletionOutputDetections {
                 choice_index: 0,
                 results: vec![],
             }],
@@ -3441,9 +3442,9 @@ async fn output_detectors_n2() -> Result<(), anyhow::Error> {
     // Validate msg-0 detections
     assert_eq!(
         choice1_messages[0].detections,
-        Some(OpenAiDetections {
+        Some(CompletionDetections {
             input: vec![],
-            output: vec![OutputDetectionResult {
+            output: vec![CompletionOutputDetections {
                 choice_index: 1,
                 results: vec![],
             }],
@@ -3735,9 +3736,9 @@ async fn whole_doc_output_detectors() -> Result<(), anyhow::Error> {
     let last = &messages[12];
     assert_eq!(
         last.detections,
-        Some(OpenAiDetections {
+        Some(CompletionDetections {
             input: vec![],
-            output: vec![OutputDetectionResult {
+            output: vec![CompletionOutputDetections {
                 choice_index: 0,
                 results: vec![
                     ContentAnalysisResponse {
@@ -4196,9 +4197,9 @@ async fn output_detectors_and_whole_doc_output_detectors() -> Result<(), anyhow:
     // Validate msg-0 detections
     assert_eq!(
         messages[0].detections,
-        Some(OpenAiDetections {
+        Some(CompletionDetections {
             input: vec![],
-            output: vec![OutputDetectionResult {
+            output: vec![CompletionOutputDetections {
                 choice_index: 0,
                 results: vec![],
             }],
@@ -4224,9 +4225,9 @@ async fn output_detectors_and_whole_doc_output_detectors() -> Result<(), anyhow:
     // Validate msg-2 detections
     assert_eq!(
         messages[1].detections,
-        Some(OpenAiDetections {
+        Some(CompletionDetections {
             input: vec![],
-            output: vec![OutputDetectionResult {
+            output: vec![CompletionOutputDetections {
                 choice_index: 0,
                 results: vec![ContentAnalysisResponse {
                     start: 5,
@@ -4261,9 +4262,9 @@ async fn output_detectors_and_whole_doc_output_detectors() -> Result<(), anyhow:
     // Validate msg-2 detections
     assert_eq!(
         messages[2].detections,
-        Some(OpenAiDetections {
+        Some(CompletionDetections {
             input: vec![],
-            output: vec![OutputDetectionResult {
+            output: vec![CompletionOutputDetections {
                 choice_index: 0,
                 results: vec![ContentAnalysisResponse {
                     start: 4,
@@ -4291,9 +4292,9 @@ async fn output_detectors_and_whole_doc_output_detectors() -> Result<(), anyhow:
     let last = &messages[4];
     assert_eq!(
         last.detections,
-        Some(OpenAiDetections {
+        Some(CompletionDetections {
             input: vec![],
-            output: vec![OutputDetectionResult {
+            output: vec![CompletionOutputDetections {
                 choice_index: 0,
                 results: vec![
                     ContentAnalysisResponse {
