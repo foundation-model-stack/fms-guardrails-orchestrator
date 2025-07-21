@@ -146,14 +146,14 @@ async fn handle_input_detection(
             id: Uuid::new_v4().simple().to_string(),
             model: model_id,
             created: common::current_timestamp().as_secs() as i64,
-            detections: Some(OpenAiDetections {
-                input: vec![InputDetectionResult {
+            detections: Some(CompletionDetections {
+                input: vec![CompletionInputDetections {
                     message_index: message.index,
                     results: detections.into(),
                 }],
                 ..Default::default()
             }),
-            warnings: vec![OrchestratorWarning::new(
+            warnings: vec![CompletionDetectionWarning::new(
                 DetectionWarningReason::UnsuitableInput,
                 UNSUITABLE_INPUT_MESSAGE,
             )],
@@ -181,13 +181,15 @@ async fn handle_output_detection(
             .as_ref()
             .is_none_or(|content| content.is_empty())
         {
-            chat_completion.warnings.push(OrchestratorWarning::new(
-                DetectionWarningReason::EmptyOutput,
-                &format!(
-                    "Choice of index {} has no content. Output detection was not executed",
-                    choice.index
-                ),
-            ));
+            chat_completion
+                .warnings
+                .push(CompletionDetectionWarning::new(
+                    DetectionWarningReason::EmptyOutput,
+                    &format!(
+                        "Choice of index {} has no content. Output detection was not executed",
+                        choice.index
+                    ),
+                ));
             continue;
         }
         let input_id = choice.index;
@@ -212,17 +214,17 @@ async fn handle_output_detection(
         let output = detections
             .into_iter()
             .filter(|(_, detections)| !detections.is_empty())
-            .map(|(input_id, detections)| OutputDetectionResult {
+            .map(|(input_id, detections)| CompletionOutputDetections {
                 choice_index: input_id,
                 results: detections.into(),
             })
             .collect::<Vec<_>>();
         if !output.is_empty() {
-            chat_completion.detections = Some(OpenAiDetections {
+            chat_completion.detections = Some(CompletionDetections {
                 output,
                 ..Default::default()
             });
-            chat_completion.warnings = vec![OrchestratorWarning::new(
+            chat_completion.warnings = vec![CompletionDetectionWarning::new(
                 DetectionWarningReason::UnsuitableOutput,
                 UNSUITABLE_OUTPUT_MESSAGE,
             )];

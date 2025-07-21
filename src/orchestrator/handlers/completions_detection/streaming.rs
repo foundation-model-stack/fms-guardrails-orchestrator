@@ -177,14 +177,14 @@ async fn handle_input_detection(
             id: Uuid::new_v4().simple().to_string(),
             model: model_id,
             created: common::current_timestamp().as_secs() as i64,
-            detections: Some(OpenAiDetections {
-                input: vec![InputDetectionResult {
+            detections: Some(CompletionDetections {
+                input: vec![CompletionInputDetections {
                     message_index: input_id,
                     results: detections.into(),
                 }],
                 ..Default::default()
             }),
-            warnings: vec![OrchestratorWarning::new(
+            warnings: vec![CompletionDetectionWarning::new(
                 DetectionWarningReason::UnsuitableInput,
                 UNSUITABLE_INPUT_MESSAGE,
             )],
@@ -416,7 +416,7 @@ async fn handle_whole_doc_output_detection(
     task: &CompletionsDetectionTask,
     detectors: HashMap<String, DetectorParams>,
     completion_state: Arc<CompletionState<Completion>>,
-) -> Result<(OpenAiDetections, Vec<OrchestratorWarning>), Error> {
+) -> Result<(CompletionDetections, Vec<CompletionDetectionWarning>), Error> {
     // Create vec of choice_index->inputs, where inputs contains the concatenated text for the choice
     let choice_inputs = completion_state
         .completions
@@ -454,21 +454,21 @@ async fn handle_whole_doc_output_detection(
     // Build output detections
     let output = choice_detections
         .into_iter()
-        .map(|(choice_index, detections)| OutputDetectionResult {
+        .map(|(choice_index, detections)| CompletionOutputDetections {
             choice_index,
             results: detections.into(),
         })
         .collect::<Vec<_>>();
     // Build warnings
     let warnings = if output.iter().any(|d| !d.results.is_empty()) {
-        vec![OrchestratorWarning::new(
+        vec![CompletionDetectionWarning::new(
             DetectionWarningReason::UnsuitableOutput,
             UNSUITABLE_OUTPUT_MESSAGE,
         )]
     } else {
         Vec::new()
     };
-    let detections = OpenAiDetections {
+    let detections = CompletionDetections {
         output,
         ..Default::default()
     };
@@ -499,14 +499,14 @@ fn output_detection_response(
         completion.choices[0].logprobs = logprobs;
         // Set warnings
         if !detections.is_empty() {
-            completion.warnings = vec![OrchestratorWarning::new(
+            completion.warnings = vec![CompletionDetectionWarning::new(
                 DetectionWarningReason::UnsuitableOutput,
                 UNSUITABLE_OUTPUT_MESSAGE,
             )];
         }
         // Set detections
-        completion.detections = Some(OpenAiDetections {
-            output: vec![OutputDetectionResult {
+        completion.detections = Some(CompletionDetections {
+            output: vec![CompletionOutputDetections {
                 choice_index,
                 results: detections.into(),
             }],

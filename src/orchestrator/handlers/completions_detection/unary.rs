@@ -140,14 +140,14 @@ async fn handle_input_detection(
             object: "text_completion".into(), // This value is constant: https://platform.openai.com/docs/api-reference/completions/object#completions/object-object
             created: common::current_timestamp().as_secs() as i64,
             model: model_id,
-            detections: Some(OpenAiDetections {
-                input: vec![InputDetectionResult {
+            detections: Some(CompletionDetections {
+                input: vec![CompletionInputDetections {
                     message_index: 0,
                     results: detections.into(),
                 }],
                 ..Default::default()
             }),
-            warnings: vec![OrchestratorWarning::new(
+            warnings: vec![CompletionDetectionWarning::new(
                 DetectionWarningReason::UnsuitableInput,
                 UNSUITABLE_INPUT_MESSAGE,
             )],
@@ -171,7 +171,7 @@ async fn handle_output_detection(
     let mut tasks = Vec::with_capacity(completion.choices.len());
     for choice in &completion.choices {
         if choice.text.is_empty() {
-            completion.warnings.push(OrchestratorWarning::new(
+            completion.warnings.push(CompletionDetectionWarning::new(
                 DetectionWarningReason::EmptyOutput,
                 &format!(
                     "Choice of index {} has no content. Output detection was not executed",
@@ -202,17 +202,17 @@ async fn handle_output_detection(
         let output = detections
             .into_iter()
             .filter(|(_, detections)| !detections.is_empty())
-            .map(|(input_id, detections)| OutputDetectionResult {
+            .map(|(input_id, detections)| CompletionOutputDetections {
                 choice_index: input_id,
                 results: detections.into(),
             })
             .collect::<Vec<_>>();
         if !output.is_empty() {
-            completion.detections = Some(OpenAiDetections {
+            completion.detections = Some(CompletionDetections {
                 output,
                 ..Default::default()
             });
-            completion.warnings = vec![OrchestratorWarning::new(
+            completion.warnings = vec![CompletionDetectionWarning::new(
                 DetectionWarningReason::UnsuitableOutput,
                 UNSUITABLE_OUTPUT_MESSAGE,
             )];

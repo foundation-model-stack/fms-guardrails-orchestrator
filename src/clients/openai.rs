@@ -684,10 +684,10 @@ pub struct ChatCompletion {
     pub service_tier: Option<String>,
     /// Detections
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub detections: Option<OpenAiDetections>,
+    pub detections: Option<CompletionDetections>,
     /// Warnings
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub warnings: Vec<OrchestratorWarning>,
+    pub warnings: Vec<CompletionDetectionWarning>,
 }
 
 /// Helper to accept both string and integer for stop_reason.
@@ -787,10 +787,10 @@ pub struct ChatCompletionChunk {
     pub usage: Option<Usage>,
     /// Detections
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub detections: Option<OpenAiDetections>,
+    pub detections: Option<CompletionDetections>,
     /// Warnings
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub warnings: Vec<OrchestratorWarning>,
+    pub warnings: Vec<CompletionDetectionWarning>,
 }
 
 impl Default for ChatCompletionChunk {
@@ -862,10 +862,10 @@ pub struct Completion {
     pub system_fingerprint: Option<String>,
     /// Detections
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub detections: Option<OpenAiDetections>,
+    pub detections: Option<CompletionDetections>,
     /// Warnings
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub warnings: Vec<OrchestratorWarning>,
+    pub warnings: Vec<CompletionDetectionWarning>,
 }
 
 /// Completion (legacy) choice.
@@ -966,39 +966,39 @@ pub struct OpenAiErrorMessage {
     pub error: OpenAiError,
 }
 
-/// Guardrails Open AI detections.
+/// Guardrails completion detections.
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
-pub struct OpenAiDetections {
+pub struct CompletionDetections {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub input: Vec<InputDetectionResult>,
+    pub input: Vec<CompletionInputDetections>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub output: Vec<OutputDetectionResult>,
+    pub output: Vec<CompletionOutputDetections>,
 }
 
-/// Guardrails Open AI input detections.
+/// Guardrails completion input detections.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct InputDetectionResult {
+pub struct CompletionInputDetections {
     pub message_index: u32,
     #[serde(default)]
     pub results: Vec<ContentAnalysisResponse>,
 }
 
-/// Guardrails Open AI output detections.
+/// Guardrails completion output detections.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct OutputDetectionResult {
+pub struct CompletionOutputDetections {
     pub choice_index: u32,
     #[serde(default)]
     pub results: Vec<ContentAnalysisResponse>,
 }
 
-/// Guardrails warning.
+/// Guardrails completion detection warning.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct OrchestratorWarning {
+pub struct CompletionDetectionWarning {
     r#type: DetectionWarningReason,
     message: String,
 }
 
-impl OrchestratorWarning {
+impl CompletionDetectionWarning {
     pub fn new(warning_type: DetectionWarningReason, message: &str) -> Self {
         Self {
             r#type: warning_type,
