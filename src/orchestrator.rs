@@ -27,14 +27,10 @@ use tracing::{debug, info};
 
 use crate::{
     clients::{
-        ClientMap, GenerationClient, NlpClient, TextContentsDetectorClient, TgisClient,
-        chunker::ChunkerClient,
-        detector::{
-            TextChatDetectorClient, TextContextDocDetectorClient, TextGenerationDetectorClient,
-        },
+        ChunkerClient, ClientMap, DetectorClient, GenerationClient, NlpClient, TgisClient,
         openai::OpenAiClient,
     },
-    config::{DetectorType, GenerationProvider, OrchestratorConfig},
+    config::{GenerationProvider, OrchestratorConfig},
     health::HealthCheckCache,
 };
 
@@ -157,48 +153,10 @@ async fn create_clients(config: &OrchestratorConfig) -> Result<ClientMap, Error>
 
     // Create detector clients
     for (detector_id, detector) in &config.detectors {
-        match detector.r#type {
-            DetectorType::TextContents => {
-                clients.insert(
-                    detector_id.into(),
-                    TextContentsDetectorClient::new(
-                        &detector.service,
-                        detector.health_service.as_ref(),
-                    )
-                    .await?,
-                );
-            }
-            DetectorType::TextGeneration => {
-                clients.insert(
-                    detector_id.into(),
-                    TextGenerationDetectorClient::new(
-                        &detector.service,
-                        detector.health_service.as_ref(),
-                    )
-                    .await?,
-                );
-            }
-            DetectorType::TextChat => {
-                clients.insert(
-                    detector_id.into(),
-                    TextChatDetectorClient::new(
-                        &detector.service,
-                        detector.health_service.as_ref(),
-                    )
-                    .await?,
-                );
-            }
-            DetectorType::TextContextDoc => {
-                clients.insert(
-                    detector_id.into(),
-                    TextContextDocDetectorClient::new(
-                        &detector.service,
-                        detector.health_service.as_ref(),
-                    )
-                    .await?,
-                );
-            }
-        }
+        clients.insert(
+            detector_id.into(),
+            DetectorClient::new(&detector.service, detector.health_service.as_ref()).await?,
+        );
     }
     Ok(clients)
 }
