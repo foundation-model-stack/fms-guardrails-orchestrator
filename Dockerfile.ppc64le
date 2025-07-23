@@ -10,8 +10,8 @@ ARG PROTOC_VERSION
 ENV CARGO_REGISTRIES_CRATES_IO_PROTOCOL=sparse
 
 # Install dependencies
-RUN microdnf -y update && \
-    microdnf install -y \
+RUN microdnf --disableplugin=subscription-manager -y update && \
+    microdnf install --disableplugin=subscription-manager -y \
         unzip \
         ca-certificates \
         openssl-devel \
