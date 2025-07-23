@@ -4,24 +4,41 @@ ARG PROTOC_VERSION=29.3
 ARG CONFIG_FILE=config/config.yaml
 
 ## Rust builder ################################################################
-# Specific debian version so that compatible glibc version is used
-FROM rust:1 AS rust-builder
+FROM ${UBI_MINIMAL_BASE_IMAGE}:${UBI_BASE_IMAGE_TAG} AS rust-builder
 ARG PROTOC_VERSION
 
 ENV CARGO_REGISTRIES_CRATES_IO_PROTOCOL=sparse
+
+# Install dependencies
+RUN microdnf -y update && \
+    microdnf install -y \
+        unzip \
+        ca-certificates \
+        openssl-devel \
+        gcc \
+        cmake \
+        clang \
+        clang-devel && \
+    microdnf clean all
+
+COPY rust-toolchain.toml rust-toolchain.toml
+
+# Install rustup [needed for latest Rust versions]
+RUN curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain none -y --no-modify-path && \
+    . "$HOME/.cargo/env" && \
+    rustup install && \
+    rustup component add rustfmt
+
+# Set PATH so rustc, cargo, rustup are available
+ENV PATH="/root/.cargo/bin:${PATH}"
 
 # Install protoc, no longer included in prost crate
 RUN cd /tmp && \
     curl -L -O https://github.com/protocolbuffers/protobuf/releases/download/v${PROTOC_VERSION}/protoc-${PROTOC_VERSION}-linux-s390_64.zip && \
     unzip protoc-*.zip -d /usr/local && rm protoc-*.zip
-RUN apt update && apt install -y cmake clang libclang-dev
 ENV LIBCLANG_PATH=/usr/lib/llvm-14/lib/
 
 WORKDIR /app
-
-COPY rust-toolchain.toml rust-toolchain.toml
-
-RUN rustup component add rustfmt
 
 ## Orchestrator builder #########################################################
 FROM rust-builder AS fms-guardrails-orchestr8-builder
