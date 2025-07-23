@@ -15,13 +15,16 @@ RUN microdnf -y update && \
         unzip \
         ca-certificates \
         openssl-devel \
-        pkgconf-pkg-config \
-        gcc \
-        glibc-devel && \
+        gcc && \
     microdnf clean all
 
+COPY rust-toolchain.toml rust-toolchain.toml
+
 # Install rustup [needed for latest Rust versions]
-RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --no-modify-path
+RUN curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain none -y --no-modify-path && \
+    . "$HOME/.cargo/env" && \
+    rustup install && \
+    rustup component add rustfmt
 
 # Set PATH so rustc, cargo, rustup are available
 ENV PATH="/root/.cargo/bin:${PATH}"
@@ -33,10 +36,6 @@ RUN cd /tmp && \
 ENV LIBCLANG_PATH=/usr/lib/llvm-14/lib/
 
 WORKDIR /app
-
-COPY rust-toolchain.toml rust-toolchain.toml
-
-RUN rustup component add rustfmt
 
 ## Orchestrator builder #########################################################
 FROM rust-builder AS fms-guardrails-orchestr8-builder
