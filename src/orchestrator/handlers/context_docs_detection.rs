@@ -45,7 +45,7 @@ impl Handle<ContextDocsDetectionTask> for Orchestrator {
         info!(%trace_id, config = ?task.detectors, "task started");
 
         validate_detectors(
-            &task.detectors,
+            task.detectors.iter(),
             &ctx.config.detectors,
             &[DetectorType::TextContextDoc],
             true,

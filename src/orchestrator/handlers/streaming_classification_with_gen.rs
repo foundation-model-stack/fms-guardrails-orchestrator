@@ -77,7 +77,7 @@ impl Handle<StreamingClassificationWithGenTask> for Orchestrator {
             // Allow `whole_doc_chunker` detectors on input detection
             // because the input detection call is unary
             if let Err(error) = validate_detectors(
-                &input_detectors,
+                input_detectors.iter(),
                 &ctx.config.detectors,
                 &[DetectorType::TextContents],
                 true,
@@ -93,7 +93,7 @@ impl Handle<StreamingClassificationWithGenTask> for Orchestrator {
             // provided separately at the end but not blocking other
             // detection results that may be provided on smaller chunks
             if let Err(error) = validate_detectors(
-                &output_detectors,
+                output_detectors.iter(),
                 &ctx.config.detectors,
                 &[DetectorType::TextContents],
                 false,

@@ -68,7 +68,7 @@ impl Handle<StreamingContentDetectionTask> for Orchestrator {
                 info!(%trace_id, config = ?detectors, "task started");
 
                 if let Err(error) = validate_detectors(
-                    &detectors,
+                    detectors.iter(),
                     &ctx.config.detectors,
                     &[DetectorType::TextContents],
                     false,

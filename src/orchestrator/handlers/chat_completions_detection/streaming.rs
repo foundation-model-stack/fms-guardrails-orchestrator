@@ -55,22 +55,9 @@ pub async fn handle_streaming(
         async move {
             let input_detectors = detectors.input;
             let output_detectors = detectors.output;
-
-            // Validate input detectors
+            
             if let Err(error) = validate_detectors(
-                &input_detectors,
-                &ctx.config.detectors,
-                &[DetectorType::TextContents],
-                true,
-            ) {
-                let _ = response_tx.send(Err(error)).await;
-                // Send None to signal completion
-                let _ = response_tx.send(Ok(None)).await;
-                return;
-            }
-            // Validate output detectors
-            if let Err(error) = validate_detectors(
-                &output_detectors,
+                input_detectors.iter().chain(output_detectors.iter()),
                 &ctx.config.detectors,
                 &[DetectorType::TextContents],
                 true,
