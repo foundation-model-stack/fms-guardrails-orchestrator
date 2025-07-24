@@ -239,7 +239,6 @@ impl From<ContentAnalysisResponse> for crate::models::TokenClassificationResult 
 
 /// A struct representing a request to a detector compatible with the
 /// /api/v1/text/chat endpoint.
-// #[cfg_attr(test, derive(PartialEq))]
 #[derive(Debug, Clone, Serialize)]
 pub struct ChatDetectionRequest {
     /// Chat messages to run detection on
