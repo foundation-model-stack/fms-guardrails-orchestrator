@@ -125,7 +125,6 @@ pub fn validate_detectors<'a>(
 ) -> Result<(), Error> {
     let whole_doc_chunker_id = DEFAULT_CHUNKER_ID;
     for (detector_id, _params) in detectors {
-        // validate detectors
         match orchestrator_detectors.get(detector_id) {
             Some(detector_config) => {
                 if !detector_config
@@ -180,5 +179,98 @@ mod tests {
         assert_eq!(slice_codepoints(s, 0, 5), "Hello");
         let s = "哈囉世界";
         assert_eq!(slice_codepoints(s, 3, 4), "界");
+    }
+
+    #[test]
+    fn test_validate_detectors() -> Result<(), Error> {
+        let orchestrator_detectors = HashMap::from([
+            (
+                "pii".to_string(),
+                DetectorConfig {
+                    chunker_id: "sentence".into(),
+                    r#type: vec![DetectorType::TextContents],
+                    ..Default::default()
+                },
+            ),
+            (
+                "pii_whole_doc".to_string(),
+                DetectorConfig {
+                    chunker_id: "whole_doc_chunker".into(),
+                    r#type: vec![DetectorType::TextContents],
+                    ..Default::default()
+                },
+            ),
+            (
+                "granite_guardian".to_string(),
+                DetectorConfig {
+                    chunker_id: "sentence".into(),
+                    r#type: vec![DetectorType::TextContents, DetectorType::TextChat],
+                    ..Default::default()
+                },
+            ),
+        ]);
+
+        assert!(
+            validate_detectors(
+                HashMap::from([("granite_guardian".to_string(), DetectorParams::default())]).iter(),
+                &orchestrator_detectors,
+                &[DetectorType::TextContents],
+                true
+            )
+            .is_ok(),
+            "should pass: model supports text_contents and text_chat, endpoint supports text_contents"
+        );
+        assert!(
+            validate_detectors(
+                HashMap::from([("granite_guardian".to_string(), DetectorParams::default())]).iter(),
+                &orchestrator_detectors,
+                &[DetectorType::TextContents, DetectorType::TextChat],
+                true
+            )
+            .is_ok(),
+            "should pass: model supports text_contents and text_chat, endpoint supports text_contents and text_chat"
+        );
+        assert!(
+            validate_detectors(
+                HashMap::from([("granite_guardian".to_string(), DetectorParams::default())]).iter(),
+                &orchestrator_detectors,
+                &[DetectorType::TextGeneration],
+                true
+            )
+            .is_err_and(|e| matches!(e, Error::Validation(_))),
+            "should fail: model supports text_contents and text_chat, endpoint supports text_generation"
+        );
+        assert!(
+            validate_detectors(
+                HashMap::from([("pii".to_string(), DetectorParams::default())]).iter(),
+                &orchestrator_detectors,
+                &[DetectorType::TextContextDoc],
+                false
+            )
+            .is_err_and(|e| matches!(e, Error::Validation(_))),
+            "should fail: model supports text_contents, endpoint supports text_context_doc"
+        );
+        assert!(
+            validate_detectors(
+                HashMap::from([("pii_whole_doc".to_string(), DetectorParams::default())]).iter(),
+                &orchestrator_detectors,
+                &[DetectorType::TextContents],
+                false
+            )
+            .is_err_and(|e| matches!(e, Error::Validation(_))),
+            "should fail: model uses whole_doc_chunker and endpoint doesn't support it"
+        );
+        assert!(
+            validate_detectors(
+                HashMap::from([("does_not_exist".to_string(), DetectorParams::default())]).iter(),
+                &orchestrator_detectors,
+                &[DetectorType::TextContents],
+                true
+            )
+            .is_err_and(|e| matches!(e, Error::DetectorNotFound(_))),
+            "should fail: requested model does not exist"
+        );
+
+        Ok(())
     }
 }
