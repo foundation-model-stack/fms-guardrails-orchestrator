@@ -33,8 +33,7 @@ detectors:
     # Detector ID/name to be used in user requests
     hap-en:
         # Detector type (text_contents, text_generation, text_chat, text_context_doc)
-        # NOTE: The same detector ID/name cannot be used for multiple detector types
-        # at the same time. The detector IDs/names will have to be unique.
+        # NOTE: can be a string or a list for multiple detector types.
         type: text_contents
         service:
             hostname: localhost
