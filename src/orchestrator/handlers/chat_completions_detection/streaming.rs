@@ -55,7 +55,7 @@ pub async fn handle_streaming(
         async move {
             let input_detectors = detectors.input;
             let output_detectors = detectors.output;
-            
+
             if let Err(error) = validate_detectors(
                 input_detectors.iter().chain(output_detectors.iter()),
                 &ctx.config.detectors,
