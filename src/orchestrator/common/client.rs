@@ -23,12 +23,11 @@ use tracing::{debug, instrument};
 
 use crate::{
     clients::{
-        GenerationClient, TextContentsDetectorClient,
+        DetectorClient, GenerationClient,
         chunker::ChunkerClient,
         detector::{
             ChatDetectionRequest, ContentAnalysisRequest, ContextDocsDetectionRequest, ContextType,
-            GenerationDetectionRequest, TextChatDetectorClient, TextContextDocDetectorClient,
-            TextGenerationDetectorClient,
+            GenerationDetectionRequest,
         },
         http::JSON_CONTENT_TYPE,
         openai::{self, OpenAiClient, TokenizeRequest},
@@ -99,7 +98,7 @@ pub async fn chunk_stream(
 /// Sends request to text contents detector client.
 #[instrument(skip_all, fields(detector_id))]
 pub async fn detect_text_contents(
-    client: &TextContentsDetectorClient,
+    client: &DetectorClient,
     headers: HeaderMap,
     detector_id: DetectorId,
     params: DetectorParams,
@@ -149,7 +148,7 @@ pub async fn detect_text_contents(
 /// Sends request to text generation detector client.
 #[instrument(skip_all, fields(detector_id))]
 pub async fn detect_text_generation(
-    client: &TextGenerationDetectorClient,
+    client: &DetectorClient,
     headers: HeaderMap,
     detector_id: DetectorId,
     params: DetectorParams,
@@ -181,7 +180,7 @@ pub async fn detect_text_generation(
 /// Sends request to text chat detector client.
 #[instrument(skip_all, fields(detector_id))]
 pub async fn detect_text_chat(
-    client: &TextChatDetectorClient,
+    client: &DetectorClient,
     headers: HeaderMap,
     detector_id: DetectorId,
     params: DetectorParams,
@@ -213,7 +212,7 @@ pub async fn detect_text_chat(
 /// Sends request to text context detector client.
 #[instrument(skip_all, fields(detector_id))]
 pub async fn detect_text_context(
-    client: &TextContextDocDetectorClient,
+    client: &DetectorClient,
     headers: HeaderMap,
     detector_id: DetectorId,
     params: DetectorParams,

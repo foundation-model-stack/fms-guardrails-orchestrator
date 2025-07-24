@@ -49,9 +49,10 @@ pub mod http;
 pub use http::{HttpClient, http_trace_layer};
 
 pub mod chunker;
+pub use chunker::ChunkerClient;
 
 pub mod detector;
-pub use detector::TextContentsDetectorClient;
+pub use detector::DetectorClient;
 
 pub mod tgis;
 pub use tgis::TgisClient;

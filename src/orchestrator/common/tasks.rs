@@ -26,12 +26,8 @@ use tracing::{Instrument, debug, instrument};
 use super::{client::*, utils::*};
 use crate::{
     clients::{
-        TextContentsDetectorClient,
         chunker::{ChunkerClient, DEFAULT_CHUNKER_ID},
-        detector::{
-            ContextType, TextChatDetectorClient, TextContextDocDetectorClient,
-            TextGenerationDetectorClient,
-        },
+        detector::{ContextType, DetectorClient},
         openai,
     },
     models::DetectorParams,
@@ -214,10 +210,7 @@ pub async fn text_contents_detections(
             let default_threshold = ctx.config.detector(&detector_id).unwrap().default_threshold;
             let threshold = params.pop_threshold().unwrap_or(default_threshold);
             async move {
-                let client = ctx
-                    .clients
-                    .get_as::<TextContentsDetectorClient>(&detector_id)
-                    .unwrap();
+                let client = ctx.clients.get_as::<DetectorClient>(&detector_id).unwrap();
                 let detections = detect_text_contents(
                     client,
                     headers,
@@ -273,10 +266,8 @@ pub async fn text_contents_detection_streams(
                 while let Ok(result) = chunk_rx.recv().await {
                     match result {
                         Ok(chunk) => {
-                            let client = ctx
-                                .clients
-                                .get_as::<TextContentsDetectorClient>(&detector_id)
-                                .unwrap();
+                            let client =
+                                ctx.clients.get_as::<DetectorClient>(&detector_id).unwrap();
                             match detect_text_contents(
                                 client,
                                 headers.clone(),
@@ -347,10 +338,7 @@ pub async fn text_generation_detections(
             let default_threshold = ctx.config.detector(&detector_id).unwrap().default_threshold;
             let threshold = params.pop_threshold().unwrap_or(default_threshold);
             async move {
-                let client = ctx
-                    .clients
-                    .get_as::<TextGenerationDetectorClient>(&detector_id)
-                    .unwrap();
+                let client = ctx.clients.get_as::<DetectorClient>(&detector_id).unwrap();
                 let detections = detect_text_generation(
                     client,
                     headers,
@@ -403,10 +391,7 @@ pub async fn text_chat_detections(
             let default_threshold = ctx.config.detector(&detector_id).unwrap().default_threshold;
             let threshold = params.pop_threshold().unwrap_or(default_threshold);
             async move {
-                let client = ctx
-                    .clients
-                    .get_as::<TextChatDetectorClient>(&detector_id)
-                    .unwrap();
+                let client = ctx.clients.get_as::<DetectorClient>(&detector_id).unwrap();
                 let detections = detect_text_chat(
                     client,
                     headers,
@@ -463,10 +448,7 @@ pub async fn text_context_detections(
                     ctx.config.detector(&detector_id).unwrap().default_threshold;
                 let threshold = params.pop_threshold().unwrap_or(default_threshold);
                 async move {
-                    let client = ctx
-                        .clients
-                        .get_as::<TextContextDocDetectorClient>(&detector_id)
-                        .unwrap();
+                    let client = ctx.clients.get_as::<DetectorClient>(&detector_id).unwrap();
                     let detections = detect_text_context(
                         client,
                         headers,
