@@ -118,7 +118,7 @@ pub fn configure_mock_servers(
 
 /// Validates requested detectors.
 pub fn validate_detectors<'a>(
-    detectors: impl Iterator<Item = (&'a String, &'a DetectorParams)>,
+    detectors: impl IntoIterator<Item = (&'a String, &'a DetectorParams)>,
     orchestrator_detectors: &HashMap<String, DetectorConfig>,
     supported_detector_types: &[DetectorType],
     supports_whole_doc_chunker: bool,
@@ -212,7 +212,7 @@ mod tests {
 
         assert!(
             validate_detectors(
-                HashMap::from([("granite_guardian".to_string(), DetectorParams::default())]).iter(),
+                &HashMap::from([("granite_guardian".to_string(), DetectorParams::default())]),
                 &orchestrator_detectors,
                 &[DetectorType::TextContents],
                 true
@@ -222,7 +222,7 @@ mod tests {
         );
         assert!(
             validate_detectors(
-                HashMap::from([("granite_guardian".to_string(), DetectorParams::default())]).iter(),
+                &HashMap::from([("granite_guardian".to_string(), DetectorParams::default())]),
                 &orchestrator_detectors,
                 &[DetectorType::TextContents, DetectorType::TextChat],
                 true
@@ -232,7 +232,7 @@ mod tests {
         );
         assert!(
             validate_detectors(
-                HashMap::from([("granite_guardian".to_string(), DetectorParams::default())]).iter(),
+                &HashMap::from([("granite_guardian".to_string(), DetectorParams::default())]),
                 &orchestrator_detectors,
                 &[DetectorType::TextGeneration],
                 true
@@ -242,7 +242,7 @@ mod tests {
         );
         assert!(
             validate_detectors(
-                HashMap::from([("pii".to_string(), DetectorParams::default())]).iter(),
+                &HashMap::from([("pii".to_string(), DetectorParams::default())]),
                 &orchestrator_detectors,
                 &[DetectorType::TextContextDoc],
                 false
@@ -252,7 +252,7 @@ mod tests {
         );
         assert!(
             validate_detectors(
-                HashMap::from([("pii_whole_doc".to_string(), DetectorParams::default())]).iter(),
+                &HashMap::from([("pii_whole_doc".to_string(), DetectorParams::default())]),
                 &orchestrator_detectors,
                 &[DetectorType::TextContents],
                 false
@@ -262,7 +262,7 @@ mod tests {
         );
         assert!(
             validate_detectors(
-                HashMap::from([("does_not_exist".to_string(), DetectorParams::default())]).iter(),
+                &HashMap::from([("does_not_exist".to_string(), DetectorParams::default())]),
                 &orchestrator_detectors,
                 &[DetectorType::TextContents],
                 true

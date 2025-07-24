@@ -48,7 +48,7 @@ impl Handle<GenerationWithDetectionTask> for Orchestrator {
         info!(%trace_id, config = ?task.detectors, "task started");
 
         validate_detectors(
-            task.detectors.iter(),
+            &task.detectors,
             &ctx.config.detectors,
             &[DetectorType::TextGeneration],
             true,
