@@ -70,10 +70,6 @@ impl DetectorClient {
         })
     }
 
-    fn client(&self) -> &HttpClient {
-        &self.client
-    }
-
     async fn post<U: ResponseBody>(
         &self,
         model_id: &str,
