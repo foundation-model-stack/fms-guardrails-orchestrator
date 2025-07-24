@@ -45,14 +45,7 @@ pub async fn handle_unary(
     let output_detectors = detectors.output;
 
     validate_detectors(
-        &input_detectors,
-        &ctx.config.detectors,
-        &[DetectorType::TextContents],
-        true,
-    )?;
-
-    validate_detectors(
-        &output_detectors,
+        input_detectors.iter().chain(output_detectors.iter()),
         &ctx.config.detectors,
         &[DetectorType::TextContents],
         true,
