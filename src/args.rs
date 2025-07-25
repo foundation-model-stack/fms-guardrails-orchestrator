@@ -19,6 +19,12 @@ use std::{fmt::Display, path::PathBuf};
 
 use clap::Parser;
 use tracing::{error, warn};
+use url::Url;
+
+use crate::{
+    models::ValidationError,
+    utils::trace::{DEFAULT_GRPC_OTLP_ENDPOINT, DEFAULT_HTTP_OTLP_ENDPOINT},
+};
 
 #[derive(Parser, Debug, Clone)]
 #[clap(author, version, about, long_about = None)]
@@ -50,11 +56,11 @@ pub struct Args {
     #[clap(default_value = "fms_guardrails_orchestr8", long, env)]
     pub otlp_service_name: String,
     #[clap(long, env = "OTEL_EXPORTER_OTLP_ENDPOINT")]
-    pub otlp_endpoint: Option<String>,
+    pub otlp_endpoint: Option<Url>,
     #[clap(long, env = "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT")]
-    pub otlp_traces_endpoint: Option<String>,
+    pub otlp_traces_endpoint: Option<Url>,
     #[clap(long, env = "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT")]
-    pub otlp_metrics_endpoint: Option<String>,
+    pub otlp_metrics_endpoint: Option<Url>,
     #[clap(
         default_value_t = OtlpProtocol::Grpc,
         long,
@@ -128,15 +134,6 @@ impl From<String> for OtlpProtocol {
     }
 }
 
-impl OtlpProtocol {
-    pub fn default_endpoint(&self) -> &str {
-        match self {
-            OtlpProtocol::Grpc => "http://localhost:4317",
-            OtlpProtocol::Http => "http://localhost:4318",
-        }
-    }
-}
-
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub enum LogFormat {
     Compact,
@@ -185,29 +182,91 @@ pub struct TracingConfig {
     pub quiet: bool,
 }
 
-impl From<Args> for TracingConfig {
-    fn from(args: Args) -> Self {
+impl TryFrom<Args> for TracingConfig {
+    type Error = ValidationError;
+
+    fn try_from(args: Args) -> Result<Self, Self::Error> {
+        use OtlpProtocol::*;
         let otlp_protocol = args.otlp_protocol;
-        let otlp_endpoint = args
-            .otlp_endpoint
-            .unwrap_or(otlp_protocol.default_endpoint().to_string());
-        let otlp_traces_endpoint = args.otlp_traces_endpoint.unwrap_or(otlp_endpoint.clone());
-        let otlp_metrics_endpoint = args.otlp_metrics_endpoint.unwrap_or(otlp_endpoint.clone());
+        // Use provided otlp_protocol or default to otlp_protocol
         let otlp_traces_protocol = args.otlp_traces_protocol.unwrap_or(otlp_protocol);
+        // Use provided otlp_metrics_protocol or default to otlp_protocol
         let otlp_metrics_protocol = args.otlp_metrics_protocol.unwrap_or(otlp_protocol);
 
-        TracingConfig {
+        // Validate provided endpoints
+        if let Some(endpoint) = &args.otlp_endpoint {
+            if endpoint.path() != "/" {
+                return Err(ValidationError::Invalid("invalid otlp_endpoint".into()));
+            }
+        }
+        if let Some(endpoint) = &args.otlp_traces_endpoint {
+            match args.otlp_protocol {
+                Grpc => {
+                    if endpoint.path() != "/" {
+                        return Err(ValidationError::Invalid(
+                            "invalid otlp_traces_endpoint for grpc protocol".into(),
+                        ));
+                    }
+                }
+                Http => {
+                    if endpoint.path() != "/v1/traces" {
+                        return Err(ValidationError::Invalid("invalid otlp_traces_endpoint for http protocol: path should be /v1/traces".into())
+                        );
+                    }
+                }
+            }
+        }
+        if let Some(endpoint) = &args.otlp_metrics_endpoint {
+            match args.otlp_protocol {
+                Grpc => {
+                    if endpoint.path() != "/" {
+                        return Err(ValidationError::Invalid(
+                            "invalid otlp_metrics_endpoint for grpc protocol".into(),
+                        ));
+                    }
+                }
+                Http => {
+                    if endpoint.path() != "/v1/metrics" {
+                        return Err(ValidationError::Invalid(
+                            "invalid otlp_metrics_endpoint for http protocol: path should be /v1/metrics".into(),
+                        ));
+                    }
+                }
+            }
+        }
+
+        // Use provided otlp_endpoint or default for protocol
+        let otlp_endpoint = args.otlp_endpoint.unwrap_or(match otlp_protocol {
+            Grpc => Url::parse(DEFAULT_GRPC_OTLP_ENDPOINT).unwrap(),
+            Http => Url::parse(DEFAULT_HTTP_OTLP_ENDPOINT).unwrap(),
+        });
+        // Use provided otlp_traces_endpoint or build from otlp_endpoint
+        let otlp_traces_endpoint =
+            args.otlp_traces_endpoint
+                .unwrap_or(match otlp_traces_protocol {
+                    Grpc => otlp_endpoint.clone(),
+                    Http => otlp_endpoint.clone().join("v1/traces").unwrap(),
+                });
+        // Use provided otlp_metrics_endpoint or build from otlp_endpoint
+        let otlp_metrics_endpoint =
+            args.otlp_metrics_endpoint
+                .unwrap_or(match otlp_metrics_protocol {
+                    Grpc => otlp_endpoint.clone(),
+                    Http => otlp_endpoint.clone().join("v1/metrics").unwrap(),
+                });
+
+        Ok(TracingConfig {
             service_name: args.otlp_service_name,
             traces: match args.otlp_export.contains(&OtlpExport::Traces) {
-                true => Some((otlp_traces_protocol, otlp_traces_endpoint)),
+                true => Some((otlp_traces_protocol, otlp_traces_endpoint.into())),
                 false => None,
             },
             metrics: match args.otlp_export.contains(&OtlpExport::Metrics) {
-                true => Some((otlp_metrics_protocol, otlp_metrics_endpoint)),
+                true => Some((otlp_metrics_protocol, otlp_metrics_endpoint.into())),
                 false => None,
             },
             log_format: args.log_format,
             quiet: args.quiet,
-        }
+        })
     }
 }

@@ -40,6 +40,9 @@ use crate::{
     clients::http::TracedResponse,
 };
 
+pub const DEFAULT_GRPC_OTLP_ENDPOINT: &str = "http://localhost:4317";
+pub const DEFAULT_HTTP_OTLP_ENDPOINT: &str = "http://localhost:4318";
+
 fn resource(tracing_config: TracingConfig) -> Resource {
     Resource::builder()
         .with_service_name(tracing_config.service_name)
