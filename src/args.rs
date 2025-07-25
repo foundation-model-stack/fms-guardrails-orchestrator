@@ -200,7 +200,7 @@ impl TryFrom<Args> for TracingConfig {
             }
         }
         if let Some(endpoint) = &args.otlp_traces_endpoint {
-            match args.otlp_protocol {
+            match otlp_traces_protocol {
                 Grpc => {
                     if endpoint.path() != "/" {
                         return Err(ValidationError::Invalid(
@@ -217,7 +217,7 @@ impl TryFrom<Args> for TracingConfig {
             }
         }
         if let Some(endpoint) = &args.otlp_metrics_endpoint {
-            match args.otlp_protocol {
+            match otlp_metrics_protocol {
                 Grpc => {
                     if endpoint.path() != "/" {
                         return Err(ValidationError::Invalid(
