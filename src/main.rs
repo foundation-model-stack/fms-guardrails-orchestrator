@@ -19,7 +19,10 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
 use clap::Parser;
 use fms_guardrails_orchestr8::{
-    args::Args, config::OrchestratorConfig, orchestrator::Orchestrator, server, utils,
+    args::{Args, TracingConfig},
+    config::OrchestratorConfig,
+    orchestrator::Orchestrator,
+    server, utils,
 };
 use tracing::info;
 
@@ -47,7 +50,8 @@ fn main() -> Result<(), anyhow::Error> {
         .build()
         .unwrap()
         .block_on(async {
-            let trace_shutdown = utils::trace::init_tracing(args.clone().into())?;
+            let tracing_config: TracingConfig = args.clone().try_into()?;
+            let trace_shutdown = utils::trace::init_tracing(tracing_config)?;
             let config = OrchestratorConfig::load(args.config_path).await?;
             let orchestrator = Orchestrator::new(config, args.start_up_health_check).await?;
 
