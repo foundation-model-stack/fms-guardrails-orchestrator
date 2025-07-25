@@ -188,7 +188,7 @@ impl TryFrom<Args> for TracingConfig {
     fn try_from(args: Args) -> Result<Self, Self::Error> {
         use OtlpProtocol::*;
         let otlp_protocol = args.otlp_protocol;
-        // Use provided otlp_protocol or default to otlp_protocol
+        // Use provided otlp_traces_protocol or default to otlp_protocol
         let otlp_traces_protocol = args.otlp_traces_protocol.unwrap_or(otlp_protocol);
         // Use provided otlp_metrics_protocol or default to otlp_protocol
         let otlp_metrics_protocol = args.otlp_metrics_protocol.unwrap_or(otlp_protocol);
