@@ -188,31 +188,21 @@ pub fn init_tracing(
     let subscriber = tracing_subscriber::registry().with(filter).with(layers);
     tracing::subscriber::set_global_default(subscriber).unwrap();
 
-    if let Some(traces) = tracing_config.traces {
-        info!(
-            "OTLP tracing enabled: Exporting {} to {}",
-            traces.0, traces.1
-        );
+    if let Some((protocol, endpoint)) = tracing_config.traces {
+        info!(%protocol, %endpoint, "OTLP traces enabled");
     } else {
-        info!("OTLP traces export disabled")
+        info!("OTLP traces disabled")
     }
-
-    if let Some(metrics) = tracing_config.metrics {
-        info!(
-            "OTLP metrics enabled: Exporting {} to {}",
-            metrics.0, metrics.1
-        );
+    if let Some((protocol, endpoint)) = tracing_config.metrics {
+        info!(%protocol, %endpoint, "OTLP metrics enabled");
     } else {
-        info!("OTLP metrics export disabled")
+        info!("OTLP metrics disabled")
     }
 
     if !tracing_config.quiet {
-        info!(
-            "Stdout logging enabled with format {}",
-            tracing_config.log_format
-        );
+        info!(format = %tracing_config.log_format, "stdout logging enabled");
     } else {
-        info!("Stdout logging disabled"); // This will only be visible in traces
+        info!("stdout logging disabled"); // This will only be visible in traces
     }
 
     Ok(move || {
