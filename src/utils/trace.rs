@@ -24,7 +24,7 @@ use opentelemetry::{
     trace::{TraceContextExt, TraceId, TracerProvider},
 };
 use opentelemetry_http::{HeaderExtractor, HeaderInjector};
-use opentelemetry_otlp::{MetricExporter, SpanExporter, WithExportConfig, WithHttpConfig};
+use opentelemetry_otlp::{MetricExporter, SpanExporter, WithExportConfig};
 use opentelemetry_sdk::{
     Resource,
     metrics::{PeriodicReader, SdkMeterProvider},
@@ -62,7 +62,6 @@ fn init_tracer_provider(
                 .context("Failed to build gRPC span exporter")?,
             OtlpProtocol::Http => SpanExporter::builder()
                 .with_http()
-                .with_http_client(reqwest::Client::new())
                 .with_endpoint(endpoint)
                 .with_timeout(timeout)
                 .build()
@@ -107,7 +106,6 @@ fn init_meter_provider(
                 .context("Failed to build OTel gRPC metric exporter")?,
             OtlpProtocol::Http => MetricExporter::builder()
                 .with_http()
-                .with_http_client(reqwest::Client::new())
                 .with_endpoint(endpoint)
                 .with_timeout(timeout)
                 .build()
