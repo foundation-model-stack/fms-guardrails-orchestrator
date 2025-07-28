@@ -37,6 +37,7 @@ use fms_guardrails_orchestr8::{
             ChatCompletion, ChatCompletionChoice, ChatCompletionMessage,
             CompletionDetectionWarning, CompletionDetections, CompletionInputDetections,
             CompletionOutputDetections, Content, ContentPart, ContentType, Message, Role,
+            TokenizeResponse,
         },
     },
     models::{
@@ -54,6 +55,8 @@ use mocktail::prelude::*;
 use serde_json::json;
 use test_log::test;
 use tracing::debug;
+
+use crate::common::openai::TOKENIZE_ENDPOINT;
 
 pub mod common;
 
@@ -477,7 +480,7 @@ async fn input_detections() -> Result<(), anyhow::Error> {
     // Add mocksets
     let mut detector_mocks = MockSet::new();
     let mut chunker_mocks = MockSet::new();
-    let mut chat_mocks = MockSet::new();
+    let mut openai_mocks = MockSet::new();
 
     // Add input detection mock response for input detection
     let expected_detections = vec![ContentAnalysisResponse {
@@ -537,18 +540,28 @@ async fn input_detections() -> Result<(), anyhow::Error> {
         then.json([&expected_detections]);
     });
 
-    // Add chat completions mock
-    chat_mocks.mock(|when, then| {
+    // Add openai mocks
+    openai_mocks.mock(|when, then| {
         when.post().path(CHAT_COMPLETIONS_ENDPOINT).json(json!({
             "model": MODEL_ID,
             "messages": messages,
         }));
         then.json(&chat_completions_response);
     });
+    openai_mocks.mock(|when, then| {
+        when.post().path(TOKENIZE_ENDPOINT).json(json!({
+            "model": MODEL_ID,
+            "prompt": input_text,
+        }));
+        then.json(&TokenizeResponse {
+            count: 12,
+            ..Default::default()
+        });
+    });
 
     // Start orchestrator server and its dependencies
     let mock_detector_server = MockServer::new_http(detector_name).with_mocks(detector_mocks);
-    let mock_openai_server = MockServer::new_http("openai").with_mocks(chat_mocks);
+    let mock_openai_server = MockServer::new_http("openai").with_mocks(openai_mocks);
     let mock_chunker_server = MockServer::new_grpc(CHUNKER_NAME_SENTENCE).with_mocks(chunker_mocks);
 
     let orchestrator_server = TestOrchestratorServer::builder()
