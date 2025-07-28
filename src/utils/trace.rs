@@ -24,7 +24,7 @@ use opentelemetry::{
     trace::{TraceContextExt, TraceId, TracerProvider},
 };
 use opentelemetry_http::{HeaderExtractor, HeaderInjector};
-use opentelemetry_otlp::{MetricExporter, SpanExporter, WithExportConfig, WithHttpConfig};
+use opentelemetry_otlp::{MetricExporter, SpanExporter, WithExportConfig};
 use opentelemetry_sdk::{
     Resource,
     metrics::{PeriodicReader, SdkMeterProvider},
@@ -39,6 +39,9 @@ use crate::{
     args::{LogFormat, OtlpProtocol, TracingConfig},
     clients::http::TracedResponse,
 };
+
+pub const DEFAULT_GRPC_OTLP_ENDPOINT: &str = "http://localhost:4317";
+pub const DEFAULT_HTTP_OTLP_ENDPOINT: &str = "http://localhost:4318";
 
 fn resource(tracing_config: TracingConfig) -> Resource {
     Resource::builder()
@@ -62,7 +65,6 @@ fn init_tracer_provider(
                 .context("Failed to build gRPC span exporter")?,
             OtlpProtocol::Http => SpanExporter::builder()
                 .with_http()
-                .with_http_client(reqwest::Client::new())
                 .with_endpoint(endpoint)
                 .with_timeout(timeout)
                 .build()
@@ -107,7 +109,6 @@ fn init_meter_provider(
                 .context("Failed to build OTel gRPC metric exporter")?,
             OtlpProtocol::Http => MetricExporter::builder()
                 .with_http()
-                .with_http_client(reqwest::Client::new())
                 .with_endpoint(endpoint)
                 .with_timeout(timeout)
                 .build()
@@ -187,31 +188,21 @@ pub fn init_tracing(
     let subscriber = tracing_subscriber::registry().with(filter).with(layers);
     tracing::subscriber::set_global_default(subscriber).unwrap();
 
-    if let Some(traces) = tracing_config.traces {
-        info!(
-            "OTLP tracing enabled: Exporting {} to {}",
-            traces.0, traces.1
-        );
+    if let Some((protocol, endpoint)) = tracing_config.traces {
+        info!(%protocol, %endpoint, "OTLP traces enabled");
     } else {
-        info!("OTLP traces export disabled")
+        info!("OTLP traces disabled")
     }
-
-    if let Some(metrics) = tracing_config.metrics {
-        info!(
-            "OTLP metrics enabled: Exporting {} to {}",
-            metrics.0, metrics.1
-        );
+    if let Some((protocol, endpoint)) = tracing_config.metrics {
+        info!(%protocol, %endpoint, "OTLP metrics enabled");
     } else {
-        info!("OTLP metrics export disabled")
+        info!("OTLP metrics disabled")
     }
 
     if !tracing_config.quiet {
-        info!(
-            "Stdout logging enabled with format {}",
-            tracing_config.log_format
-        );
+        info!(format = %tracing_config.log_format, "stdout logging enabled");
     } else {
-        info!("Stdout logging disabled"); // This will only be visible in traces
+        info!("stdout logging disabled"); // This will only be visible in traces
     }
 
     Ok(move || {
