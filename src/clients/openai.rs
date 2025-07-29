@@ -346,6 +346,10 @@ pub struct CompletionsRequest {
     /// Detector config.
     #[serde(default, skip_serializing)]
     pub detectors: DetectorConfig,
+    /// Prompt masks.
+    #[serde(rename = "_prompt_masks", skip_serializing)]
+    #[doc(hidden)]
+    pub prompt_masks: Option<Vec<(usize, usize)>>,
     /// Stream parameter.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stream: Option<bool>,
