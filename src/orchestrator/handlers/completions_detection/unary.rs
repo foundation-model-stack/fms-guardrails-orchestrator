@@ -113,7 +113,7 @@ async fn handle_input_detection(
         }
     };
     if !detections.is_empty() {
-        // invoke tokenize endpoint to get input tokens
+        // Get prompt tokens for usage
         let client = ctx.clients.get_as::<OpenAiClient>("openai").unwrap();
         let tokenize_request = TokenizeRequest {
             model: model_id.clone(),

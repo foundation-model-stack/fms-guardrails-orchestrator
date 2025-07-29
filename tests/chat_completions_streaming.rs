@@ -7,7 +7,7 @@ use fms_guardrails_orchestr8::{
             ChatCompletionChunk, ChatCompletionChunkChoice, ChatCompletionDelta,
             ChatCompletionLogprob, ChatCompletionLogprobs, CompletionDetections,
             CompletionInputDetections, CompletionOutputDetections, Content, Message, OpenAiError,
-            OpenAiErrorMessage, Role, Usage,
+            OpenAiErrorMessage, Role, TokenizeResponse, Usage,
         },
     },
     models::DetectorParams,
@@ -27,7 +27,7 @@ use tracing::debug;
 use crate::common::{
     chunker::{CHUNKER_MODEL_ID_HEADER_NAME, CHUNKER_STREAMING_ENDPOINT, CHUNKER_UNARY_ENDPOINT},
     detectors::{PII_DETECTOR_SENTENCE, PII_DETECTOR_WHOLE_DOC, TEXT_CONTENTS_DETECTOR_ENDPOINT},
-    openai::CHAT_COMPLETIONS_ENDPOINT,
+    openai::{CHAT_COMPLETIONS_ENDPOINT, TOKENIZE_ENDPOINT},
     sse,
 };
 
@@ -333,7 +333,19 @@ async fn no_detectors_n2() -> Result<(), anyhow::Error> {
 
 #[test(tokio::test)]
 async fn input_detectors() -> Result<(), anyhow::Error> {
-    let openai_server = MockServer::new_http("openai");
+    let mut openai_server = MockServer::new_http("openai");
+    openai_server.mock(|when, then| {
+        when.post()
+            .path(TOKENIZE_ENDPOINT)
+            .json(json!({
+            "model": "test-0B",
+            "prompt": "Here is my social security number: 123-45-6789. Can you generate another one like it?",
+        }));
+        then.json(&TokenizeResponse {
+            count: 24,
+            ..Default::default()
+        });
+    });
 
     let mut sentence_chunker_server = MockServer::new_grpc("sentence_chunker");
     sentence_chunker_server.mock(|when, then| {

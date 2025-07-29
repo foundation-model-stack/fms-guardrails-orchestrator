@@ -379,10 +379,10 @@ impl CompletionsRequest {
 pub struct TokenizeRequest {
     /// Model name.
     pub model: String,
-    /// Prompt (for completions).
+    /// Prompt.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prompt: Option<String>,
-    /// Messages (for chat completions)
+    /// Messages.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub messages: Option<Vec<Message>>,
     /// Extra fields not captured above.

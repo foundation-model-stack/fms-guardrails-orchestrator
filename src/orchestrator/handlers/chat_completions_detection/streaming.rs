@@ -166,7 +166,7 @@ async fn handle_input_detection(
         task.headers.clone(),
         detectors.clone(),
         input_id,
-        vec![(0, input_text)],
+        vec![(0, input_text.clone())],
     )
     .await
     {
@@ -177,6 +177,20 @@ async fn handle_input_detection(
         }
     };
     if !detections.is_empty() {
+        // Get prompt tokens for usage
+        let client = ctx.clients.get_as::<OpenAiClient>("openai").unwrap();
+        let tokenize_request = TokenizeRequest {
+            model: model_id.clone(),
+            prompt: Some(input_text),
+            ..Default::default()
+        };
+        let tokenize_response =
+            common::tokenize_openai(client, task.headers.clone(), tokenize_request).await?;
+        let usage = Usage {
+            prompt_tokens: tokenize_response.count,
+            ..Default::default()
+        };
+
         // Build chat completion chunk with input detections
         let chunk = ChatCompletionChunk {
             id: Uuid::new_v4().simple().to_string(),
@@ -193,6 +207,7 @@ async fn handle_input_detection(
                 DetectionWarningReason::UnsuitableInput,
                 UNSUITABLE_INPUT_MESSAGE,
             )],
+            usage: Some(usage),
             ..Default::default()
         };
         Ok(Some(chunk))
