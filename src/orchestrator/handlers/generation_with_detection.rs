@@ -55,10 +55,7 @@ impl Handle<GenerationWithDetectionTask> for Orchestrator {
         )?;
 
         // Handle generation
-        let client = ctx
-            .clients
-            .get_as::<GenerationClient>("generation")
-            .unwrap();
+        let client = ctx.clients.get::<GenerationClient>("generation").unwrap();
         let generation = common::generate(
             client,
             task.headers.clone(),

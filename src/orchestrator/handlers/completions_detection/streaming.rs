@@ -93,7 +93,7 @@ pub async fn handle_streaming(
             // Create completions stream
             let client = ctx
                 .clients
-                .get_as::<OpenAiClient>("openai")
+                .get::<OpenAiClient>("openai")
                 .unwrap();
             let completion_stream = match common::completion_stream(client, task.headers.clone(), task.request.clone()).await {
                 Ok(stream) => stream,
@@ -161,7 +161,7 @@ async fn handle_input_detection(
     };
     if !detections.is_empty() {
         // Get prompt tokens for usage
-        let client = ctx.clients.get_as::<OpenAiClient>("openai").unwrap();
+        let client = ctx.clients.get::<OpenAiClient>("openai").unwrap();
         let tokenize_request = TokenizeRequest {
             model: model_id.clone(),
             prompt: Some(task.request.prompt.clone()),

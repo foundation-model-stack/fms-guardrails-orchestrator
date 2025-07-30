@@ -75,10 +75,7 @@ impl Handle<ClassificationWithGenTask> for Orchestrator {
         }
 
         // Handle generation
-        let client = ctx
-            .clients
-            .get_as::<GenerationClient>("generation")
-            .unwrap();
+        let client = ctx.clients.get::<GenerationClient>("generation").unwrap();
         let generation = common::generate(
             client,
             task.headers.clone(),
@@ -124,10 +121,7 @@ async fn handle_input_detection(
     };
     if !detections.is_empty() {
         // Get token count
-        let client = ctx
-            .clients
-            .get_as::<GenerationClient>("generation")
-            .unwrap();
+        let client = ctx.clients.get::<GenerationClient>("generation").unwrap();
         let input_token_count = match common::tokenize(
             client,
             task.headers.clone(),
