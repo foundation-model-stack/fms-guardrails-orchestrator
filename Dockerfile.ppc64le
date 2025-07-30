@@ -38,7 +38,7 @@ RUN cd /tmp && \
     unzip protoc-*.zip -d /usr/local && \
     rm protoc-*.zip
 
-ENV LIBCLANG_PATH=/usr/lib/llvm-14/lib/
+ENV LIBCLANG_PATH=/usr/lib64/
 
 WORKDIR /app
 
