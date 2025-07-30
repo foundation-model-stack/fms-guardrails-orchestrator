@@ -95,14 +95,16 @@ async fn handle_input_detection(
 ) -> Result<Option<Completion>, Error> {
     let trace_id = task.trace_id;
     let model_id = task.request.model.clone();
-
-    let input_text = task.request.prompt.clone();
+    let inputs = common::apply_masks(
+        task.request.prompt.clone(),
+        task.request.prompt_masks.as_deref(),
+    );
     let detections = match common::text_contents_detections(
         ctx.clone(),
         task.headers.clone(),
         detectors.clone(),
         0,
-        vec![(0, input_text)],
+        inputs,
     )
     .await
     {
