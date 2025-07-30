@@ -69,7 +69,7 @@ pub async fn handle_unary(
     }
 
     // Handle chat completion
-    let client = ctx.clients.get_as::<OpenAiClient>("openai").unwrap();
+    let client = ctx.clients.get::<OpenAiClient>("openai").unwrap();
     let chat_completion =
         match common::chat_completion(client, task.headers.clone(), task.request.clone()).await {
             Ok(ChatCompletionsResponse::Unary(chat_completion)) => *chat_completion,
@@ -135,7 +135,7 @@ async fn handle_input_detection(
     };
     if !detections.is_empty() {
         // Get prompt tokens for usage
-        let client = ctx.clients.get_as::<OpenAiClient>("openai").unwrap();
+        let client = ctx.clients.get::<OpenAiClient>("openai").unwrap();
         let tokenize_request = TokenizeRequest {
             model: model_id.clone(),
             prompt: Some(input_text),

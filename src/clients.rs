@@ -148,27 +148,15 @@ impl ClientMap {
         self.0.insert(key, Box::new(value));
     }
 
-    /// Returns a reference to the client trait object.
+    /// Returns a reference to the concrete client type.
     #[inline]
-    pub fn get(&self, key: &str) -> Option<&dyn Client> {
-        self.0.get(key).map(|v| v.as_ref())
-    }
-
-    /// Returns a mutable reference to the client trait object.
-    #[inline]
-    pub fn get_mut(&mut self, key: &str) -> Option<&mut dyn Client> {
-        self.0.get_mut(key).map(|v| v.as_mut())
-    }
-
-    /// Downcasts and returns a reference to the concrete client type.
-    #[inline]
-    pub fn get_as<V: Client>(&self, key: &str) -> Option<&V> {
+    pub fn get<V: Client>(&self, key: &str) -> Option<&V> {
         self.0.get(key)?.downcast_ref::<V>()
     }
 
-    /// Downcasts and returns a mutable reference to the concrete client type.
+    /// Returns a mutable reference to the concrete client type.
     #[inline]
-    pub fn get_mut_as<V: Client>(&mut self, key: &str) -> Option<&mut V> {
+    pub fn get_mut<V: Client>(&mut self, key: &str) -> Option<&mut V> {
         self.0.get_mut(key)?.downcast_mut::<V>()
     }
 
