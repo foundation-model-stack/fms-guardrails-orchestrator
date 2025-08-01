@@ -218,11 +218,16 @@ impl HttpClient {
             )),
         }
     }
-
     pub async fn health(&self) -> HealthCheckResult {
-        let req = Request::get(self.health_url.as_uri())
-            .body(BoxBody::default())
-            .unwrap();
+        self.health_with_headers(HeaderMap::new()).await
+    }
+
+    pub async fn health_with_headers(&self, headers: http::HeaderMap) -> HealthCheckResult {
+        let mut builder = Request::get(self.health_url.as_uri());
+        if let Some(headers_mut) = builder.headers_mut() {
+            headers_mut.extend(headers.clone());
+        }
+        let req = builder.body(BoxBody::default()).unwrap();
         let res = self.inner.clone().call(req).await;
         match res {
             Ok(response) => {

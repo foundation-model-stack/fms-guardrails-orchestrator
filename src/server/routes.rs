@@ -122,8 +122,15 @@ async fn health() -> Result<impl IntoResponse, ()> {
 async fn info(
     State(state): State<Arc<ServerState>>,
     Query(params): Query<InfoParams>,
+    headers: HeaderMap,
 ) -> Result<Json<InfoResponse>, Error> {
-    let services = state.orchestrator.client_health(params.probe).await;
+    // Filter passthrough headers from the request
+    let passthrough_headers =
+        filter_headers(&state.orchestrator.config().passthrough_headers, headers);
+    let services = state
+        .orchestrator
+        .client_health_with_headers(params.probe, passthrough_headers)
+        .await;
     Ok(Json(InfoResponse { services }))
 }
 
