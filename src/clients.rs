@@ -93,6 +93,12 @@ pub trait Client: Send + Sync + 'static {
 
     /// Performs a client health check.
     async fn health(&self) -> HealthCheckResult;
+
+    // Perform
+    async fn health_with_headers(&self, _headers: hyper::HeaderMap) -> HealthCheckResult {
+        // default: ignore headers
+        self.health().await
+    }
 }
 
 impl dyn Client {

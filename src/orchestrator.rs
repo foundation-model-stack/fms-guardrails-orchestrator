@@ -22,7 +22,7 @@ pub mod types;
 
 use std::sync::Arc;
 
-use tokio::{sync::RwLock, time::Instant};
+use tokio::sync::RwLock;
 use tracing::{debug, info};
 
 use crate::{
@@ -92,22 +92,32 @@ impl Orchestrator {
 
     /// Returns client health state.
     pub async fn client_health(&self, probe: bool) -> HealthCheckCache {
+        self.client_health_with_headers(probe, http::HeaderMap::new())
+            .await
+    }
+
+    /// Returns client health state, passing through headers.
+    pub async fn client_health_with_headers(
+        &self,
+        probe: bool,
+        headers: http::HeaderMap,
+    ) -> HealthCheckCache {
         let initialized = !self.client_health.read().await.is_empty();
-        if probe || !initialized {
-            debug!("refreshing health cache");
-            let now = Instant::now();
+        // If probe is true, or cache is empty, or passthrough headers are present, refresh health
+        let has_headers = !headers.is_empty();
+        if probe || !initialized || has_headers {
             let mut health = HealthCheckCache::with_capacity(self.ctx.clients.len());
             // TODO: perform health checks concurrently?
             for (key, client) in self.ctx.clients.iter() {
-                let result = client.health().await;
+                let result = client.health_with_headers(headers.clone()).await;
                 health.insert(key.into(), result);
             }
-            let mut client_health = self.client_health.write().await;
-            *client_health = health;
-            debug!(
-                "refreshing health cache completed in {:.2?}ms",
-                now.elapsed().as_millis()
-            );
+            // Only update the cache if not using passthrough headers
+            if !has_headers {
+                let mut client_health = self.client_health.write().await;
+                *client_health = health.clone();
+            }
+            return health;
         }
         self.client_health.read().await.clone()
     }

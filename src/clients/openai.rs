@@ -228,6 +228,14 @@ impl Client for OpenAiClient {
             self.client.health().await
         }
     }
+
+    async fn health_with_headers(&self, headers: http::HeaderMap) -> HealthCheckResult {
+        if let Some(health_client) = &self.health_client {
+            health_client.health_with_headers(headers).await
+        } else {
+            self.client.health_with_headers(headers).await
+        }
+    }
 }
 
 impl HttpClientExt for OpenAiClient {
