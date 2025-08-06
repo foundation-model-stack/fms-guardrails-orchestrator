@@ -846,7 +846,7 @@ pub struct ChatCompletionDelta {
 }
 
 /// Completion (legacy) response. Also used for streaming.
-#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Completion {
     /// A unique identifier for the completion.
     pub id: String,
@@ -869,6 +869,22 @@ pub struct Completion {
     /// Warnings
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub warnings: Vec<CompletionDetectionWarning>,
+}
+
+impl Default for Completion {
+    fn default() -> Self {
+        Self {
+            id: Default::default(),
+            object: "text_completion".into(), // This value is constant: https://platform.openai.com/docs/api-reference/completions/object#completions/object-object
+            created: Default::default(),
+            model: Default::default(),
+            choices: Default::default(),
+            usage: Default::default(),
+            system_fingerprint: Default::default(),
+            detections: Default::default(),
+            warnings: Default::default(),
+        }
+    }
 }
 
 /// Completion (legacy) choice.
