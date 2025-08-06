@@ -20,10 +20,9 @@ pub mod common;
 pub mod handlers;
 pub mod types;
 
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
-use tokio::{sync::RwLock, time::Instant};
-use tracing::{debug, info};
+use tracing::{info, warn};
 
 use crate::{
     clients::{
@@ -31,7 +30,7 @@ use crate::{
         openai::OpenAiClient,
     },
     config::{GenerationProvider, OrchestratorConfig},
-    health::HealthCheckCache,
+    health::{HealthCheckResult, HealthStatus},
 };
 
 const DEFAULT_MAX_RETRIES: usize = 3;
@@ -52,7 +51,6 @@ impl Context {
 #[cfg_attr(test, derive(Default))]
 pub struct Orchestrator {
     ctx: Arc<Context>,
-    client_health: Arc<RwLock<HealthCheckCache>>,
 }
 
 impl Orchestrator {
@@ -62,13 +60,8 @@ impl Orchestrator {
     ) -> Result<Self, Error> {
         let clients = create_clients(&config).await?;
         let ctx = Arc::new(Context { config, clients });
-        let orchestrator = Self {
-            ctx,
-            client_health: Arc::new(RwLock::new(HealthCheckCache::default())),
-        };
-        debug!("running start up checks");
+        let orchestrator = Self { ctx };
         orchestrator.on_start_up(start_up_health_check).await?;
-        debug!("start up checks completed");
         Ok(orchestrator)
     }
 
@@ -76,40 +69,40 @@ impl Orchestrator {
         &self.ctx.config
     }
 
-    /// Perform any start-up actions required by the orchestrator.
-    /// This should only error when the orchestrator is unable to start up.
-    /// Currently only performs client health probing to have results loaded into the cache.
+    /// Run start up actions.
     pub async fn on_start_up(&self, health_check: bool) -> Result<(), Error> {
-        info!("Performing start-up actions for orchestrator...");
         if health_check {
-            info!("Probing client health...");
-            let client_health = self.client_health(true).await;
-            // Results of probe do not affect orchestrator start-up.
-            info!("Client health:\n{client_health}");
+            info!("running client health checks");
+            let client_health = self.client_health().await;
+            let unhealthy = client_health
+                .iter()
+                .any(|(_, health)| matches!(health.status, HealthStatus::Unhealthy));
+            info!(
+                "client health:\n{}",
+                serde_json::to_string_pretty(&client_health).unwrap()
+            );
+            if unhealthy {
+                warn!("one or more clients is unhealthy")
+            }
         }
         Ok(())
     }
 
-    /// Returns client health state.
-    pub async fn client_health(&self, probe: bool) -> HealthCheckCache {
-        let initialized = !self.client_health.read().await.is_empty();
-        if probe || !initialized {
-            debug!("refreshing health cache");
-            let now = Instant::now();
-            let mut health = HealthCheckCache::with_capacity(self.ctx.clients.len());
-            // TODO: perform health checks concurrently?
-            for (key, client) in self.ctx.clients.iter() {
-                let result = client.health().await;
-                health.insert(key.into(), result);
-            }
-            let mut client_health = self.client_health.write().await;
-            *client_health = health;
-            debug!(
-                "refreshing health cache completed in {:.2?}ms",
-                now.elapsed().as_millis()
-            );
+    /// Returns health status of all clients.
+    pub async fn client_health(&self) -> HashMap<String, HealthCheckResult> {
+        // TODO: fix router lifetime issue to run concurrently
+        // stream::iter(self.ctx.clients.iter())
+        //     .map(|(key, client)| async move {
+        //         (key.to_string(), client.health().await)
+        //     })
+        //     .buffer_unordered(8)
+        //     .collect::<HashMap<_, _>>()
+        //     .await
+        let mut health = HashMap::with_capacity(self.ctx.clients.len());
+        for (key, client) in self.ctx.clients.iter() {
+            health.insert(key.into(), client.health().await);
         }
-        self.client_health.read().await.clone()
+        health
     }
 }
 

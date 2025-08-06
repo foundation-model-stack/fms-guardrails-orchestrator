@@ -121,9 +121,9 @@ async fn health() -> Result<impl IntoResponse, ()> {
 
 async fn info(
     State(state): State<Arc<ServerState>>,
-    Query(params): Query<InfoParams>,
+    Query(_params): Query<InfoParams>,
 ) -> Result<Json<InfoResponse>, Error> {
-    let services = state.orchestrator.client_health(params.probe).await;
+    let services = state.orchestrator.client_health().await;
     Ok(Json(InfoResponse { services }))
 }
 

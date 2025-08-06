@@ -27,7 +27,7 @@ use crate::{
         detector::{ContentAnalysisResponse, ContextType},
         openai::{Content, ContentType},
     },
-    health::HealthCheckCache,
+    health::HealthCheckResult,
     pb,
 };
 
@@ -35,7 +35,7 @@ pub const THRESHOLD_PARAM: &str = "threshold";
 
 #[derive(Clone, Debug, Serialize)]
 pub struct InfoResponse {
-    pub services: HealthCheckCache,
+    pub services: HashMap<String, HealthCheckResult>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

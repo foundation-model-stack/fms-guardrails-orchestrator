@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt::Display};
+use std::fmt::Display;
 
 use axum::http::StatusCode;
 use serde::{Deserialize, Serialize};
@@ -47,49 +47,6 @@ impl From<StatusCode> for HealthStatus {
             500..=599 => Self::Unhealthy,
             _ => Self::Unknown,
         }
-    }
-}
-
-/// A cache to hold the latest health check results for each client service.
-/// Orchestrator has a reference-counted mutex-protected instance of this cache.
-#[derive(Debug, Clone, Default, Serialize)]
-pub struct HealthCheckCache(HashMap<String, HealthCheckResult>);
-
-impl HealthCheckCache {
-    pub fn new() -> Self {
-        Self(HashMap::new())
-    }
-
-    pub fn with_capacity(capacity: usize) -> Self {
-        Self(HashMap::with_capacity(capacity))
-    }
-
-    /// Returns `true` if all services are healthy or unknown.
-    pub fn healthy(&self) -> bool {
-        !self
-            .0
-            .iter()
-            .any(|(_, value)| matches!(value.status, HealthStatus::Unhealthy))
-    }
-}
-
-impl std::ops::Deref for HealthCheckCache {
-    type Target = HashMap<String, HealthCheckResult>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl std::ops::DerefMut for HealthCheckCache {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
-
-impl Display for HealthCheckCache {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", serde_json::to_string_pretty(self).unwrap())
     }
 }
 
