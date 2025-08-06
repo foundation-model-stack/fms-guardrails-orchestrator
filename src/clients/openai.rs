@@ -888,7 +888,7 @@ impl Default for Completion {
 }
 
 /// Completion (legacy) choice.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct CompletionChoice {
     /// The index of the choice in the list of choices.
     pub index: u32,
