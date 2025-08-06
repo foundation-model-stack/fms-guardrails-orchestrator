@@ -1,13 +1,34 @@
 pub mod common;
-use common::orchestrator::*;
-use fms_guardrails_orchestr8::clients::openai::{Completion, CompletionChoice};
+use fms_guardrails_orchestr8::{
+    clients::{
+        detector::{ContentAnalysisRequest, ContentAnalysisResponse},
+        openai::{
+            Completion, CompletionChoice, CompletionDetections, CompletionInputDetections,
+            TokenizeResponse,
+        },
+    },
+    models::DetectorParams,
+    pb::{
+        caikit::runtime::chunkers::ChunkerTokenizationTaskRequest,
+        caikit_data_model::nlp::{Token, TokenizationResults},
+    },
+};
 use futures::TryStreamExt;
 use mocktail::prelude::*;
 use serde_json::json;
 use test_log::test;
 use tracing::debug;
 
-use crate::common::{openai::COMPLETIONS_ENDPOINT, sse};
+use crate::common::{
+    chunker::{CHUNKER_MODEL_ID_HEADER_NAME, CHUNKER_UNARY_ENDPOINT},
+    detectors::{PII_DETECTOR_SENTENCE, TEXT_CONTENTS_DETECTOR_ENDPOINT},
+    openai::{COMPLETIONS_ENDPOINT, TOKENIZE_ENDPOINT},
+    orchestrator::{
+        ORCHESTRATOR_COMPLETIONS_DETECTION_ENDPOINT, ORCHESTRATOR_CONFIG_FILE_PATH, SseStream,
+        TestOrchestratorServer,
+    },
+    sse,
+};
 
 #[test(tokio::test)]
 async fn no_detectors() -> Result<(), anyhow::Error> {
@@ -70,7 +91,7 @@ async fn no_detectors() -> Result<(), anyhow::Error> {
         .post(ORCHESTRATOR_COMPLETIONS_DETECTION_ENDPOINT)
         .json(&json!({
             "stream": true,
-            "model": "test-0B",
+            "model": model_id,
             "prompt": "Hi there! How are you?",
         }))
         .send()
@@ -176,7 +197,7 @@ async fn no_detectors_n2() -> Result<(), anyhow::Error> {
         .post(ORCHESTRATOR_COMPLETIONS_DETECTION_ENDPOINT)
         .json(&json!({
             "stream": true,
-            "model": "test-0B",
+            "model": model_id,
             "prompt": "Hi there! How are you?",
             "n": 2
         }))
@@ -221,120 +242,119 @@ async fn no_detectors_n2() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
-// #[test(tokio::test)]
-// async fn input_detectors() -> Result<(), anyhow::Error> {
-//     let mut openai_server = MockServer::new_http("openai");
-//     openai_server.mock(|when, then| {
-//         when.post()
-//             .path(TOKENIZE_ENDPOINT)
-//             .json(json!({
-//             "model": "test-0B",
-//             "prompt": "Here is my social security number: 123-45-6789. Can you generate another one like it?",
-//         }));
-//         then.json(&TokenizeResponse {
-//             count: 24,
-//             ..Default::default()
-//         });
-//     });
+#[test(tokio::test)]
+async fn input_detectors() -> Result<(), anyhow::Error> {
+    let model_id = "test-0B";
+    let mut openai_server = MockServer::new_http("openai");
+    openai_server.mock(|when, then| {
+        when.post()
+            .path(TOKENIZE_ENDPOINT)
+            .json(json!({
+            "model": model_id,
+            "prompt": "Here is my social security number: 123-45-6789. Can you generate another one like it?",
+        }));
+        then.json(&TokenizeResponse {
+            count: 24,
+            ..Default::default()
+        });
+    });
 
-//     let mut sentence_chunker_server = MockServer::new_grpc("sentence_chunker");
-//     sentence_chunker_server.mock(|when, then| {
-//         when.post()
-//             .path(CHUNKER_UNARY_ENDPOINT)
-//             .header(CHUNKER_MODEL_ID_HEADER_NAME, "sentence_chunker")
-//             .pb(ChunkerTokenizationTaskRequest { text: "Here is my social security number: 123-45-6789. Can you generate another one like it?".into() });
-//         then.pb(TokenizationResults {
-//             results: vec![
-//                 Token { start: 0, end: 47, text: "Here is my social security number: 123-45-6789.".into() },
-//                 Token { start: 48, end: 85, text: "Can you generate another one like it?".into() },
-//             ],
-//             token_count: 0
-//         });
-//     });
+    let mut sentence_chunker_server = MockServer::new_grpc("sentence_chunker");
+    sentence_chunker_server.mock(|when, then| {
+        when.post()
+            .path(CHUNKER_UNARY_ENDPOINT)
+            .header(CHUNKER_MODEL_ID_HEADER_NAME, "sentence_chunker")
+            .pb(ChunkerTokenizationTaskRequest { text: "Here is my social security number: 123-45-6789. Can you generate another one like it?".into() });
+        then.pb(TokenizationResults {
+            results: vec![
+                Token { start: 0, end: 47, text: "Here is my social security number: 123-45-6789.".into() },
+                Token { start: 48, end: 85, text: "Can you generate another one like it?".into() },
+            ],
+            token_count: 0
+        });
+    });
 
-//     let mut pii_detector_sentence_server = MockServer::new_http("pii_detector_sentence");
-//     pii_detector_sentence_server.mock(|when, then| {
-//         when.post()
-//             .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
-//             .header("detector-id", PII_DETECTOR_SENTENCE)
-//             .json(ContentAnalysisRequest {
-//                 contents: vec![
-//                     "Here is my social security number: 123-45-6789.".into(),
-//                     "Can you generate another one like it?".into(),
-//                 ],
-//                 detector_params: DetectorParams::default(),
-//             });
-//         then.json(json!([
-//         [
-//             {
-//                 "start": 35,
-//                 "end": 46,
-//                 "detection": "NationalNumber.SocialSecurityNumber.US",
-//                 "detection_type": "pii",
-//                 "score": 0.8,
-//                 "text": "123-45-6789",
-//                 "evidences": []
-//             }
-//         ]]));
-//     });
+    let mut pii_detector_sentence_server = MockServer::new_http("pii_detector_sentence");
+    pii_detector_sentence_server.mock(|when, then| {
+        when.post()
+            .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
+            .header("detector-id", PII_DETECTOR_SENTENCE)
+            .json(ContentAnalysisRequest {
+                contents: vec![
+                    "Here is my social security number: 123-45-6789.".into(),
+                    "Can you generate another one like it?".into(),
+                ],
+                detector_params: DetectorParams::default(),
+            });
+        then.json(json!([
+        [
+            {
+                "start": 35,
+                "end": 46,
+                "detection": "NationalNumber.SocialSecurityNumber.US",
+                "detection_type": "pii",
+                "score": 0.8,
+                "text": "123-45-6789",
+                "evidences": []
+            }
+        ]]));
+    });
 
-//     let test_server = TestOrchestratorServer::builder()
-//         .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
-//         .openai_server(&openai_server)
-//         .chunker_servers([&sentence_chunker_server])
-//         .detector_servers([&pii_detector_sentence_server])
-//         .build()
-//         .await?;
+    let test_server = TestOrchestratorServer::builder()
+        .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
+        .openai_server(&openai_server)
+        .chunker_servers([&sentence_chunker_server])
+        .detector_servers([&pii_detector_sentence_server])
+        .build()
+        .await?;
 
-//     let response = test_server
-//         .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
-//         .json(&json!({
-//             "stream": true,
-//             "model": "test-0B",
-//             "detectors": {
-//                 "input": {
-//                     "pii_detector_sentence": {}
-//                 },
-//                 "output": {}
-//             },
-//             "messages": [
-//                 Message { role: Role::User, content: Some(Content::Text("Here is my social security number: 123-45-6789. Can you generate another one like it?".into())), ..Default::default()},
-//             ],
-//         }))
-//         .send()
-//         .await?;
-//     assert_eq!(response.status(), StatusCode::OK);
+    let response = test_server
+        .post(ORCHESTRATOR_COMPLETIONS_DETECTION_ENDPOINT)
+        .json(&json!({
+            "stream": true,
+            "model": model_id,
+            "detectors": {
+                "input": {
+                    PII_DETECTOR_SENTENCE: {}
+                },
+                "output": {}
+            },
+            "prompt": "Here is my social security number: 123-45-6789. Can you generate another one like it?",            
+        }))
+        .send()
+        .await?;
+    assert_eq!(response.status(), StatusCode::OK);
 
-//     let sse_stream: SseStream<ChatCompletionChunk> = SseStream::new(response.bytes_stream());
-//     let messages = sse_stream.try_collect::<Vec<_>>().await?;
+    let sse_stream: SseStream<Completion> = SseStream::new(response.bytes_stream());
+    let messages = sse_stream.try_collect::<Vec<_>>().await?;
 
-//     // Validate length
-//     assert_eq!(messages.len(), 1, "unexpected number of messages");
+    // Validate length
+    assert_eq!(messages.len(), 1, "unexpected number of messages");
 
-//     // Validate input detections
-//     assert_eq!(
-//         messages[0].detections,
-//         Some(CompletionDetections {
-//             input: vec![CompletionInputDetections {
-//                 message_index: 0,
-//                 results: vec![ContentAnalysisResponse {
-//                     start: 35,
-//                     end: 46,
-//                     text: "123-45-6789".into(),
-//                     detection: "NationalNumber.SocialSecurityNumber.US".into(),
-//                     detection_type: "pii".into(),
-//                     detector_id: Some("pii_detector_sentence".into()),
-//                     score: 0.8,
-//                     ..Default::default()
-//                 }],
-//             }],
-//             output: vec![],
-//         }),
-//         "unexpected input detections"
-//     );
+    // Validate input detections
+    assert_eq!(
+        messages[0].detections,
+        Some(CompletionDetections {
+            input: vec![CompletionInputDetections {
+                message_index: 0,
+                results: vec![ContentAnalysisResponse {
+                    start: 35,
+                    end: 46,
+                    text: "123-45-6789".into(),
+                    detection: "NationalNumber.SocialSecurityNumber.US".into(),
+                    detection_type: "pii".into(),
+                    detector_id: Some("pii_detector_sentence".into()),
+                    score: 0.8,
+                    ..Default::default()
+                }],
+            }],
+            output: vec![],
+        }),
+        "unexpected input detections"
+    );
 
-//     Ok(())
-// }
+    Ok(())
+}
 
 // #[test(tokio::test)]
 // async fn output_detectors() -> Result<(), anyhow::Error> {
