@@ -102,188 +102,124 @@ async fn no_detectors() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
-// #[test(tokio::test)]
-// async fn no_detectors_n2() -> Result<(), anyhow::Error> {
-//     let mut openai_server = MockServer::new_http("openai");
-//     openai_server.mock(|when, then| {
-//         when.post()
-//             .path(CHAT_COMPLETIONS_ENDPOINT)
-//             .json(json!({
-//                 "stream": true,
-//                 "model": "test-0B",
-//                 "messages": [
-//                     Message { role: Role::User, content: Some(Content::Text("Hey".into())), ..Default::default()},
-//                 ],
-//                 "n": 2,
-//             })
-//         );
-//         then.text_stream(sse([
-//             ChatCompletionChunk {
-//                 id: "chatcmpl-test".into(),
-//                 object: "chat.completion.chunk".into(),
-//                 created: 1749227854,
-//                 model: "test-0B".into(),
-//                 choices: vec![ChatCompletionChunkChoice {
-//                     index: 0,
-//                     delta: ChatCompletionDelta {
-//                         role: Some(Role::Assistant),
-//                         ..Default::default()
-//                     },
-//                     ..Default::default()
-//                 }],
-//                 ..Default::default()
-//             },
-//             ChatCompletionChunk {
-//                 id: "chatcmpl-test".into(),
-//                 object: "chat.completion.chunk".into(),
-//                 created: 1749227854,
-//                 model: "test-0B".into(),
-//                 choices: vec![ChatCompletionChunkChoice {
-//                     index: 1,
-//                     delta: ChatCompletionDelta {
-//                         role: Some(Role::Assistant),
-//                         ..Default::default()
-//                     },
-//                     ..Default::default()
-//                 }],
-//                 ..Default::default()
-//             },
-//             ChatCompletionChunk {
-//                 id: "chatcmpl-test".into(),
-//                 object: "chat.completion.chunk".into(),
-//                 created: 1749227854,
-//                 model: "test-0B".into(),
-//                 choices: vec![ChatCompletionChunkChoice {
-//                     index: 0,
-//                     delta: ChatCompletionDelta {
-//                         content: Some("Hey".into()),
-//                         ..Default::default()
-//                     },
-//                     ..Default::default()
-//                 }],
-//                 ..Default::default()
-//             },
-//             ChatCompletionChunk {
-//                 id: "chatcmpl-test".into(),
-//                 object: "chat.completion.chunk".into(),
-//                 created: 1749227854,
-//                 model: "test-0B".into(),
-//                 choices: vec![ChatCompletionChunkChoice {
-//                     index: 1,
-//                     delta: ChatCompletionDelta {
-//                         content: Some("Hey".into()),
-//                         ..Default::default()
-//                     },
-//                     ..Default::default()
-//                 }],
-//                 ..Default::default()
-//             },
-//             ChatCompletionChunk {
-//                 id: "chatcmpl-test".into(),
-//                 object: "chat.completion.chunk".into(),
-//                 created: 1749227854,
-//                 model: "test-0B".into(),
-//                 choices: vec![ChatCompletionChunkChoice {
-//                     index: 0,
-//                     delta: ChatCompletionDelta {
-//                         content: Some("!".into()),
-//                         ..Default::default()
-//                     },
-//                     ..Default::default()
-//                 }],
-//                 ..Default::default()
-//             },
-//             ChatCompletionChunk {
-//                 id: "chatcmpl-test".into(),
-//                 object: "chat.completion.chunk".into(),
-//                 created: 1749227854,
-//                 model: "test-0B".into(),
-//                 choices: vec![ChatCompletionChunkChoice {
-//                     index: 0,
-//                     finish_reason: Some("stop".into()),
-//                     ..Default::default()
-//                 }],
-//                 ..Default::default()
-//             },
-//             ChatCompletionChunk {
-//                 id: "chatcmpl-test".into(),
-//                 object: "chat.completion.chunk".into(),
-//                 created: 1749227854,
-//                 model: "test-0B".into(),
-//                 choices: vec![ChatCompletionChunkChoice {
-//                     index: 1,
-//                     finish_reason: Some("stop".into()),
-//                     ..Default::default()
-//                 }],
-//                 ..Default::default()
-//             },
-//         ]));
-//     });
+#[test(tokio::test)]
+async fn no_detectors_n2() -> Result<(), anyhow::Error> {
+    let model_id = "test-0B";
+    let mut openai_server = MockServer::new_http("openai");
 
-//     let test_server = TestOrchestratorServer::builder()
-//         .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
-//         .openai_server(&openai_server)
-//         .build()
-//         .await?;
+    let completions_chunks = [
+        Completion {
+            id: "cmpl-test".into(),
+            model: model_id.to_string(),
+            created: 1754506038,
+            choices: vec![CompletionChoice {
+                index: 0,
+                text: "I".into(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        },
+        Completion {
+            id: "cmpl-test".into(),
+            model: model_id.to_string(),
+            created: 1754506038,
+            choices: vec![CompletionChoice {
+                index: 1,
+                text: "Awesome!".into(),
+                finish_reason: Some("stop".into()),
+                ..Default::default()
+            }],
+            ..Default::default()
+        },
+        Completion {
+            id: "cmpl-test".into(),
+            model: model_id.to_string(),
+            created: 1754506038,
+            choices: vec![CompletionChoice {
+                index: 0,
+                text: " am".into(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        },
+        Completion {
+            id: "cmpl-test".into(),
+            model: model_id.to_string(),
+            created: 1754506038,
+            choices: vec![CompletionChoice {
+                index: 0,
+                text: " great!".into(),
+                finish_reason: Some("stop".into()),
+                ..Default::default()
+            }],
+            ..Default::default()
+        },
+    ];
 
-//     let response = test_server
-//         .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
-//         .json(&json!({
-//             "n": 2,
-//             "stream": true,
-//             "model": "test-0B",
-//             "messages": [
-//                 Message { role: Role::User, content: Some(Content::Text("Hey".into())), ..Default::default()},
-//             ]
-//         }))
-//         .send()
-//         .await?;
-//     assert_eq!(response.status(), StatusCode::OK);
+    openai_server.mock(|when, then| {
+        when.post().path(COMPLETIONS_ENDPOINT).json(json!({
+            "stream": true,
+            "model": model_id,
+            "prompt": "Hi there! How are you?",
+            "n": 2
+        }));
+        then.text_stream(sse(completions_chunks.clone()));
+    });
 
-//     let sse_stream: SseStream<ChatCompletionChunk> = SseStream::new(response.bytes_stream());
-//     let messages = sse_stream.try_collect::<Vec<_>>().await?;
-//     debug!("{messages:#?}");
+    let test_server = TestOrchestratorServer::builder()
+        .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
+        .openai_server(&openai_server)
+        .build()
+        .await?;
 
-//     assert_eq!(messages.len(), 7);
+    let response = test_server
+        .post(ORCHESTRATOR_COMPLETIONS_DETECTION_ENDPOINT)
+        .json(&json!({
+            "stream": true,
+            "model": "test-0B",
+            "prompt": "Hi there! How are you?",
+            "n": 2
+        }))
+        .send()
+        .await?;
+    assert_eq!(response.status(), StatusCode::OK);
 
-//     // Validate role messages for both choices
-//     assert_eq!(messages[0].choices[0].index, 0);
-//     assert_eq!(
-//         messages[0].choices[0].delta.role,
-//         Some(Role::Assistant),
-//         "choice0: missing role message"
-//     );
-//     assert_eq!(messages[1].choices[0].index, 1);
-//     assert_eq!(
-//         messages[1].choices[0].delta.role,
-//         Some(Role::Assistant),
-//         "choice1: missing role message"
-//     );
+    let sse_stream: SseStream<Completion> = SseStream::new(response.bytes_stream());
+    let messages = sse_stream.try_collect::<Vec<_>>().await?;
+    debug!("{messages:#?}");
 
-//     // Validate content messages for both choices
-//     assert_eq!(messages[2].choices[0].index, 0);
-//     assert_eq!(messages[2].choices[0].delta.content, Some("Hey".into()));
-//     assert_eq!(messages[3].choices[0].index, 1);
-//     assert_eq!(messages[3].choices[0].delta.content, Some("Hey".into()));
-//     assert_eq!(messages[4].choices[0].index, 0);
-//     assert_eq!(messages[4].choices[0].delta.content, Some("!".into()));
+    assert_eq!(messages.len(), 4);
 
-//     // Validate stop messages for both choices
-//     assert_eq!(messages[5].choices[0].index, 0);
-//     assert_eq!(
-//         messages[5].choices[0].finish_reason,
-//         Some("stop".into()),
-//         "choice0: missing finish reason message"
-//     );
-//     assert_eq!(messages[6].choices[0].index, 1);
-//     assert_eq!(
-//         messages[6].choices[0].finish_reason,
-//         Some("stop".into()),
-//         "choice1: missing finish reason message"
-//     );
+    // Validate content messages for both choices
+    assert_eq!(
+        messages[0].choices[0].text,
+        completions_chunks[0].choices[0].text
+    );
+    assert_eq!(
+        messages[1].choices[0].text,
+        completions_chunks[1].choices[0].text
+    );
+    assert_eq!(
+        messages[2].choices[0].text,
+        completions_chunks[2].choices[0].text
+    );
+    assert_eq!(
+        messages[3].choices[0].text,
+        completions_chunks[3].choices[0].text
+    );
 
-//     Ok(())
-// }
+    // Validate stop messages for both choices
+    assert_eq!(
+        messages[1].choices[0].finish_reason,
+        completions_chunks[1].choices[0].finish_reason
+    );
+    assert_eq!(
+        messages[3].choices[0].finish_reason,
+        completions_chunks[3].choices[0].finish_reason
+    );
+
+    Ok(())
+}
 
 // #[test(tokio::test)]
 // async fn input_detectors() -> Result<(), anyhow::Error> {
