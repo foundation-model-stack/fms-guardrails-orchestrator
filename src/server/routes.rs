@@ -22,7 +22,7 @@ use std::{
 
 use axum::{
     Json, Router,
-    extract::{Query, State},
+    extract::State,
     http::HeaderMap,
     response::{
         IntoResponse, Response,
@@ -44,7 +44,7 @@ use crate::{
     clients::openai::{
         ChatCompletionsRequest, ChatCompletionsResponse, CompletionsRequest, CompletionsResponse,
     },
-    models::{self, InfoParams, InfoResponse, StreamingContentDetectionRequest},
+    models::{self, InfoResponse, StreamingContentDetectionRequest},
     orchestrator::{
         self,
         handlers::{
@@ -119,10 +119,7 @@ async fn health() -> Result<impl IntoResponse, ()> {
     Ok(Json(info_object).into_response())
 }
 
-async fn info(
-    State(state): State<Arc<ServerState>>,
-    Query(_params): Query<InfoParams>,
-) -> Result<Json<InfoResponse>, Error> {
+async fn info(State(state): State<Arc<ServerState>>) -> Result<Json<InfoResponse>, Error> {
     let services = state.orchestrator.client_health().await;
     Ok(Json(InfoResponse { services }))
 }
