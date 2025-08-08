@@ -1,6 +1,6 @@
 [package]
 name = "fms-guardrails-orchestr8"
-version = "0.13.0"
+version = "0.14.0"
 edition = "2024"
 authors = ["Evaline Ju", "Gaurav Kumbhat", "Dan Clark"]
 description = "Foundation models orchestration server"
@@ -19,7 +19,7 @@ async-trait = "0.1.88"
 axum = { version = "0.8.4", features = ["json"] }
 axum-extra = { version = "0.10.1", features = ["json-lines"] }
 bytes = "1.10.1"
-clap = { version = "4.5.41", features = ["derive", "env"] }
+clap = { version = "4.5.43", features = ["derive", "env"] }
 dashmap = "6.1.0"
 eventsource-stream = "0.2.3"
 futures = "0.3.31"
@@ -52,7 +52,7 @@ reqwest = { version = "0.12.22", features = [
     "json",
     "stream",
 ] }
-rustls = { version = "0.23.29", default-features = false, features = [
+rustls = { version = "0.23.31", default-features = false, features = [
     "ring",
     "std",
 ] }
@@ -60,10 +60,10 @@ rustls-pemfile = "2.2.0"
 rustls-pki-types = "1.12.0"
 rustls-webpki = "0.103.4"
 serde = { version = "1.0.219", features = ["derive"] }
-serde_json = { version = "1.0.141", features = ["preserve_order"] }
+serde_json = { version = "1.0.142", features = ["preserve_order"] }
 serde_yml = "0.0.12"
 thiserror = "2.0.12"
-tokio = { version = "1.46.1", features = [
+tokio = { version = "1.47.1", features = [
     "rt",
     "rt-multi-thread",
     "parking_lot",

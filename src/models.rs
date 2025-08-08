@@ -125,12 +125,12 @@ impl GuardrailsHttpRequest {
         let input_range = 0..=self.inputs.len();
         let input_masks = guardrail_config
             .and_then(|config| config.input.as_ref().and_then(|input| input.masks.as_ref()));
-        if let Some(input_masks) = input_masks {
-            if !input_masks.iter().all(|(start, end)| {
+        if let Some(input_masks) = input_masks
+            && !input_masks.iter().all(|(start, end)| {
                 input_range.contains(start) && input_range.contains(end) && start < end
-            }) {
-                return Err(ValidationError::Invalid("invalid masks".into()));
-            }
+            })
+        {
+            return Err(ValidationError::Invalid("invalid masks".into()));
         }
 
         // Validate detector params
@@ -1136,12 +1136,12 @@ fn validate_detector_params(
 ) -> Result<(), ValidationError> {
     for (model_id, detector_params) in models {
         // Validate threshold is a number, if specified
-        if let Some(threshold) = detector_params.get("threshold") {
-            if !threshold.is_number() {
-                return Err(ValidationError::Invalid(format!(
-                    "`threshold` parameter specified for model `{model_id}` must be a number"
-                )));
-            }
+        if let Some(threshold) = detector_params.get("threshold")
+            && !threshold.is_number()
+        {
+            return Err(ValidationError::Invalid(format!(
+                "`threshold` parameter specified for model `{model_id}` must be a number"
+            )));
         }
     }
     Ok(())
