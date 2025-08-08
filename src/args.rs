@@ -194,10 +194,10 @@ impl TryFrom<Args> for TracingConfig {
         let otlp_metrics_protocol = args.otlp_metrics_protocol.unwrap_or(otlp_protocol);
 
         // Validate provided endpoints
-        if let Some(endpoint) = &args.otlp_endpoint {
-            if endpoint.path() != "/" {
-                return Err(ValidationError::Invalid("invalid otlp_endpoint".into()));
-            }
+        if let Some(endpoint) = &args.otlp_endpoint
+            && endpoint.path() != "/"
+        {
+            return Err(ValidationError::Invalid("invalid otlp_endpoint".into()));
         }
         if let Some(endpoint) = &args.otlp_traces_endpoint {
             match otlp_traces_protocol {

@@ -33,11 +33,11 @@ pub struct ChatMessage<'a> {
 /// An iterator over chat messages.
 pub trait ChatMessageIterator {
     /// Returns an iterator of [`ChatMessage`]s.
-    fn messages(&self) -> impl Iterator<Item = ChatMessage>;
+    fn messages(&self) -> impl Iterator<Item = ChatMessage<'_>>;
 }
 
 impl ChatMessageIterator for openai::ChatCompletionsRequest {
-    fn messages(&self) -> impl Iterator<Item = ChatMessage> {
+    fn messages(&self) -> impl Iterator<Item = ChatMessage<'_>> {
         self.messages.iter().enumerate().map(|(index, message)| {
             let text = if let Some(openai::Content::Text(text)) = &message.content {
                 Some(text.as_str())
@@ -55,7 +55,7 @@ impl ChatMessageIterator for openai::ChatCompletionsRequest {
 }
 
 impl ChatMessageIterator for openai::ChatCompletion {
-    fn messages(&self) -> impl Iterator<Item = ChatMessage> {
+    fn messages(&self) -> impl Iterator<Item = ChatMessage<'_>> {
         self.choices.iter().map(|choice| ChatMessage {
             index: choice.index,
             role: Some(&choice.message.role),
@@ -66,7 +66,7 @@ impl ChatMessageIterator for openai::ChatCompletion {
 }
 
 impl ChatMessageIterator for openai::ChatCompletionChunk {
-    fn messages(&self) -> impl Iterator<Item = ChatMessage> {
+    fn messages(&self) -> impl Iterator<Item = ChatMessage<'_>> {
         self.choices.iter().map(|choice| ChatMessage {
             index: choice.index,
             role: choice.delta.role.as_ref(),

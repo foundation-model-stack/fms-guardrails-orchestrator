@@ -339,15 +339,14 @@ async fn process_completion_stream(
                 // Send completion chunk to response channel
                 // NOTE: this forwards completion chunks without detections and is only
                 // done here for 2 cases: a) no output detectors b) only whole doc output detectors
-                if let Some(response_tx) = &response_tx {
-                    if response_tx
+                if let Some(response_tx) = &response_tx
+                    && response_tx
                         .send(Ok(Some(completion.clone())))
                         .await
                         .is_err()
-                    {
-                        info!(%trace_id, "task completed: client disconnected");
-                        return;
-                    }
+                {
+                    info!(%trace_id, "task completed: client disconnected");
+                    return;
                 }
                 if let Some(usage) = &completion.usage
                     && completion.choices.is_empty()
@@ -384,10 +383,9 @@ async fn process_completion_stream(
                         // Send choice text to detection input channel
                         if let Some(input_tx) =
                             input_txs.as_ref().and_then(|txs| txs.get(&choice.index))
+                            && !choice_text.is_empty()
                         {
-                            if !choice_text.is_empty() {
-                                let _ = input_tx.send(Ok((message_index, choice_text))).await;
-                            }
+                            let _ = input_tx.send(Ok((message_index, choice_text))).await;
                         }
                     } else {
                         debug!(%trace_id, %message_index, ?completion, "completion chunk contains no choice");
@@ -531,19 +529,19 @@ fn output_detection_response(
 fn merge_logprobs(completions: &[Completion]) -> Option<CompletionLogprobs> {
     let mut merged_logprobs = CompletionLogprobs::default();
     for completion in completions {
-        if let Some(choice) = completion.choices.first() {
-            if let Some(logprobs) = &choice.logprobs {
-                merged_logprobs.tokens.extend_from_slice(&logprobs.tokens);
-                merged_logprobs
-                    .token_logprobs
-                    .extend_from_slice(&logprobs.token_logprobs);
-                merged_logprobs
-                    .top_logprobs
-                    .extend_from_slice(&logprobs.top_logprobs);
-                merged_logprobs
-                    .text_offset
-                    .extend_from_slice(&logprobs.text_offset);
-            }
+        if let Some(choice) = completion.choices.first()
+            && let Some(logprobs) = &choice.logprobs
+        {
+            merged_logprobs.tokens.extend_from_slice(&logprobs.tokens);
+            merged_logprobs
+                .token_logprobs
+                .extend_from_slice(&logprobs.token_logprobs);
+            merged_logprobs
+                .top_logprobs
+                .extend_from_slice(&logprobs.top_logprobs);
+            merged_logprobs
+                .text_offset
+                .extend_from_slice(&logprobs.text_offset);
         }
     }
     (!merged_logprobs.tokens.is_empty()
@@ -575,17 +573,15 @@ async fn process_detection_batch_stream(
                         }
                         // If this is the final completion chunk with content, send completion chunk with finish reason
                         let completions = completion_state.completions.get(&choice_index).unwrap();
-                        if completions.keys().rev().nth(1) == Some(&input_end_index) {
-                            if let Some((_, completion)) = completions.last_key_value() {
-                                if completion
-                                    .choices
-                                    .first()
-                                    .is_some_and(|choice| choice.finish_reason.is_some())
-                                {
-                                    debug!(%trace_id, %choice_index, ?completion, "sending completion chunk with finish reason to response channel");
-                                    let _ = response_tx.send(Ok(Some(completion.clone()))).await;
-                                }
-                            }
+                        if completions.keys().rev().nth(1) == Some(&input_end_index)
+                            && let Some((_, completion)) = completions.last_key_value()
+                            && completion
+                                .choices
+                                .first()
+                                .is_some_and(|choice| choice.finish_reason.is_some())
+                        {
+                            debug!(%trace_id, %choice_index, ?completion, "sending completion chunk with finish reason to response channel");
+                            let _ = response_tx.send(Ok(Some(completion.clone()))).await;
                         }
                     }
                     Err(error) => {
