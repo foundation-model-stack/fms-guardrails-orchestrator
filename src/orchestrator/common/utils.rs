@@ -127,11 +127,7 @@ pub fn validate_detectors<'a>(
     for (detector_id, _params) in detectors {
         match orchestrator_detectors.get(detector_id) {
             Some(detector_config) => {
-                if !detector_config
-                    .r#type
-                    .iter()
-                    .any(|v| supported_detector_types.contains(v))
-                {
+                if !supported_detector_types.contains(&detector_config.r#type) {
                     let error = Error::Validation(format!(
                         "detector `{detector_id}` is not supported by this endpoint"
                     ));
@@ -188,7 +184,7 @@ mod tests {
                 "pii".to_string(),
                 DetectorConfig {
                     chunker_id: "sentence".into(),
-                    r#type: vec![DetectorType::TextContents],
+                    r#type: DetectorType::TextContents,
                     ..Default::default()
                 },
             ),
@@ -196,15 +192,15 @@ mod tests {
                 "pii_whole_doc".to_string(),
                 DetectorConfig {
                     chunker_id: "whole_doc_chunker".into(),
-                    r#type: vec![DetectorType::TextContents],
+                    r#type: DetectorType::TextContents,
                     ..Default::default()
                 },
             ),
             (
-                "granite_guardian".to_string(),
+                "granite_guardian_text_chat".to_string(),
                 DetectorConfig {
                     chunker_id: "sentence".into(),
-                    r#type: vec![DetectorType::TextContents, DetectorType::TextChat],
+                    r#type: DetectorType::TextChat,
                     ..Default::default()
                 },
             ),
@@ -212,43 +208,36 @@ mod tests {
 
         assert!(
             validate_detectors(
-                &HashMap::from([("granite_guardian".to_string(), DetectorParams::default())]),
+                &HashMap::from([("pii".to_string(), DetectorParams::default())]),
                 &orchestrator_detectors,
                 &[DetectorType::TextContents],
                 true
             )
             .is_ok(),
-            "should pass: model supports text_contents and text_chat, endpoint supports text_contents"
+            "should pass: model is text_contents, endpoint supports text_contents"
         );
         assert!(
             validate_detectors(
-                &HashMap::from([("granite_guardian".to_string(), DetectorParams::default())]),
+                &HashMap::from([(
+                    "granite_guardian_text_chat".to_string(),
+                    DetectorParams::default()
+                )]),
                 &orchestrator_detectors,
                 &[DetectorType::TextContents, DetectorType::TextChat],
                 true
             )
             .is_ok(),
-            "should pass: model supports text_contents and text_chat, endpoint supports text_contents and text_chat"
-        );
-        assert!(
-            validate_detectors(
-                &HashMap::from([("granite_guardian".to_string(), DetectorParams::default())]),
-                &orchestrator_detectors,
-                &[DetectorType::TextGeneration],
-                true
-            )
-            .is_err_and(|e| matches!(e, Error::Validation(_))),
-            "should fail: model supports text_contents and text_chat, endpoint supports text_generation"
+            "should pass: model is text_chat, endpoint supports text_contents and text_chat"
         );
         assert!(
             validate_detectors(
                 &HashMap::from([("pii".to_string(), DetectorParams::default())]),
                 &orchestrator_detectors,
-                &[DetectorType::TextContextDoc],
-                false
+                &[DetectorType::TextGeneration],
+                true
             )
             .is_err_and(|e| matches!(e, Error::Validation(_))),
-            "should fail: model supports text_contents, endpoint supports text_context_doc"
+            "should fail: model is text_contents, endpoint supports text_generation"
         );
         assert!(
             validate_detectors(

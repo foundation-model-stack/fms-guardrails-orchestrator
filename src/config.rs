@@ -23,10 +23,7 @@ use std::{
 use serde::Deserialize;
 use tracing::{debug, error, info, warn};
 
-use crate::{
-    clients::{chunker::DEFAULT_CHUNKER_ID, is_valid_hostname},
-    utils::one_or_many,
-};
+use crate::clients::{chunker::DEFAULT_CHUNKER_ID, is_valid_hostname};
 
 /// Default allowed headers to passthrough to clients.
 const DEFAULT_ALLOWED_HEADERS: &[&str] = &[];
@@ -177,8 +174,8 @@ pub struct DetectorConfig {
     /// Default threshold with which to filter detector results by score
     pub default_threshold: f64,
     /// Type of detection this detector performs
-    #[serde(rename = "type", deserialize_with = "one_or_many")]
-    pub r#type: Vec<DetectorType>,
+    #[serde(rename = "type")]
+    pub r#type: DetectorType,
 }
 
 #[derive(Default, Clone, Debug, Deserialize, PartialEq)]

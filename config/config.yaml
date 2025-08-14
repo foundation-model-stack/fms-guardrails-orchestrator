@@ -33,7 +33,6 @@ detectors:
     # Detector ID/name to be used in user requests
     hap-en:
         # Detector type (text_contents, text_generation, text_chat, text_context_doc)
-        # NOTE: can be a string or a list for multiple detector types.
         type: text_contents
         service:
             hostname: localhost
