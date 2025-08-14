@@ -211,6 +211,9 @@ pub struct OrchestratorConfig {
     // List of header keys allowed to be passed to downstream servers
     #[serde(default)]
     pub passthrough_headers: HashSet<String>,
+    // rewrite X-Forwarded-Access-Tokens into Bearer tokens
+    #[serde(default)]
+    pub rewrite_forwarded_access_header: bool,
     /// Number of detector requests to send concurrently for a task.
     #[serde(default = "default_detector_concurrent_requests")]
     pub detector_concurrent_requests: usize,
@@ -416,6 +419,7 @@ impl Default for OrchestratorConfig {
             detectors: HashMap::default(),
             tls: None,
             passthrough_headers: HashSet::default(),
+            rewrite_forwarded_access_header: false,
             detector_concurrent_requests: default_detector_concurrent_requests(),
             chunker_concurrent_requests: default_chunker_concurrent_requests(),
         }
