@@ -159,12 +159,11 @@ async fn handle_input_detection(
         ctx.clone(),
         task.headers.clone(),
         detectors.clone(),
-        0,
         inputs,
     )
     .await
     {
-        Ok((_, detections)) => detections,
+        Ok(detections) => detections,
         Err(error) => {
             error!(%trace_id, %error, "task failed: error processing input detections");
             return Err(error);
@@ -452,13 +451,14 @@ async fn handle_whole_doc_output_detection(
     // Process detections concurrently for choices
     let choice_detections = stream::iter(choice_inputs)
         .map(|(choice_index, inputs)| {
-            text_contents_detections(
-                ctx.clone(),
-                task.headers.clone(),
-                detectors.clone(),
-                choice_index,
-                inputs,
-            )
+            let ctx = ctx.clone();
+            let headers = task.headers.clone();
+            let detectors = detectors.clone();
+            async move {
+                text_contents_detections(ctx, headers, detectors, inputs)
+                    .await
+                    .map(|detections| (choice_index, detections))
+            }
         })
         .buffer_unordered(ctx.config.detector_concurrent_requests)
         .try_collect::<Vec<_>>()
