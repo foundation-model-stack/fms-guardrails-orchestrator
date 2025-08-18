@@ -186,9 +186,8 @@ pub async fn text_contents_detections(
     ctx: Arc<Context>,
     headers: HeaderMap,
     detectors: HashMap<String, DetectorParams>,
-    input_id: u32,
     inputs: Vec<(usize, String)>,
-) -> Result<(u32, Vec<Detection>), Error> {
+) -> Result<Vec<Detection>, Error> {
     let chunkers = get_chunker_ids(&ctx, &detectors)?;
     let chunk_map = chunks(ctx.clone(), chunkers, inputs).await?;
     let inputs = detectors
@@ -232,7 +231,7 @@ pub async fn text_contents_detections(
         .await?;
     let mut detections = results.into_iter().flatten().collect::<Vec<_>>();
     detections.sort_by_key(|detection| detection.start);
-    Ok((input_id, detections))
+    Ok(detections)
 }
 
 /// Spawns text contents detection stream tasks.
@@ -813,11 +812,10 @@ mod test {
             ctx.clone(),
             HeaderMap::default(),
             detectors,
-            0,
             vec![(0, TEXT1.to_string())],
         )
         .await?;
-        assert_eq!(detections.1.len(), 1, "should have 1 detection");
+        assert_eq!(detections.len(), 1, "should have 1 detection");
 
         // Single detector, below threshold
         let mut detector_params = DetectorParams::new();
@@ -827,11 +825,10 @@ mod test {
             ctx.clone(),
             HeaderMap::default(),
             detectors,
-            0,
             vec![(0, TEXT1.to_string())],
         )
         .await?;
-        assert!(detections.1.is_empty(), "should have no detections");
+        assert!(detections.is_empty(), "should have no detections");
 
         // Detector does not exist
         let detectors = HashMap::from([("does_not_exist".to_string(), DetectorParams::new())]);
@@ -839,7 +836,6 @@ mod test {
             ctx.clone(),
             HeaderMap::default(),
             detectors,
-            0,
             vec![(0, TEXT1.to_string())],
         )
         .await;

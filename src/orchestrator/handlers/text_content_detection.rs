@@ -51,11 +51,10 @@ impl Handle<TextContentDetectionTask> for Orchestrator {
         )?;
 
         // Handle detection
-        let (_, detections) = common::text_contents_detections(
+        let detections = common::text_contents_detections(
             ctx,
             task.headers,
             task.detectors,
-            0,
             vec![(0, task.content)],
         )
         .await?;

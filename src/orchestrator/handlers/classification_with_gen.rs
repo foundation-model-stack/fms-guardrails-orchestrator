@@ -108,12 +108,11 @@ async fn handle_input_detection(
         ctx.clone(),
         task.headers.clone(),
         detectors.clone(),
-        0,
         inputs,
     )
     .await
     {
-        Ok((_, detections)) => detections,
+        Ok(detections) => detections,
         Err(error) => {
             error!(%trace_id, %error, "task failed: error processing input detections");
             return Err(error);
@@ -166,12 +165,11 @@ async fn handle_output_detection(
         ctx,
         task.headers,
         detectors,
-        0,
         vec![(0, generated_text)],
     )
     .await
     {
-        Ok((_, detections)) => detections,
+        Ok(detections) => detections,
         Err(error) => {
             error!(%trace_id, %error, "task failed: error processing output detections");
             return Err(error);
