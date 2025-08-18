@@ -169,8 +169,11 @@ async fn handle_output_detection(
 ) -> Result<Completion, Error> {
     use DetectorType::*;
     let detector_groups = group_detectors_by_type(&ctx, detectors);
+    let headers = &task.headers;
+    let prompt = &task.request.prompt;
 
-    let mut tasks = Vec::with_capacity(completion.choices.len());
+    // Spawn detection tasks
+    let mut tasks = Vec::with_capacity(completion.choices.len() * detector_groups.len());
     for choice in &completion.choices {
         if choice.text.is_empty() {
             completion.warnings.push(CompletionDetectionWarning::new(
@@ -182,9 +185,6 @@ async fn handle_output_detection(
             ));
             continue;
         }
-        let headers = &task.headers;
-
-        // Spawn detection tasks
         for (detector_type, detectors) in &detector_groups {
             let detection_task = match detector_type {
                 TextContents => tokio::spawn(
@@ -201,7 +201,7 @@ async fn handle_output_detection(
                         ctx.clone(),
                         headers.clone(),
                         detectors.clone(),
-                        task.request.prompt.clone(),
+                        prompt.clone(),
                         choice.text.clone(),
                     )
                     .in_current_span(),

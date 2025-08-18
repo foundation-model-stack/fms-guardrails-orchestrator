@@ -181,8 +181,10 @@ async fn handle_output_detection(
 ) -> Result<ChatCompletion, Error> {
     use DetectorType::*;
     let detector_groups = group_detectors_by_type(&ctx, detectors);
+    let headers = &task.headers;
 
-    let mut tasks = Vec::with_capacity(chat_completion.choices.len());
+    // Spawn detection tasks
+    let mut tasks = Vec::with_capacity(chat_completion.choices.len() * detector_groups.len());
     for choice in &chat_completion.choices {
         if choice
             .message
@@ -201,9 +203,6 @@ async fn handle_output_detection(
                 ));
             continue;
         }
-        let headers = &task.headers;
-
-        // Spawn detection tasks
         for (detector_type, detectors) in &detector_groups {
             let detection_task = match detector_type {
                 TextContents => tokio::spawn(
