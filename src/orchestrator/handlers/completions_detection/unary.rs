@@ -29,7 +29,7 @@ use crate::{
     },
     orchestrator::{
         Context, Error,
-        common::{self, validate_detectors},
+        common::{self, group_detectors_by_type, validate_detectors},
     },
 };
 
@@ -109,12 +109,11 @@ async fn handle_input_detection(
         ctx.clone(),
         task.headers.clone(),
         detectors.clone(),
-        0,
         inputs,
     )
     .await
     {
-        Ok((_, detections)) => detections,
+        Ok(detections) => detections,
         Err(error) => {
             error!(%trace_id, %error, "task failed: error processing input detections");
             return Err(error);
@@ -168,6 +167,9 @@ async fn handle_output_detection(
     detectors: HashMap<String, DetectorParams>,
     mut completion: Completion,
 ) -> Result<Completion, Error> {
+    use DetectorType::*;
+    let detector_groups = group_detectors_by_type(&ctx, detectors);
+
     let mut tasks = Vec::with_capacity(completion.choices.len());
     for choice in &completion.choices {
         if choice.text.is_empty() {
@@ -180,30 +182,54 @@ async fn handle_output_detection(
             ));
             continue;
         }
-        let input_id = choice.index;
-        let input_text = choice.text.clone();
-        tasks.push(tokio::spawn(
-            common::text_contents_detections(
-                ctx.clone(),
-                task.headers.clone(),
-                detectors.clone(),
-                input_id,
-                vec![(0, input_text)],
-            )
-            .in_current_span(),
-        ));
+        let headers = &task.headers;
+
+        // Spawn detection tasks
+        for (detector_type, detectors) in &detector_groups {
+            let detection_task = match detector_type {
+                TextContents => tokio::spawn(
+                    common::text_contents_detections(
+                        ctx.clone(),
+                        headers.clone(),
+                        detectors.clone(),
+                        vec![(0, choice.text.clone())],
+                    )
+                    .in_current_span(),
+                ),
+                TextGeneration => tokio::spawn(
+                    common::text_generation_detections(
+                        ctx.clone(),
+                        headers.clone(),
+                        detectors.clone(),
+                        task.request.prompt.clone(),
+                        choice.text.clone(),
+                    )
+                    .in_current_span(),
+                ),
+                _ => unimplemented!(),
+            };
+            tasks.push((choice.index, detection_task));
+        }
     }
-    let detections = try_join_all(tasks)
-        .await?
-        .into_iter()
-        .collect::<Result<Vec<_>, Error>>()?;
+
+    // Await completion of all detection tasks
+    let detections = try_join_all(tasks.into_iter().map(
+        |(choice_index, detection_task)| async move {
+            Ok::<_, Error>((choice_index, detection_task.await?))
+        },
+    ))
+    .await?
+    .into_iter()
+    .map(|(choice_index, result)| result.map(|detections| (choice_index, detections)))
+    .collect::<Result<Vec<_>, Error>>()?;
+
     if !detections.is_empty() {
         // Update completion with detections
         let output = detections
             .into_iter()
             .filter(|(_, detections)| !detections.is_empty())
-            .map(|(input_id, detections)| CompletionOutputDetections {
-                choice_index: input_id,
+            .map(|(choice_index, detections)| CompletionOutputDetections {
+                choice_index,
                 results: detections,
             })
             .collect::<Vec<_>>();
