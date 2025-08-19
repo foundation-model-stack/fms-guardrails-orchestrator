@@ -188,7 +188,7 @@ pub async fn text_contents_detections(
     detectors: HashMap<String, DetectorParams>,
     input_id: u32,
     inputs: Vec<(usize, String)>,
-) -> Result<(u32, Detections), Error> {
+) -> Result<(u32, Vec<Detection>), Error> {
     let chunkers = get_chunker_ids(&ctx, &detectors)?;
     let chunk_map = chunks(ctx.clone(), chunkers, inputs).await?;
     let inputs = detectors
@@ -222,7 +222,7 @@ pub async fn text_contents_detections(
                 .await?
                 .into_iter()
                 .filter(|detection| detection.score >= threshold)
-                .collect::<Detections>();
+                .collect::<Vec<_>>();
                 Ok::<_, Error>(detections)
             }
             .in_current_span()
@@ -230,7 +230,7 @@ pub async fn text_contents_detections(
         .buffer_unordered(ctx.config.detector_concurrent_requests)
         .try_collect::<Vec<_>>()
         .await?;
-    let mut detections = results.into_iter().flatten().collect::<Detections>();
+    let mut detections = results.into_iter().flatten().collect::<Vec<_>>();
     detections.sort_by_key(|detection| detection.start);
     Ok((input_id, detections))
 }
@@ -282,7 +282,7 @@ pub async fn text_contents_detection_streams(
                                     let detections = detections
                                         .into_iter()
                                         .filter(|detection| detection.score >= threshold)
-                                        .collect::<Detections>();
+                                        .collect::<Vec<_>>();
                                     // Send to detection channel
                                     let _ =
                                         detection_tx.send(Ok((input_id, chunk, detections))).await;
@@ -317,7 +317,7 @@ pub async fn text_generation_detections(
     detectors: HashMap<DetectorId, DetectorParams>,
     prompt: String,
     generated_text: String,
-) -> Result<Detections, Error> {
+) -> Result<Vec<Detection>, Error> {
     let inputs = detectors
         .iter()
         .map(|(detector_id, params)| {
@@ -349,7 +349,7 @@ pub async fn text_generation_detections(
                 .await?
                 .into_iter()
                 .filter(|detection| detection.score >= threshold)
-                .collect::<Detections>();
+                .collect::<Vec<_>>();
                 Ok::<_, Error>(detections)
             }
             .in_current_span()
@@ -357,7 +357,7 @@ pub async fn text_generation_detections(
         .buffer_unordered(ctx.config.detector_concurrent_requests)
         .try_collect::<Vec<_>>()
         .await?;
-    let detections = results.into_iter().flatten().collect::<Detections>();
+    let detections = results.into_iter().flatten().collect::<Vec<_>>();
     Ok(detections)
 }
 
@@ -370,7 +370,7 @@ pub async fn text_chat_detections(
     detectors: HashMap<DetectorId, DetectorParams>,
     messages: Vec<openai::Message>,
     tools: Vec<openai::Tool>,
-) -> Result<Detections, Error> {
+) -> Result<Vec<Detection>, Error> {
     let inputs = detectors
         .iter()
         .map(|(detector_id, params)| {
@@ -402,7 +402,7 @@ pub async fn text_chat_detections(
                 .await?
                 .into_iter()
                 .filter(|detection| detection.score >= threshold)
-                .collect::<Detections>();
+                .collect::<Vec<_>>();
                 Ok::<_, Error>(detections)
             }
             .in_current_span()
@@ -410,7 +410,7 @@ pub async fn text_chat_detections(
         .buffer_unordered(ctx.config.detector_concurrent_requests)
         .try_collect::<Vec<_>>()
         .await?;
-    let detections = results.into_iter().flatten().collect::<Detections>();
+    let detections = results.into_iter().flatten().collect::<Vec<_>>();
     Ok(detections)
 }
 
@@ -424,7 +424,7 @@ pub async fn text_context_detections(
     content: String,
     context_type: ContextType,
     context: Vec<String>,
-) -> Result<Detections, Error> {
+) -> Result<Vec<Detection>, Error> {
     let inputs = detectors
         .iter()
         .map(|(detector_id, params)| {
@@ -460,7 +460,7 @@ pub async fn text_context_detections(
                     .await?
                     .into_iter()
                     .filter(|detection| detection.score >= threshold)
-                    .collect::<Detections>();
+                    .collect::<Vec<_>>();
                     Ok::<_, Error>(detections)
                 }
                 .in_current_span()
@@ -469,7 +469,7 @@ pub async fn text_context_detections(
         .buffer_unordered(ctx.config.detector_concurrent_requests)
         .try_collect::<Vec<_>>()
         .await?;
-    let detections = results.into_iter().flatten().collect::<Detections>();
+    let detections = results.into_iter().flatten().collect::<Vec<_>>();
     Ok(detections)
 }
 

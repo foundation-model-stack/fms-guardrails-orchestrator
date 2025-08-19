@@ -43,7 +43,7 @@ pub type DetectorId = String;
 pub type BoxStream<T> = Pin<Box<dyn Stream<Item = T> + Send>>;
 pub type ChunkStream = BoxStream<Result<Chunk, Error>>;
 pub type InputStream = BoxStream<Result<(usize, String), Error>>;
-pub type DetectionStream = BoxStream<Result<(u32, Chunk, Detections), Error>>;
+pub type DetectionStream = BoxStream<Result<(u32, Chunk, Vec<Detection>), Error>>;
 pub type GenerationStream = BoxStream<(usize, Result<ClassifiedGeneratedTextStreamResult, Error>)>;
 pub type ChatCompletionStream = BoxStream<(usize, Result<Option<ChatCompletionChunk>, Error>)>;
 pub type CompletionStream = BoxStream<(usize, Result<Option<Completion>, Error>)>;
