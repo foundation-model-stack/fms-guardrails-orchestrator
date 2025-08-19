@@ -2,7 +2,7 @@ pub mod common;
 use common::orchestrator::*;
 use fms_guardrails_orchestr8::{
     clients::{
-        detector::{ContentAnalysisRequest, ContentAnalysisResponse},
+        detector::ContentAnalysisRequest,
         openai::{
             ChatCompletionChunk, ChatCompletionChunkChoice, ChatCompletionDelta,
             ChatCompletionLogprob, ChatCompletionLogprobs, CompletionDetections,
@@ -11,6 +11,7 @@ use fms_guardrails_orchestr8::{
         },
     },
     models::DetectorParams,
+    orchestrator::types::Detection,
     pb::{
         caikit::runtime::chunkers::{
             BidiStreamingChunkerTokenizationTaskRequest, ChunkerTokenizationTaskRequest,
@@ -427,10 +428,10 @@ async fn input_detectors() -> Result<(), anyhow::Error> {
         Some(CompletionDetections {
             input: vec![CompletionInputDetections {
                 message_index: 0,
-                results: vec![ContentAnalysisResponse {
-                    start: 35,
-                    end: 46,
-                    text: "123-45-6789".into(),
+                results: vec![Detection {
+                    start: Some(35),
+                    end: Some(46),
+                    text: Some("123-45-6789".into()),
                     detection: "NationalNumber.SocialSecurityNumber.US".into(),
                     detection_type: "pii".into(),
                     detector_id: Some("pii_detector_sentence".into()),
@@ -866,10 +867,10 @@ async fn output_detectors() -> Result<(), anyhow::Error> {
             input: vec![],
             output: vec![CompletionOutputDetections {
                 choice_index: 0,
-                results: vec![ContentAnalysisResponse {
-                    start: 5,
-                    end: 19,
-                    text: "(503) 272-8192".into(),
+                results: vec![Detection {
+                    start: Some(5),
+                    end: Some(19),
+                    text: Some("(503) 272-8192".into()),
                     detection: "PhoneNumber".into(),
                     detection_type: "pii".into(),
                     detector_id: Some("pii_detector_sentence".into()),
@@ -903,10 +904,10 @@ async fn output_detectors() -> Result<(), anyhow::Error> {
             input: vec![],
             output: vec![CompletionOutputDetections {
                 choice_index: 0,
-                results: vec![ContentAnalysisResponse {
-                    start: 4,
-                    end: 18,
-                    text: "(617) 985-3519".into(),
+                results: vec![Detection {
+                    start: Some(4),
+                    end: Some(18),
+                    text: Some("(617) 985-3519".into()),
                     detection: "PhoneNumber".into(),
                     detection_type: "pii".into(),
                     detector_id: Some("pii_detector_sentence".into()),
@@ -1502,10 +1503,10 @@ async fn output_detectors_with_logprobs() -> Result<(), anyhow::Error> {
             input: vec![],
             output: vec![CompletionOutputDetections {
                 choice_index: 0,
-                results: vec![ContentAnalysisResponse {
-                    start: 5,
-                    end: 19,
-                    text: "(503) 272-8192".into(),
+                results: vec![Detection {
+                    start: Some(5),
+                    end: Some(19),
+                    text: Some("(503) 272-8192".into()),
                     detection: "PhoneNumber".into(),
                     detection_type: "pii".into(),
                     detector_id: Some("pii_detector_sentence".into()),
@@ -1548,10 +1549,10 @@ async fn output_detectors_with_logprobs() -> Result<(), anyhow::Error> {
             input: vec![],
             output: vec![CompletionOutputDetections {
                 choice_index: 0,
-                results: vec![ContentAnalysisResponse {
-                    start: 4,
-                    end: 18,
-                    text: "(617) 985-3519".into(),
+                results: vec![Detection {
+                    start: Some(4),
+                    end: Some(18),
+                    text: Some("(617) 985-3519".into()),
                     detection: "PhoneNumber".into(),
                     detection_type: "pii".into(),
                     detector_id: Some("pii_detector_sentence".into()),
@@ -2012,10 +2013,10 @@ async fn output_detectors_with_usage() -> Result<(), anyhow::Error> {
             input: vec![],
             output: vec![CompletionOutputDetections {
                 choice_index: 0,
-                results: vec![ContentAnalysisResponse {
-                    start: 5,
-                    end: 19,
-                    text: "(503) 272-8192".into(),
+                results: vec![Detection {
+                    start: Some(5),
+                    end: Some(19),
+                    text: Some("(503) 272-8192".into()),
                     detection: "PhoneNumber".into(),
                     detection_type: "pii".into(),
                     detector_id: Some("pii_detector_sentence".into()),
@@ -2049,10 +2050,10 @@ async fn output_detectors_with_usage() -> Result<(), anyhow::Error> {
             input: vec![],
             output: vec![CompletionOutputDetections {
                 choice_index: 0,
-                results: vec![ContentAnalysisResponse {
-                    start: 4,
-                    end: 18,
-                    text: "(617) 985-3519".into(),
+                results: vec![Detection {
+                    start: Some(4),
+                    end: Some(18),
+                    text: Some("(617) 985-3519".into()),
                     detection: "PhoneNumber".into(),
                     detection_type: "pii".into(),
                     detector_id: Some("pii_detector_sentence".into()),
@@ -2610,10 +2611,10 @@ async fn output_detectors_with_continuous_usage_stats() -> Result<(), anyhow::Er
             input: vec![],
             output: vec![CompletionOutputDetections {
                 choice_index: 0,
-                results: vec![ContentAnalysisResponse {
-                    start: 5,
-                    end: 19,
-                    text: "(503) 272-8192".into(),
+                results: vec![Detection {
+                    start: Some(5),
+                    end: Some(19),
+                    text: Some("(503) 272-8192".into()),
                     detection: "PhoneNumber".into(),
                     detection_type: "pii".into(),
                     detector_id: Some("pii_detector_sentence".into()),
@@ -2658,10 +2659,10 @@ async fn output_detectors_with_continuous_usage_stats() -> Result<(), anyhow::Er
             input: vec![],
             output: vec![CompletionOutputDetections {
                 choice_index: 0,
-                results: vec![ContentAnalysisResponse {
-                    start: 4,
-                    end: 18,
-                    text: "(617) 985-3519".into(),
+                results: vec![Detection {
+                    start: Some(4),
+                    end: Some(18),
+                    text: Some("(617) 985-3519".into()),
                     detection: "PhoneNumber".into(),
                     detection_type: "pii".into(),
                     detector_id: Some("pii_detector_sentence".into()),
@@ -3753,20 +3754,20 @@ async fn whole_doc_output_detectors() -> Result<(), anyhow::Error> {
             output: vec![CompletionOutputDetections {
                 choice_index: 0,
                 results: vec![
-                    ContentAnalysisResponse {
-                        start: 37,
-                        end: 53,
-                        text: "(503) 272-8192\n2".into(),
+                    Detection {
+                        start: Some(37),
+                        end: Some(53),
+                        text: Some("(503) 272-8192\n2".into()),
                         detection: "PhoneNumber".into(),
                         detection_type: "pii".into(),
                         detector_id: Some("pii_detector_whole_doc".into()),
                         score: 0.8,
                         ..Default::default()
                     },
-                    ContentAnalysisResponse {
-                        start: 55,
-                        end: 69,
-                        text: "(617) 985-3519".into(),
+                    Detection {
+                        start: Some(55),
+                        end: Some(69),
+                        text: Some("(617) 985-3519".into()),
                         detection: "PhoneNumber".into(),
                         detection_type: "pii".into(),
                         detector_id: Some("pii_detector_whole_doc".into()),
@@ -4241,10 +4242,10 @@ async fn output_detectors_and_whole_doc_output_detectors() -> Result<(), anyhow:
             input: vec![],
             output: vec![CompletionOutputDetections {
                 choice_index: 0,
-                results: vec![ContentAnalysisResponse {
-                    start: 5,
-                    end: 19,
-                    text: "(503) 272-8192".into(),
+                results: vec![Detection {
+                    start: Some(5),
+                    end: Some(19),
+                    text: Some("(503) 272-8192".into()),
                     detection: "PhoneNumber".into(),
                     detection_type: "pii".into(),
                     detector_id: Some("pii_detector_sentence".into()),
@@ -4278,10 +4279,10 @@ async fn output_detectors_and_whole_doc_output_detectors() -> Result<(), anyhow:
             input: vec![],
             output: vec![CompletionOutputDetections {
                 choice_index: 0,
-                results: vec![ContentAnalysisResponse {
-                    start: 4,
-                    end: 18,
-                    text: "(617) 985-3519".into(),
+                results: vec![Detection {
+                    start: Some(4),
+                    end: Some(18),
+                    text: Some("(617) 985-3519".into()),
                     detection: "PhoneNumber".into(),
                     detection_type: "pii".into(),
                     detector_id: Some("pii_detector_sentence".into()),
@@ -4309,20 +4310,20 @@ async fn output_detectors_and_whole_doc_output_detectors() -> Result<(), anyhow:
             output: vec![CompletionOutputDetections {
                 choice_index: 0,
                 results: vec![
-                    ContentAnalysisResponse {
-                        start: 37,
-                        end: 53,
-                        text: "(503) 272-8192\n2".into(),
+                    Detection {
+                        start: Some(37),
+                        end: Some(53),
+                        text: Some("(503) 272-8192\n2".into()),
                         detection: "PhoneNumber".into(),
                         detection_type: "pii".into(),
                         detector_id: Some("pii_detector_whole_doc".into()),
                         score: 0.8,
                         ..Default::default()
                     },
-                    ContentAnalysisResponse {
-                        start: 55,
-                        end: 69,
-                        text: "(617) 985-3519".into(),
+                    Detection {
+                        start: Some(55),
+                        end: Some(69),
+                        text: Some("(617) 985-3519".into()),
                         detection: "PhoneNumber".into(),
                         detection_type: "pii".into(),
                         detector_id: Some("pii_detector_whole_doc".into()),

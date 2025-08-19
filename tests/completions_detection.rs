@@ -32,10 +32,9 @@ use fms_guardrails_orchestr8::{
         },
     },
     models::{
-        DetectionWarningReason, DetectorParams, Metadata, UNSUITABLE_INPUT_MESSAGE,
-        UNSUITABLE_OUTPUT_MESSAGE,
+        DetectionWarningReason, DetectorParams, UNSUITABLE_INPUT_MESSAGE, UNSUITABLE_OUTPUT_MESSAGE,
     },
-    orchestrator::common::current_timestamp,
+    orchestrator::{common::current_timestamp, types::Detection},
     pb::{
         caikit::runtime::chunkers::ChunkerTokenizationTaskRequest,
         caikit_data_model::nlp::{Token, TokenizationResults},
@@ -387,16 +386,15 @@ async fn input_detections() -> Result<(), anyhow::Error> {
     let mut tokenize_mocks = MockSet::new();
 
     // Add input detection mock response for input detection
-    let expected_detections = vec![ContentAnalysisResponse {
-        start: 34,
-        end: 42,
-        text: "something".into(),
+    let expected_detections = vec![Detection {
+        start: Some(34),
+        end: Some(42),
+        text: Some("something".into()),
         detection: "has_angle_brackets".into(),
         detection_type: "angle_brackets".into(),
         detector_id: Some(detector_name.into()),
         score: 1.0,
-        evidence: None,
-        metadata: Metadata::new(),
+        ..Default::default()
     }];
 
     let completions_response = Completion {
@@ -693,16 +691,15 @@ async fn output_detections() -> Result<(), anyhow::Error> {
     let mut chunker_mocks = MockSet::new();
 
     // Add output detection mock response for output detection
-    let expected_detections = vec![ContentAnalysisResponse {
-        start: 28,
-        end: 37,
-        text: "something".into(),
+    let expected_detections = vec![Detection {
+        start: Some(28),
+        end: Some(37),
+        text: Some("something".into()),
         detection: "has_angle_brackets".into(),
         detection_type: "angle_brackets".into(),
         detector_id: Some(detector_name.into()),
         score: 1.0,
-        evidence: None,
-        metadata: Metadata::new(),
+        ..Default::default()
     }];
 
     // Add completion choices response for output detection
