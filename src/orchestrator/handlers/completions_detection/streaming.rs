@@ -561,7 +561,6 @@ async fn process_detection_batch_stream(
     while let Some(result) = detection_batch_stream.next().await {
         match result {
             Ok((choice_index, chunk, detections)) => {
-                let input_end_index = chunk.input_end_index;
                 match output_detection_response(&completion_state, choice_index, chunk, detections)
                 {
                     Ok(completion) => {
@@ -570,18 +569,6 @@ async fn process_detection_batch_stream(
                         if response_tx.send(Ok(Some(completion))).await.is_err() {
                             info!(%trace_id, "task completed: client disconnected");
                             return;
-                        }
-                        // If this is the final completion chunk with content, send completion chunk with finish reason
-                        let completions = completion_state.completions.get(&choice_index).unwrap();
-                        if completions.keys().rev().nth(1) == Some(&input_end_index)
-                            && let Some((_, completion)) = completions.last_key_value()
-                            && completion
-                                .choices
-                                .first()
-                                .is_some_and(|choice| choice.finish_reason.is_some())
-                        {
-                            debug!(%trace_id, %choice_index, ?completion, "sending completion chunk with finish reason to response channel");
-                            let _ = response_tx.send(Ok(Some(completion.clone()))).await;
                         }
                     }
                     Err(error) => {
