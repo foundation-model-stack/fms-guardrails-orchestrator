@@ -62,7 +62,7 @@ impl Handle<ChatDetectionTask> for Orchestrator {
         .await?;
 
         Ok(ChatDetectionResult {
-            detections: detections.into(),
+            detections: detections.into_iter().map(Into::into).collect(),
         })
     }
 }

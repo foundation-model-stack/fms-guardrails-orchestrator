@@ -74,55 +74,6 @@ pub struct Evidence {
     pub score: Option<f64>,
 }
 
-/// An array of detections.
-#[derive(Default, Debug, Clone)]
-pub struct Detections(Vec<Detection>);
-
-impl Detections {
-    pub fn new() -> Self {
-        Self::default()
-    }
-}
-
-impl std::ops::Deref for Detections {
-    type Target = Vec<Detection>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl std::ops::DerefMut for Detections {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
-
-impl IntoIterator for Detections {
-    type Item = Detection;
-    type IntoIter = <Vec<Detection> as IntoIterator>::IntoIter;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.0.into_iter()
-    }
-}
-
-impl FromIterator<Detection> for Detections {
-    fn from_iter<T: IntoIterator<Item = Detection>>(iter: T) -> Self {
-        let mut detections = Detections::new();
-        for value in iter {
-            detections.push(value);
-        }
-        detections
-    }
-}
-
-impl From<Vec<Detection>> for Detections {
-    fn from(value: Vec<Detection>) -> Self {
-        Self(value)
-    }
-}
-
 // Conversions
 
 impl From<detector::ContentAnalysisResponse> for Detection {
@@ -141,16 +92,6 @@ impl From<detector::ContentAnalysisResponse> for Detection {
                 .unwrap_or_default(),
             metadata: value.metadata,
         }
-    }
-}
-
-impl From<Vec<Vec<detector::ContentAnalysisResponse>>> for Detections {
-    fn from(value: Vec<Vec<detector::ContentAnalysisResponse>>) -> Self {
-        value
-            .into_iter()
-            .flatten()
-            .map(|detection| detection.into())
-            .collect::<Detections>()
     }
 }
 
@@ -235,18 +176,6 @@ impl From<Detection> for models::DetectionResult {
     }
 }
 
-impl From<Detections> for Vec<models::DetectionResult> {
-    fn from(value: Detections) -> Self {
-        value.into_iter().map(Into::into).collect()
-    }
-}
-
-impl From<Vec<models::DetectionResult>> for Detections {
-    fn from(value: Vec<models::DetectionResult>) -> Self {
-        value.into_iter().map(Into::into).collect()
-    }
-}
-
 impl From<Detection> for models::TokenClassificationResult {
     fn from(value: Detection) -> Self {
         Self {
@@ -259,12 +188,6 @@ impl From<Detection> for models::TokenClassificationResult {
             score: value.score,
             token_count: None,
         }
-    }
-}
-
-impl From<Detections> for Vec<models::TokenClassificationResult> {
-    fn from(value: Detections) -> Self {
-        value.into_iter().map(Into::into).collect()
     }
 }
 
@@ -283,11 +206,5 @@ impl From<Detection> for detector::ContentAnalysisResponse {
             evidence,
             metadata: value.metadata,
         }
-    }
-}
-
-impl From<Detections> for Vec<detector::ContentAnalysisResponse> {
-    fn from(value: Detections) -> Self {
-        value.into_iter().map(Into::into).collect()
     }
 }

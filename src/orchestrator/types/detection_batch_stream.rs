@@ -18,7 +18,7 @@ use futures::{Stream, StreamExt, stream};
 use tokio::sync::{mpsc, oneshot};
 use tracing::{debug, error};
 
-use super::{Batch, Chunk, DetectionBatcher, DetectionStream, Detections};
+use super::{Batch, Chunk, Detection, DetectionBatcher, DetectionStream};
 use crate::orchestrator::Error;
 
 /// A stream adapter that wraps detection streams and
@@ -119,7 +119,7 @@ enum DetectionBatcherMessage {
     Push {
         input_id: u32,
         chunk: Chunk,
-        detections: Detections,
+        detections: Vec<Detection>,
     },
     Pop {
         response_tx: oneshot::Sender<Option<Batch>>,
@@ -187,7 +187,7 @@ impl DetectionBatcherManagerHandle {
     }
 
     /// Pushes new detections to the batcher.
-    pub async fn push(&self, input_id: u32, chunk: Chunk, detections: Detections) {
+    pub async fn push(&self, input_id: u32, chunk: Chunk, detections: Vec<Detection>) {
         let _ = self
             .tx
             .send(DetectionBatcherMessage::Push {

@@ -16,7 +16,7 @@
 */
 use std::collections::{BTreeMap, btree_map};
 
-use super::{Batch, Chunk, DetectionBatcher, Detections};
+use super::{Batch, Chunk, Detection, DetectionBatcher};
 
 /// A batcher based on the original "max processed index"
 /// aggregator.
@@ -36,7 +36,7 @@ use super::{Batch, Chunk, DetectionBatcher, Detections};
 #[derive(Debug, Clone)]
 pub struct MaxProcessedIndexBatcher {
     n_detectors: usize,
-    state: BTreeMap<Chunk, Vec<Detections>>,
+    state: BTreeMap<Chunk, Vec<Vec<Detection>>>,
 }
 
 impl MaxProcessedIndexBatcher {
@@ -49,7 +49,7 @@ impl MaxProcessedIndexBatcher {
 }
 
 impl DetectionBatcher for MaxProcessedIndexBatcher {
-    fn push(&mut self, _input_id: u32, chunk: Chunk, detections: Detections) {
+    fn push(&mut self, _input_id: u32, chunk: Chunk, detections: Vec<Detection>) {
         match self.state.entry(chunk) {
             btree_map::Entry::Vacant(entry) => {
                 // New chunk, insert entry
@@ -123,8 +123,7 @@ mod test {
                 detection_type: "pii".into(),
                 score: 0.4,
                 ..Default::default()
-            }]
-            .into(),
+            }],
         );
 
         // We only have detections for 1 detector
@@ -152,8 +151,7 @@ mod test {
                     score: 0.8,
                     ..Default::default()
                 },
-            ]
-            .into(),
+            ],
         );
 
         // We have detections for 2 detectors
@@ -201,19 +199,19 @@ mod test {
         batcher.push(
             input_id,
             chunks[1].clone(),
-            Detections::default(), // no detections
+            Vec::new(), // no detections
         );
         // Push chunk-2 detections for hap detector
         batcher.push(
             input_id,
             chunks[1].clone(),
-            Detections::default(), // no detections
+            Vec::new(), // no detections
         );
         // Push chunk-1 detections for hap detector
         batcher.push(
             input_id,
             chunks[0].clone(),
-            Detections::default(), // no detections
+            Vec::new(), // no detections
         );
 
         // We have all detections for chunk-2, but not chunk-1
@@ -231,8 +229,7 @@ mod test {
                 detection_type: "pii".into(),
                 score: 0.4,
                 ..Default::default()
-            }]
-            .into(),
+            }],
         );
 
         // We have all detections for chunk-1 and chunk-2
@@ -278,10 +275,10 @@ mod test {
 
         // Create detection channels and streams
         let (pii_detections_tx, pii_detections_rx) =
-            mpsc::channel::<Result<(u32, Chunk, Detections), Error>>(4);
+            mpsc::channel::<Result<(u32, Chunk, Vec<Detection>), Error>>(4);
         let pii_detections_stream = ReceiverStream::new(pii_detections_rx).boxed();
         let (hap_detections_tx, hap_detections_rx) =
-            mpsc::channel::<Result<(u32, Chunk, Detections), Error>>(4);
+            mpsc::channel::<Result<(u32, Chunk, Vec<Detection>), Error>>(4);
         let hap_detections_stream = ReceiverStream::new(hap_detections_rx).boxed();
 
         // Create a batcher that will process batches for 2 detectors
@@ -297,7 +294,7 @@ mod test {
             .send(Ok((
                 input_id,
                 chunks[1].clone(),
-                Detections::default(), // no detections
+                Vec::new(), // no detections
             )))
             .await;
 
@@ -306,7 +303,7 @@ mod test {
             .send(Ok((
                 input_id,
                 chunks[0].clone(),
-                Detections::default(), // no detections
+                Vec::new(), // no detections
             )))
             .await;
 
@@ -315,7 +312,7 @@ mod test {
             .send(Ok((
                 input_id,
                 chunks[1].clone(),
-                Detections::default(), // no detections
+                Vec::new(), // no detections
             )))
             .await;
 
@@ -338,8 +335,7 @@ mod test {
                     detection_type: "pii".into(),
                     score: 0.4,
                     ..Default::default()
-                }]
-                .into(),
+                }],
             )))
             .await;
 

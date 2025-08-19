@@ -63,7 +63,7 @@ impl Handle<ContextDocsDetectionTask> for Orchestrator {
         .await?;
 
         Ok(ContextDocsResult {
-            detections: detections.into(),
+            detections: detections.into_iter().map(Into::into).collect(),
         })
     }
 }

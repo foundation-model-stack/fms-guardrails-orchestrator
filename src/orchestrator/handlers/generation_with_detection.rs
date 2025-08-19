@@ -79,7 +79,7 @@ impl Handle<GenerationWithDetectionTask> for Orchestrator {
         Ok(GenerationWithDetectionResult {
             generated_text,
             input_token_count: generation.input_token_count,
-            detections: detections.into(),
+            detections: detections.into_iter().map(Into::into).collect(),
         })
     }
 }
