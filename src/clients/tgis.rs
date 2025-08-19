@@ -105,7 +105,7 @@ impl Client for TgisClient {
         "tgis"
     }
 
-    async fn health(&self) -> HealthCheckResult {
+    async fn health(&self, _headers: HeaderMap) -> HealthCheckResult {
         let mut client = self.client.clone();
         let response = client
             .model_info(ModelInfoRequest {

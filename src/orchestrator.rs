@@ -22,6 +22,7 @@ pub mod types;
 
 use std::{collections::HashMap, sync::Arc};
 
+use http::HeaderMap;
 use tracing::{info, warn};
 
 use crate::{
@@ -73,7 +74,7 @@ impl Orchestrator {
     pub async fn on_start_up(&self, health_check: bool) -> Result<(), Error> {
         if health_check {
             info!("running client health checks");
-            let client_health = self.client_health().await;
+            let client_health = self.client_health(HeaderMap::new()).await;
             let unhealthy = client_health
                 .iter()
                 .any(|(_, health)| matches!(health.status, HealthStatus::Unhealthy));
@@ -89,7 +90,7 @@ impl Orchestrator {
     }
 
     /// Returns health status of all clients.
-    pub async fn client_health(&self) -> HashMap<String, HealthCheckResult> {
+    pub async fn client_health(&self, headers: HeaderMap) -> HashMap<String, HealthCheckResult> {
         // TODO: fix router lifetime issue to run concurrently
         // stream::iter(self.ctx.clients.iter())
         //     .map(|(key, client)| async move {
@@ -100,7 +101,7 @@ impl Orchestrator {
         //     .await
         let mut health = HashMap::with_capacity(self.ctx.clients.len());
         for (key, client) in self.ctx.clients.iter() {
-            health.insert(key.into(), client.health().await);
+            health.insert(key.into(), client.health(headers.clone()).await);
         }
         health
     }

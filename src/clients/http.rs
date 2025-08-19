@@ -219,10 +219,10 @@ impl HttpClient {
         }
     }
 
-    pub async fn health(&self) -> HealthCheckResult {
-        let req = Request::get(self.health_url.as_uri())
-            .body(BoxBody::default())
-            .unwrap();
+    pub async fn health(&self, headers: HeaderMap) -> HealthCheckResult {
+        let mut builder = Request::get(self.health_url.as_uri());
+        *builder.headers_mut().unwrap() = headers;
+        let req = builder.body(BoxBody::default()).unwrap();
         let res = self.inner.clone().call(req).await;
         match res {
             Ok(response) => {

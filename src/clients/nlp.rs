@@ -137,7 +137,7 @@ impl Client for NlpClient {
         "nlp"
     }
 
-    async fn health(&self) -> HealthCheckResult {
+    async fn health(&self, _headers: HeaderMap) -> HealthCheckResult {
         let mut client = self.health_client.clone();
         let response = client
             .check(HealthCheckRequest { service: "".into() })

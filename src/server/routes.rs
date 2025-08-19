@@ -119,8 +119,17 @@ async fn health() -> Result<impl IntoResponse, ()> {
     Ok(Json(info_object).into_response())
 }
 
-async fn info(State(state): State<Arc<ServerState>>) -> Result<Json<InfoResponse>, Error> {
-    let services = state.orchestrator.client_health().await;
+async fn info(
+    State(state): State<Arc<ServerState>>,
+    headers: HeaderMap,
+) -> Result<Json<InfoResponse>, Error> {
+    // Filter passthrough headers from the request
+    let passthrough_headers = filter_headers(
+        &state.orchestrator.config().passthrough_headers,
+        headers,
+        state.orchestrator.config().rewrite_forwarded_access_header,
+    );
+    let services = state.orchestrator.client_health(passthrough_headers).await;
     Ok(Json(InfoResponse { services }))
 }
 

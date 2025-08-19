@@ -287,10 +287,10 @@ impl Client for GenerationClient {
         "generation"
     }
 
-    async fn health(&self) -> HealthCheckResult {
+    async fn health(&self, headers: HeaderMap) -> HealthCheckResult {
         match &self.0 {
-            Some(GenerationClientInner::Tgis(client)) => client.health().await,
-            Some(GenerationClientInner::Nlp(client)) => client.health().await,
+            Some(GenerationClientInner::Tgis(client)) => client.health(headers).await,
+            Some(GenerationClientInner::Nlp(client)) => client.health(headers).await,
             None => unimplemented!(),
         }
     }
