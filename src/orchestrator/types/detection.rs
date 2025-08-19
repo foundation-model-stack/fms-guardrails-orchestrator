@@ -41,7 +41,7 @@ pub struct Detection {
     /// Confidence level of the detection class
     pub score: f64,
     /// Detection evidence
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub evidence: Vec<DetectionEvidence>,
     /// Detection metadata
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -60,7 +60,7 @@ pub struct DetectionEvidence {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub score: Option<f64>,
     /// Additional evidence
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub evidence: Vec<Evidence>,
 }
 
