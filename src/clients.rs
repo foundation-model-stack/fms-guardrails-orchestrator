@@ -92,7 +92,7 @@ pub trait Client: Send + Sync + 'static {
     }
 
     /// Performs a client health check.
-    async fn health(&self) -> HealthCheckResult;
+    async fn health(&self, headers: HeaderMap) -> HealthCheckResult;
 }
 
 impl dyn Client {

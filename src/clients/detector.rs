@@ -149,11 +149,11 @@ impl Client for DetectorClient {
         "detector"
     }
 
-    async fn health(&self) -> HealthCheckResult {
+    async fn health(&self, headers: HeaderMap) -> HealthCheckResult {
         if let Some(health_client) = &self.health_client {
-            health_client.health().await
+            health_client.health(headers).await
         } else {
-            self.client.health().await
+            self.client.health(headers).await
         }
     }
 }
