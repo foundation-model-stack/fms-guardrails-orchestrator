@@ -173,7 +173,7 @@ pub async fn detect_text_generation(
             detection.detector_id = Some(detector_id.clone());
             detection
         })
-        .collect::<Vec<Detection>>();
+        .collect::<Vec<_>>();
     Ok(detections)
 }
 
