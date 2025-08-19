@@ -71,6 +71,12 @@ RUN groupadd --system orchestr8 --gid 1001 && \
     --create-home --home-dir /app --shell /sbin/nologin \
     --comment "FMS Orchestrator User" orchestr8
 
+# Image hardening
+RUN --mount=type=bind,source=scripts,target=scripts \
+    sh scripts/installRemediationTools.sh && \
+    sh scripts/remediation-script.sh && \
+    sh scripts/removeRemediationTools.sh
+
 USER orchestr8
 
 HEALTHCHECK NONE
