@@ -14,16 +14,23 @@
  limitations under the License.
 
 */
+use std::collections::BTreeMap;
+
+use serde::{Deserialize, Serialize};
+
 use crate::{clients::detector, models};
 
 /// A detection.
-#[derive(Default, Debug, Clone, PartialEq)]
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Detection {
     /// Start index of the detection
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub start: Option<usize>,
     /// End index of the detection
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub end: Option<usize>,
     /// Text corresponding to the detection
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
     /// ID of the detector
     pub detector_id: Option<String>,
@@ -34,29 +41,36 @@ pub struct Detection {
     /// Confidence level of the detection class
     pub score: f64,
     /// Detection evidence
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub evidence: Vec<DetectionEvidence>,
     /// Detection metadata
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub metadata: models::Metadata,
 }
 
 /// Detection evidence.
-#[derive(Default, Clone, Debug, PartialEq)]
+#[derive(Default, Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct DetectionEvidence {
     /// Evidence name
     pub name: String,
     /// Evidence value
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub value: Option<String>,
     /// Evidence score
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub score: Option<f64>,
     /// Additional evidence
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub evidence: Vec<Evidence>,
 }
 
 /// Additional detection evidence.
-#[derive(Default, Clone, Debug, PartialEq)]
+#[derive(Default, Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Evidence {
     pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub value: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub score: Option<f64>,
 }
 
