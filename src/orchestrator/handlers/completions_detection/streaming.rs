@@ -221,15 +221,13 @@ async fn handle_output_detection(
     let trace_id = task.trace_id;
     let request = task.request.clone();
 
-    // Split output detectors into 2 groups:
+    // Split output detectors into two categories:
     //
-    // 1) chunk_detectors: detectors applied to streaming chunk text (generated_text chunks)
-    //    with detections returned in batches.
-    //    criteria: text_contents detectors NOT using whole_doc_chunker
+    // chunk_detectors: detectors applied to generated text chunks, detections returned in batches.
+    // criteria: text_contents detectors using a chunker (not using whole_doc_chunker)
     //
-    // 2) whole_doc_detectors: detectors applied to whole doc text (generated_text or prompt+generated_text)
-    //    after the completion stream has been fully consumed with detections returned at the end.
-    //    criteria: text_contents detectors using whole_doc_chunker and other supported detector types
+    // whole_doc_detectors: detectors applied to full generated text (+prompt), detections returned with last message.
+    // criteria: text_contents detectors not using a chunker (whole_doc_chunker) and other supported detector types
     let (chunk_detectors, whole_doc_detectors): (HashMap<_, _>, HashMap<_, _>) =
         detectors.into_iter().partition(|(detector_id, _)| {
             let config = ctx.config.detector(detector_id).unwrap();
