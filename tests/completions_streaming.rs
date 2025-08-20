@@ -727,7 +727,6 @@ async fn output_detectors() -> Result<(), anyhow::Error> {
         "unexpected choices for msg-2"
     );
 
-    // TODO: This detection should have come in message with index 2, not 3?
     // Validate msg-2 detections
     assert_eq!(
         messages[2].detections,
@@ -1625,7 +1624,6 @@ async fn output_detectors_with_usage() -> Result<(), anyhow::Error> {
         "unexpected choices for msg-2"
     );
 
-    // TODO: This detection should have come in message with index 2, not 3?
     // Validate msg-2 detections
     assert_eq!(
         messages[2].detections,
@@ -1670,636 +1668,503 @@ async fn output_detectors_with_usage() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
-// #[test(tokio::test)]
-// async fn output_detectors_with_continuous_usage_stats() -> Result<(), anyhow::Error> {
-//     let mut openai_server = MockServer::new_http("openai");
-//     openai_server.mock(|when, then| {
-//         when.post()
-//             .path(CHAT_COMPLETIONS_ENDPOINT)
-//             .json(json!({
-//                 "stream": true,
-//                 "model": "test-0B",
-//                 "messages": [
-//                     Message { role: Role::User, content: Some(Content::Text("Can you generate 2 random phone numbers?".into())), ..Default::default()},
-//                 ],
-//                 "stream_options": {
-//                     "include_usage": true,
-//                     "continuous_usage_stats": true
-//                 }
-//             })
-//         );
-//         then.text_stream(sse([
-//             ChatCompletionChunk {
-//                 id: "cmpl-test".into(),
-//                 object: "chat.completion.chunk".into(),
-//                 created: 1749227854,
-//                 model: "test-0B".into(),
-//                 choices: vec![ChatCompletionChunkChoice {
-//                     index: 0,
-//                     delta: ChatCompletionDelta {
-//                         role: Some(Role::Assistant),
-//                         ..Default::default()
-//                     },
-//                     ..Default::default()
-//                 }],
-//                 usage: Some(Usage {
-//                     prompt_tokens: 19,
-//                     total_tokens: 19,
-//                     completion_tokens: 0,
-//                     ..Default::default()
-//                 }),
-//                 ..Default::default()
-//             },
-//             ChatCompletionChunk {
-//                 id: "cmpl-test".into(),
-//                 object: "chat.completion.chunk".into(),
-//                 created: 1749227854,
-//                 model: "test-0B".into(),
-//                 choices: vec![ChatCompletionChunkChoice {
-//                     index: 0,
-//                     delta: ChatCompletionDelta {
-//                         content: Some("Here".into()),
-//                         ..Default::default()
-//                     },
-//                     ..Default::default()
-//                 }],
-//                 usage: Some(Usage {
-//                     prompt_tokens: 19,
-//                     total_tokens: 20,
-//                     completion_tokens: 1,
-//                     ..Default::default()
-//                 }),
-//                 ..Default::default()
-//             },
-//             ChatCompletionChunk {
-//                 id: "cmpl-test".into(),
-//                 object: "chat.completion.chunk".into(),
-//                 created: 1749227854,
-//                 model: "test-0B".into(),
-//                 choices: vec![ChatCompletionChunkChoice {
-//                     index: 0,
-//                     delta: ChatCompletionDelta {
-//                         content: Some(" are".into()),
-//                         ..Default::default()
-//                     },
-//                     ..Default::default()
-//                 }],
-//                 usage: Some(Usage {
-//                     prompt_tokens: 19,
-//                     total_tokens: 21,
-//                     completion_tokens: 2,
-//                     ..Default::default()
-//                 }),
-//                 ..Default::default()
-//             },
-//             ChatCompletionChunk {
-//                 id: "cmpl-test".into(),
-//                 object: "chat.completion.chunk".into(),
-//                 created: 1749227854,
-//                 model: "test-0B".into(),
-//                 choices: vec![ChatCompletionChunkChoice {
-//                     index: 0,
-//                     delta: ChatCompletionDelta {
-//                         content: Some(" ".into()),
-//                         ..Default::default()
-//                     },
-//                     ..Default::default()
-//                 }],
-//                 usage: Some(Usage {
-//                     prompt_tokens: 19,
-//                     total_tokens: 22,
-//                     completion_tokens: 3,
-//                     ..Default::default()
-//                 }),
-//                 ..Default::default()
-//             },
-//             ChatCompletionChunk {
-//                 id: "cmpl-test".into(),
-//                 object: "chat.completion.chunk".into(),
-//                 created: 1749227854,
-//                 model: "test-0B".into(),
-//                 choices: vec![ChatCompletionChunkChoice {
-//                     index: 0,
-//                     delta: ChatCompletionDelta {
-//                         content: Some("2".into()),
-//                         ..Default::default()
-//                     },
-//                     ..Default::default()
-//                 }],
-//                 usage: Some(Usage {
-//                     prompt_tokens: 19,
-//                     total_tokens: 23,
-//                     completion_tokens: 4,
-//                     ..Default::default()
-//                 }),
-//                 ..Default::default()
-//             },
-//             ChatCompletionChunk {
-//                 id: "cmpl-test".into(),
-//                 object: "chat.completion.chunk".into(),
-//                 created: 1749227854,
-//                 model: "test-0B".into(),
-//                 choices: vec![ChatCompletionChunkChoice {
-//                     index: 0,
-//                     delta: ChatCompletionDelta {
-//                         content: Some(" random".into()),
-//                         ..Default::default()
-//                     },
-//                     ..Default::default()
-//                 }],
-//                 usage: Some(Usage {
-//                     prompt_tokens: 19,
-//                     total_tokens: 24,
-//                     completion_tokens: 5,
-//                     ..Default::default()
-//                 }),
-//                 ..Default::default()
-//             },
-//             ChatCompletionChunk {
-//                 id: "cmpl-test".into(),
-//                 object: "chat.completion.chunk".into(),
-//                 created: 1749227854,
-//                 model: "test-0B".into(),
-//                 choices: vec![ChatCompletionChunkChoice {
-//                     index: 0,
-//                     delta: ChatCompletionDelta {
-//                         content: Some(" phone".into()),
-//                         ..Default::default()
-//                     },
-//                     ..Default::default()
-//                 }],
-//                 usage: Some(Usage {
-//                     prompt_tokens: 19,
-//                     total_tokens: 25,
-//                     completion_tokens: 6,
-//                     ..Default::default()
-//                 }),
-//                 ..Default::default()
-//             },
-//             ChatCompletionChunk {
-//                 id: "cmpl-test".into(),
-//                 object: "chat.completion.chunk".into(),
-//                 created: 1749227854,
-//                 model: "test-0B".into(),
-//                 choices: vec![ChatCompletionChunkChoice {
-//                     index: 0,
-//                     delta: ChatCompletionDelta {
-//                         content: Some(" numbers".into()),
-//                         ..Default::default()
-//                     },
-//                     ..Default::default()
-//                 }],
-//                 usage: Some(Usage {
-//                     prompt_tokens: 19,
-//                     total_tokens: 26,
-//                     completion_tokens: 7,
-//                     ..Default::default()
-//                 }),
-//                 ..Default::default()
-//             },
-//             ChatCompletionChunk {
-//                 id: "cmpl-test".into(),
-//                 object: "chat.completion.chunk".into(),
-//                 created: 1749227854,
-//                 model: "test-0B".into(),
-//                 choices: vec![ChatCompletionChunkChoice {
-//                     index: 0,
-//                     delta: ChatCompletionDelta {
-//                         content: Some(":\n\n".into()),
-//                         ..Default::default()
-//                     },
-//                     ..Default::default()
-//                 }],
-//                 usage: Some(Usage {
-//                     prompt_tokens: 19,
-//                     total_tokens: 28,
-//                     completion_tokens: 8,
-//                     ..Default::default()
-//                 }),
-//                 ..Default::default()
-//             },
-//             ChatCompletionChunk {
-//                 id: "cmpl-test".into(),
-//                 object: "chat.completion.chunk".into(),
-//                 created: 1749227854,
-//                 model: "test-0B".into(),
-//                 choices: vec![ChatCompletionChunkChoice {
-//                     index: 0,
-//                     delta: ChatCompletionDelta {
-//                         content: Some("1. (503) 272-8192\n".into()),
-//                         ..Default::default()
-//                     },
-//                     ..Default::default()
-//                 }],
-//                 usage: Some(Usage {
-//                     prompt_tokens: 19,
-//                     total_tokens: 38,
-//                     completion_tokens: 19,
-//                     ..Default::default()
-//                 }),
-//                 ..Default::default()
-//             },
-//             ChatCompletionChunk {
-//                 id: "cmpl-test".into(),
-//                 object: "chat.completion.chunk".into(),
-//                 created: 1749227854,
-//                 model: "test-0B".into(),
-//                 choices: vec![ChatCompletionChunkChoice {
-//                     index: 0,
-//                     delta: ChatCompletionDelta {
-//                         content: Some("2. (617) 985-3519.".into()),
-//                         ..Default::default()
-//                     },
-//                     ..Default::default()
-//                 }],
-//                 usage: Some(Usage {
-//                     prompt_tokens: 19,
-//                     total_tokens: 49,
-//                     completion_tokens: 30,
-//                     ..Default::default()
-//                 }),
-//                 ..Default::default()
-//             },
-//             ChatCompletionChunk {
-//                 id: "cmpl-test".into(),
-//                 object: "chat.completion.chunk".into(),
-//                 created: 1749227854,
-//                 model: "test-0B".into(),
-//                 choices: vec![ChatCompletionChunkChoice {
-//                     index: 0,
-//                     finish_reason: Some("stop".into()),
-//                     ..Default::default()
-//                 }],
-//                 usage: Some(Usage {
-//                     prompt_tokens: 19,
-//                     total_tokens: 49,
-//                     completion_tokens: 30,
-//                     ..Default::default()
-//                 }),
-//                 ..Default::default()
-//             },
-//             ChatCompletionChunk {
-//                 id: "cmpl-test".into(),
-//                 object: "chat.completion.chunk".into(),
-//                 created: 1749227854,
-//                 model: "test-0B".into(),
-//                 usage: Some(Usage {
-//                     prompt_tokens: 19,
-//                     total_tokens: 49,
-//                     completion_tokens: 30,
-//                     ..Default::default()
-//                 }),
-//                 ..Default::default()
-//             },
-//         ]));
-//     });
+#[test(tokio::test)]
+async fn output_detectors_with_continuous_usage_stats() -> Result<(), anyhow::Error> {
+    let model_id = "test-0B";
+    let mut openai_server = MockServer::new_http("openai");
+    openai_server.mock(|when, then| {
+        when.post().path(COMPLETIONS_ENDPOINT).json(json!({
+            "stream": true,
+            "model": model_id,
+            "prompt": "Can you generate 2 random phone numbers?",
+            "stream_options": {
+                "include_usage": true,
+                "continuous_usage_stats": true
+            }
+        }));
+        then.text_stream(sse([
+            Completion {
+                id: "cmpl-test".into(),
+                created: 1749227854,
+                model: model_id.into(),
+                choices: vec![CompletionChoice {
+                    index: 0,
+                    text: "Here".into(),
+                    ..Default::default()
+                }],
+                usage: Some(Usage {
+                    prompt_tokens: 10,
+                    total_tokens: 12,
+                    completion_tokens: 2,
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+            Completion {
+                id: "cmpl-test".into(),
+                created: 1749227854,
+                model: model_id.into(),
+                choices: vec![CompletionChoice {
+                    index: 0,
+                    text: " are".into(),
+                    ..Default::default()
+                }],
+                usage: Some(Usage {
+                    prompt_tokens: 10,
+                    total_tokens: 13,
+                    completion_tokens: 3,
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+            Completion {
+                id: "cmpl-test".into(),
+                created: 1749227854,
+                model: model_id.into(),
+                choices: vec![CompletionChoice {
+                    index: 0,
+                    text: " ".into(),
+                    ..Default::default()
+                }],
+                usage: Some(Usage {
+                    prompt_tokens: 10,
+                    total_tokens: 14,
+                    completion_tokens: 4,
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+            Completion {
+                id: "cmpl-test".into(),
+                created: 1749227854,
+                model: model_id.into(),
+                choices: vec![CompletionChoice {
+                    index: 0,
+                    text: "2".into(),
+                    ..Default::default()
+                }],
+                usage: Some(Usage {
+                    prompt_tokens: 10,
+                    total_tokens: 15,
+                    completion_tokens: 5,
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+            Completion {
+                id: "cmpl-test".into(),
+                created: 1749227854,
+                model: model_id.into(),
+                choices: vec![CompletionChoice {
+                    index: 0,
+                    text: " random".into(),
+                    ..Default::default()
+                }],
+                usage: Some(Usage {
+                    prompt_tokens: 10,
+                    total_tokens: 16,
+                    completion_tokens: 6,
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+            Completion {
+                id: "cmpl-test".into(),
+                created: 1749227854,
+                model: model_id.into(),
+                choices: vec![CompletionChoice {
+                    index: 0,
+                    text: " phone".into(),
+                    ..Default::default()
+                }],
+                usage: Some(Usage {
+                    prompt_tokens: 10,
+                    total_tokens: 17,
+                    completion_tokens: 7,
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+            Completion {
+                id: "cmpl-test".into(),
+                created: 1749227854,
+                model: model_id.into(),
+                choices: vec![CompletionChoice {
+                    index: 0,
+                    text: " numbers".into(),
+                    ..Default::default()
+                }],
+                usage: Some(Usage {
+                    prompt_tokens: 10,
+                    total_tokens: 18,
+                    completion_tokens: 8,
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+            Completion {
+                id: "cmpl-test".into(),
+                created: 1749227854,
+                model: model_id.into(),
+                choices: vec![CompletionChoice {
+                    index: 0,
+                    text: ":\n\n".into(),
+                    ..Default::default()
+                }],
+                usage: Some(Usage {
+                    prompt_tokens: 10,
+                    total_tokens: 19,
+                    completion_tokens: 9,
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+            Completion {
+                id: "cmpl-test".into(),
+                created: 1749227854,
+                model: model_id.into(),
+                choices: vec![CompletionChoice {
+                    index: 0,
+                    text: "1. (503) 272-8192\n".into(),
+                    ..Default::default()
+                }],
+                usage: Some(Usage {
+                    prompt_tokens: 10,
+                    total_tokens: 20,
+                    completion_tokens: 10,
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+            Completion {
+                id: "cmpl-test".into(),
+                created: 1749227854,
+                model: model_id.into(),
+                choices: vec![CompletionChoice {
+                    index: 0,
+                    text: "2. (617) 985-3519.".into(),
+                    finish_reason: Some("stop".into()),
+                    ..Default::default()
+                }],
+                usage: Some(Usage {
+                    prompt_tokens: 10,
+                    total_tokens: 21,
+                    completion_tokens: 11,
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+        ]));
+    });
 
-//     let mut sentence_chunker_server = MockServer::new_grpc("sentence_chunker");
-//     sentence_chunker_server.mock(|when, then| {
-//         when.post()
-//             .path(CHUNKER_STREAMING_ENDPOINT)
-//             .header(CHUNKER_MODEL_ID_HEADER_NAME, "sentence_chunker")
-//             .pb_stream(vec![
-//                 BidiStreamingChunkerTokenizationTaskRequest {
-//                     text_stream: "Here".into(),
-//                     input_index_stream: 1,
-//                 },
-//                 BidiStreamingChunkerTokenizationTaskRequest {
-//                     text_stream: " are".into(),
-//                     input_index_stream: 2,
-//                 },
-//                 BidiStreamingChunkerTokenizationTaskRequest {
-//                     text_stream: " ".into(),
-//                     input_index_stream: 3,
-//                 },
-//                 BidiStreamingChunkerTokenizationTaskRequest {
-//                     text_stream: "2".into(),
-//                     input_index_stream: 4,
-//                 },
-//                 BidiStreamingChunkerTokenizationTaskRequest {
-//                     text_stream: " random".into(),
-//                     input_index_stream: 5,
-//                 },
-//                 BidiStreamingChunkerTokenizationTaskRequest {
-//                     text_stream: " phone".into(),
-//                     input_index_stream: 6,
-//                 },
-//                 BidiStreamingChunkerTokenizationTaskRequest {
-//                     text_stream: " numbers".into(),
-//                     input_index_stream: 7,
-//                 },
-//                 BidiStreamingChunkerTokenizationTaskRequest {
-//                     text_stream: ":\n\n".into(),
-//                     input_index_stream: 8,
-//                 },
-//                 BidiStreamingChunkerTokenizationTaskRequest {
-//                     text_stream: "1. (503) 272-8192\n".into(),
-//                     input_index_stream: 9,
-//                 },
-//                 BidiStreamingChunkerTokenizationTaskRequest {
-//                     text_stream: "2. (617) 985-3519.".into(),
-//                     input_index_stream: 10,
-//                 },
-//             ]);
-//         then.pb_stream(vec![
-//             ChunkerTokenizationStreamResult {
-//                 results: vec![Token {
-//                     start: 0,
-//                     end: 32,
-//                     text: "Here are 2 random phone numbers:".into(),
-//                 }],
-//                 token_count: 0,
-//                 processed_index: 32,
-//                 start_index: 0,
-//                 input_start_index: 1,
-//                 input_end_index: 8,
-//             },
-//             ChunkerTokenizationStreamResult {
-//                 results: vec![Token {
-//                     start: 32,
-//                     end: 51,
-//                     text: "\n\n1. (503) 272-8192".into(),
-//                 }],
-//                 token_count: 0,
-//                 processed_index: 51,
-//                 start_index: 32,
-//                 input_start_index: 9,
-//                 input_end_index: 9,
-//             },
-//             ChunkerTokenizationStreamResult {
-//                 results: vec![Token {
-//                     start: 51,
-//                     end: 70,
-//                     text: "\n2. (617) 985-3519.".into(),
-//                 }],
-//                 token_count: 0,
-//                 processed_index: 70,
-//                 start_index: 51,
-//                 input_start_index: 10,
-//                 input_end_index: 10,
-//             },
-//         ]);
-//     });
+    let mut sentence_chunker_server = MockServer::new_grpc("sentence_chunker");
+    sentence_chunker_server.mock(|when, then| {
+        when.post()
+            .path(CHUNKER_STREAMING_ENDPOINT)
+            .header(CHUNKER_MODEL_ID_HEADER_NAME, "sentence_chunker")
+            .pb_stream(vec![
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: "Here".into(),
+                    input_index_stream: 0,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: " are".into(),
+                    input_index_stream: 1,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: " ".into(),
+                    input_index_stream: 2,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: "2".into(),
+                    input_index_stream: 3,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: " random".into(),
+                    input_index_stream: 4,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: " phone".into(),
+                    input_index_stream: 5,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: " numbers".into(),
+                    input_index_stream: 6,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: ":\n\n".into(),
+                    input_index_stream: 7,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: "1. (503) 272-8192\n".into(),
+                    input_index_stream: 8,
+                },
+                BidiStreamingChunkerTokenizationTaskRequest {
+                    text_stream: "2. (617) 985-3519.".into(),
+                    input_index_stream: 9,
+                },
+            ]);
+        then.pb_stream(vec![
+            ChunkerTokenizationStreamResult {
+                results: vec![Token {
+                    start: 0,
+                    end: 32,
+                    text: "Here are 2 random phone numbers:".into(),
+                }],
+                token_count: 0,
+                processed_index: 32,
+                start_index: 0,
+                input_start_index: 0,
+                input_end_index: 7,
+            },
+            ChunkerTokenizationStreamResult {
+                results: vec![Token {
+                    start: 32,
+                    end: 51,
+                    text: "\n\n1. (503) 272-8192".into(),
+                }],
+                token_count: 0,
+                processed_index: 51,
+                start_index: 32,
+                input_start_index: 8,
+                input_end_index: 8,
+            },
+            ChunkerTokenizationStreamResult {
+                results: vec![Token {
+                    start: 51,
+                    end: 70,
+                    text: "\n2. (617) 985-3519.".into(),
+                }],
+                token_count: 0,
+                processed_index: 70,
+                start_index: 51,
+                input_start_index: 9,
+                input_end_index: 9,
+            },
+        ]);
+    });
 
-//     let mut pii_detector_sentence_server = MockServer::new_http(PII_DETECTOR_SENTENCE);
-//     pii_detector_sentence_server.mock(|when, then| {
-//         when.post()
-//             .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
-//             .header("detector-id", PII_DETECTOR_SENTENCE)
-//             .json(ContentAnalysisRequest {
-//                 contents: vec!["Here are 2 random phone numbers:".into()],
-//                 detector_params: DetectorParams::default(),
-//             });
-//         then.json(json!([[]]));
-//     });
-//     pii_detector_sentence_server.mock(|when, then| {
-//         when.post()
-//             .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
-//             .header("detector-id", PII_DETECTOR_SENTENCE)
-//             .json(ContentAnalysisRequest {
-//                 contents: vec!["\n\n1. (503) 272-8192".into()],
-//                 detector_params: DetectorParams::default(),
-//             });
-//         then.json(json!([
-//         [
-//             {
-//                 "start": 5,
-//                 "end": 19,
-//                 "detection": "PhoneNumber",
-//                 "detection_type": "pii",
-//                 "score": 0.8,
-//                 "text": "(503) 272-8192",
-//                 "evidences": []
-//             }
-//         ]]));
-//     });
-//     pii_detector_sentence_server.mock(|when, then| {
-//         when.post()
-//             .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
-//             .header("detector-id", PII_DETECTOR_SENTENCE)
-//             .json(ContentAnalysisRequest {
-//                 contents: vec!["\n2. (617) 985-3519.".into()],
-//                 detector_params: DetectorParams::default(),
-//             });
-//         then.json(json!([
-//         [
-//             {
-//                 "start": 4,
-//                 "end": 18,
-//                 "detection": "PhoneNumber",
-//                 "detection_type": "pii",
-//                 "score": 0.8,
-//                 "text": "(617) 985-3519",
-//                 "evidences": []
-//             }
-//         ]]));
-//     });
+    let mut pii_detector_sentence_server = MockServer::new_http(PII_DETECTOR_SENTENCE);
+    pii_detector_sentence_server.mock(|when, then| {
+        when.post()
+            .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
+            .header("detector-id", PII_DETECTOR_SENTENCE)
+            .json(ContentAnalysisRequest {
+                contents: vec!["Here are 2 random phone numbers:".into()],
+                detector_params: DetectorParams::default(),
+            });
+        then.json(json!([[]]));
+    });
+    pii_detector_sentence_server.mock(|when, then| {
+        when.post()
+            .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
+            .header("detector-id", PII_DETECTOR_SENTENCE)
+            .json(ContentAnalysisRequest {
+                contents: vec!["\n\n1. (503) 272-8192".into()],
+                detector_params: DetectorParams::default(),
+            });
+        then.json(json!([
+        [
+            {
+                "start": 5,
+                "end": 19,
+                "detection": "PhoneNumber",
+                "detection_type": "pii",
+                "score": 0.8,
+                "text": "(503) 272-8192",
+                "evidences": []
+            }
+        ]]));
+    });
+    pii_detector_sentence_server.mock(|when, then| {
+        when.post()
+            .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
+            .header("detector-id", PII_DETECTOR_SENTENCE)
+            .json(ContentAnalysisRequest {
+                contents: vec!["\n2. (617) 985-3519.".into()],
+                detector_params: DetectorParams::default(),
+            });
+        then.json(json!([
+        [
+            {
+                "start": 4,
+                "end": 18,
+                "detection": "PhoneNumber",
+                "detection_type": "pii",
+                "score": 0.8,
+                "text": "(617) 985-3519",
+                "evidences": []
+            }
+        ]]));
+    });
 
-//     let test_server = TestOrchestratorServer::builder()
-//         .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
-//         .openai_server(&openai_server)
-//         .chunker_servers([&sentence_chunker_server])
-//         .detector_servers([&pii_detector_sentence_server])
-//         .build()
-//         .await?;
+    let test_server = TestOrchestratorServer::builder()
+        .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
+        .openai_server(&openai_server)
+        .chunker_servers([&sentence_chunker_server])
+        .detector_servers([&pii_detector_sentence_server])
+        .build()
+        .await?;
 
-//     let response = test_server
-//         .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
-//         .json(&json!({
-//             "stream": true,
-//             "model": "test-0B",
-//             "detectors": {
-//                 "input": {},
-//                 "output": {
-//                     PII_DETECTOR_SENTENCE: {},
-//                 },
-//             },
-//             "messages": [
-//                 Message { role: Role::User, content: Some(Content::Text("Can you generate 2 random phone numbers?".into())), ..Default::default()},
-//             ],
-//             "stream_options": {
-//                 "include_usage": true,
-//                 "continuous_usage_stats": true
-//             }
-//         }))
-//         .send()
-//         .await?;
-//     assert_eq!(response.status(), StatusCode::OK);
+    let response = test_server
+        .post(ORCHESTRATOR_COMPLETIONS_DETECTION_ENDPOINT)
+        .json(&json!({
+            "stream": true,
+            "model": model_id,
+            "detectors": {
+                "input": {},
+                "output": {
+                    PII_DETECTOR_SENTENCE: {},
+                },
+            },
+            "prompt": "Can you generate 2 random phone numbers?",
+            "stream_options": {
+                "include_usage": true,
+                "continuous_usage_stats": true
+            }
+        }))
+        .send()
+        .await?;
+    assert_eq!(response.status(), StatusCode::OK);
 
-//     let sse_stream: SseStream<ChatCompletionChunk> = SseStream::new(response.bytes_stream());
-//     let messages = sse_stream.try_collect::<Vec<_>>().await?;
-//     debug!("{messages:#?}");
+    let sse_stream: SseStream<Completion> = SseStream::new(response.bytes_stream());
+    let messages = sse_stream.try_collect::<Vec<_>>().await?;
+    debug!("{messages:#?}");
 
-//     // Validate length
-//     assert_eq!(messages.len(), 5, "unexpected number of messages");
+    // Validate length
+    assert_eq!(messages.len(), 3, "unexpected number of messages");
 
-//     // Validate msg-0 choices
-//     assert_eq!(
-//         messages[0].choices,
-//         vec![ChatCompletionChunkChoice {
-//             index: 0,
-//             delta: ChatCompletionDelta {
-//                 role: Some(Role::Assistant),
-//                 content: Some("Here are 2 random phone numbers:".into(),),
-//                 refusal: None,
-//                 tool_calls: vec![],
-//             },
-//             ..Default::default()
-//         }],
-//         "unexpected choices for msg-0"
-//     );
-//     // Validate msg-0 detections
-//     assert_eq!(
-//         messages[0].detections,
-//         Some(CompletionDetections {
-//             input: vec![],
-//             output: vec![CompletionOutputDetections {
-//                 choice_index: 0,
-//                 results: vec![],
-//             }],
-//         }),
-//         "unexpected detections for msg-0"
-//     );
-//     // Validate msg-0 usage
-//     assert_eq!(
-//         messages[0].usage,
-//         Some(Usage {
-//             prompt_tokens: 19,
-//             total_tokens: 28,
-//             completion_tokens: 8,
-//             ..Default::default()
-//         }),
-//         "unexpected usage for msg-0"
-//     );
+    // Validate msg-0 choices
+    assert_eq!(
+        messages[0].choices,
+        vec![CompletionChoice {
+            index: 0,
+            text: "Here are 2 random phone numbers:".into(),
+            ..Default::default()
+        }],
+        "unexpected choices for msg-0"
+    );
+    // Validate msg-0 detections
+    assert_eq!(
+        messages[0].detections,
+        Some(CompletionDetections {
+            input: vec![],
+            output: vec![CompletionOutputDetections {
+                choice_index: 0,
+                results: vec![],
+            }],
+        }),
+        "unexpected detections for msg-0"
+    );
+    // Validate msg-0 usage
+    assert_eq!(
+        messages[0].usage,
+        Some(Usage {
+            prompt_tokens: 10,
+            total_tokens: 19,
+            completion_tokens: 9,
+            ..Default::default()
+        }),
+        "unexpected usage for msg-0"
+    );
 
-//     // Validate msg-1 choices
-//     assert_eq!(
-//         messages[1].choices,
-//         vec![ChatCompletionChunkChoice {
-//             index: 0,
-//             delta: ChatCompletionDelta {
-//                 role: Some(Role::Assistant),
-//                 content: Some("\n\n1. (503) 272-8192".into(),),
-//                 refusal: None,
-//                 tool_calls: vec![],
-//             },
-//             ..Default::default()
-//         }],
-//         "unexpected choices for msg-1"
-//     );
-//     // Validate msg-2 detections
-//     assert_eq!(
-//         messages[1].detections,
-//         Some(CompletionDetections {
-//             input: vec![],
-//             output: vec![CompletionOutputDetections {
-//                 choice_index: 0,
-//                 results: vec![ContentAnalysisResponse {
-//                     start: 5,
-//                     end: 19,
-//                     text: "(503) 272-8192".into(),
-//                     detection: "PhoneNumber".into(),
-//                     detection_type: "pii".into(),
-//                     detector_id: Some(PII_DETECTOR_SENTENCE.into()),
-//                     score: 0.8,
-//                     ..Default::default()
-//                 }],
-//             }],
-//         }),
-//         "unexpected detections for msg-1"
-//     );
-//     // Validate msg-1 usage
-//     assert_eq!(
-//         messages[1].usage,
-//         Some(Usage {
-//             prompt_tokens: 19,
-//             total_tokens: 38,
-//             completion_tokens: 19,
-//             ..Default::default()
-//         }),
-//         "unexpected usage for msg-1"
-//     );
+    // Validate msg-1 choices
+    assert_eq!(
+        messages[1].choices,
+        vec![CompletionChoice {
+            index: 0,
+            text: "\n\n1. (503) 272-8192".into(),
+            ..Default::default()
+        }],
+        "unexpected choices for msg-1"
+    );
+    // Validate msg-1 detections
+    assert_eq!(
+        messages[1].detections,
+        Some(CompletionDetections {
+            input: vec![],
+            output: vec![CompletionOutputDetections {
+                choice_index: 0,
+                results: vec![Detection {
+                    start: Some(5),
+                    end: Some(19),
+                    text: Some("(503) 272-8192".into()),
+                    detection: "PhoneNumber".into(),
+                    detection_type: "pii".into(),
+                    detector_id: Some(PII_DETECTOR_SENTENCE.into()),
+                    score: 0.8,
+                    ..Default::default()
+                }],
+            }],
+        }),
+        "unexpected detections for msg-1"
+    );
+    // Validate msg-1 usage
+    assert_eq!(
+        messages[1].usage,
+        Some(Usage {
+            prompt_tokens: 10,
+            total_tokens: 20,
+            completion_tokens: 10,
+            ..Default::default()
+        }),
+        "unexpected usage for msg-1"
+    );
 
-//     // Validate msg-2 choices
-//     assert_eq!(
-//         messages[2].choices,
-//         vec![ChatCompletionChunkChoice {
-//             index: 0,
-//             delta: ChatCompletionDelta {
-//                 role: Some(Role::Assistant),
-//                 content: Some("\n2. (617) 985-3519.".into(),),
-//                 refusal: None,
-//                 tool_calls: vec![],
-//             },
-//             ..Default::default()
-//         }],
-//         "unexpected choices for msg-2"
-//     );
-//     // Validate msg-2 detections
-//     assert_eq!(
-//         messages[2].detections,
-//         Some(CompletionDetections {
-//             input: vec![],
-//             output: vec![CompletionOutputDetections {
-//                 choice_index: 0,
-//                 results: vec![ContentAnalysisResponse {
-//                     start: 4,
-//                     end: 18,
-//                     text: "(617) 985-3519".into(),
-//                     detection: "PhoneNumber".into(),
-//                     detection_type: "pii".into(),
-//                     detector_id: Some(PII_DETECTOR_SENTENCE.into()),
-//                     score: 0.8,
-//                     ..Default::default()
-//                 }],
-//             }],
-//         }),
-//         "unexpected detections for msg-2"
-//     );
-//     // Validate msg-2 usage
-//     assert_eq!(
-//         messages[2].usage,
-//         Some(Usage {
-//             prompt_tokens: 19,
-//             total_tokens: 49,
-//             completion_tokens: 30,
-//             ..Default::default()
-//         }),
-//         "unexpected usage for msg-2"
-//     );
+    // Validate msg-2 choices
+    assert_eq!(
+        messages[2].choices,
+        vec![CompletionChoice {
+            index: 0,
+            text: "\n2. (617) 985-3519.".into(),
+            finish_reason: Some("stop".into()),
+            ..Default::default()
+        }],
+        "unexpected choices for msg-2"
+    );
 
-//     // Validate finish reason message
-//     assert_eq!(
-//         messages[3].choices[0].finish_reason,
-//         Some("stop".into()),
-//         "missing finish reason message"
-//     );
-//     // Validate finish reason message usage
-//     assert_eq!(
-//         messages[3].usage,
-//         Some(Usage {
-//             prompt_tokens: 19,
-//             total_tokens: 49,
-//             completion_tokens: 30,
-//             ..Default::default()
-//         }),
-//         "unexpected usage for finish reason message"
-//     );
+    // Validate msg-2 detections
+    assert_eq!(
+        messages[2].detections,
+        Some(CompletionDetections {
+            input: vec![],
+            output: vec![CompletionOutputDetections {
+                choice_index: 0,
+                results: vec![Detection {
+                    start: Some(4),
+                    end: Some(18),
+                    text: Some("(617) 985-3519".into()),
+                    detection: "PhoneNumber".into(),
+                    detection_type: "pii".into(),
+                    detector_id: Some(PII_DETECTOR_SENTENCE.into()),
+                    score: 0.8,
+                    ..Default::default()
+                }],
+            }],
+        }),
+        "unexpected detections for msg-2"
+    );
+    // Validate msg-2 usage
+    assert_eq!(
+        messages[2].usage,
+        Some(Usage {
+            prompt_tokens: 10,
+            total_tokens: 21,
+            completion_tokens: 11,
+            ..Default::default()
+        }),
+        "unexpected usage for msg-2"
+    );
 
-//     // Validate final usage message
-//     assert_eq!(
-//         messages[4].usage,
-//         Some(Usage {
-//             prompt_tokens: 19,
-//             total_tokens: 49,
-//             completion_tokens: 30,
-//             ..Default::default()
-//         }),
-//         "unexpected usage for final usage message"
-//     );
+    // Validate finish reason message
+    assert_eq!(
+        messages[2].choices[0].finish_reason,
+        Some("stop".into()),
+        "missing finish reason message"
+    );
 
-//     Ok(())
-// }
+    Ok(())
+}
 
 // #[test(tokio::test)]
 // async fn output_detectors_n2() -> Result<(), anyhow::Error> {
