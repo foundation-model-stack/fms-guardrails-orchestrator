@@ -92,7 +92,8 @@ tonic-build = "0.14.1"
 tonic-prost-build = "0.14.1"
 
 [dev-dependencies]
-mocktail = { git = "https://github.com/IBM/mocktail", rev = "860e75e171a8eb818083813dbeed4401d1a40b3b" }
+axum-test = "17.3.0"
+mocktail = {path = "../mocktail/mocktail" }
 rand = "0.9.2"
 test-log = "0.2.18"
 
