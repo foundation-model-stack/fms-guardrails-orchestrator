@@ -61,7 +61,7 @@ impl Handle<TextContentDetectionTask> for Orchestrator {
         .await?;
 
         Ok(TextContentDetectionResult {
-            detections: detections.into(),
+            detections: detections.into_iter().map(Into::into).collect(),
         })
     }
 }

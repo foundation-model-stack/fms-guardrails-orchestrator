@@ -140,7 +140,7 @@ async fn handle_input_detection(
         let response = ClassifiedGeneratedTextResult {
             input_token_count,
             token_classification_results: TextGenTokenClassificationResults {
-                input: Some(detections.into()),
+                input: Some(detections.into_iter().map(Into::into).collect()),
                 output: None,
             },
             warnings: Some(vec![DetectionWarning::unsuitable_input()]),
@@ -179,7 +179,8 @@ async fn handle_output_detection(
     };
     let mut response = generation;
     if !detections.is_empty() {
-        response.token_classification_results.output = Some(detections.into());
+        response.token_classification_results.output =
+            Some(detections.into_iter().map(Into::into).collect());
         response.warnings = Some(vec![DetectionWarning::unsuitable_output()]);
     }
     info!(%trace_id, "task completed: returning response with output detections");

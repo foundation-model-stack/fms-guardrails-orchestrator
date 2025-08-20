@@ -104,14 +104,14 @@ pub async fn detect_text_contents(
     params: DetectorParams,
     chunks: Chunks,
     apply_chunk_offset: bool,
-) -> Result<Detections, Error> {
+) -> Result<Vec<Detection>, Error> {
     let detector_id = detector_id.clone();
     let contents = chunks
         .iter()
         .map(|chunk| chunk.text.clone())
         .collect::<Vec<_>>();
     if contents.is_empty() {
-        return Ok(Detections::default());
+        return Ok(Vec::new());
     }
     let request = ContentAnalysisRequest::new(contents, params);
     debug!(%detector_id, ?request, "sending detector request");
@@ -141,7 +141,7 @@ pub async fn detect_text_contents(
                 })
                 .collect::<Vec<_>>()
         })
-        .collect::<Detections>();
+        .collect::<Vec<_>>();
     Ok(detections)
 }
 
@@ -154,7 +154,7 @@ pub async fn detect_text_generation(
     params: DetectorParams,
     prompt: String,
     generated_text: String,
-) -> Result<Detections, Error> {
+) -> Result<Vec<Detection>, Error> {
     let detector_id = detector_id.clone();
     let request = GenerationDetectionRequest::new(prompt, generated_text, params);
     debug!(%detector_id, ?request, "sending detector request");
@@ -173,7 +173,7 @@ pub async fn detect_text_generation(
             detection.detector_id = Some(detector_id.clone());
             detection
         })
-        .collect::<Detections>();
+        .collect::<Vec<_>>();
     Ok(detections)
 }
 
@@ -186,7 +186,7 @@ pub async fn detect_text_chat(
     params: DetectorParams,
     messages: Vec<openai::Message>,
     tools: Vec<openai::Tool>,
-) -> Result<Detections, Error> {
+) -> Result<Vec<Detection>, Error> {
     let detector_id = detector_id.clone();
     let request = ChatDetectionRequest::new(messages, tools, params);
     debug!(%detector_id, ?request, "sending detector request");
@@ -205,7 +205,7 @@ pub async fn detect_text_chat(
             detection.detector_id = Some(detector_id.clone());
             detection
         })
-        .collect::<Detections>();
+        .collect::<Vec<_>>();
     Ok(detections)
 }
 
@@ -219,7 +219,7 @@ pub async fn detect_text_context(
     content: String,
     context_type: ContextType,
     context: Vec<String>,
-) -> Result<Detections, Error> {
+) -> Result<Vec<Detection>, Error> {
     let detector_id = detector_id.clone();
     let request = ContextDocsDetectionRequest::new(content, context_type, context, params.clone());
     debug!(%detector_id, ?request, "sending detector request");
@@ -238,7 +238,7 @@ pub async fn detect_text_context(
             detection.detector_id = Some(detector_id.clone());
             detection
         })
-        .collect::<Detections>();
+        .collect::<Vec<_>>();
     Ok(detections)
 }
 

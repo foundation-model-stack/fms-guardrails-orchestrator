@@ -138,7 +138,7 @@ async fn handle_input_detection(
             detections: Some(CompletionDetections {
                 input: vec![CompletionInputDetections {
                     message_index: 0,
-                    results: detections.into(),
+                    results: detections,
                 }],
                 ..Default::default()
             }),
@@ -199,7 +199,7 @@ async fn handle_output_detection(
             .filter(|(_, detections)| !detections.is_empty())
             .map(|(input_id, detections)| CompletionOutputDetections {
                 choice_index: input_id,
-                results: detections.into(),
+                results: detections,
             })
             .collect::<Vec<_>>();
         if !output.is_empty() {

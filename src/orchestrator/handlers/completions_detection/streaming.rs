@@ -33,8 +33,8 @@ use crate::{
         Context, Error,
         common::{self, text_contents_detections, validate_detectors},
         types::{
-            Chunk, CompletionBatcher, CompletionState, CompletionStream, DetectionBatchStream,
-            Detections,
+            Chunk, CompletionBatcher, CompletionState, CompletionStream, Detection,
+            DetectionBatchStream,
         },
     },
 };
@@ -182,7 +182,7 @@ async fn handle_input_detection(
             detections: Some(CompletionDetections {
                 input: vec![CompletionInputDetections {
                     message_index: 0,
-                    results: detections.into(),
+                    results: detections,
                 }],
                 ..Default::default()
             }),
@@ -457,7 +457,7 @@ async fn handle_whole_doc_output_detection(
         .into_iter()
         .map(|(choice_index, detections)| CompletionOutputDetections {
             choice_index,
-            results: detections.into(),
+            results: detections,
         })
         .collect::<Vec<_>>();
     // Build warnings
@@ -481,7 +481,7 @@ fn output_detection_response(
     completion_state: &Arc<CompletionState<Completion>>,
     choice_index: u32,
     chunk: Chunk,
-    detections: Detections,
+    detections: Vec<Detection>,
 ) -> Result<Completion, Error> {
     // Get completions for this choice index
     let completions = completion_state.completions.get(&choice_index).unwrap();
@@ -509,7 +509,7 @@ fn output_detection_response(
         completion.detections = Some(CompletionDetections {
             output: vec![CompletionOutputDetections {
                 choice_index,
-                results: detections.into(),
+                results: detections,
             }],
             ..Default::default()
         });

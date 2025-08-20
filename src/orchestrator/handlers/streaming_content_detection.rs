@@ -185,7 +185,7 @@ async fn process_detection_batch_stream(
                 let response = StreamingContentDetectionResponse {
                     start_index: chunk.start as u32,
                     processed_index: chunk.end as u32,
-                    detections: detections.into(),
+                    detections: detections.into_iter().map(Into::into).collect(),
                 };
                 // Send message to response channel
                 if response_tx.send(Ok(response)).await.is_err() {

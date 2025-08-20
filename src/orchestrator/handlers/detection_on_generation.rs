@@ -61,7 +61,7 @@ impl Handle<DetectionOnGenerationTask> for Orchestrator {
         .await?;
 
         Ok(DetectionOnGenerationResult {
-            detections: detections.into(),
+            detections: detections.into_iter().map(Into::into).collect(),
         })
     }
 }

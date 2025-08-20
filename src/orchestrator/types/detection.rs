@@ -14,16 +14,23 @@
  limitations under the License.
 
 */
+use std::collections::BTreeMap;
+
+use serde::{Deserialize, Serialize};
+
 use crate::{clients::detector, models};
 
 /// A detection.
-#[derive(Default, Debug, Clone, PartialEq)]
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Detection {
     /// Start index of the detection
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub start: Option<usize>,
     /// End index of the detection
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub end: Option<usize>,
     /// Text corresponding to the detection
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
     /// ID of the detector
     pub detector_id: Option<String>,
@@ -34,79 +41,37 @@ pub struct Detection {
     /// Confidence level of the detection class
     pub score: f64,
     /// Detection evidence
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub evidence: Vec<DetectionEvidence>,
     /// Detection metadata
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub metadata: models::Metadata,
 }
 
 /// Detection evidence.
-#[derive(Default, Clone, Debug, PartialEq)]
+#[derive(Default, Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct DetectionEvidence {
     /// Evidence name
     pub name: String,
     /// Evidence value
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub value: Option<String>,
     /// Evidence score
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub score: Option<f64>,
     /// Additional evidence
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub evidence: Vec<Evidence>,
 }
 
 /// Additional detection evidence.
-#[derive(Default, Clone, Debug, PartialEq)]
+#[derive(Default, Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Evidence {
     pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub value: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub score: Option<f64>,
-}
-
-/// An array of detections.
-#[derive(Default, Debug, Clone)]
-pub struct Detections(Vec<Detection>);
-
-impl Detections {
-    pub fn new() -> Self {
-        Self::default()
-    }
-}
-
-impl std::ops::Deref for Detections {
-    type Target = Vec<Detection>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl std::ops::DerefMut for Detections {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
-
-impl IntoIterator for Detections {
-    type Item = Detection;
-    type IntoIter = <Vec<Detection> as IntoIterator>::IntoIter;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.0.into_iter()
-    }
-}
-
-impl FromIterator<Detection> for Detections {
-    fn from_iter<T: IntoIterator<Item = Detection>>(iter: T) -> Self {
-        let mut detections = Detections::new();
-        for value in iter {
-            detections.push(value);
-        }
-        detections
-    }
-}
-
-impl From<Vec<Detection>> for Detections {
-    fn from(value: Vec<Detection>) -> Self {
-        Self(value)
-    }
 }
 
 // Conversions
@@ -127,16 +92,6 @@ impl From<detector::ContentAnalysisResponse> for Detection {
                 .unwrap_or_default(),
             metadata: value.metadata,
         }
-    }
-}
-
-impl From<Vec<Vec<detector::ContentAnalysisResponse>>> for Detections {
-    fn from(value: Vec<Vec<detector::ContentAnalysisResponse>>) -> Self {
-        value
-            .into_iter()
-            .flatten()
-            .map(|detection| detection.into())
-            .collect::<Detections>()
     }
 }
 
@@ -221,18 +176,6 @@ impl From<Detection> for models::DetectionResult {
     }
 }
 
-impl From<Detections> for Vec<models::DetectionResult> {
-    fn from(value: Detections) -> Self {
-        value.into_iter().map(Into::into).collect()
-    }
-}
-
-impl From<Vec<models::DetectionResult>> for Detections {
-    fn from(value: Vec<models::DetectionResult>) -> Self {
-        value.into_iter().map(Into::into).collect()
-    }
-}
-
 impl From<Detection> for models::TokenClassificationResult {
     fn from(value: Detection) -> Self {
         Self {
@@ -245,12 +188,6 @@ impl From<Detection> for models::TokenClassificationResult {
             score: value.score,
             token_count: None,
         }
-    }
-}
-
-impl From<Detections> for Vec<models::TokenClassificationResult> {
-    fn from(value: Detections) -> Self {
-        value.into_iter().map(Into::into).collect()
     }
 }
 
@@ -269,11 +206,5 @@ impl From<Detection> for detector::ContentAnalysisResponse {
             evidence,
             metadata: value.metadata,
         }
-    }
-}
-
-impl From<Detections> for Vec<detector::ContentAnalysisResponse> {
-    fn from(value: Detections) -> Self {
-        value.into_iter().map(Into::into).collect()
     }
 }

@@ -29,14 +29,13 @@ use url::Url;
 
 use super::{
     Client, Error, HttpClient, create_http_client,
-    detector::ContentAnalysisResponse,
     http::{HttpClientExt, RequestBody},
 };
 use crate::{
     config::ServiceConfig,
     health::HealthCheckResult,
     models::{DetectionWarningReason, DetectorParams, ValidationError},
-    orchestrator,
+    orchestrator::{self, types::Detection},
 };
 
 const DEFAULT_PORT: u16 = 8080;
@@ -984,7 +983,7 @@ pub struct CompletionDetections {
 pub struct CompletionInputDetections {
     pub message_index: u32,
     #[serde(default)]
-    pub results: Vec<ContentAnalysisResponse>,
+    pub results: Vec<Detection>,
 }
 
 /// Guardrails completion output detections.
@@ -992,7 +991,7 @@ pub struct CompletionInputDetections {
 pub struct CompletionOutputDetections {
     pub choice_index: u32,
     #[serde(default)]
-    pub results: Vec<ContentAnalysisResponse>,
+    pub results: Vec<Detection>,
 }
 
 /// Guardrails completion detection warning.
