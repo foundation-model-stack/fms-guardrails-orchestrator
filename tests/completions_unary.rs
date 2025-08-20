@@ -51,9 +51,8 @@ use uuid::Uuid;
 use crate::common::{
     chunker::CHUNKER_UNARY_ENDPOINT,
     detectors::{
-        ANSWER_RELEVANCE_DETECTOR, DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE,
-        DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC, NON_EXISTING_DETECTOR,
-        TEXT_CONTENTS_DETECTOR_ENDPOINT,
+        DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE, DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC,
+        FACT_CHECKING_DETECTOR, NON_EXISTING_DETECTOR, TEXT_CONTENTS_DETECTOR_ENDPOINT,
     },
     errors::DetectorError,
     openai::TOKENIZE_ENDPOINT,
@@ -1080,7 +1079,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
             "model": MODEL_ID,
             "detectors": {
                 "input": {
-                    ANSWER_RELEVANCE_DETECTOR: {},
+                    FACT_CHECKING_DETECTOR: {},
                 },
                 "output": {}
             },
@@ -1096,7 +1095,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
         server::Error {
             code: http::StatusCode::UNPROCESSABLE_ENTITY,
             details: format!(
-                "detector `{ANSWER_RELEVANCE_DETECTOR}` is not supported by this endpoint",
+                "detector `{FACT_CHECKING_DETECTOR}` is not supported by this endpoint",
             )
         },
         "failed on invalid input detector scenario"
@@ -1137,7 +1136,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
             "detectors": {
                 "input": {},
                 "output": {
-                    ANSWER_RELEVANCE_DETECTOR: {},
+                    FACT_CHECKING_DETECTOR: {},
                 },
             },
             "prompt": prompt,
@@ -1152,7 +1151,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
         server::Error {
             code: http::StatusCode::UNPROCESSABLE_ENTITY,
             details: format!(
-                "detector `{ANSWER_RELEVANCE_DETECTOR}` is not supported by this endpoint"
+                "detector `{FACT_CHECKING_DETECTOR}` is not supported by this endpoint"
             )
         },
         "failed on invalid output detector scenario"
