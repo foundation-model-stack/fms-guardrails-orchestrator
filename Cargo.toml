@@ -90,7 +90,6 @@ uuid = { version = "1.18.0", features = ["v4"] }
 tonic-build = "0.13.1"
 
 [dev-dependencies]
-axum-test = "17.3.0"
 mocktail = "0.3.0"
 rand = "0.9.2"
 test-log = "0.2.18"
