@@ -2,7 +2,7 @@ use std::fs;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     fs::create_dir("src/pb").unwrap_or(());
-    tonic_build::configure()
+    tonic_prost_build::configure()
         .build_client(true)
         .build_server(false) // Only clients needed
         .out_dir("src/pb")
