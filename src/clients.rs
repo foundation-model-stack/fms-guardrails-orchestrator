@@ -297,8 +297,16 @@ pub async fn create_grpc_client<C: Debug + Clone>(
         .connect_timeout(connect_timeout)
         .timeout(request_timeout)
         .keep_alive_while_idle(true)
-        .keep_alive_timeout(Duration::from_secs(DEFAULT_KEEP_ALIVE_TIMEOUT))
-        .http2_keep_alive_interval(Duration::from_secs(DEFAULT_HTTP2_KEEP_ALIVE_INTERVAL))
+        .keep_alive_timeout(Duration::from_secs(
+            service_config
+                .keep_alive_timeout
+                .unwrap_or(DEFAULT_KEEP_ALIVE_TIMEOUT),
+        ))
+        .http2_keep_alive_interval(Duration::from_secs(
+            service_config
+                .http2_keep_alive_interval
+                .unwrap_or(DEFAULT_HTTP2_KEEP_ALIVE_INTERVAL),
+        ))
         .resolution_strategy(resolution_strategy);
     let client_tls_config = if let Some(Tls::Config(tls_config)) = &service_config.tls {
         let cert_path = tls_config.cert_path.as_ref().unwrap().as_path();
