@@ -82,9 +82,9 @@ pub struct ServiceConfig {
     pub resolution_strategy_timeout: Option<u64>,
     /// Max retries for client calls [currently only for grpc generation]
     pub max_retries: Option<usize>,
-    /// HTTP2 keep-alive interval for client calls [currently only for grpc generation]
+    /// HTTP2 keep-alive interval in seconds for client calls [currently only for grpc generation]
     pub http2_keep_alive_interval: Option<u64>,
-    /// Keep-alive timeout for client calls [currently only for grpc generation]
+    /// Keep-alive timeout in seconds for client calls [currently only for grpc generation]
     pub keep_alive_timeout: Option<u64>,
 }
 
