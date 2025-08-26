@@ -249,8 +249,18 @@ pub async fn create_http_client(
     let mut timeout_conn = TimeoutConnector::new(https_conn);
     timeout_conn.set_connect_timeout(Some(connect_timeout));
 
-    let client =
-        hyper_util::client::legacy::Client::builder(TokioExecutor::new()).build(timeout_conn);
+    let client = hyper_util::client::legacy::Client::builder(TokioExecutor::new())
+        .http2_keep_alive_interval(Duration::from_secs(
+            service_config
+                .keep_alive_timeout
+                .unwrap_or(DEFAULT_KEEP_ALIVE_TIMEOUT),
+        ))
+        .http2_keep_alive_timeout(Duration::from_secs(
+            service_config
+                .http2_keep_alive_interval
+                .unwrap_or(DEFAULT_HTTP2_KEEP_ALIVE_INTERVAL),
+        ))
+        .build(timeout_conn);
     let client = ServiceBuilder::new()
         .layer(http_trace_layer())
         .layer(TimeoutLayer::new(request_timeout))
