@@ -1,6 +1,6 @@
 [package]
 name = "fms-guardrails-orchestr8"
-version = "0.10.0"
+version = "0.11.3"
 edition = "2024"
 authors = ["Evaline Ju", "Gaurav Kumbhat", "Dan Clark"]
 description = "Foundation models orchestration server"
@@ -91,7 +91,7 @@ tonic-build = "0.13.1"
 
 [dev-dependencies]
 axum-test = "17.3.0"
-mocktail = { git = "https://github.com/IBM/mocktail" }
+mocktail = { git = "https://github.com/IBM/mocktail", rev = "6296c2783ba1d433407ae1d8144ec5619dc021b9" }
 rand = "0.9.1"
 test-log = "0.2.17"
 
