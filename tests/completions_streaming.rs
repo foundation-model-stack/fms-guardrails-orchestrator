@@ -27,7 +27,7 @@ use tracing::debug;
 
 use crate::common::{
     chunker::{CHUNKER_MODEL_ID_HEADER_NAME, CHUNKER_STREAMING_ENDPOINT, CHUNKER_UNARY_ENDPOINT},
-    detectors::{PII_DETECTOR_SENTENCE, TEXT_CONTENTS_DETECTOR_ENDPOINT},
+    detectors::{PII_DETECTOR_SENTENCE, PII_DETECTOR_WHOLE_DOC, TEXT_CONTENTS_DETECTOR_ENDPOINT},
     openai::{COMPLETIONS_ENDPOINT, TOKENIZE_ENDPOINT},
     orchestrator::{
         ORCHESTRATOR_COMPLETIONS_DETECTION_ENDPOINT, ORCHESTRATOR_CONFIG_FILE_PATH, SseStream,
@@ -2893,313 +2893,241 @@ async fn output_detectors_n2() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
-// #[test(tokio::test)]
-// async fn whole_doc_output_detectors() -> Result<(), anyhow::Error> {
-//     let mut openai_server = MockServer::new_http("openai");
-//     openai_server.mock(|when, then| {
-//         when.post()
-//             .path(CHAT_COMPLETIONS_ENDPOINT)
-//             .json(json!({
-//                 "stream": true,
-//                 "model": "test-0B",
-//                 "messages": [
-//                     Message { role: Role::User, content: Some(Content::Text("Can you generate 2 random phone numbers?".into())), ..Default::default()},
-//                 ]
-//             })
-//         );
-//         then.text_stream(sse([
-//             ChatCompletionChunk {
-//                 id: "cmpl-test".into(),
-//                 object: "chat.completion.chunk".into(),
-//                 created: 1749227854,
-//                 model: "test-0B".into(),
-//                 choices: vec![ChatCompletionChunkChoice {
-//                     index: 0,
-//                     delta: ChatCompletionDelta {
-//                         role: Some(Role::Assistant),
-//                         ..Default::default()
-//                     },
-//                     ..Default::default()
-//                 }],
-//                 ..Default::default()
-//             },
-//             ChatCompletionChunk {
-//                 id: "cmpl-test".into(),
-//                 object: "chat.completion.chunk".into(),
-//                 created: 1749227854,
-//                 model: "test-0B".into(),
-//                 choices: vec![ChatCompletionChunkChoice {
-//                     index: 0,
-//                     delta: ChatCompletionDelta {
-//                         content: Some("Here".into()),
-//                         ..Default::default()
-//                     },
-//                     ..Default::default()
-//                 }],
-//                 ..Default::default()
-//             },
-//             ChatCompletionChunk {
-//                 id: "cmpl-test".into(),
-//                 object: "chat.completion.chunk".into(),
-//                 created: 1749227854,
-//                 model: "test-0B".into(),
-//                 choices: vec![ChatCompletionChunkChoice {
-//                     index: 0,
-//                     delta: ChatCompletionDelta {
-//                         content: Some(" are".into()),
-//                         ..Default::default()
-//                     },
-//                     ..Default::default()
-//                 }],
-//                 ..Default::default()
-//             },
-//             ChatCompletionChunk {
-//                 id: "cmpl-test".into(),
-//                 object: "chat.completion.chunk".into(),
-//                 created: 1749227854,
-//                 model: "test-0B".into(),
-//                 choices: vec![ChatCompletionChunkChoice {
-//                     index: 0,
-//                     delta: ChatCompletionDelta {
-//                         content: Some(" ".into()),
-//                         ..Default::default()
-//                     },
-//                     ..Default::default()
-//                 }],
-//                 ..Default::default()
-//             },
-//             ChatCompletionChunk {
-//                 id: "cmpl-test".into(),
-//                 object: "chat.completion.chunk".into(),
-//                 created: 1749227854,
-//                 model: "test-0B".into(),
-//                 choices: vec![ChatCompletionChunkChoice {
-//                     index: 0,
-//                     delta: ChatCompletionDelta {
-//                         content: Some("2".into()),
-//                         ..Default::default()
-//                     },
-//                     ..Default::default()
-//                 }],
-//                 ..Default::default()
-//             },
-//             ChatCompletionChunk {
-//                 id: "cmpl-test".into(),
-//                 object: "chat.completion.chunk".into(),
-//                 created: 1749227854,
-//                 model: "test-0B".into(),
-//                 choices: vec![ChatCompletionChunkChoice {
-//                     index: 0,
-//                     delta: ChatCompletionDelta {
-//                         content: Some(" random".into()),
-//                         ..Default::default()
-//                     },
-//                     ..Default::default()
-//                 }],
-//                 ..Default::default()
-//             },
-//             ChatCompletionChunk {
-//                 id: "cmpl-test".into(),
-//                 object: "chat.completion.chunk".into(),
-//                 created: 1749227854,
-//                 model: "test-0B".into(),
-//                 choices: vec![ChatCompletionChunkChoice {
-//                     index: 0,
-//                     delta: ChatCompletionDelta {
-//                         content: Some(" phone".into()),
-//                         ..Default::default()
-//                     },
-//                     ..Default::default()
-//                 }],
-//                 ..Default::default()
-//             },
-//             ChatCompletionChunk {
-//                 id: "cmpl-test".into(),
-//                 object: "chat.completion.chunk".into(),
-//                 created: 1749227854,
-//                 model: "test-0B".into(),
-//                 choices: vec![ChatCompletionChunkChoice {
-//                     index: 0,
-//                     delta: ChatCompletionDelta {
-//                         content: Some(" numbers".into()),
-//                         ..Default::default()
-//                     },
-//                     ..Default::default()
-//                 }],
-//                 ..Default::default()
-//             },
-//             ChatCompletionChunk {
-//                 id: "cmpl-test".into(),
-//                 object: "chat.completion.chunk".into(),
-//                 created: 1749227854,
-//                 model: "test-0B".into(),
-//                 choices: vec![ChatCompletionChunkChoice {
-//                     index: 0,
-//                     delta: ChatCompletionDelta {
-//                         content: Some(":\n\n".into()),
-//                         ..Default::default()
-//                     },
-//                     ..Default::default()
-//                 }],
-//                 ..Default::default()
-//             },
-//             ChatCompletionChunk {
-//                 id: "cmpl-test".into(),
-//                 object: "chat.completion.chunk".into(),
-//                 created: 1749227854,
-//                 model: "test-0B".into(),
-//                 choices: vec![ChatCompletionChunkChoice {
-//                     index: 0,
-//                     delta: ChatCompletionDelta {
-//                         content: Some("1. (503) 272-8192\n".into()),
-//                         ..Default::default()
-//                     },
-//                     ..Default::default()
-//                 }],
-//                 ..Default::default()
-//             },
-//             ChatCompletionChunk {
-//                 id: "cmpl-test".into(),
-//                 object: "chat.completion.chunk".into(),
-//                 created: 1749227854,
-//                 model: "test-0B".into(),
-//                 choices: vec![ChatCompletionChunkChoice {
-//                     index: 0,
-//                     delta: ChatCompletionDelta {
-//                         content: Some("2. (617) 985-3519.".into()),
-//                         ..Default::default()
-//                     },
-//                     ..Default::default()
-//                 }],
-//                 ..Default::default()
-//             },
-//             ChatCompletionChunk {
-//                 id: "cmpl-test".into(),
-//                 object: "chat.completion.chunk".into(),
-//                 created: 1749227854,
-//                 model: "test-0B".into(),
-//                 choices: vec![ChatCompletionChunkChoice {
-//                     index: 0,
-//                     finish_reason: Some("stop".into()),
-//                     ..Default::default()
-//                 }],
-//                 ..Default::default()
-//             },
-//         ]));
-//     });
+#[test(tokio::test)]
+async fn whole_doc_output_detectors() -> Result<(), anyhow::Error> {
+    let model_id = "test-0B";
+    let mut openai_server = MockServer::new_http("openai");
+    openai_server.mock(|when, then| {
+        when.post().path(COMPLETIONS_ENDPOINT).json(json!({
+            "stream": true,
+            "model": model_id,
+            "prompt": "Can you generate 2 random phone numbers?"
+        }));
+        then.text_stream(sse([
+            Completion {
+                id: "cmpl-test".into(),
+                created: 1749227854,
+                model: model_id.into(),
+                choices: vec![CompletionChoice {
+                    index: 0,
+                    text: "Here".into(),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+            Completion {
+                id: "cmpl-test".into(),
+                created: 1749227854,
+                model: model_id.into(),
+                choices: vec![CompletionChoice {
+                    index: 0,
+                    text: " are".into(),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+            Completion {
+                id: "cmpl-test".into(),
+                created: 1749227854,
+                model: model_id.into(),
+                choices: vec![CompletionChoice {
+                    index: 0,
+                    text: " ".into(),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+            Completion {
+                id: "cmpl-test".into(),
+                created: 1749227854,
+                model: model_id.into(),
+                choices: vec![CompletionChoice {
+                    index: 0,
+                    text: "2".into(),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+            Completion {
+                id: "cmpl-test".into(),
+                created: 1749227854,
+                model: model_id.into(),
+                choices: vec![CompletionChoice {
+                    index: 0,
+                    text: " random".into(),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+            Completion {
+                id: "cmpl-test".into(),
+                created: 1749227854,
+                model: model_id.into(),
+                choices: vec![CompletionChoice {
+                    index: 0,
+                    text: " phone".into(),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+            Completion {
+                id: "cmpl-test".into(),
+                created: 1749227854,
+                model: model_id.into(),
+                choices: vec![CompletionChoice {
+                    index: 0,
+                    text: " numbers".into(),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+            Completion {
+                id: "cmpl-test".into(),
+                created: 1749227854,
+                model: model_id.into(),
+                choices: vec![CompletionChoice {
+                    index: 0,
+                    text: ":\n\n".into(),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+            Completion {
+                id: "cmpl-test".into(),
+                created: 1749227854,
+                model: model_id.into(),
+                choices: vec![CompletionChoice {
+                    index: 0,
+                    text: "1. (503) 272-8192\n".into(),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+            Completion {
+                id: "cmpl-test".into(),
+                created: 1749227854,
+                model: model_id.into(),
+                choices: vec![CompletionChoice {
+                    index: 0,
+                    text: "2. (617) 985-3519.".into(),
+                    finish_reason: Some("stop".into()),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+        ]));
+    });
 
-//     let mut pii_detector_whole_doc_server = MockServer::new_http("pii_detector_whole_doc");
-//     pii_detector_whole_doc_server.mock(|when, then| {
-//         when.post()
-//             .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
-//             .header("detector-id", PII_DETECTOR_WHOLE_DOC)
-//             .json(ContentAnalysisRequest {
-//                 contents: vec![
-//                     "Here are 2 random phone numbers:\n\n1. (503) 272-8192\n2. (617) 985-3519."
-//                         .into(),
-//                 ],
-//                 detector_params: DetectorParams::default(),
-//             });
-//         then.json(json!([
-//         [
-//             {
-//                 "start": 37,
-//                 "end": 53,
-//                 "detection": "PhoneNumber",
-//                 "detection_type": "pii",
-//                 "score": 0.8,
-//                 "text": "(503) 272-8192\n2",
-//                 "evidences": []
-//             },
-//             {
-//                 "start": 55,
-//                 "end": 69,
-//                 "detection": "PhoneNumber",
-//                 "detection_type": "pii",
-//                 "score": 0.8,
-//                 "text": "(617) 985-3519",
-//                 "evidences": []
-//             }
-//         ]]));
-//     });
+    let mut pii_detector_whole_doc_server = MockServer::new_http(PII_DETECTOR_WHOLE_DOC);
+    pii_detector_whole_doc_server.mock(|when, then| {
+        when.post()
+            .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
+            .header("detector-id", PII_DETECTOR_WHOLE_DOC)
+            .json(ContentAnalysisRequest {
+                contents: vec![
+                    "Here are 2 random phone numbers:\n\n1. (503) 272-8192\n2. (617) 985-3519."
+                        .into(),
+                ],
+                detector_params: DetectorParams::default(),
+            });
+        then.json(json!([
+        [
+            {
+                "start": 37,
+                "end": 53,
+                "detection": "PhoneNumber",
+                "detection_type": "pii",
+                "score": 0.8,
+                "text": "(503) 272-8192\n2",
+                "evidences": []
+            },
+            {
+                "start": 55,
+                "end": 69,
+                "detection": "PhoneNumber",
+                "detection_type": "pii",
+                "score": 0.8,
+                "text": "(617) 985-3519",
+                "evidences": []
+            }
+        ]]));
+    });
 
-//     let test_server = TestOrchestratorServer::builder()
-//         .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
-//         .openai_server(&openai_server)
-//         .detector_servers([&pii_detector_whole_doc_server])
-//         .build()
-//         .await?;
+    let test_server = TestOrchestratorServer::builder()
+        .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
+        .openai_server(&openai_server)
+        .detector_servers([&pii_detector_whole_doc_server])
+        .build()
+        .await?;
 
-//     let response = test_server
-//         .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
-//         .json(&json!({
-//             "stream": true,
-//             "model": "test-0B",
-//             "detectors": {
-//                 "input": {},
-//                 "output": {
-//                     "pii_detector_whole_doc": {},
-//                 },
-//             },
-//             "messages": [
-//                 Message { role: Role::User, content: Some(Content::Text("Can you generate 2 random phone numbers?".into())), ..Default::default()},
-//             ],
-//         }))
-//         .send()
-//         .await?;
-//     assert_eq!(response.status(), StatusCode::OK);
+    let response = test_server
+        .post(ORCHESTRATOR_COMPLETIONS_DETECTION_ENDPOINT)
+        .json(&json!({
+            "stream": true,
+            "model": model_id,
+            "detectors": {
+                "input": {},
+                "output": {
+                    PII_DETECTOR_WHOLE_DOC: {},
+                },
+            },
+            "prompt": "Can you generate 2 random phone numbers?"
+        }))
+        .send()
+        .await?;
+    assert_eq!(response.status(), StatusCode::OK);
 
-//     let sse_stream: SseStream<ChatCompletionChunk> = SseStream::new(response.bytes_stream());
-//     let messages = sse_stream.try_collect::<Vec<_>>().await?;
-//     debug!("{messages:#?}");
+    let sse_stream: SseStream<Completion> = SseStream::new(response.bytes_stream());
+    let messages = sse_stream.try_collect::<Vec<_>>().await?;
+    debug!("{messages:#?}");
 
-//     // Validate length
-//     assert_eq!(messages.len(), 13, "unexpected number of messages");
+    // Validate length
+    assert_eq!(messages.len(), 11, "unexpected number of messages");
 
-//     // Validate finish reason message
-//     assert_eq!(
-//         messages[11].choices[0].finish_reason,
-//         Some("stop".into()),
-//         "missing finish reason message"
-//     );
+    // Validate finish reason message
+    assert_eq!(
+        messages[9].choices[0].finish_reason,
+        Some("stop".into()),
+        "missing finish reason message"
+    );
 
-//     // Validate whole doc detections message
-//     let last = &messages[12];
-//     assert_eq!(
-//         last.detections,
-//         Some(CompletionDetections {
-//             input: vec![],
-//             output: vec![CompletionOutputDetections {
-//                 choice_index: 0,
-//                 results: vec![
-//                     ContentAnalysisResponse {
-//                         start: 37,
-//                         end: 53,
-//                         text: "(503) 272-8192\n2".into(),
-//                         detection: "PhoneNumber".into(),
-//                         detection_type: "pii".into(),
-//                         detector_id: Some("pii_detector_whole_doc".into()),
-//                         score: 0.8,
-//                         ..Default::default()
-//                     },
-//                     ContentAnalysisResponse {
-//                         start: 55,
-//                         end: 69,
-//                         text: "(617) 985-3519".into(),
-//                         detection: "PhoneNumber".into(),
-//                         detection_type: "pii".into(),
-//                         detector_id: Some("pii_detector_whole_doc".into()),
-//                         score: 0.8,
-//                         ..Default::default()
-//                     }
-//                 ],
-//             }],
-//         }),
-//         "unexpected whole doc detections message"
-//     );
+    // Validate whole doc detections message
+    let last = &messages[10];
+    assert_eq!(
+        last.detections,
+        Some(CompletionDetections {
+            input: vec![],
+            output: vec![CompletionOutputDetections {
+                choice_index: 0,
+                results: vec![
+                    Detection {
+                        start: Some(37),
+                        end: Some(53),
+                        text: Some("(503) 272-8192\n2".into()),
+                        detection: "PhoneNumber".into(),
+                        detection_type: "pii".into(),
+                        detector_id: Some("pii_detector_whole_doc".into()),
+                        score: 0.8,
+                        ..Default::default()
+                    },
+                    Detection {
+                        start: Some(55),
+                        end: Some(69),
+                        text: Some("(617) 985-3519".into()),
+                        detection: "PhoneNumber".into(),
+                        detection_type: "pii".into(),
+                        detector_id: Some("pii_detector_whole_doc".into()),
+                        score: 0.8,
+                        ..Default::default()
+                    }
+                ],
+            }],
+        }),
+        "unexpected whole doc detections message"
+    );
 
-//     Ok(())
-// }
+    Ok(())
+}
 
 // #[test(tokio::test)]
 // async fn output_detectors_and_whole_doc_output_detectors() -> Result<(), anyhow::Error> {
