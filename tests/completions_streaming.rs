@@ -7,7 +7,7 @@ use fms_guardrails_orchestr8::{
         detector::ContentAnalysisRequest,
         openai::{
             Completion, CompletionChoice, CompletionDetections, CompletionInputDetections,
-            CompletionLogprobs, CompletionOutputDetections, TokenizeResponse, Usage,
+            CompletionLogprobs, CompletionOutputDetections, OpenAiError, TokenizeResponse, Usage,
         },
     },
     models::DetectorParams,
@@ -19,7 +19,7 @@ use fms_guardrails_orchestr8::{
         caikit_data_model::nlp::{ChunkerTokenizationStreamResult, Token, TokenizationResults},
     },
 };
-use futures::TryStreamExt;
+use futures::{StreamExt, TryStreamExt};
 use mocktail::prelude::*;
 use serde_json::json;
 use test_log::test;
@@ -3592,69 +3592,66 @@ async fn output_detectors_and_whole_doc_output_detectors() -> Result<(), anyhow:
     Ok(())
 }
 
-// #[test(tokio::test)]
-// async fn openai_bad_request_error() -> Result<(), anyhow::Error> {
-//     let mut openai_server = MockServer::new_http("openai");
-//     openai_server.mock(|when, then| {
-//         when.post()
-//             .path(CHAT_COMPLETIONS_ENDPOINT)
-//             .json(json!({
-//                 "stream": true,
-//                 "model": "test-0B",
-//                 "messages": [
-//                     Message { role: Role::User, content: Some(Content::Text("Hey".into())), ..Default::default()},
-//                 ],
-//                 "prompt_logprobs": true
-//             })
-//         );
-//         then.bad_request().json(OpenAiError {
-//             object: Some("error".into()),
-//             message: r#"[{'type': 'value_error', 'loc': ('body',), 'msg': 'Value error, `prompt_logprobs` are not available when `stream=True`.', 'input': {'model': 'test-0B', 'messages': [{'role': 'user', 'content': 'Hey'}],'n': 1, 'seed': 1337, 'stream': True, 'prompt_logprobs': True}, 'ctx': {'error': ValueError('`prompt_logprobs` are not available when `stream=True`.')}}]"#.into(),
-//             r#type: Some("BadRequestError".into()),
-//             param: None,
-//             code: 400,
-//         });
-//     });
+#[test(tokio::test)]
+async fn openai_bad_request_error() -> Result<(), anyhow::Error> {
+    let model_id = "test-0B";
+    let mut openai_server = MockServer::new_http("openai");
+    openai_server.mock(|when, then| {
+        when.post()
+            .path(COMPLETIONS_ENDPOINT)
+            .json(json!({
+                "stream": true,
+                "model": model_id,
+                "prompt": "Hey",
+                "prompt_logprobs": true
+            })
+        );
+        then.bad_request().json(OpenAiError {
+            object: Some("error".into()),
+            message: r#"[{'type': 'value_error', 'loc': ('body',), 'msg': 'Value error, `prompt_logprobs` are not available when `stream=True`.', 'input': {'model': 'test-0B', 'messages': [{'role': 'user', 'content': 'Hey'}],'n': 1, 'seed': 1337, 'stream': True, 'prompt_logprobs': True}, 'ctx': {'error': ValueError('`prompt_logprobs` are not available when `stream=True`.')}}]"#.into(),
+            r#type: Some("BadRequestError".into()),
+            param: None,
+            code: 400,
+        });
+    });
 
-//     let test_server = TestOrchestratorServer::builder()
-//         .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
-//         .openai_server(&openai_server)
-//         .build()
-//         .await?;
+    let test_server = TestOrchestratorServer::builder()
+        .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
+        .openai_server(&openai_server)
+        .build()
+        .await?;
 
-//     let response = test_server
-//         .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
-//         .json(&json!({
-//             "stream": true,
-//             "model": "test-0B",
-//             "detectors": {
-//                 "input": {},
-//                 "output": {},
-//             },
-//             "messages": [
-//                 Message { role: Role::User, content: Some(Content::Text("Hey".into())), ..Default::default()},
-//             ],
-//             "prompt_logprobs": true
-//         }))
-//         .send()
-//         .await?;
-//     assert_eq!(response.status(), StatusCode::OK);
+    let response = test_server
+        .post(ORCHESTRATOR_COMPLETIONS_DETECTION_ENDPOINT)
+        .json(&json!({
+            "stream": true,
+            "model": model_id,
+            "detectors": {
+                "input": {},
+                "output": {},
+            },
+            "prompt": "Hey",
+            "prompt_logprobs": true
+        }))
+        .send()
+        .await?;
+    assert_eq!(response.status(), StatusCode::OK);
 
-//     let sse_stream: SseStream<ChatCompletionChunk> = SseStream::new(response.bytes_stream());
-//     let messages = sse_stream.collect::<Vec<_>>().await;
+    let sse_stream: SseStream<Completion> = SseStream::new(response.bytes_stream());
+    let messages = sse_stream.collect::<Vec<_>>().await;
 
-//     // Validate length
-//     assert_eq!(messages.len(), 1, "unexpected number of messages");
+    // Validate length
+    assert_eq!(messages.len(), 1, "unexpected number of messages");
 
-//     // Validate error message
-//     assert!(
-//         messages[0]
-//             .as_ref()
-//             .is_err_and(|e| e.code == http::StatusCode::BAD_REQUEST)
-//     );
+    // Validate error message
+    assert!(
+        messages[0]
+            .as_ref()
+            .is_err_and(|e| e.code == http::StatusCode::BAD_REQUEST)
+    );
 
-//     Ok(())
-// }
+    Ok(())
+}
 
 // #[test(tokio::test)]
 // async fn openai_stream_error() -> Result<(), anyhow::Error> {
