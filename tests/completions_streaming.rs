@@ -753,11 +753,11 @@ async fn output_detectors() -> Result<(), anyhow::Error> {
         "unexpected detections for msg-2"
     );
 
-    // Validate finish reason message
+    // Validate finish reason
     assert_eq!(
         messages[2].choices[0].finish_reason,
         Some("stop".into()),
-        "missing finish reason message"
+        "missing finish reason"
     );
 
     Ok(())
@@ -1650,11 +1650,11 @@ async fn output_detectors_with_usage() -> Result<(), anyhow::Error> {
         "unexpected detections for msg-2"
     );
 
-    // Validate finish reason message
+    // Validate finish reason
     assert_eq!(
         messages[2].choices[0].finish_reason,
         Some("stop".into()),
-        "missing finish reason message"
+        "missing finish reason"
     );
 
     // Validate final usage message
@@ -2160,11 +2160,11 @@ async fn output_detectors_with_continuous_usage_stats() -> Result<(), anyhow::Er
         "unexpected usage for msg-2"
     );
 
-    // Validate finish reason message
+    // Validate finish reason
     assert_eq!(
         messages[2].choices[0].finish_reason,
         Some("stop".into()),
-        "missing finish reason message"
+        "missing finish reason"
     );
 
     Ok(())
@@ -3088,11 +3088,11 @@ async fn whole_doc_output_detectors() -> Result<(), anyhow::Error> {
     // Validate length
     assert_eq!(messages.len(), 11, "unexpected number of messages");
 
-    // Validate finish reason message
+    // Validate finish reason
     assert_eq!(
         messages[9].choices[0].finish_reason,
         Some("stop".into()),
-        "missing finish reason message"
+        "missing finish reason"
     );
 
     // Validate whole doc detections message
