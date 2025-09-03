@@ -132,7 +132,6 @@ async fn handle_input_detection(
         // Build completion with input detections
         let completion = Completion {
             id: Uuid::new_v4().simple().to_string(),
-            object: "text_completion".into(), // This value is constant: https://platform.openai.com/docs/api-reference/completions/object#completions/object-object
             created: common::current_timestamp().as_secs() as i64,
             model: model_id,
             detections: Some(CompletionDetections {
