@@ -33,7 +33,7 @@ pub fn configure_tls(
     tls_client_ca_cert_path: Option<PathBuf>,
 ) -> Option<Arc<ServerConfig>> {
     if let (Some(cert_path), Some(key_path)) = (tls_cert_path, tls_key_path) {
-        let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+        let _ = rustls::crypto::ring::default_provider().install_default();
         let cert = load_certs(&cert_path);
         let key = load_private_key(&key_path);
         // Configure mTLS if client CA is provided
