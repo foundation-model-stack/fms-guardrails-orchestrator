@@ -489,32 +489,29 @@ async fn handle_whole_doc_detection(
                 ),
                 _ => unimplemented!(),
             };
-            tasks.push((choice_index, detection_task));
+            tasks.push((choice_index, *detector_type, detection_task));
         }
     }
 
     // Await completion of all detection tasks
     let detections = try_join_all(tasks.into_iter().map(
-        |(choice_index, detection_task)| async move {
-            Ok::<_, Error>((choice_index, detection_task.await?))
+        |(choice_index, detector_type, detection_task)| async move {
+            Ok::<_, Error>((choice_index, detector_type, detection_task.await?))
         },
     ))
     .await?
     .into_iter()
-    .map(|(choice_index, result)| result.map(|detections| (choice_index, detections)))
+    .map(|(choice_index, detector_type, result)| {
+        result.map(|detections| (choice_index, detector_type, detections))
+    })
     .collect::<Result<Vec<_>, Error>>()?;
 
-    // Build output detections
-    let output = detections
-        .into_iter()
-        .map(|(choice_index, detections)| CompletionOutputDetections {
-            choice_index,
-            results: detections,
-        })
-        .collect::<Vec<_>>();
-
     // Build warnings
-    let warnings = if output.iter().any(|d| !d.results.is_empty()) {
+    // If there are any text contents detections, add unsuitable output warning
+    let unsuitable_output = detections.iter().any(|(_, detector_type, detections)| {
+        matches!(detector_type, DetectorType::TextContents) && !detections.is_empty()
+    });
+    let warnings = if unsuitable_output {
         vec![CompletionDetectionWarning::new(
             DetectionWarningReason::UnsuitableOutput,
             UNSUITABLE_OUTPUT_MESSAGE,
@@ -522,6 +519,15 @@ async fn handle_whole_doc_detection(
     } else {
         Vec::new()
     };
+
+    // Build output detections
+    let output = detections
+        .into_iter()
+        .map(|(choice_index, _, detections)| CompletionOutputDetections {
+            choice_index,
+            results: detections,
+        })
+        .collect::<Vec<_>>();
     let detections = CompletionDetections {
         output,
         ..Default::default()

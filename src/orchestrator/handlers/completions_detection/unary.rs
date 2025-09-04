@@ -208,27 +208,43 @@ async fn handle_output_detection(
                 ),
                 _ => unimplemented!(),
             };
-            tasks.push((choice.index, detection_task));
+            tasks.push((choice.index, *detector_type, detection_task));
         }
     }
 
     // Await completion of all detection tasks
     let detections = try_join_all(tasks.into_iter().map(
-        |(choice_index, detection_task)| async move {
-            Ok::<_, Error>((choice_index, detection_task.await?))
+        |(choice_index, detector_type, detection_task)| async move {
+            Ok::<_, Error>((choice_index, detector_type, detection_task.await?))
         },
     ))
     .await?
     .into_iter()
-    .map(|(choice_index, result)| result.map(|detections| (choice_index, detections)))
+    .map(|(choice_index, detector_type, result)| {
+        result.map(|detections| (choice_index, detector_type, detections))
+    })
     .collect::<Result<Vec<_>, Error>>()?;
 
     if !detections.is_empty() {
+        // Build warnings
+        // If there are any text contents detections, add unsuitable output warning
+        let unsuitable_output = detections.iter().any(|(_, detector_type, detections)| {
+            matches!(detector_type, DetectorType::TextContents) && !detections.is_empty()
+        });
+        let warnings = if unsuitable_output {
+            vec![CompletionDetectionWarning::new(
+                DetectionWarningReason::UnsuitableOutput,
+                UNSUITABLE_OUTPUT_MESSAGE,
+            )]
+        } else {
+            Vec::new()
+        };
+
         // Update completion with detections
         let output = detections
             .into_iter()
-            .filter(|(_, detections)| !detections.is_empty())
-            .map(|(choice_index, detections)| CompletionOutputDetections {
+            .filter(|(_, _, detections)| !detections.is_empty())
+            .map(|(choice_index, _, detections)| CompletionOutputDetections {
                 choice_index,
                 results: detections,
             })
@@ -238,10 +254,7 @@ async fn handle_output_detection(
                 output,
                 ..Default::default()
             });
-            completion.warnings = vec![CompletionDetectionWarning::new(
-                DetectionWarningReason::UnsuitableOutput,
-                UNSUITABLE_OUTPUT_MESSAGE,
-            )];
+            completion.warnings = warnings;
         }
     }
     Ok(completion)
