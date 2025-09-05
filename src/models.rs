@@ -932,7 +932,7 @@ pub struct GenerationWithDetectionResult {
 /// This struct does NOT apply to classification endpoints:
 /// /api/v1/task/classification-with-text-generation
 /// /api/v1/task/server-streaming-classification-with-text-generation
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DetectionResult {
     // The type of detection
     pub detection_type: String,
