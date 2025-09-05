@@ -1049,8 +1049,7 @@ async fn output_detectors_multiple_detector_types() -> Result<(), anyhow::Error>
             detection: "Yes".into(),
             detector_id: Some(ANSWER_RELEVANCE_DETECTOR.into()),
             score: 0.80,
-            evidence: None,
-            metadata: Default::default(),
+            ..Default::default()
         }]);
     });
 
