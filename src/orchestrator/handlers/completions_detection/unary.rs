@@ -14,7 +14,10 @@
  limitations under the License.
 
 */
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{HashMap, hash_map},
+    sync::Arc,
+};
 
 use futures::future::try_join_all;
 use tracing::{Instrument, error, info, instrument};
@@ -30,6 +33,7 @@ use crate::{
     orchestrator::{
         Context, Error,
         common::{self, group_detectors_by_type, validate_detectors},
+        types::Detection,
     },
 };
 
@@ -240,11 +244,24 @@ async fn handle_output_detection(
             Vec::new()
         };
 
+        // Group detections by choice_index
+        let mut detections_by_choice: HashMap<u32, Vec<Detection>> = HashMap::new();
+        for (choice_index, _, detections) in detections {
+            if !detections.is_empty() {
+                match detections_by_choice.entry(choice_index) {
+                    hash_map::Entry::Occupied(mut entry) => {
+                        entry.get_mut().extend_from_slice(&detections);
+                    }
+                    hash_map::Entry::Vacant(entry) => {
+                        entry.insert(detections);
+                    }
+                }
+            }
+        }
         // Update completion with detections
-        let output = detections
+        let output = detections_by_choice
             .into_iter()
-            .filter(|(_, _, detections)| !detections.is_empty())
-            .map(|(choice_index, _, detections)| CompletionOutputDetections {
+            .map(|(choice_index, detections)| CompletionOutputDetections {
                 choice_index,
                 results: detections,
             })
