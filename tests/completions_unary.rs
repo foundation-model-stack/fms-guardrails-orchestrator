@@ -316,16 +316,6 @@ async fn no_detections() -> Result<(), anyhow::Error> {
             prompt_logprobs: None,
         },
     ];
-    let expected_warnings = vec![
-        CompletionDetectionWarning::new(
-            DetectionWarningReason::EmptyOutput,
-            "Choice of index 0 has no content. Output detection was not executed",
-        ),
-        CompletionDetectionWarning::new(
-            DetectionWarningReason::EmptyOutput,
-            "Choice of index 1 has no content. Output detection was not executed",
-        ),
-    ];
     let completions_response = Completion {
         id: Uuid::new_v4().simple().to_string(),
         object: "text_completion".into(),
@@ -368,7 +358,19 @@ async fn no_detections() -> Result<(), anyhow::Error> {
     debug!("{}", serde_json::to_string_pretty(&results)?);
     assert_eq!(results.choices[0], completions_response.choices[0]);
     assert_eq!(results.choices[1], completions_response.choices[1]);
-    assert_eq!(results.warnings, expected_warnings);
+    assert_eq!(
+        results.warnings,
+        vec![
+            CompletionDetectionWarning::new(
+                DetectionWarningReason::EmptyOutput,
+                "Choice of index 0 has no content. Output detection was not executed",
+            ),
+            CompletionDetectionWarning::new(
+                DetectionWarningReason::EmptyOutput,
+                "Choice of index 1 has no content. Output detection was not executed",
+            ),
+        ]
+    );
     assert!(results.detections.is_none());
 
     Ok(())
@@ -410,10 +412,6 @@ async fn input_detections() -> Result<(), anyhow::Error> {
             }],
             output: vec![],
         }),
-        warnings: vec![CompletionDetectionWarning::new(
-            DetectionWarningReason::UnsuitableInput,
-            UNSUITABLE_INPUT_MESSAGE,
-        )],
         usage: Some(Usage {
             prompt_tokens: 43,
             ..Default::default()
@@ -495,7 +493,13 @@ async fn input_detections() -> Result<(), anyhow::Error> {
     let results = response.json::<Completion>().await?;
     assert_eq!(results.detections, completions_response.detections);
     assert_eq!(results.choices, completions_response.choices);
-    assert_eq!(results.warnings, completions_response.warnings);
+    assert_eq!(
+        results.warnings,
+        vec![CompletionDetectionWarning::new(
+            DetectionWarningReason::UnsuitableInput,
+            UNSUITABLE_INPUT_MESSAGE,
+        )]
+    );
 
     Ok(())
 }
@@ -735,10 +739,6 @@ async fn output_detections() -> Result<(), anyhow::Error> {
                 results: expected_detections.clone(),
             }],
         }),
-        warnings: vec![CompletionDetectionWarning::new(
-            DetectionWarningReason::UnsuitableOutput,
-            UNSUITABLE_OUTPUT_MESSAGE,
-        )],
         ..Default::default()
     };
 
@@ -856,7 +856,13 @@ async fn output_detections() -> Result<(), anyhow::Error> {
     let results = response.json::<Completion>().await?;
     assert_eq!(results.detections, completions_response.detections);
     assert_eq!(results.choices, completions_response.choices);
-    assert_eq!(results.warnings, completions_response.warnings);
+    assert_eq!(
+        results.warnings,
+        vec![CompletionDetectionWarning::new(
+            DetectionWarningReason::UnsuitableOutput,
+            UNSUITABLE_OUTPUT_MESSAGE,
+        )]
+    );
 
     Ok(())
 }
