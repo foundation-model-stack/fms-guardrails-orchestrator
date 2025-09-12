@@ -25,7 +25,7 @@ use crate::{
     clients::chunker::DEFAULT_CHUNKER_ID,
     config::{DetectorConfig, DetectorType},
     models::DetectorParams,
-    orchestrator::{Context, Error},
+    orchestrator::{Context, Error, types::Detection},
 };
 
 /// Slices chars between start and end indices.
@@ -175,6 +175,26 @@ pub fn group_detectors_by_type(
         }
     }
     detector_groups
+}
+
+/// Groups detections by choice.
+pub fn group_detections_by_choice(
+    detections: Vec<(u32, DetectorType, Vec<Detection>)>,
+) -> HashMap<u32, Vec<Detection>> {
+    let mut detections_by_choice: HashMap<u32, Vec<Detection>> = HashMap::new();
+    for (choice_index, _, detections) in detections {
+        if !detections.is_empty() {
+            match detections_by_choice.entry(choice_index) {
+                hash_map::Entry::Occupied(mut entry) => {
+                    entry.get_mut().extend_from_slice(&detections);
+                }
+                hash_map::Entry::Vacant(entry) => {
+                    entry.insert(detections);
+                }
+            }
+        }
+    }
+    detections_by_choice
 }
 
 #[cfg(test)]

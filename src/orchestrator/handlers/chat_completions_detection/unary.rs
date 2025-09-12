@@ -29,7 +29,7 @@ use crate::{
     },
     orchestrator::{
         Context, Error,
-        common::{self, group_detectors_by_type, validate_detectors},
+        common::{self, group_detections_by_choice, group_detectors_by_type, validate_detectors},
         types::ChatMessageIterator,
     },
 };
@@ -182,6 +182,7 @@ async fn handle_output_detection(
     use DetectorType::*;
     let detector_groups = group_detectors_by_type(&ctx, detectors);
     let headers = &task.headers;
+    let mut warnings = Vec::new();
 
     // Spawn detection tasks
     let mut tasks = Vec::with_capacity(chat_completion.choices.len() * detector_groups.len());
@@ -192,15 +193,13 @@ async fn handle_output_detection(
             .as_ref()
             .is_none_or(|content| content.is_empty())
         {
-            chat_completion
-                .warnings
-                .push(CompletionDetectionWarning::new(
-                    DetectionWarningReason::EmptyOutput,
-                    &format!(
-                        "Choice of index {} has no content. Output detection was not executed",
-                        choice.index
-                    ),
-                ));
+            warnings.push(CompletionDetectionWarning::new(
+                DetectionWarningReason::EmptyOutput,
+                &format!(
+                    "Choice of index {} has no content. Output detection was not executed",
+                    choice.index
+                ),
+            ));
             continue;
         }
         for (detector_type, detectors) in &detector_groups {
@@ -216,28 +215,42 @@ async fn handle_output_detection(
                 ),
                 _ => unimplemented!(),
             };
-            tasks.push((choice.index, detection_task));
+            tasks.push((choice.index, *detector_type, detection_task));
         }
     }
 
     // Await completion of all detection tasks
     let detections = try_join_all(tasks.into_iter().map(
-        |(choice_index, detection_task)| async move {
-            Ok::<_, Error>((choice_index, detection_task.await?))
+        |(choice_index, detector_type, detection_task)| async move {
+            Ok::<_, Error>((choice_index, detector_type, detection_task.await?))
         },
     ))
     .await?
     .into_iter()
-    .map(|(choice_index, result)| result.map(|detections| (choice_index, detections)))
+    .map(|(choice_index, detector_type, result)| {
+        result.map(|detections| (choice_index, detector_type, detections))
+    })
     .collect::<Result<Vec<_>, Error>>()?;
 
     if !detections.is_empty() {
-        // Update chat completion with detections
-        let output = detections
+        // If there are text contents detections, add unsuitable output warning
+        let unsuitable_output = detections.iter().any(|(_, detector_type, detections)| {
+            matches!(detector_type, DetectorType::TextContents) && !detections.is_empty()
+        });
+        if unsuitable_output {
+            warnings.push(CompletionDetectionWarning::new(
+                DetectionWarningReason::UnsuitableOutput,
+                UNSUITABLE_OUTPUT_MESSAGE,
+            ));
+        }
+
+        // Group detections by choice
+        let detections_by_choice = group_detections_by_choice(detections);
+        // Update completion with detections
+        let output = detections_by_choice
             .into_iter()
-            .filter(|(_, detections)| !detections.is_empty())
-            .map(|(input_id, detections)| CompletionOutputDetections {
-                choice_index: input_id,
+            .map(|(choice_index, detections)| CompletionOutputDetections {
+                choice_index,
                 results: detections,
             })
             .collect::<Vec<_>>();
@@ -246,10 +259,7 @@ async fn handle_output_detection(
                 output,
                 ..Default::default()
             });
-            chat_completion.warnings = vec![CompletionDetectionWarning::new(
-                DetectionWarningReason::UnsuitableOutput,
-                UNSUITABLE_OUTPUT_MESSAGE,
-            )];
+            chat_completion.warnings = warnings;
         }
     }
     Ok(chat_completion)
