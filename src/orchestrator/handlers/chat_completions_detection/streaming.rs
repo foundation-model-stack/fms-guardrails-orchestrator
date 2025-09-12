@@ -454,6 +454,7 @@ async fn handle_whole_doc_detection(
         .last()
         .and_then(|message| message.text.map(|s| s.to_string()))
         .unwrap_or_default();
+    let mut warnings = Vec::new();
 
     // Create vec of choice_index->generated_text
     let choices = completion_state
@@ -492,39 +493,42 @@ async fn handle_whole_doc_detection(
                 ),
                 _ => unimplemented!(),
             };
-            tasks.push((choice_index, detection_task));
+            tasks.push((choice_index, *detector_type, detection_task));
         }
     }
 
     // Await completion of all detection tasks
     let detections = try_join_all(tasks.into_iter().map(
-        |(choice_index, detection_task)| async move {
-            Ok::<_, Error>((choice_index, detection_task.await?))
+        |(choice_index, detector_type, detection_task)| async move {
+            Ok::<_, Error>((choice_index, detector_type, detection_task.await?))
         },
     ))
     .await?
     .into_iter()
-    .map(|(choice_index, result)| result.map(|detections| (choice_index, detections)))
+    .map(|(choice_index, detector_type, result)| {
+        result.map(|detections| (choice_index, detector_type, detections))
+    })
     .collect::<Result<Vec<_>, Error>>()?;
+
+    // If there are any text contents detections, add unsuitable output warning
+    let unsuitable_output = detections.iter().any(|(_, detector_type, detections)| {
+        matches!(detector_type, DetectorType::TextContents) && !detections.is_empty()
+    });
+    if unsuitable_output {
+        warnings.push(CompletionDetectionWarning::new(
+            DetectionWarningReason::UnsuitableOutput,
+            UNSUITABLE_OUTPUT_MESSAGE,
+        ));
+    }
 
     // Build output detections
     let output = detections
         .into_iter()
-        .map(|(choice_index, detections)| CompletionOutputDetections {
+        .map(|(choice_index, _, detections)| CompletionOutputDetections {
             choice_index,
             results: detections,
         })
         .collect::<Vec<_>>();
-
-    // Build warnings
-    let warnings = if output.iter().any(|d| !d.results.is_empty()) {
-        vec![CompletionDetectionWarning::new(
-            DetectionWarningReason::UnsuitableOutput,
-            UNSUITABLE_OUTPUT_MESSAGE,
-        )]
-    } else {
-        Vec::new()
-    };
     let detections = CompletionDetections {
         output,
         ..Default::default()

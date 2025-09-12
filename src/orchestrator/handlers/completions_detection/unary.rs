@@ -14,10 +14,7 @@
  limitations under the License.
 
 */
-use std::{
-    collections::{HashMap, hash_map},
-    sync::Arc,
-};
+use std::{collections::HashMap, sync::Arc};
 
 use futures::future::try_join_all;
 use tracing::{Instrument, error, info, instrument};
@@ -32,8 +29,7 @@ use crate::{
     },
     orchestrator::{
         Context, Error,
-        common::{self, group_detectors_by_type, validate_detectors},
-        types::Detection,
+        common::{self, group_detections_by_choice, group_detectors_by_type, validate_detectors},
     },
 };
 
@@ -175,12 +171,14 @@ async fn handle_output_detection(
     let detector_groups = group_detectors_by_type(&ctx, detectors);
     let headers = &task.headers;
     let prompt = &task.request.prompt;
+    let mut warnings = Vec::new();
 
     // Spawn detection tasks
     let mut tasks = Vec::with_capacity(completion.choices.len() * detector_groups.len());
     for choice in &completion.choices {
         if choice.text.is_empty() {
-            completion.warnings.push(CompletionDetectionWarning::new(
+            // Add no content warning
+            warnings.push(CompletionDetectionWarning::new(
                 DetectionWarningReason::EmptyOutput,
                 &format!(
                     "Choice of index {} has no content. Output detection was not executed",
@@ -230,34 +228,19 @@ async fn handle_output_detection(
     .collect::<Result<Vec<_>, Error>>()?;
 
     if !detections.is_empty() {
-        // Build warnings
-        // If there are any text contents detections, add unsuitable output warning
+        // If there are text contents detections, add unsuitable output warning
         let unsuitable_output = detections.iter().any(|(_, detector_type, detections)| {
             matches!(detector_type, DetectorType::TextContents) && !detections.is_empty()
         });
-        let warnings = if unsuitable_output {
-            vec![CompletionDetectionWarning::new(
+        if unsuitable_output {
+            warnings.push(CompletionDetectionWarning::new(
                 DetectionWarningReason::UnsuitableOutput,
                 UNSUITABLE_OUTPUT_MESSAGE,
-            )]
-        } else {
-            Vec::new()
-        };
-
-        // Group detections by choice_index
-        let mut detections_by_choice: HashMap<u32, Vec<Detection>> = HashMap::new();
-        for (choice_index, _, detections) in detections {
-            if !detections.is_empty() {
-                match detections_by_choice.entry(choice_index) {
-                    hash_map::Entry::Occupied(mut entry) => {
-                        entry.get_mut().extend_from_slice(&detections);
-                    }
-                    hash_map::Entry::Vacant(entry) => {
-                        entry.insert(detections);
-                    }
-                }
-            }
+            ));
         }
+
+        // Group detections by choice
+        let detections_by_choice = group_detections_by_choice(detections);
         // Update completion with detections
         let output = detections_by_choice
             .into_iter()

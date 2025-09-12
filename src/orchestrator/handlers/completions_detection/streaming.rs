@@ -441,6 +441,7 @@ async fn handle_whole_doc_detection(
     let detector_groups = group_detectors_by_type(&ctx, detectors);
     let headers = &task.headers;
     let prompt = &task.request.prompt;
+    let mut warnings = Vec::new();
 
     // Create vec of choice_index->generated_text
     let choices = completion_state
@@ -506,19 +507,16 @@ async fn handle_whole_doc_detection(
     })
     .collect::<Result<Vec<_>, Error>>()?;
 
-    // Build warnings
     // If there are any text contents detections, add unsuitable output warning
     let unsuitable_output = detections.iter().any(|(_, detector_type, detections)| {
         matches!(detector_type, DetectorType::TextContents) && !detections.is_empty()
     });
-    let warnings = if unsuitable_output {
-        vec![CompletionDetectionWarning::new(
+    if unsuitable_output {
+        warnings.push(CompletionDetectionWarning::new(
             DetectionWarningReason::UnsuitableOutput,
             UNSUITABLE_OUTPUT_MESSAGE,
-        )]
-    } else {
-        Vec::new()
-    };
+        ));
+    }
 
     // Build output detections
     let output = detections
