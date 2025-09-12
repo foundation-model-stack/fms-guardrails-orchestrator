@@ -113,7 +113,6 @@ async fn no_detectors() -> Result<(), anyhow::Error> {
         model: MODEL_ID.into(),
         choices: expected_choices.clone(),
         detections: None,
-        warnings: vec![],
         ..Default::default()
     };
 
@@ -310,7 +309,6 @@ async fn no_detections() -> Result<(), anyhow::Error> {
         model: MODEL_ID.into(),
         choices: expected_choices.clone(),
         detections: None,
-        warnings: vec![],
         ..Default::default()
     };
 
@@ -414,17 +412,6 @@ async fn no_detections() -> Result<(), anyhow::Error> {
             stop_reason: None,
         },
     ];
-
-    let expected_warnings = vec![
-        CompletionDetectionWarning::new(
-            DetectionWarningReason::EmptyOutput,
-            "Choice of index 0 has no content. Output detection was not executed",
-        ),
-        CompletionDetectionWarning::new(
-            DetectionWarningReason::EmptyOutput,
-            "Choice of index 1 has no content. Output detection was not executed",
-        ),
-    ];
     let chat_completions_response = ChatCompletion {
         model: MODEL_ID.into(),
         choices: expected_choices.clone(),
@@ -459,8 +446,20 @@ async fn no_detections() -> Result<(), anyhow::Error> {
     debug!("{}", serde_json::to_string_pretty(&results)?);
     assert_eq!(results.choices[0], chat_completions_response.choices[0]);
     assert_eq!(results.choices[1], chat_completions_response.choices[1]);
-    assert_eq!(results.warnings, expected_warnings);
     assert!(results.detections.is_none());
+    assert_eq!(
+        results.warnings,
+        vec![
+            CompletionDetectionWarning::new(
+                DetectionWarningReason::EmptyOutput,
+                "Choice of index 0 has no content. Output detection was not executed",
+            ),
+            CompletionDetectionWarning::new(
+                DetectionWarningReason::EmptyOutput,
+                "Choice of index 1 has no content. Output detection was not executed",
+            ),
+        ]
+    );
 
     Ok(())
 }
@@ -504,10 +503,6 @@ async fn input_detections() -> Result<(), anyhow::Error> {
             }],
             output: vec![],
         }),
-        warnings: vec![CompletionDetectionWarning::new(
-            DetectionWarningReason::UnsuitableInput,
-            UNSUITABLE_INPUT_MESSAGE,
-        )],
         ..Default::default()
     };
 
@@ -592,7 +587,13 @@ async fn input_detections() -> Result<(), anyhow::Error> {
     let results = response.json::<ChatCompletion>().await?;
     assert_eq!(results.detections, chat_completions_response.detections);
     assert_eq!(results.choices, chat_completions_response.choices);
-    assert_eq!(results.warnings, chat_completions_response.warnings);
+    assert_eq!(
+        results.warnings,
+        vec![CompletionDetectionWarning::new(
+            DetectionWarningReason::UnsuitableInput,
+            UNSUITABLE_INPUT_MESSAGE,
+        )]
+    );
 
     Ok(())
 }
@@ -867,10 +868,6 @@ async fn output_detections() -> Result<(), anyhow::Error> {
                 results: expected_detections.clone(),
             }],
         }),
-        warnings: vec![CompletionDetectionWarning::new(
-            DetectionWarningReason::UnsuitableOutput,
-            UNSUITABLE_OUTPUT_MESSAGE,
-        )],
         ..Default::default()
     };
 
@@ -973,7 +970,13 @@ async fn output_detections() -> Result<(), anyhow::Error> {
     let results = response.json::<ChatCompletion>().await?;
     assert_eq!(results.detections, chat_completions_response.detections);
     assert_eq!(results.choices, chat_completions_response.choices);
-    assert_eq!(results.warnings, chat_completions_response.warnings);
+    assert_eq!(
+        results.warnings,
+        vec![CompletionDetectionWarning::new(
+            DetectionWarningReason::UnsuitableOutput,
+            UNSUITABLE_OUTPUT_MESSAGE,
+        )]
+    );
 
     Ok(())
 }
