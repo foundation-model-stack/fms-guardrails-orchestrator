@@ -1009,7 +1009,57 @@ async fn output_detectors_multiple_detector_types() -> Result<(), anyhow::Error>
     assert_eq!(response.status(), StatusCode::OK);
 
     let completion = response.json::<Completion>().await?;
-    dbg!(&completion);
+
+    // Validate number of detections
+    assert!(
+        completion
+            .detections
+            .as_ref()
+            .is_some_and(|detections| detections
+                .output
+                .first()
+                .is_some_and(|output| output.results.len() == 3)),
+        "unexpected number of detections"
+    );
+
+    // Validate warnings
+    assert_eq!(
+        completion.warnings,
+        vec![CompletionDetectionWarning::new(
+            DetectionWarningReason::UnsuitableOutput,
+            UNSUITABLE_OUTPUT_MESSAGE,
+        )]
+    );
+
+    // Validate detections
+    let detections = &completion.detections.unwrap().output[0].results;
+    assert!(detections.contains(&Detection {
+        detector_id: Some("answer_relevance_detector".into()),
+        detection_type: "risk".into(),
+        detection: "Yes".into(),
+        score: 0.8,
+        ..Default::default()
+    }));
+    assert!(detections.contains(&Detection {
+        start: Some(37),
+        end: Some(51),
+        text: Some("(503) 272-8192".into()),
+        detector_id: Some("pii_detector_sentence".into()),
+        detection_type: "pii".into(),
+        detection: "PhoneNumber".into(),
+        score: 0.8,
+        ..Default::default()
+    }));
+    assert!(detections.contains(&Detection {
+        start: Some(55),
+        end: Some(69),
+        text: Some("(617) 985-3519".into()),
+        detector_id: Some("pii_detector_sentence".into()),
+        detection_type: "pii".into(),
+        detection: "PhoneNumber".into(),
+        score: 0.8,
+        ..Default::default()
+    }));
 
     Ok(())
 }
