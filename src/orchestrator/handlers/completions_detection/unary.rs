@@ -171,14 +171,13 @@ async fn handle_output_detection(
     let detector_groups = group_detectors_by_type(&ctx, detectors);
     let headers = &task.headers;
     let prompt = &task.request.prompt;
-    let mut warnings = Vec::new();
 
     // Spawn detection tasks
     let mut tasks = Vec::with_capacity(completion.choices.len() * detector_groups.len());
     for choice in &completion.choices {
         if choice.text.is_empty() {
             // Add no content warning
-            warnings.push(CompletionDetectionWarning::new(
+            completion.warnings.push(CompletionDetectionWarning::new(
                 DetectionWarningReason::EmptyOutput,
                 &format!(
                     "Choice of index {} has no content. Output detection was not executed",
@@ -233,7 +232,7 @@ async fn handle_output_detection(
             matches!(detector_type, DetectorType::TextContents) && !detections.is_empty()
         });
         if unsuitable_output {
-            warnings.push(CompletionDetectionWarning::new(
+            completion.warnings.push(CompletionDetectionWarning::new(
                 DetectionWarningReason::UnsuitableOutput,
                 UNSUITABLE_OUTPUT_MESSAGE,
             ));
@@ -254,7 +253,6 @@ async fn handle_output_detection(
                 output,
                 ..Default::default()
             });
-            completion.warnings = warnings;
         }
     }
     Ok(completion)
