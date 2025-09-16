@@ -192,13 +192,15 @@ async fn handle_output_detection(
             .as_ref()
             .is_none_or(|content| content.is_empty())
         {
-            chat_completion.warnings.push(CompletionDetectionWarning::new(
-                DetectionWarningReason::EmptyOutput,
-                &format!(
-                    "Choice of index {} has no content. Output detection was not executed",
-                    choice.index
-                ),
-            ));
+            chat_completion
+                .warnings
+                .push(CompletionDetectionWarning::new(
+                    DetectionWarningReason::EmptyOutput,
+                    &format!(
+                        "Choice of index {} has no content. Output detection was not executed",
+                        choice.index
+                    ),
+                ));
             continue;
         }
         for (detector_type, detectors) in &detector_groups {
@@ -237,10 +239,12 @@ async fn handle_output_detection(
             matches!(detector_type, DetectorType::TextContents) && !detections.is_empty()
         });
         if unsuitable_output {
-            chat_completion.warnings.push(CompletionDetectionWarning::new(
-                DetectionWarningReason::UnsuitableOutput,
-                UNSUITABLE_OUTPUT_MESSAGE,
-            ));
+            chat_completion
+                .warnings
+                .push(CompletionDetectionWarning::new(
+                    DetectionWarningReason::UnsuitableOutput,
+                    UNSUITABLE_OUTPUT_MESSAGE,
+                ));
         }
 
         // Group detections by choice
