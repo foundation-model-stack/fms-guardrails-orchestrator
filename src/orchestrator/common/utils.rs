@@ -373,4 +373,80 @@ mod tests {
             "should contain text_generation detector group with answer_relevance detector"
         );
     }
+
+    #[test]
+    fn test_group_detections_by_choice() {
+        let detections = vec![
+            (
+                0, // choice_index
+                DetectorType::TextContents,
+                vec![
+                    Detection {
+                        start: Some(37),
+                        end: Some(51),
+                        text: Some("(503) 272-8192".into()),
+                        detector_id: Some("pii_detector_sentence".into()),
+                        detection_type: "pii".into(),
+                        detection: "PhoneNumber".into(),
+                        score: 0.8,
+                        ..Default::default()
+                    },
+                    Detection {
+                        start: Some(55),
+                        end: Some(69),
+                        text: Some("(617) 985-3519".into()),
+                        detector_id: Some("pii_detector_sentence".into()),
+                        detection_type: "pii".into(),
+                        detection: "PhoneNumber".into(),
+                        score: 0.8,
+                        ..Default::default()
+                    },
+                ],
+            ),
+            (
+                0, // choice_index
+                DetectorType::TextGeneration,
+                vec![Detection {
+                    detector_id: Some("answer_relevance_detector".into()),
+                    detection_type: "risk".into(),
+                    detection: "Yes".into(),
+                    score: 0.8,
+                    ..Default::default()
+                }],
+            ),
+            (
+                1, // choice_index
+                DetectorType::TextContents,
+                vec![Detection {
+                    start: Some(27),
+                    end: Some(41),
+                    text: Some("(312) 269-1345".into()),
+                    detector_id: Some("pii_detector_sentence".into()),
+                    detection_type: "pii".into(),
+                    detection: "PhoneNumber".into(),
+                    score: 0.8,
+                    ..Default::default()
+                }],
+            ),
+        ];
+        let grouped_detections = group_detections_by_choice(detections);
+
+        assert_eq!(
+            grouped_detections.keys().len(),
+            2,
+            "there should be keys for choice 0 and choice 1"
+        );
+        assert!(
+            grouped_detections
+                .get(&0)
+                .is_some_and(|detections| detections.len() == 3),
+            "there should be 3 detections for choice 0"
+        );
+        assert!(
+            grouped_detections
+                .get(&1)
+                .is_some_and(|detections| detections.len() == 1),
+            "there should be 1 detection for choice 1"
+        );
+    }
 }
