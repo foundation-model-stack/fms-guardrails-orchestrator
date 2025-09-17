@@ -176,12 +176,11 @@ async fn handle_input_detection(
         ctx.clone(),
         task.headers.clone(),
         detectors.clone(),
-        0,
         inputs,
     )
     .await
     {
-        Ok((_input_id, detections)) => detections,
+        Ok(detections) => detections,
         Err(error) => {
             error!(%trace_id, %error, "task failed: error processing input detections");
             return Err(error);

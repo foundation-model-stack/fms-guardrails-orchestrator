@@ -19,8 +19,8 @@ use std::collections::HashMap;
 
 use common::{
     detectors::{
-        ANSWER_RELEVANCE_DETECTOR, DETECTION_ON_GENERATION_DETECTOR_ENDPOINT,
-        FACT_CHECKING_DETECTOR_SENTENCE, NON_EXISTING_DETECTOR,
+        ANSWER_RELEVANCE_DETECTOR, FACT_CHECKING_DETECTOR_SENTENCE, NON_EXISTING_DETECTOR,
+        TEXT_GENERATION_DETECTOR_ENDPOINT,
     },
     errors::DetectorError,
     orchestrator::{
@@ -63,7 +63,7 @@ async fn no_detections() -> Result<(), anyhow::Error> {
     let mut mocks = MockSet::new();
     mocks.mock(|when, then| {
         when.post()
-            .path(DETECTION_ON_GENERATION_DETECTOR_ENDPOINT)
+            .path(TEXT_GENERATION_DETECTOR_ENDPOINT)
             .json(GenerationDetectionRequest {
                 prompt: prompt.into(),
                 generated_text: generated_text.into(),
@@ -123,7 +123,7 @@ async fn detections() -> Result<(), anyhow::Error> {
     let mut mocks = MockSet::new();
     mocks.mock(|when, then| {
         when.post()
-            .path(DETECTION_ON_GENERATION_DETECTOR_ENDPOINT)
+            .path(TEXT_GENERATION_DETECTOR_ENDPOINT)
             .json(GenerationDetectionRequest {
                 prompt: prompt.into(),
                 generated_text: generated_text.into(),
@@ -180,7 +180,7 @@ async fn client_error() -> Result<(), anyhow::Error> {
     let mut mocks = MockSet::new();
     mocks.mock(|when, then| {
         when.post()
-            .path(DETECTION_ON_GENERATION_DETECTOR_ENDPOINT)
+            .path(TEXT_GENERATION_DETECTOR_ENDPOINT)
             .json(GenerationDetectionRequest {
                 prompt: prompt.into(),
                 generated_text: generated_text.into(),

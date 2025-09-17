@@ -25,14 +25,15 @@ use common::{
 use fms_guardrails_orchestr8::{
     clients::{
         chunker::MODEL_ID_HEADER_NAME as CHUNKER_MODEL_ID_HEADER_NAME,
-        detector::{ContentAnalysisRequest, ContentAnalysisResponse},
+        detector::{ContentAnalysisRequest, ContentAnalysisResponse, GenerationDetectionRequest},
         openai::{
             Completion, CompletionChoice, CompletionDetectionWarning, CompletionDetections,
             CompletionInputDetections, CompletionOutputDetections, TokenizeResponse, Usage,
         },
     },
     models::{
-        DetectionWarningReason, DetectorParams, UNSUITABLE_INPUT_MESSAGE, UNSUITABLE_OUTPUT_MESSAGE,
+        DetectionResult, DetectionWarningReason, DetectorParams, UNSUITABLE_INPUT_MESSAGE,
+        UNSUITABLE_OUTPUT_MESSAGE,
     },
     orchestrator::{common::current_timestamp, types::Detection},
     pb::{
@@ -52,8 +53,8 @@ use crate::common::{
     chunker::CHUNKER_UNARY_ENDPOINT,
     detectors::{
         ANSWER_RELEVANCE_DETECTOR, DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE,
-        DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC, NON_EXISTING_DETECTOR,
-        TEXT_CONTENTS_DETECTOR_ENDPOINT,
+        DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC, FACT_CHECKING_DETECTOR, NON_EXISTING_DETECTOR,
+        PII_DETECTOR_SENTENCE, TEXT_CONTENTS_DETECTOR_ENDPOINT, TEXT_GENERATION_DETECTOR_ENDPOINT,
     },
     errors::DetectorError,
     openai::TOKENIZE_ENDPOINT,
@@ -867,6 +868,202 @@ async fn output_detections() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
+#[test(tokio::test)]
+async fn output_detectors_multiple_detector_types() -> Result<(), anyhow::Error> {
+    let model_id = "test-0B";
+    let mut openai_server = MockServer::new_http("openai");
+    openai_server.mock(|when, then| {
+        when.post().path(COMPLETIONS_ENDPOINT).json(json!({
+            "model": model_id,
+            "prompt": "Can you generate 2 random phone numbers?"
+        }));
+        then.json(Completion {
+            id: "cmpl-test".into(),
+            created: 1749227854,
+            model: model_id.into(),
+            choices: vec![CompletionChoice {
+                index: 0,
+                text: "Here are 2 random phone numbers:\n\n1. (503) 272-8192\n2. (617) 985-3519."
+                    .into(),
+                finish_reason: Some("stop".into()),
+                ..Default::default()
+            }],
+            ..Default::default()
+        });
+    });
+
+    let mut sentence_chunker_server = MockServer::new_grpc(CHUNKER_NAME_SENTENCE);
+    sentence_chunker_server.mock(|when, then| {
+        when.post()
+            .path(CHUNKER_UNARY_ENDPOINT)
+            .header(CHUNKER_MODEL_ID_HEADER_NAME, CHUNKER_NAME_SENTENCE)
+            .pb(ChunkerTokenizationTaskRequest {
+                text: "Here are 2 random phone numbers:\n\n1. (503) 272-8192\n2. (617) 985-3519."
+                    .into(),
+            });
+        then.pb(TokenizationResults {
+            results: vec![
+                Token {
+                    start: 0,
+                    end: 32,
+                    text: "Here are 2 random phone numbers:".into(),
+                },
+                Token {
+                    start: 32,
+                    end: 51,
+                    text: "\n\n1. (503) 272-8192".into(),
+                },
+                Token {
+                    start: 51,
+                    end: 70,
+                    text: "\n2. (617) 985-3519.".into(),
+                },
+            ],
+            token_count: 0,
+        });
+    });
+
+    let mut pii_detector_sentence_server = MockServer::new_http(PII_DETECTOR_SENTENCE);
+    pii_detector_sentence_server.mock(|when, then| {
+        when.post()
+            .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
+            .header("detector-id", PII_DETECTOR_SENTENCE)
+            .json(ContentAnalysisRequest {
+                contents: vec![
+                    "Here are 2 random phone numbers:".into(),
+                    "\n\n1. (503) 272-8192".into(),
+                    "\n2. (617) 985-3519.".into(),
+                ],
+                detector_params: DetectorParams::default(),
+            });
+        then.json(json!([
+            [],
+            [{
+                "start": 5,
+                "end": 19,
+                "detection": "PhoneNumber",
+                "detection_type": "pii",
+                "score": 0.8,
+                "text": "(503) 272-8192",
+                "evidences": []
+            }],
+            [{
+                "start": 4,
+                "end": 18,
+                "detection": "PhoneNumber",
+                "detection_type": "pii",
+                "score": 0.8,
+                "text": "(617) 985-3519",
+                "evidences": []
+            }]
+        ]));
+    });
+
+    let mut answer_relevance_detector_server = MockServer::new_http(ANSWER_RELEVANCE_DETECTOR);
+    answer_relevance_detector_server.mock(|when, then| {
+        when.post()
+            .path(TEXT_GENERATION_DETECTOR_ENDPOINT)
+            .header("detector-id", ANSWER_RELEVANCE_DETECTOR)
+            .json(GenerationDetectionRequest {
+                prompt: "Can you generate 2 random phone numbers?".into(),
+                generated_text:
+                    "Here are 2 random phone numbers:\n\n1. (503) 272-8192\n2. (617) 985-3519."
+                        .into(),
+                detector_params: DetectorParams::default(),
+            });
+        then.json(vec![DetectionResult {
+            detection_type: "risk".into(),
+            detection: "Yes".into(),
+            detector_id: Some(ANSWER_RELEVANCE_DETECTOR.into()),
+            score: 0.80,
+            ..Default::default()
+        }]);
+    });
+
+    let test_server = TestOrchestratorServer::builder()
+        .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
+        .openai_server(&openai_server)
+        .chunker_servers([&sentence_chunker_server])
+        .detector_servers([
+            &pii_detector_sentence_server,
+            &answer_relevance_detector_server,
+        ])
+        .build()
+        .await?;
+
+    let response = test_server
+        .post(ORCHESTRATOR_COMPLETIONS_DETECTION_ENDPOINT)
+        .json(&json!({
+            "model": model_id,
+            "detectors": {
+                "input": {},
+                "output": {
+                    PII_DETECTOR_SENTENCE: {},
+                    ANSWER_RELEVANCE_DETECTOR: {},
+                },
+            },
+            "prompt": "Can you generate 2 random phone numbers?"
+        }))
+        .send()
+        .await?;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let completion = response.json::<Completion>().await?;
+
+    // Validate number of detections
+    assert!(
+        completion
+            .detections
+            .as_ref()
+            .is_some_and(|detections| detections
+                .output
+                .first()
+                .is_some_and(|output| output.results.len() == 3)),
+        "unexpected number of detections"
+    );
+
+    // Validate warnings
+    assert_eq!(
+        completion.warnings,
+        vec![CompletionDetectionWarning::new(
+            DetectionWarningReason::UnsuitableOutput,
+            UNSUITABLE_OUTPUT_MESSAGE,
+        )]
+    );
+
+    // Validate detections
+    let detections = &completion.detections.unwrap().output[0].results;
+    assert!(detections.contains(&Detection {
+        detector_id: Some("answer_relevance_detector".into()),
+        detection_type: "risk".into(),
+        detection: "Yes".into(),
+        score: 0.8,
+        ..Default::default()
+    }));
+    assert!(detections.contains(&Detection {
+        start: Some(37),
+        end: Some(51),
+        text: Some("(503) 272-8192".into()),
+        detector_id: Some("pii_detector_sentence".into()),
+        detection_type: "pii".into(),
+        detection: "PhoneNumber".into(),
+        score: 0.8,
+        ..Default::default()
+    }));
+    assert!(detections.contains(&Detection {
+        start: Some(55),
+        end: Some(69),
+        text: Some("(617) 985-3519".into()),
+        detector_id: Some("pii_detector_sentence".into()),
+        detection_type: "pii".into(),
+        detection: "PhoneNumber".into(),
+        score: 0.8,
+        ..Default::default()
+    }));
+
+    Ok(())
+}
+
 // Validates that requests with output detector configured returns propagated errors
 // from detector, chunker and completions server when applicable
 #[test(tokio::test)]
@@ -1080,7 +1277,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
             "model": MODEL_ID,
             "detectors": {
                 "input": {
-                    ANSWER_RELEVANCE_DETECTOR: {},
+                    FACT_CHECKING_DETECTOR: {},
                 },
                 "output": {}
             },
@@ -1096,7 +1293,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
         server::Error {
             code: http::StatusCode::UNPROCESSABLE_ENTITY,
             details: format!(
-                "detector `{ANSWER_RELEVANCE_DETECTOR}` is not supported by this endpoint",
+                "detector `{FACT_CHECKING_DETECTOR}` is not supported by this endpoint",
             )
         },
         "failed on invalid input detector scenario"
@@ -1137,7 +1334,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
             "detectors": {
                 "input": {},
                 "output": {
-                    ANSWER_RELEVANCE_DETECTOR: {},
+                    FACT_CHECKING_DETECTOR: {},
                 },
             },
             "prompt": prompt,
@@ -1152,7 +1349,7 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
         server::Error {
             code: http::StatusCode::UNPROCESSABLE_ENTITY,
             details: format!(
-                "detector `{ANSWER_RELEVANCE_DETECTOR}` is not supported by this endpoint"
+                "detector `{FACT_CHECKING_DETECTOR}` is not supported by this endpoint"
             )
         },
         "failed on invalid output detector scenario"

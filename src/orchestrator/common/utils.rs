@@ -14,7 +14,10 @@
  limitations under the License.
 
 */
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{HashMap, hash_map},
+    sync::Arc,
+};
 
 use tracing::error;
 
@@ -22,7 +25,7 @@ use crate::{
     clients::chunker::DEFAULT_CHUNKER_ID,
     config::{DetectorConfig, DetectorType},
     models::DetectorParams,
-    orchestrator::{Context, Error},
+    orchestrator::{Context, Error, types::Detection},
 };
 
 /// Slices chars between start and end indices.
@@ -153,9 +156,51 @@ pub fn validate_detectors<'a>(
     Ok(())
 }
 
+/// Groups detectors by detector type.
+pub fn group_detectors_by_type(
+    ctx: &Arc<Context>,
+    detectors: HashMap<String, DetectorParams>,
+) -> HashMap<DetectorType, HashMap<String, DetectorParams>> {
+    let mut detector_groups: HashMap<DetectorType, HashMap<String, DetectorParams>> =
+        HashMap::new();
+    for (detector_id, detector_params) in detectors {
+        let detector_type = ctx.config.detector(&detector_id).unwrap().r#type;
+        match detector_groups.entry(detector_type) {
+            hash_map::Entry::Occupied(mut entry) => {
+                entry.get_mut().insert(detector_id, detector_params);
+            }
+            hash_map::Entry::Vacant(entry) => {
+                entry.insert(HashMap::from([(detector_id, detector_params)]));
+            }
+        }
+    }
+    detector_groups
+}
+
+/// Groups detections by choice.
+pub fn group_detections_by_choice(
+    detections: Vec<(u32, DetectorType, Vec<Detection>)>,
+) -> HashMap<u32, Vec<Detection>> {
+    let mut detections_by_choice: HashMap<u32, Vec<Detection>> = HashMap::new();
+    for (choice_index, _, detections) in detections {
+        if !detections.is_empty() {
+            match detections_by_choice.entry(choice_index) {
+                hash_map::Entry::Occupied(mut entry) => {
+                    entry.get_mut().extend_from_slice(&detections);
+                }
+                hash_map::Entry::Vacant(entry) => {
+                    entry.insert(detections);
+                }
+            }
+        }
+    }
+    detections_by_choice
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::OrchestratorConfig;
 
     #[test]
     fn test_apply_masks() {
@@ -261,5 +306,147 @@ mod tests {
         );
 
         Ok(())
+    }
+
+    #[test]
+    fn test_group_detectors_by_type() {
+        let config = OrchestratorConfig {
+            detectors: HashMap::from([
+                (
+                    "pii".to_string(),
+                    DetectorConfig {
+                        chunker_id: "sentence".into(),
+                        r#type: DetectorType::TextContents,
+                        ..Default::default()
+                    },
+                ),
+                (
+                    "hap".to_string(),
+                    DetectorConfig {
+                        chunker_id: "sentence".into(),
+                        r#type: DetectorType::TextContents,
+                        ..Default::default()
+                    },
+                ),
+                (
+                    "answer_relevance".to_string(),
+                    DetectorConfig {
+                        chunker_id: "whole_doc_chunker".into(),
+                        r#type: DetectorType::TextGeneration,
+                        ..Default::default()
+                    },
+                ),
+            ]),
+            ..Default::default()
+        };
+        let ctx = Arc::new(Context::new(config, Default::default()));
+        let detectors = HashMap::from([
+            ("pii".to_string(), DetectorParams::new()),
+            ("hap".to_string(), DetectorParams::new()),
+            ("answer_relevance".to_string(), DetectorParams::new()),
+        ]);
+        let detector_groups = group_detectors_by_type(&ctx, detectors);
+
+        assert_eq!(detector_groups.len(), 2);
+        let text_contents_detectors = detector_groups
+            .iter()
+            .find(|(detector_type, _)| matches!(detector_type, DetectorType::TextContents))
+            .map(|(_, detectors)| detectors);
+        assert!(
+            text_contents_detectors.is_some_and(|d| d.len() == 2),
+            "should contain text_contents detector group with 2 detectors"
+        );
+        assert!(
+            text_contents_detectors.is_some_and(|d| d.contains_key("pii") && d.contains_key("hap")),
+            "should contain text_contents detector group with pii and hap detectors"
+        );
+        let text_generation_detectors = detector_groups
+            .iter()
+            .find(|(detector_type, _)| matches!(detector_type, DetectorType::TextGeneration))
+            .map(|(_, detectors)| detectors);
+        assert!(
+            text_generation_detectors.is_some_and(|d| d.len() == 1),
+            "should contain text_generation detector group with 1 detector"
+        );
+        assert!(
+            text_generation_detectors.is_some_and(|d| d.contains_key("answer_relevance")),
+            "should contain text_generation detector group with answer_relevance detector"
+        );
+    }
+
+    #[test]
+    fn test_group_detections_by_choice() {
+        let detections = vec![
+            (
+                0, // choice_index
+                DetectorType::TextContents,
+                vec![
+                    Detection {
+                        start: Some(37),
+                        end: Some(51),
+                        text: Some("(503) 272-8192".into()),
+                        detector_id: Some("pii_detector_sentence".into()),
+                        detection_type: "pii".into(),
+                        detection: "PhoneNumber".into(),
+                        score: 0.8,
+                        ..Default::default()
+                    },
+                    Detection {
+                        start: Some(55),
+                        end: Some(69),
+                        text: Some("(617) 985-3519".into()),
+                        detector_id: Some("pii_detector_sentence".into()),
+                        detection_type: "pii".into(),
+                        detection: "PhoneNumber".into(),
+                        score: 0.8,
+                        ..Default::default()
+                    },
+                ],
+            ),
+            (
+                0, // choice_index
+                DetectorType::TextGeneration,
+                vec![Detection {
+                    detector_id: Some("answer_relevance_detector".into()),
+                    detection_type: "risk".into(),
+                    detection: "Yes".into(),
+                    score: 0.8,
+                    ..Default::default()
+                }],
+            ),
+            (
+                1, // choice_index
+                DetectorType::TextContents,
+                vec![Detection {
+                    start: Some(27),
+                    end: Some(41),
+                    text: Some("(312) 269-1345".into()),
+                    detector_id: Some("pii_detector_sentence".into()),
+                    detection_type: "pii".into(),
+                    detection: "PhoneNumber".into(),
+                    score: 0.8,
+                    ..Default::default()
+                }],
+            ),
+        ];
+        let grouped_detections = group_detections_by_choice(detections);
+
+        assert_eq!(
+            grouped_detections.keys().len(),
+            2,
+            "there should be keys for choice 0 and choice 1"
+        );
+        assert!(
+            grouped_detections
+                .get(&0)
+                .is_some_and(|detections| detections.len() == 3),
+            "there should be 3 detections for choice 0"
+        );
+        assert!(
+            grouped_detections
+                .get(&1)
+                .is_some_and(|detections| detections.len() == 1),
+            "there should be 1 detection for choice 1"
+        );
     }
 }

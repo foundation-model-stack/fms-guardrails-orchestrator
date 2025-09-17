@@ -30,6 +30,6 @@ pub const NON_EXISTING_DETECTOR: &str = "non_existing_detector";
 
 // Detector endpoints
 pub const TEXT_CONTENTS_DETECTOR_ENDPOINT: &str = "/api/v1/text/contents";
-pub const DETECTION_ON_GENERATION_DETECTOR_ENDPOINT: &str = "/api/v1/text/generation";
+pub const TEXT_GENERATION_DETECTOR_ENDPOINT: &str = "/api/v1/text/generation";
 pub const CONTEXT_DOC_DETECTOR_ENDPOINT: &str = "/api/v1/text/context/doc";
 pub const CHAT_DETECTOR_ENDPOINT: &str = "/api/v1/text/chat";

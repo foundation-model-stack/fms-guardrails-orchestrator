@@ -29,7 +29,7 @@ use crate::{
     },
     orchestrator::{
         Context, Error,
-        common::{self, validate_detectors},
+        common::{self, group_detections_by_choice, group_detectors_by_type, validate_detectors},
         types::ChatMessageIterator,
     },
 };
@@ -116,18 +116,16 @@ async fn handle_input_detection(
             "Last message role must be user, assistant, or system".into(),
         ));
     }
-    let input_id = message.index;
     let input_text = message.text.map(|s| s.to_string()).unwrap_or_default();
     let detections = match common::text_contents_detections(
         ctx.clone(),
         task.headers.clone(),
         detectors.clone(),
-        input_id,
         vec![(0, input_text.clone())],
     )
     .await
     {
-        Ok((_, detections)) => detections,
+        Ok(detections) => detections,
         Err(error) => {
             error!(%trace_id, %error, "task failed: error processing input detections");
             return Err(error);
@@ -181,7 +179,12 @@ async fn handle_output_detection(
     detectors: HashMap<String, DetectorParams>,
     mut chat_completion: ChatCompletion,
 ) -> Result<ChatCompletion, Error> {
-    let mut tasks = Vec::with_capacity(chat_completion.choices.len());
+    use DetectorType::*;
+    let detector_groups = group_detectors_by_type(&ctx, detectors);
+    let headers = &task.headers;
+
+    // Spawn detection tasks
+    let mut tasks = Vec::with_capacity(chat_completion.choices.len() * detector_groups.len());
     for choice in &chat_completion.choices {
         if choice
             .message
@@ -200,30 +203,57 @@ async fn handle_output_detection(
                 ));
             continue;
         }
-        let input_id = choice.index;
-        let input_text = choice.message.content.clone().unwrap_or_default();
-        tasks.push(tokio::spawn(
-            common::text_contents_detections(
-                ctx.clone(),
-                task.headers.clone(),
-                detectors.clone(),
-                input_id,
-                vec![(0, input_text)],
-            )
-            .in_current_span(),
-        ));
+        for (detector_type, detectors) in &detector_groups {
+            let detection_task = match detector_type {
+                TextContents => tokio::spawn(
+                    common::text_contents_detections(
+                        ctx.clone(),
+                        headers.clone(),
+                        detectors.clone(),
+                        vec![(0, choice.message.content.clone().unwrap_or_default())],
+                    )
+                    .in_current_span(),
+                ),
+                _ => unimplemented!(),
+            };
+            tasks.push((choice.index, *detector_type, detection_task));
+        }
     }
-    let detections = try_join_all(tasks)
-        .await?
-        .into_iter()
-        .collect::<Result<Vec<_>, Error>>()?;
+
+    // Await completion of all detection tasks
+    let detections = try_join_all(tasks.into_iter().map(
+        |(choice_index, detector_type, detection_task)| async move {
+            Ok::<_, Error>((choice_index, detector_type, detection_task.await?))
+        },
+    ))
+    .await?
+    .into_iter()
+    .map(|(choice_index, detector_type, result)| {
+        result.map(|detections| (choice_index, detector_type, detections))
+    })
+    .collect::<Result<Vec<_>, Error>>()?;
+
     if !detections.is_empty() {
-        // Update chat completion with detections
-        let output = detections
+        // If there are text contents detections, add unsuitable output warning
+        let unsuitable_output = detections.iter().any(|(_, detector_type, detections)| {
+            matches!(detector_type, TextContents) && !detections.is_empty()
+        });
+        if unsuitable_output {
+            chat_completion
+                .warnings
+                .push(CompletionDetectionWarning::new(
+                    DetectionWarningReason::UnsuitableOutput,
+                    UNSUITABLE_OUTPUT_MESSAGE,
+                ));
+        }
+
+        // Group detections by choice
+        let detections_by_choice = group_detections_by_choice(detections);
+        // Update completion with detections
+        let output = detections_by_choice
             .into_iter()
-            .filter(|(_, detections)| !detections.is_empty())
-            .map(|(input_id, detections)| CompletionOutputDetections {
-                choice_index: input_id,
+            .map(|(choice_index, detections)| CompletionOutputDetections {
+                choice_index,
                 results: detections,
             })
             .collect::<Vec<_>>();
@@ -232,10 +262,6 @@ async fn handle_output_detection(
                 output,
                 ..Default::default()
             });
-            chat_completion.warnings = vec![CompletionDetectionWarning::new(
-                DetectionWarningReason::UnsuitableOutput,
-                UNSUITABLE_OUTPUT_MESSAGE,
-            )];
         }
     }
     Ok(chat_completion)

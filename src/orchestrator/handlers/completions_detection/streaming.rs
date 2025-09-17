@@ -16,7 +16,7 @@
 */
 use std::{collections::HashMap, sync::Arc};
 
-use futures::{StreamExt, TryStreamExt, stream};
+use futures::{StreamExt, future::try_join_all};
 use opentelemetry::trace::TraceId;
 use tokio::sync::mpsc;
 use tracing::{Instrument, debug, error, info, instrument, warn};
@@ -31,7 +31,7 @@ use crate::{
     },
     orchestrator::{
         Context, Error,
-        common::{self, text_contents_detections, validate_detectors},
+        common::{self, group_detectors_by_type, validate_detectors},
         types::{
             Chunk, CompletionBatcher, CompletionState, CompletionStream, Detection,
             DetectionBatchStream,
@@ -56,9 +56,20 @@ pub async fn handle_streaming(
             let output_detectors = detectors.output;
 
             if let Err(error) = validate_detectors(
-                input_detectors.iter().chain(output_detectors.iter()),
+                input_detectors.iter(),
                 &ctx.config.detectors,
                 &[DetectorType::TextContents],
+                true,
+            ) {
+                let _ = response_tx.send(Err(error)).await;
+                // Send None to signal completion
+                let _ = response_tx.send(Ok(None)).await;
+                return;
+            }
+            if let Err(error) = validate_detectors(
+                output_detectors.iter(),
+                &ctx.config.detectors,
+                &[DetectorType::TextContents, DetectorType::TextGeneration],
                 true,
             ) {
                 let _ = response_tx.send(Err(error)).await;
@@ -148,12 +159,11 @@ async fn handle_input_detection(
         ctx.clone(),
         task.headers.clone(),
         detectors.clone(),
-        0,
         inputs,
     )
     .await
     {
-        Ok((_, detections)) => detections,
+        Ok(detections) => detections,
         Err(error) => {
             error!(%trace_id, %error, "task failed: error processing input detections");
             return Err(error);
@@ -210,17 +220,24 @@ async fn handle_output_detection(
 ) {
     let trace_id = task.trace_id;
     let request = task.request.clone();
-    // Split output detectors into 2 groups:
-    // 1) Output Detectors: Applied to chunks. Detections are returned in batches.
-    // 2) Whole Doc Output Detectors: Applied to concatenated chunks (whole doc) after the completion stream has been consumed.
-    // Currently, this is any detector that uses "whole_doc_chunker".
-    let (whole_doc_detectors, detectors): (HashMap<_, _>, HashMap<_, _>) =
+
+    // Split output detectors into two categories:
+    //
+    // chunk_detectors: detectors applied to generated text chunks, detections returned in batches.
+    // criteria: text_contents detectors using a chunker (not using whole_doc_chunker)
+    //
+    // whole_doc_detectors: detectors applied to full generated text (+prompt), detections returned with last message.
+    // criteria: text_contents detectors not using a chunker (whole_doc_chunker) and other supported detector types
+    let (chunk_detectors, whole_doc_detectors): (HashMap<_, _>, HashMap<_, _>) =
         detectors.into_iter().partition(|(detector_id, _)| {
-            ctx.config.get_chunker_id(detector_id).unwrap() == "whole_doc_chunker"
+            let config = ctx.config.detector(detector_id).unwrap();
+            matches!(config.r#type, DetectorType::TextContents)
+                && config.chunker_id != "whole_doc_chunker"
         });
+
     let completion_state = Arc::new(CompletionState::new());
 
-    if !detectors.is_empty() {
+    if !chunk_detectors.is_empty() {
         // Set up streaming detection pipeline
         // n represents how many choices to generate for each input message
         // Choices are processed independently so each choice has its own input channels and detection streams.
@@ -234,12 +251,12 @@ async fn handle_output_detection(
             input_rxs.insert(choice_index as u32, input_rx);
         });
         // Create detection streams
-        let mut detection_streams = Vec::with_capacity(n * detectors.len());
+        let mut detection_streams = Vec::with_capacity(n * chunk_detectors.len());
         for (choice_index, input_rx) in input_rxs {
             match common::text_contents_detection_streams(
                 ctx.clone(),
                 task.headers.clone(),
-                detectors.clone(),
+                chunk_detectors.clone(),
                 choice_index,
                 input_rx,
             )
@@ -265,8 +282,10 @@ async fn handle_output_detection(
             None,
         ));
         // Process detection streams and await completion
-        let detection_batch_stream =
-            DetectionBatchStream::new(CompletionBatcher::new(detectors.len()), detection_streams);
+        let detection_batch_stream = DetectionBatchStream::new(
+            CompletionBatcher::new(chunk_detectors.len()),
+            detection_streams,
+        );
         process_detection_batch_stream(
             trace_id,
             completion_state.clone(),
@@ -298,8 +317,8 @@ async fn handle_output_detection(
             ..Default::default()
         };
         if !whole_doc_detectors.is_empty() {
-            // Handle whole doc output detection
-            match handle_whole_doc_output_detection(
+            // Handle whole doc detection
+            match handle_whole_doc_detection(
                 ctx.clone(),
                 task,
                 whole_doc_detectors,
@@ -412,19 +431,26 @@ async fn process_completion_stream(
 }
 
 #[instrument(skip_all)]
-async fn handle_whole_doc_output_detection(
+async fn handle_whole_doc_detection(
     ctx: Arc<Context>,
     task: &CompletionsDetectionTask,
     detectors: HashMap<String, DetectorParams>,
     completion_state: Arc<CompletionState<Completion>>,
 ) -> Result<(CompletionDetections, Vec<CompletionDetectionWarning>), Error> {
-    // Create vec of choice_index->inputs, where inputs contains the concatenated text for the choice
-    let choice_inputs = completion_state
+    use DetectorType::*;
+    let detector_groups = group_detectors_by_type(&ctx, detectors);
+    let headers = &task.headers;
+    let prompt = &task.request.prompt;
+    let mut warnings = Vec::new();
+
+    // Create vec of choice_index->generated_text
+    let choices = completion_state
         .completions
         .iter()
         .map(|entry| {
             let choice_index = *entry.key();
-            let text = entry
+            // Concatenate generated text from all completion chunks for this choice
+            let generated_text = entry
                 .values()
                 .map(|chunk| {
                     chunk
@@ -434,41 +460,72 @@ async fn handle_whole_doc_output_detection(
                         .unwrap_or_default()
                 })
                 .collect::<String>();
-            let inputs = vec![(0usize, text)];
-            (choice_index, inputs)
+            (choice_index, generated_text)
         })
         .collect::<Vec<_>>();
-    // Process detections concurrently for choices
-    let choice_detections = stream::iter(choice_inputs)
-        .map(|(choice_index, inputs)| {
-            text_contents_detections(
-                ctx.clone(),
-                task.headers.clone(),
-                detectors.clone(),
-                choice_index,
-                inputs,
-            )
-        })
-        .buffer_unordered(ctx.config.detector_concurrent_requests)
-        .try_collect::<Vec<_>>()
-        .await?;
+
+    // Spawn detection tasks
+    let mut tasks = Vec::with_capacity(choices.len() * detector_groups.len());
+    for (choice_index, generated_text) in choices {
+        for (detector_type, detectors) in &detector_groups {
+            let detection_task = match detector_type {
+                TextContents => tokio::spawn(
+                    common::text_contents_detections(
+                        ctx.clone(),
+                        headers.clone(),
+                        detectors.clone(),
+                        vec![(0, generated_text.clone())],
+                    )
+                    .in_current_span(),
+                ),
+                TextGeneration => tokio::spawn(
+                    common::text_generation_detections(
+                        ctx.clone(),
+                        headers.clone(),
+                        detectors.clone(),
+                        prompt.clone(),
+                        generated_text.clone(),
+                    )
+                    .in_current_span(),
+                ),
+                _ => unimplemented!(),
+            };
+            tasks.push((choice_index, *detector_type, detection_task));
+        }
+    }
+
+    // Await completion of all detection tasks
+    let detections = try_join_all(tasks.into_iter().map(
+        |(choice_index, detector_type, detection_task)| async move {
+            Ok::<_, Error>((choice_index, detector_type, detection_task.await?))
+        },
+    ))
+    .await?
+    .into_iter()
+    .map(|(choice_index, detector_type, result)| {
+        result.map(|detections| (choice_index, detector_type, detections))
+    })
+    .collect::<Result<Vec<_>, Error>>()?;
+
+    // If there are any text contents detections, add unsuitable output warning
+    let unsuitable_output = detections.iter().any(|(_, detector_type, detections)| {
+        matches!(detector_type, TextContents) && !detections.is_empty()
+    });
+    if unsuitable_output {
+        warnings.push(CompletionDetectionWarning::new(
+            DetectionWarningReason::UnsuitableOutput,
+            UNSUITABLE_OUTPUT_MESSAGE,
+        ));
+    }
+
     // Build output detections
-    let output = choice_detections
+    let output = detections
         .into_iter()
-        .map(|(choice_index, detections)| CompletionOutputDetections {
+        .map(|(choice_index, _, detections)| CompletionOutputDetections {
             choice_index,
             results: detections,
         })
         .collect::<Vec<_>>();
-    // Build warnings
-    let warnings = if output.iter().any(|d| !d.results.is_empty()) {
-        vec![CompletionDetectionWarning::new(
-            DetectionWarningReason::UnsuitableOutput,
-            UNSUITABLE_OUTPUT_MESSAGE,
-        )]
-    } else {
-        Vec::new()
-    };
     let detections = CompletionDetections {
         output,
         ..Default::default()
