@@ -229,7 +229,7 @@ async fn handle_output_detection(
     if !detections.is_empty() {
         // If there are text contents detections, add unsuitable output warning
         let unsuitable_output = detections.iter().any(|(_, detector_type, detections)| {
-            matches!(detector_type, DetectorType::TextContents) && !detections.is_empty()
+            matches!(detector_type, TextContents) && !detections.is_empty()
         });
         if unsuitable_output {
             completion.warnings.push(CompletionDetectionWarning::new(
