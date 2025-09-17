@@ -509,7 +509,7 @@ async fn handle_whole_doc_detection(
 
     // If there are any text contents detections, add unsuitable output warning
     let unsuitable_output = detections.iter().any(|(_, detector_type, detections)| {
-        matches!(detector_type, DetectorType::TextContents) && !detections.is_empty()
+        matches!(detector_type, TextContents) && !detections.is_empty()
     });
     if unsuitable_output {
         warnings.push(CompletionDetectionWarning::new(
