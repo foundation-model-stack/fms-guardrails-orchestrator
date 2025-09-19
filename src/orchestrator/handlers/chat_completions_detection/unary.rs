@@ -210,7 +210,7 @@ async fn handle_output_detection(
                         ctx.clone(),
                         headers.clone(),
                         detectors.clone(),
-                        vec![(0, choice.message.content.clone().unwrap_or_default())],
+                        vec![(0, choice.message.text().cloned().unwrap_or_default())],
                     )
                     .in_current_span(),
                 ),
