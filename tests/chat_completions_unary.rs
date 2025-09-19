@@ -34,10 +34,9 @@ use fms_guardrails_orchestr8::{
         chunker::MODEL_ID_HEADER_NAME as CHUNKER_MODEL_ID_HEADER_NAME,
         detector::{ContentAnalysisRequest, ContentAnalysisResponse},
         openai::{
-            ChatCompletion, ChatCompletionChoice, ChatCompletionMessage,
-            CompletionDetectionWarning, CompletionDetections, CompletionInputDetections,
-            CompletionOutputDetections, Content, ContentPart, ContentType, Message, Role,
-            TokenizeResponse,
+            ChatCompletion, ChatCompletionChoice, CompletionDetectionWarning, CompletionDetections,
+            CompletionInputDetections, CompletionOutputDetections, Content, ContentPart,
+            ContentType, Message, Role, TokenizeResponse,
         },
     },
     models::{
@@ -85,11 +84,10 @@ async fn no_detectors() -> Result<(), anyhow::Error> {
 
     let expected_choices = vec![
         ChatCompletionChoice {
-            message: ChatCompletionMessage {
+            message: Message {
                 role: messages[0].role.clone(),
-                content: Some("Hi there!".to_string()),
-                refusal: None,
-                tool_calls: vec![],
+                content: Some(Content::Text("Hi there!".to_string())),
+                ..Default::default()
             },
             index: 0,
             logprobs: None,
@@ -97,11 +95,10 @@ async fn no_detectors() -> Result<(), anyhow::Error> {
             stop_reason: None,
         },
         ChatCompletionChoice {
-            message: ChatCompletionMessage {
+            message: Message {
                 role: messages[1].role.clone(),
-                content: Some("Hello!".to_string()),
-                refusal: None,
-                tool_calls: vec![],
+                content: Some(Content::Text("Hello!".to_string())),
+                ..Default::default()
             },
             index: 1,
             logprobs: None,
@@ -280,11 +277,10 @@ async fn no_detections() -> Result<(), anyhow::Error> {
 
     let expected_choices = vec![
         ChatCompletionChoice {
-            message: ChatCompletionMessage {
+            message: Message {
                 role: messages[0].role.clone(),
-                content: Some("Hi there!".to_string()),
-                refusal: None,
-                tool_calls: vec![],
+                content: Some(Content::Text("Hi there!".to_string())),
+                ..Default::default()
             },
             index: 0,
             logprobs: None,
@@ -292,11 +288,10 @@ async fn no_detections() -> Result<(), anyhow::Error> {
             stop_reason: None,
         },
         ChatCompletionChoice {
-            message: ChatCompletionMessage {
+            message: Message {
                 role: messages[1].role.clone(),
-                content: Some("Hello!".to_string()),
-                refusal: None,
-                tool_calls: vec![],
+                content: Some(Content::Text("Hello!".to_string())),
+                ..Default::default()
             },
             index: 1,
             logprobs: None,
@@ -388,11 +383,10 @@ async fn no_detections() -> Result<(), anyhow::Error> {
     }];
     let expected_choices = vec![
         ChatCompletionChoice {
-            message: ChatCompletionMessage {
+            message: Message {
                 role: Role::Assistant,
-                content: Some("".to_string()),
-                refusal: None,
-                tool_calls: vec![],
+                content: Some(Content::Text("".to_string())),
+                ..Default::default()
             },
             index: 0,
             logprobs: None,
@@ -400,11 +394,9 @@ async fn no_detections() -> Result<(), anyhow::Error> {
             stop_reason: None,
         },
         ChatCompletionChoice {
-            message: ChatCompletionMessage {
+            message: Message {
                 role: Role::Assistant,
-                content: None,
-                refusal: None,
-                tool_calls: vec![],
+                ..Default::default()
             },
             index: 1,
             logprobs: None,
@@ -832,11 +824,10 @@ async fn output_detections() -> Result<(), anyhow::Error> {
     // Add chat completion choices response for output detection
     let expected_choices = vec![
         ChatCompletionChoice {
-            message: ChatCompletionMessage {
+            message: Message {
                 role: messages[0].role.clone(),
-                content: Some(input_text.to_string()),
-                refusal: None,
-                tool_calls: vec![],
+                content: Some(Content::Text(input_text.to_string())),
+                ..Default::default()
             },
             index: 0,
             logprobs: None,
@@ -844,11 +835,10 @@ async fn output_detections() -> Result<(), anyhow::Error> {
             stop_reason: None,
         },
         ChatCompletionChoice {
-            message: ChatCompletionMessage {
+            message: Message {
                 role: messages[1].role.clone(),
-                content: Some(output_text.to_string()),
-                refusal: None,
-                tool_calls: vec![],
+                content: Some(Content::Text(output_text.to_string())),
+                ..Default::default()
             },
             index: 1,
             logprobs: None,
