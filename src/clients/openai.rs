@@ -509,7 +509,6 @@ pub enum Role {
 
 /// Message.
 #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct Message {
     /// The role of the author of this message.
     pub role: Role,
@@ -528,6 +527,10 @@ pub struct Message {
     /// Tool call that this message is responding to. (tool message only)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_call_id: Option<String>,
+
+    /// vLLM-specific fields
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning_content: Option<String>,
 }
 
 impl Message {
