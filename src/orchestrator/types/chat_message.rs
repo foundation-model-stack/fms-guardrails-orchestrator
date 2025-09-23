@@ -39,11 +39,7 @@ pub trait ChatMessageIterator {
 impl ChatMessageIterator for openai::ChatCompletionsRequest {
     fn messages(&self) -> impl Iterator<Item = ChatMessage<'_>> {
         self.messages.iter().enumerate().map(|(index, message)| {
-            let text = if let Some(openai::Content::Text(text)) = &message.content {
-                Some(text.as_str())
-            } else {
-                None
-            };
+            let text = message.text().map(|x| x.as_str());
             ChatMessage {
                 index: index as u32,
                 role: Some(&message.role),
@@ -56,11 +52,14 @@ impl ChatMessageIterator for openai::ChatCompletionsRequest {
 
 impl ChatMessageIterator for openai::ChatCompletion {
     fn messages(&self) -> impl Iterator<Item = ChatMessage<'_>> {
-        self.choices.iter().map(|choice| ChatMessage {
-            index: choice.index,
-            role: Some(&choice.message.role),
-            text: choice.message.content.as_deref(),
-            refusal: choice.message.refusal.as_deref(),
+        self.choices.iter().map(|choice| {
+            let text = choice.message.text().map(|x| x.as_str());
+            ChatMessage {
+                index: choice.index,
+                role: Some(&choice.message.role),
+                text,
+                refusal: choice.message.refusal.as_deref(),
+            }
         })
     }
 }
