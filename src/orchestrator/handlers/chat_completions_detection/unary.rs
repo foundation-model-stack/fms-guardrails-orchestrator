@@ -45,9 +45,15 @@ pub async fn handle_unary(
     let output_detectors = detectors.output;
 
     validate_detectors(
-        input_detectors.iter().chain(output_detectors.iter()),
+        input_detectors.iter(),
         &ctx.config.detectors,
         &[DetectorType::TextContents],
+        true,
+    )?;
+    validate_detectors(
+        output_detectors.iter(),
+        &ctx.config.detectors,
+        &[DetectorType::TextContents, DetectorType::TextChat],
         true,
     )?;
 
@@ -182,6 +188,7 @@ async fn handle_output_detection(
     use DetectorType::*;
     let detector_groups = group_detectors_by_type(&ctx, detectors);
     let headers = &task.headers;
+    let messages = task.request.messages.as_slice();
 
     // Spawn detection tasks
     let mut tasks = Vec::with_capacity(chat_completion.choices.len() * detector_groups.len());
@@ -203,7 +210,11 @@ async fn handle_output_detection(
                 ));
             continue;
         }
+
         for (detector_type, detectors) in &detector_groups {
+            let mut messages = messages.to_vec();
+            messages.push(choice.message.clone());
+
             let detection_task = match detector_type {
                 TextContents => tokio::spawn(
                     common::text_contents_detections(
@@ -211,6 +222,16 @@ async fn handle_output_detection(
                         headers.clone(),
                         detectors.clone(),
                         vec![(0, choice.message.text().cloned().unwrap_or_default())],
+                    )
+                    .in_current_span(),
+                ),
+                TextChat => tokio::spawn(
+                    common::text_chat_detections(
+                        ctx.clone(),
+                        headers.clone(),
+                        detectors.clone(),
+                        messages.clone(),
+                        Vec::new(), // tools
                     )
                     .in_current_span(),
                 ),
