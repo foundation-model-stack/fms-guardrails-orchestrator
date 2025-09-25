@@ -212,9 +212,6 @@ async fn handle_output_detection(
         }
 
         for (detector_type, detectors) in &detector_groups {
-            let mut messages = input_messages.to_vec();
-            messages.push(choice.message.clone());
-
             let detection_task = match detector_type {
                 TextContents => tokio::spawn(
                     common::text_contents_detections(
@@ -225,16 +222,19 @@ async fn handle_output_detection(
                     )
                     .in_current_span(),
                 ),
-                TextChat => tokio::spawn(
-                    common::text_chat_detections(
-                        ctx.clone(),
-                        headers.clone(),
-                        detectors.clone(),
-                        messages.clone(),
-                        Vec::new(), // tools
+                TextChat => {
+                    let messages = [input_messages, std::slice::from_ref(&choice.message)].concat();
+                    tokio::spawn(
+                        common::text_chat_detections(
+                            ctx.clone(),
+                            headers.clone(),
+                            detectors.clone(),
+                            messages,
+                            Vec::new(), // tools
+                        )
+                        .in_current_span(),
                     )
-                    .in_current_span(),
-                ),
+                }
                 _ => unimplemented!(),
             };
             tasks.push((choice.index, *detector_type, detection_task));
