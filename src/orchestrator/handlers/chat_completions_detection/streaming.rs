@@ -461,14 +461,14 @@ async fn handle_whole_doc_detection(
     let input_messages = task.request.messages.as_slice();
     let mut warnings = Vec::new();
 
-    // Create vec of choice_index->choice_message
+    // Create vec of choice_index->choice_text
     let choices = completion_state
         .completions
         .iter()
         .map(|entry| {
             let choice_index = *entry.key();
-            // Concatenate generated text from all completion chunks for this choice
-            let generated_text = entry
+            // Concatenate choice text from all completion chunks for this choice
+            let choice_text = entry
                 .values()
                 .map(|chunk| {
                     chunk
@@ -478,44 +478,42 @@ async fn handle_whole_doc_detection(
                         .unwrap_or_default()
                 })
                 .collect::<String>();
-            // Build a message (only needed for text_chat detections)
-            let choice_message = Message {
-                role: Role::Assistant,
-                content: Some(Content::Text(generated_text)),
-                // refusal: todo!(),
-                ..Default::default()
-            };
-            (choice_index, choice_message)
+            (choice_index, choice_text)
         })
         .collect::<Vec<_>>();
 
     // Spawn detection tasks
     let mut tasks = Vec::with_capacity(choices.len() * detector_groups.len());
-    for (choice_index, choice_message) in choices {
+    for (choice_index, choice_text) in choices {
         for (detector_type, detectors) in &detector_groups {
-            let mut messages = input_messages.to_vec();
-            messages.push(choice_message.clone());
-
             let detection_task = match detector_type {
                 TextContents => tokio::spawn(
                     common::text_contents_detections(
                         ctx.clone(),
                         headers.clone(),
                         detectors.clone(),
-                        vec![(0, choice_message.text().cloned().unwrap_or_default())],
+                        vec![(0, choice_text.clone())],
                     )
                     .in_current_span(),
                 ),
-                TextChat => tokio::spawn(
-                    common::text_chat_detections(
-                        ctx.clone(),
-                        headers.clone(),
-                        detectors.clone(),
-                        messages.clone(),
-                        Vec::new(), // tools
+                TextChat => {
+                    let choice_message = Message {
+                        role: Role::Assistant,
+                        content: Some(Content::Text(choice_text.clone())),
+                        ..Default::default()
+                    };
+                    let messages = [input_messages, &[choice_message]].concat();
+                    tokio::spawn(
+                        common::text_chat_detections(
+                            ctx.clone(),
+                            headers.clone(),
+                            detectors.clone(),
+                            messages,
+                            Vec::new(), // tools
+                        )
+                        .in_current_span(),
                     )
-                    .in_current_span(),
-                ),
+                }
                 _ => unimplemented!(),
             };
             tasks.push((choice_index, *detector_type, detection_task));
