@@ -458,10 +458,10 @@ async fn handle_whole_doc_detection(
     use DetectorType::*;
     let detector_groups = group_detectors_by_type(&ctx, detectors);
     let headers = &task.headers;
-    let messages = task.request.messages.as_slice();
+    let input_messages = task.request.messages.as_slice();
     let mut warnings = Vec::new();
 
-    // Create vec of choice_index->message
+    // Create vec of choice_index->choice_message
     let choices = completion_state
         .completions
         .iter()
@@ -479,22 +479,22 @@ async fn handle_whole_doc_detection(
                 })
                 .collect::<String>();
             // Build a message (only needed for text_chat detections)
-            let message = Message {
+            let choice_message = Message {
                 role: Role::Assistant,
                 content: Some(Content::Text(generated_text)),
                 // refusal: todo!(),
                 ..Default::default()
             };
-            (choice_index, message)
+            (choice_index, choice_message)
         })
         .collect::<Vec<_>>();
 
     // Spawn detection tasks
     let mut tasks = Vec::with_capacity(choices.len() * detector_groups.len());
-    for (choice_index, message) in choices {
+    for (choice_index, choice_message) in choices {
         for (detector_type, detectors) in &detector_groups {
-            let mut messages = messages.to_vec();
-            messages.push(message.clone());
+            let mut messages = input_messages.to_vec();
+            messages.push(choice_message.clone());
 
             let detection_task = match detector_type {
                 TextContents => tokio::spawn(
@@ -502,7 +502,7 @@ async fn handle_whole_doc_detection(
                         ctx.clone(),
                         headers.clone(),
                         detectors.clone(),
-                        vec![(0, message.text().cloned().unwrap_or_default())],
+                        vec![(0, choice_message.text().cloned().unwrap_or_default())],
                     )
                     .in_current_span(),
                 ),
