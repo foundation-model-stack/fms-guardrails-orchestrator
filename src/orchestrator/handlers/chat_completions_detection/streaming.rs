@@ -57,9 +57,20 @@ pub async fn handle_streaming(
             let output_detectors = detectors.output;
 
             if let Err(error) = validate_detectors(
-                input_detectors.iter().chain(output_detectors.iter()),
+                input_detectors.iter(),
                 &ctx.config.detectors,
                 &[DetectorType::TextContents],
+                true,
+            ) {
+                let _ = response_tx.send(Err(error)).await;
+                // Send None to signal completion
+                let _ = response_tx.send(Ok(None)).await;
+                return;
+            }
+            if let Err(error) = validate_detectors(
+                output_detectors.iter(),
+                &ctx.config.detectors,
+                &[DetectorType::TextContents, DetectorType::TextChat],
                 true,
             ) {
                 let _ = response_tx.send(Err(error)).await;
@@ -447,16 +458,10 @@ async fn handle_whole_doc_detection(
     use DetectorType::*;
     let detector_groups = group_detectors_by_type(&ctx, detectors);
     let headers = &task.headers;
-    // To align with input detection, use the prompt from the last message only
-    let _prompt = task
-        .request
-        .messages()
-        .last()
-        .and_then(|message| message.text.map(|s| s.to_string()))
-        .unwrap_or_default();
+    let messages = task.request.messages.as_slice();
     let mut warnings = Vec::new();
 
-    // Create vec of choice_index->generated_text
+    // Create vec of choice_index->message
     let choices = completion_state
         .completions
         .iter()
@@ -473,21 +478,41 @@ async fn handle_whole_doc_detection(
                         .unwrap_or_default()
                 })
                 .collect::<String>();
-            (choice_index, generated_text)
+            // Build a message (only needed for text_chat detections)
+            let message = Message {
+                role: Role::Assistant,
+                content: Some(Content::Text(generated_text)),
+                // refusal: todo!(),
+                ..Default::default()
+            };
+            (choice_index, message)
         })
         .collect::<Vec<_>>();
 
     // Spawn detection tasks
     let mut tasks = Vec::with_capacity(choices.len() * detector_groups.len());
-    for (choice_index, generated_text) in choices {
+    for (choice_index, message) in choices {
         for (detector_type, detectors) in &detector_groups {
+            let mut messages = messages.to_vec();
+            messages.push(message.clone());
+
             let detection_task = match detector_type {
                 TextContents => tokio::spawn(
                     common::text_contents_detections(
                         ctx.clone(),
                         headers.clone(),
                         detectors.clone(),
-                        vec![(0, generated_text.clone())],
+                        vec![(0, message.text().cloned().unwrap_or_default())],
+                    )
+                    .in_current_span(),
+                ),
+                TextChat => tokio::spawn(
+                    common::text_chat_detections(
+                        ctx.clone(),
+                        headers.clone(),
+                        detectors.clone(),
+                        messages.clone(),
+                        Vec::new(), // tools
                     )
                     .in_current_span(),
                 ),
