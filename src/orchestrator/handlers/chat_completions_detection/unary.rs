@@ -188,7 +188,7 @@ async fn handle_output_detection(
     use DetectorType::*;
     let detector_groups = group_detectors_by_type(&ctx, detectors);
     let headers = &task.headers;
-    let messages = task.request.messages.as_slice();
+    let input_messages = task.request.messages.as_slice();
 
     // Spawn detection tasks
     let mut tasks = Vec::with_capacity(chat_completion.choices.len() * detector_groups.len());
@@ -212,7 +212,7 @@ async fn handle_output_detection(
         }
 
         for (detector_type, detectors) in &detector_groups {
-            let mut messages = messages.to_vec();
+            let mut messages = input_messages.to_vec();
             messages.push(choice.message.clone());
 
             let detection_task = match detector_type {
