@@ -291,6 +291,9 @@ pub struct ChatCompletionsRequest {
     pub model: String,
     /// Messages.
     pub messages: Vec<Message>,
+    /// A list of tools that the model may call.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tools: Option<Vec<Tool>>,
     /// Extra fields not captured above.
     #[serde(flatten)]
     pub extra: Map<String, Value>,
@@ -438,17 +441,82 @@ pub struct ResponseFormat {
 }
 
 /// Tool.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Tool {
-    /// The type of the tool.
-    #[serde(rename = "type")]
-    pub r#type: String,
-    pub function: ToolFunction,
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum Tool {
+    Function(FunctionTool),
+    Custom(CustomTool),
 }
 
-/// Tool function.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ToolFunction {
+/// Function tool.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FunctionTool {
+    /// The type of the tool. Always `function`.
+    #[serde(rename = "type")]
+    pub r#type: String,
+    pub function: FunctionDefinition,
+}
+
+impl FunctionTool {
+    pub fn new(function: FunctionDefinition) -> Self {
+        Self {
+            r#type: "function".into(),
+            function,
+        }
+    }
+}
+
+impl Default for FunctionTool {
+    fn default() -> Self {
+        Self {
+            r#type: "function".into(),
+            function: Default::default(),
+        }
+    }
+}
+
+impl From<FunctionTool> for Tool {
+    fn from(value: FunctionTool) -> Self {
+        Self::Function(value)
+    }
+}
+
+/// Custom tool.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CustomTool {
+    /// The type of the tool. Always `custom`.
+    #[serde(rename = "type")]
+    pub r#type: String,
+    pub custom: CustomDefinition,
+}
+
+impl CustomTool {
+    pub fn new(custom: CustomDefinition) -> Self {
+        Self {
+            r#type: "custom".into(),
+            custom,
+        }
+    }
+}
+
+impl Default for CustomTool {
+    fn default() -> Self {
+        Self {
+            r#type: "tool".into(),
+            custom: Default::default(),
+        }
+    }
+}
+
+impl From<CustomTool> for Tool {
+    fn from(value: CustomTool) -> Self {
+        Self::Custom(value)
+    }
+}
+
+/// A function tool that can be used to generate a response.
+#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FunctionDefinition {
     /// The name of the function to be called.
     pub name: String,
     /// A description of what the function does, used by the model to choose when and how to call the function.
@@ -461,6 +529,19 @@ pub struct ToolFunction {
     /// Whether to enable strict schema adherence when generating the function call.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub strict: Option<bool>,
+}
+
+/// A custom tool that processes input using a specified format.
+#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CustomDefinition {
+    /// The name of the custom tool, used to identify it in tool calls.
+    pub name: String,
+    /// Optional description of the custom tool, used to provide more context.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// The input format for the custom tool. Default is unconstrained text.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub format: Option<serde_json::Value>,
 }
 
 /// Tool choice.
@@ -1059,6 +1140,7 @@ mod test {
                 stream: None,
                 model: "test".into(),
                 messages: messages.clone(),
+                tools: None,
                 extra,
             }
         );
@@ -1072,11 +1154,46 @@ mod test {
         assert_eq!(
             request,
             ChatCompletionsRequest {
-                detectors: DetectorConfig::default(),
-                stream: None,
                 model: "test".into(),
                 messages: messages.clone(),
-                extra: Map::new(),
+                ..Default::default()
+            }
+        );
+
+        // Test deserialize with tools
+        let json_request = json!({
+            "model": "test",
+            "messages": messages,
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "example",
+                        "description": "a tool function",
+                        "parameters": {
+                            "p1": "a",
+                            "p2": "b",
+                        }
+                    }
+                }
+            ]
+        });
+        let request = ChatCompletionsRequest::deserialize(&json_request)?;
+        assert_eq!(
+            request,
+            ChatCompletionsRequest {
+                model: "test".into(),
+                messages: messages.clone(),
+                tools: Some(vec![Tool::Function(FunctionTool {
+                    r#type: "function".into(),
+                    function: FunctionDefinition {
+                        name: "example".into(),
+                        description: Some("a tool function".into()),
+                        parameters: [("p1".into(), "a".into()), ("p2".into(), "b".into())].into(),
+                        strict: None,
+                    },
+                })]),
+                ..Default::default()
             }
         );
 
