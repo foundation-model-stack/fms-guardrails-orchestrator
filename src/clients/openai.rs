@@ -1154,12 +1154,46 @@ mod test {
         assert_eq!(
             request,
             ChatCompletionsRequest {
-                detectors: DetectorConfig::default(),
-                stream: None,
                 model: "test".into(),
                 messages: messages.clone(),
-                tools: None,
-                extra: Map::new(),
+                ..Default::default()
+            }
+        );
+
+        // Test deserialize with tools
+        let json_request = json!({
+            "model": "test",
+            "messages": messages,
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "example",
+                        "description": "a tool function",
+                        "parameters": {
+                            "p1": "a",
+                            "p2": "b",
+                        }
+                    }
+                }
+            ]
+        });
+        let request = ChatCompletionsRequest::deserialize(&json_request)?;
+        assert_eq!(
+            request,
+            ChatCompletionsRequest {
+                model: "test".into(),
+                messages: messages.clone(),
+                tools: Some(vec![Tool::Function(FunctionTool {
+                    r#type: "function".into(),
+                    function: FunctionDefinition {
+                        name: "example".into(),
+                        description: Some("a tool function".into()),
+                        parameters: [("p1".into(), "a".into()), ("p2".into(), "b".into())].into(),
+                        strict: None,
+                    },
+                })]),
+                ..Default::default()
             }
         );
 
