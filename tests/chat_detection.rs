@@ -14,7 +14,7 @@
  limitations under the License.
 
 */
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 
 use common::{
     detectors::{
@@ -29,7 +29,7 @@ use common::{
 use fms_guardrails_orchestr8::{
     clients::{
         detector::ChatDetectionRequest,
-        openai::{Content, Message, Role, Tool, ToolFunction},
+        openai::{Content, FunctionDefinition, FunctionTool, Message, Role},
     },
     models::{
         ChatDetectionHttpRequest, ChatDetectionResult, DetectionResult, DetectorParams, Metadata,
@@ -60,16 +60,14 @@ async fn no_detections() -> Result<(), anyhow::Error> {
             ..Default::default()
         },
     ];
-    let parameters = BTreeMap::from([("id".into(), "a".into()), ("type".into(), "b".into())]);
-    let tools = vec![Tool {
-        r#type: "function".into(),
-        function: ToolFunction {
-            name: "tool-function".into(),
-            description: None,
-            strict: None,
-            parameters,
-        },
-    }];
+    let tools = vec![
+        FunctionTool::new(FunctionDefinition {
+            name: "example".into(),
+            parameters: [("id".into(), "a".into()), ("type".into(), "b".into())].into(),
+            ..Default::default()
+        })
+        .into(),
+    ];
     let detection = DetectionResult {
         detection_type: "pii".into(),
         detection: "is_pii".into(),
