@@ -188,7 +188,8 @@ async fn handle_output_detection(
     use DetectorType::*;
     let detector_groups = group_detectors_by_type(&ctx, detectors);
     let headers = &task.headers;
-    let input_messages = task.request.messages.as_slice();
+    let messages = task.request.messages.as_slice();
+    let tools = task.request.tools.as_ref().cloned().unwrap_or_default();
 
     // Spawn detection tasks
     let mut tasks = Vec::with_capacity(chat_completion.choices.len() * detector_groups.len());
@@ -222,19 +223,16 @@ async fn handle_output_detection(
                     )
                     .in_current_span(),
                 ),
-                TextChat => {
-                    let messages = [input_messages, std::slice::from_ref(&choice.message)].concat();
-                    tokio::spawn(
-                        common::text_chat_detections(
-                            ctx.clone(),
-                            headers.clone(),
-                            detectors.clone(),
-                            messages,
-                            Vec::new(), // tools
-                        )
-                        .in_current_span(),
+                TextChat => tokio::spawn(
+                    common::text_chat_detections(
+                        ctx.clone(),
+                        headers.clone(),
+                        detectors.clone(),
+                        [messages, std::slice::from_ref(&choice.message)].concat(),
+                        tools.clone(),
                     )
-                }
+                    .in_current_span(),
+                ),
                 _ => unimplemented!(),
             };
             tasks.push((choice.index, *detector_type, detection_task));
