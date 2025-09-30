@@ -44,7 +44,7 @@ WORKDIR /app
 FROM rust-builder AS fms-guardrails-orchestr8-builder
 ARG CONFIG_FILE=config/config.yaml
 
-COPY build.rs *.toml LICENSE /app/
+COPY build.rs *.toml Cargo.lock LICENSE /app/
 COPY ${CONFIG_FILE} /app/config/config.yaml
 COPY protos/ /app/protos/
 COPY src/ /app/src/
