@@ -26,7 +26,7 @@ use axum::{
     http::HeaderMap,
     response::{
         IntoResponse, Response,
-        sse::{Event, KeepAlive, Sse},
+        sse::{Event, KeepAlive, KeepAliveStream, Sse},
     },
     routing::{get, post},
 };
@@ -178,7 +178,7 @@ async fn stream_classification_with_gen(
     State(state): State<Arc<ServerState>>,
     headers: HeaderMap,
     WithRejection(Json(request), _): WithRejection<Json<models::GuardrailsHttpRequest>, Error>,
-) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+) -> Sse<KeepAliveStream<impl Stream<Item = Result<Event, Infallible>>>> {
     let trace_id = current_trace_id();
     if let Err(error) = request.validate() {
         // Request validation failed, return stream with single error SSE event
@@ -189,7 +189,8 @@ async fn stream_classification_with_gen(
                 .json_data(error)
                 .unwrap())])
             .boxed(),
-        );
+        )
+        .keep_alive(KeepAlive::default());
     }
     let headers = filter_headers(
         &state.orchestrator.config().passthrough_headers,
