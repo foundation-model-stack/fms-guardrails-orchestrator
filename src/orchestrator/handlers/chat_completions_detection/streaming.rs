@@ -458,7 +458,8 @@ async fn handle_whole_doc_detection(
     use DetectorType::*;
     let detector_groups = group_detectors_by_type(&ctx, detectors);
     let headers = &task.headers;
-    let input_messages = task.request.messages.as_slice();
+    let messages = task.request.messages.as_slice();
+    let tools = task.request.tools.as_ref().cloned().unwrap_or_default();
     let mut warnings = Vec::new();
 
     // Create vec of choice_index->choice_text
@@ -502,14 +503,13 @@ async fn handle_whole_doc_detection(
                         content: Some(Content::Text(choice_text.clone())),
                         ..Default::default()
                     };
-                    let messages = [input_messages, &[choice_message]].concat();
                     tokio::spawn(
                         common::text_chat_detections(
                             ctx.clone(),
                             headers.clone(),
                             detectors.clone(),
-                            messages,
-                            Vec::new(), // tools
+                            [messages, &[choice_message]].concat(),
+                            tools.clone(),
                         )
                         .in_current_span(),
                     )
