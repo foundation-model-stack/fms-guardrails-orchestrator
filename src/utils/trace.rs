@@ -320,7 +320,7 @@ pub fn trace_context_from_http_response(span: &Span, response: &TracedResponse) 
         propagator.extract(&HeaderExtractor(response.headers()))
     });
     if ctx.span().span_context().trace_id() == curr_trace {
-        span.set_parent(ctx);
+        let _ = span.set_parent(ctx);
     }
 }
 
@@ -336,7 +336,7 @@ pub fn trace_context_from_grpc_response<T>(span: &Span, response: &tonic::Respon
         propagator.extract(&HeaderExtractor(&metadata.into_headers()))
     });
     if ctx.span().span_context().trace_id() == curr_trace {
-        span.set_parent(ctx);
+        let _ = span.set_parent(ctx);
     }
 }
 
