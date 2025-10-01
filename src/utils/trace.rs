@@ -340,7 +340,7 @@ pub fn trace_context_from_grpc_response<T>(span: &Span, response: &tonic::Respon
     if ctx.span().span_context().trace_id() == curr_trace
         && let Err(error) = span.set_parent(ctx)
     {
-        tracing::error!(%error, "Error setting trace parent for gRPC response");
+        error!(%error, "Error setting trace parent for gRPC response");
     }
 }
 
