@@ -322,7 +322,7 @@ pub fn trace_context_from_http_response(span: &Span, response: &TracedResponse) 
     if ctx.span().span_context().trace_id() == curr_trace
         && let Err(error) = span.set_parent(ctx)
     {
-        tracing::error!(%error, "Error setting trace parent for HTTP response");
+        error!(%error, "Error setting trace parent for HTTP response");
     }
 }
 
