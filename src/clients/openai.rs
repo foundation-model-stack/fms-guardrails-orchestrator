@@ -544,27 +544,6 @@ pub struct CustomDefinition {
     pub format: Option<serde_json::Value>,
 }
 
-/// Tool choice.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(untagged)]
-pub enum ToolChoice {
-    /// `none` means the model will not call any tool and instead generates a message.
-    /// `auto` means the model can pick between generating a message or calling one or more tools.
-    /// `required` means the model must call one or more tools.
-    String,
-    /// Specifies a tool the model should use. Use to force the model to call a specific function.
-    Object(ToolChoiceObject),
-}
-
-/// Tool choice object.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ToolChoiceObject {
-    /// The type of the tool.
-    #[serde(rename = "type")]
-    pub r#type: String,
-    pub function: FunctionCall,
-}
-
 /// Stream options.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StreamOptions {
