@@ -319,8 +319,10 @@ pub fn trace_context_from_http_response(span: &Span, response: &TracedResponse) 
         // Returns the current context if no `traceparent` is found
         propagator.extract(&HeaderExtractor(response.headers()))
     });
-    if ctx.span().span_context().trace_id() == curr_trace {
-        let _ = span.set_parent(ctx);
+    if ctx.span().span_context().trace_id() == curr_trace
+        && let Err(error) = span.set_parent(ctx)
+    {
+        tracing::error!(%error, "Error setting trace parent for HTTP response");
     }
 }
 
@@ -335,8 +337,10 @@ pub fn trace_context_from_grpc_response<T>(span: &Span, response: &tonic::Respon
         // Returns the current context if no `traceparent` is found
         propagator.extract(&HeaderExtractor(&metadata.into_headers()))
     });
-    if ctx.span().span_context().trace_id() == curr_trace {
-        let _ = span.set_parent(ctx);
+    if ctx.span().span_context().trace_id() == curr_trace
+        && let Err(error) = span.set_parent(ctx)
+    {
+        tracing::error!(%error, "Error setting trace parent for gRPC response");
     }
 }
 
