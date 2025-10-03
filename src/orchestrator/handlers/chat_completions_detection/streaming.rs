@@ -628,6 +628,58 @@ fn merge_logprobs(chat_completions: &[ChatCompletionChunk]) -> Option<ChatComple
         .then_some(ChatCompletionLogprobs { content, refusal })
 }
 
+/// Constructs tool calls from chat completion deltas with tool call chunks.
+fn merge_tool_calls(chunks: &[ChatCompletionChunk]) -> Option<Vec<ToolCall>> {
+    let mut tool_calls: HashMap<usize, ToolCall> = HashMap::new();
+    for chunk in chunks {
+        if let Some(choice) = chunk.choices.first() {
+            for tc in &choice.delta.tool_calls {
+                let index = tc.index.unwrap();
+                let entry = tool_calls.entry(index).or_insert_with(|| ToolCall {
+                    index: Some(index),
+                    ..Default::default()
+                });
+                if !tc.id.is_empty() {
+                    // Set ID
+                    entry.id = tc.id.clone();
+                }
+                if let Some(function) = &tc.function {
+                    let f = entry.function.get_or_insert_default();
+                    if !function.name.is_empty() {
+                        // Set type to "function"
+                        entry.r#type = "function".into();
+                        // Set function name
+                        f.name = function.name.clone();
+                    }
+                    if !function.arguments.is_empty() {
+                        // Append function arguments
+                        f.arguments.push_str(&function.arguments);
+                    }
+                }
+                if let Some(custom) = &tc.custom {
+                    let c = entry.custom.get_or_insert_default();
+                    if !custom.name.is_empty() {
+                        // Set type to "custom"
+                        entry.r#type = "custom".into();
+                        // Set custom name
+                        c.name = custom.name.clone();
+                    }
+                    if !custom.input.is_empty() {
+                        // Append custom input
+                        // TODO: example not found, confirm handling
+                        c.input.push_str(&custom.input);
+                    }
+                }
+            }
+        }
+    }
+    let tool_calls = tool_calls
+        .into_iter()
+        .map(|(_, value)| value)
+        .collect::<Vec<_>>();
+    (!tool_calls.is_empty()).then_some(tool_calls)
+}
+
 /// Consumes a detection batch stream, builds responses, and sends them to a response channel.
 async fn process_detection_batch_stream(
     trace_id: TraceId,
@@ -686,4 +738,40 @@ async fn process_detection_batch_stream(
         }
     }
     info!(%trace_id, "task completed: detection batch stream closed");
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_merge_tool_calls() {
+        let chunks_json = serde_json::json!([
+            {"id":"chatcmpl-d20f671e9f9546858ed53274bd45836e","object":"chat.completion.chunk","created":1759439369,"model":"example","choices":[{"index":0,"delta":{"role":"assistant","content":""},"logprobs":null,"finish_reason":null}]},
+            {"id":"chatcmpl-d20f671e9f9546858ed53274bd45836e","object":"chat.completion.chunk","created":1759439369,"model":"example","choices":[{"index":0,"delta":{"tool_calls":[{"id":"chatcmpl-tool-17c2d16c3c734bd69235c88771175bf4","type":"function","index":0,"function":{"name":"get_current_weather"}}]},"logprobs":null,"finish_reason":null}]},
+            {"id":"chatcmpl-d20f671e9f9546858ed53274bd45836e","object":"chat.completion.chunk","created":1759439369,"model":"example","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"location\": \""}}]},"logprobs":null,"finish_reason":null}]},
+            {"id":"chatcmpl-d20f671e9f9546858ed53274bd45836e","object":"chat.completion.chunk","created":1759439369,"model":"example","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"Boston"}}]},"logprobs":null,"finish_reason":null}]},
+            {"id":"chatcmpl-d20f671e9f9546858ed53274bd45836e","object":"chat.completion.chunk","created":1759439369,"model":"example","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":","}}]},"logprobs":null,"finish_reason":null}]},
+            {"id":"chatcmpl-d20f671e9f9546858ed53274bd45836e","object":"chat.completion.chunk","created":1759439369,"model":"example","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":" MA\""}}]},"logprobs":null,"finish_reason":null}]},
+            {"id":"chatcmpl-d20f671e9f9546858ed53274bd45836e","object":"chat.completion.chunk","created":1759439369,"model":"example","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":", \"unit\": \""}}]},"logprobs":null,"finish_reason":null}]},
+            {"id":"chatcmpl-d20f671e9f9546858ed53274bd45836e","object":"chat.completion.chunk","created":1759439369,"model":"example","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"f"}}]},"logprobs":null,"finish_reason":null}]},
+            {"id":"chatcmpl-d20f671e9f9546858ed53274bd45836e","object":"chat.completion.chunk","created":1759439369,"model":"example","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"ahrenheit\"}"}}]},"logprobs":null,"finish_reason":null}]},
+            {"id":"chatcmpl-d20f671e9f9546858ed53274bd45836e","object":"chat.completion.chunk","created":1759439369,"model":"example","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":""}}]},"logprobs":null,"finish_reason":"tool_calls","stop_reason":128008}]},
+        ]);
+        let chunks = serde_json::from_value::<Vec<ChatCompletionChunk>>(chunks_json).unwrap();
+        let tool_calls = merge_tool_calls(&chunks);
+        assert_eq!(
+            tool_calls,
+            Some(vec![ToolCall {
+                index: Some(0),
+                id: "chatcmpl-tool-17c2d16c3c734bd69235c88771175bf4".into(),
+                r#type: "function".into(),
+                function: Some(Function {
+                    name: "get_current_weather".into(),
+                    arguments: "{\"location\": \"Boston, MA\", \"unit\": \"fahrenheit\"}".into(),
+                }),
+                custom: None,
+            }])
+        );
+    }
 }
