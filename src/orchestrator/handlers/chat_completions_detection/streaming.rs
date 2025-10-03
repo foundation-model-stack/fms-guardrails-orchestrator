@@ -57,9 +57,20 @@ pub async fn handle_streaming(
             let output_detectors = detectors.output;
 
             if let Err(error) = validate_detectors(
-                input_detectors.iter().chain(output_detectors.iter()),
+                input_detectors.iter(),
                 &ctx.config.detectors,
                 &[DetectorType::TextContents],
+                true,
+            ) {
+                let _ = response_tx.send(Err(error)).await;
+                // Send None to signal completion
+                let _ = response_tx.send(Ok(None)).await;
+                return;
+            }
+            if let Err(error) = validate_detectors(
+                output_detectors.iter(),
+                &ctx.config.detectors,
+                &[DetectorType::TextContents, DetectorType::TextChat],
                 true,
             ) {
                 let _ = response_tx.send(Err(error)).await;
@@ -447,23 +458,18 @@ async fn handle_whole_doc_detection(
     use DetectorType::*;
     let detector_groups = group_detectors_by_type(&ctx, detectors);
     let headers = &task.headers;
-    // To align with input detection, use the prompt from the last message only
-    let _prompt = task
-        .request
-        .messages()
-        .last()
-        .and_then(|message| message.text.map(|s| s.to_string()))
-        .unwrap_or_default();
+    let messages = task.request.messages.as_slice();
+    let tools = task.request.tools.as_ref().cloned().unwrap_or_default();
     let mut warnings = Vec::new();
 
-    // Create vec of choice_index->generated_text
+    // Create vec of choice_index->choice_text
     let choices = completion_state
         .completions
         .iter()
         .map(|entry| {
             let choice_index = *entry.key();
-            // Concatenate generated text from all completion chunks for this choice
-            let generated_text = entry
+            // Concatenate choice text from all completion chunks for this choice
+            let choice_text = entry
                 .values()
                 .map(|chunk| {
                     chunk
@@ -473,13 +479,13 @@ async fn handle_whole_doc_detection(
                         .unwrap_or_default()
                 })
                 .collect::<String>();
-            (choice_index, generated_text)
+            (choice_index, choice_text)
         })
         .collect::<Vec<_>>();
 
     // Spawn detection tasks
     let mut tasks = Vec::with_capacity(choices.len() * detector_groups.len());
-    for (choice_index, generated_text) in choices {
+    for (choice_index, choice_text) in choices {
         for (detector_type, detectors) in &detector_groups {
             let detection_task = match detector_type {
                 TextContents => tokio::spawn(
@@ -487,10 +493,27 @@ async fn handle_whole_doc_detection(
                         ctx.clone(),
                         headers.clone(),
                         detectors.clone(),
-                        vec![(0, generated_text.clone())],
+                        vec![(0, choice_text.clone())],
                     )
                     .in_current_span(),
                 ),
+                TextChat => {
+                    let choice_message = Message {
+                        role: Role::Assistant,
+                        content: Some(Content::Text(choice_text.clone())),
+                        ..Default::default()
+                    };
+                    tokio::spawn(
+                        common::text_chat_detections(
+                            ctx.clone(),
+                            headers.clone(),
+                            detectors.clone(),
+                            [messages, &[choice_message]].concat(),
+                            tools.clone(),
+                        )
+                        .in_current_span(),
+                    )
+                }
                 _ => unimplemented!(),
             };
             tasks.push((choice_index, *detector_type, detection_task));
@@ -605,6 +628,58 @@ fn merge_logprobs(chat_completions: &[ChatCompletionChunk]) -> Option<ChatComple
         .then_some(ChatCompletionLogprobs { content, refusal })
 }
 
+/// Constructs tool calls from chat completion deltas with tool call chunks.
+fn merge_tool_calls(chunks: &[ChatCompletionChunk]) -> Option<Vec<ToolCall>> {
+    let mut tool_calls: HashMap<usize, ToolCall> = HashMap::new();
+    for chunk in chunks {
+        if let Some(choice) = chunk.choices.first() {
+            for tc in &choice.delta.tool_calls {
+                let index = tc.index.unwrap();
+                let entry = tool_calls.entry(index).or_insert_with(|| ToolCall {
+                    index: Some(index),
+                    ..Default::default()
+                });
+                if !tc.id.is_empty() {
+                    // Set ID
+                    entry.id = tc.id.clone();
+                }
+                if let Some(function) = &tc.function {
+                    let f = entry.function.get_or_insert_default();
+                    if !function.name.is_empty() {
+                        // Set type to "function"
+                        entry.r#type = "function".into();
+                        // Set function name
+                        f.name = function.name.clone();
+                    }
+                    if !function.arguments.is_empty() {
+                        // Append function arguments
+                        f.arguments.push_str(&function.arguments);
+                    }
+                }
+                if let Some(custom) = &tc.custom {
+                    let c = entry.custom.get_or_insert_default();
+                    if !custom.name.is_empty() {
+                        // Set type to "custom"
+                        entry.r#type = "custom".into();
+                        // Set custom name
+                        c.name = custom.name.clone();
+                    }
+                    if !custom.input.is_empty() {
+                        // Append custom input
+                        // TODO: example not found, confirm handling
+                        c.input.push_str(&custom.input);
+                    }
+                }
+            }
+        }
+    }
+    let tool_calls = tool_calls
+        .into_iter()
+        .map(|(_, value)| value)
+        .collect::<Vec<_>>();
+    (!tool_calls.is_empty()).then_some(tool_calls)
+}
+
 /// Consumes a detection batch stream, builds responses, and sends them to a response channel.
 async fn process_detection_batch_stream(
     trace_id: TraceId,
@@ -663,4 +738,40 @@ async fn process_detection_batch_stream(
         }
     }
     info!(%trace_id, "task completed: detection batch stream closed");
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_merge_tool_calls() {
+        let chunks_json = serde_json::json!([
+            {"id":"chatcmpl-d20f671e9f9546858ed53274bd45836e","object":"chat.completion.chunk","created":1759439369,"model":"example","choices":[{"index":0,"delta":{"role":"assistant","content":""},"logprobs":null,"finish_reason":null}]},
+            {"id":"chatcmpl-d20f671e9f9546858ed53274bd45836e","object":"chat.completion.chunk","created":1759439369,"model":"example","choices":[{"index":0,"delta":{"tool_calls":[{"id":"chatcmpl-tool-17c2d16c3c734bd69235c88771175bf4","type":"function","index":0,"function":{"name":"get_current_weather"}}]},"logprobs":null,"finish_reason":null}]},
+            {"id":"chatcmpl-d20f671e9f9546858ed53274bd45836e","object":"chat.completion.chunk","created":1759439369,"model":"example","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"location\": \""}}]},"logprobs":null,"finish_reason":null}]},
+            {"id":"chatcmpl-d20f671e9f9546858ed53274bd45836e","object":"chat.completion.chunk","created":1759439369,"model":"example","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"Boston"}}]},"logprobs":null,"finish_reason":null}]},
+            {"id":"chatcmpl-d20f671e9f9546858ed53274bd45836e","object":"chat.completion.chunk","created":1759439369,"model":"example","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":","}}]},"logprobs":null,"finish_reason":null}]},
+            {"id":"chatcmpl-d20f671e9f9546858ed53274bd45836e","object":"chat.completion.chunk","created":1759439369,"model":"example","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":" MA\""}}]},"logprobs":null,"finish_reason":null}]},
+            {"id":"chatcmpl-d20f671e9f9546858ed53274bd45836e","object":"chat.completion.chunk","created":1759439369,"model":"example","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":", \"unit\": \""}}]},"logprobs":null,"finish_reason":null}]},
+            {"id":"chatcmpl-d20f671e9f9546858ed53274bd45836e","object":"chat.completion.chunk","created":1759439369,"model":"example","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"f"}}]},"logprobs":null,"finish_reason":null}]},
+            {"id":"chatcmpl-d20f671e9f9546858ed53274bd45836e","object":"chat.completion.chunk","created":1759439369,"model":"example","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"ahrenheit\"}"}}]},"logprobs":null,"finish_reason":null}]},
+            {"id":"chatcmpl-d20f671e9f9546858ed53274bd45836e","object":"chat.completion.chunk","created":1759439369,"model":"example","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":""}}]},"logprobs":null,"finish_reason":"tool_calls","stop_reason":128008}]},
+        ]);
+        let chunks = serde_json::from_value::<Vec<ChatCompletionChunk>>(chunks_json).unwrap();
+        let tool_calls = merge_tool_calls(&chunks);
+        assert_eq!(
+            tool_calls,
+            Some(vec![ToolCall {
+                index: Some(0),
+                id: "chatcmpl-tool-17c2d16c3c734bd69235c88771175bf4".into(),
+                r#type: "function".into(),
+                function: Some(Function {
+                    name: "get_current_weather".into(),
+                    arguments: "{\"location\": \"Boston, MA\", \"unit\": \"fahrenheit\"}".into(),
+                }),
+                custom: None,
+            }])
+        );
+    }
 }
