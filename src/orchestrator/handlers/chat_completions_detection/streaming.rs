@@ -462,30 +462,29 @@ async fn handle_whole_doc_detection(
     let tools = task.request.tools.as_ref().cloned().unwrap_or_default();
     let mut warnings = Vec::new();
 
-    // Create vec of choice_index->choice_text
+    // Create vec of choice_index->message
+    // NOTE: we create a message for text chat detectors
     let choices = completion_state
         .completions
         .iter()
         .map(|entry| {
             let choice_index = *entry.key();
-            // Concatenate choice text from all completion chunks for this choice
-            let choice_text = entry
-                .values()
-                .map(|chunk| {
-                    chunk
-                        .choices
-                        .first()
-                        .and_then(|choice| choice.delta.content.clone())
-                        .unwrap_or_default()
-                })
-                .collect::<String>();
-            (choice_index, choice_text)
+            let chunks = entry.values().cloned().collect::<Vec<_>>();
+            let tool_calls = merge_tool_calls(&chunks);
+            let content_text = merge_content_text(&chunks);
+            let message = Message {
+                role: Role::Assistant,
+                content: Some(Content::Text(content_text)),
+                tool_calls,
+                ..Default::default()
+            };
+            (choice_index, message)
         })
         .collect::<Vec<_>>();
 
     // Spawn detection tasks
     let mut tasks = Vec::with_capacity(choices.len() * detector_groups.len());
-    for (choice_index, choice_text) in choices {
+    for (choice_index, message) in &choices {
         for (detector_type, detectors) in &detector_groups {
             let detection_task = match detector_type {
                 TextContents => tokio::spawn(
@@ -493,30 +492,23 @@ async fn handle_whole_doc_detection(
                         ctx.clone(),
                         headers.clone(),
                         detectors.clone(),
-                        vec![(0, choice_text.clone())],
+                        vec![(0, message.text().cloned().unwrap_or_default())],
                     )
                     .in_current_span(),
                 ),
-                TextChat => {
-                    let choice_message = Message {
-                        role: Role::Assistant,
-                        content: Some(Content::Text(choice_text.clone())),
-                        ..Default::default()
-                    };
-                    tokio::spawn(
-                        common::text_chat_detections(
-                            ctx.clone(),
-                            headers.clone(),
-                            detectors.clone(),
-                            [messages, &[choice_message]].concat(),
-                            tools.clone(),
-                        )
-                        .in_current_span(),
+                TextChat => tokio::spawn(
+                    common::text_chat_detections(
+                        ctx.clone(),
+                        headers.clone(),
+                        detectors.clone(),
+                        [messages, std::slice::from_ref(message)].concat(),
+                        tools.clone(),
                     )
-                }
+                    .in_current_span(),
+                ),
                 _ => unimplemented!(),
             };
-            tasks.push((choice_index, *detector_type, detection_task));
+            tasks.push((*choice_index, *detector_type, detection_task));
         }
     }
 
@@ -612,12 +604,12 @@ fn output_detection_response(
     }
 }
 
-/// Combines logprobs from chat completion chunks to a single [`ChatCompletionLogprobs`].
-fn merge_logprobs(chat_completions: &[ChatCompletionChunk]) -> Option<ChatCompletionLogprobs> {
+/// Builds [`ChatCompletionLogprobs`] from chat completion chunks containing logprobs.
+fn merge_logprobs(chunks: &[ChatCompletionChunk]) -> Option<ChatCompletionLogprobs> {
     let mut content: Vec<ChatCompletionLogprob> = Vec::new();
     let mut refusal: Vec<ChatCompletionLogprob> = Vec::new();
-    for chat_completion in chat_completions {
-        if let Some(choice) = chat_completion.choices.first()
+    for chunk in chunks {
+        if let Some(choice) = chunk.choices.first()
             && let Some(logprobs) = &choice.logprobs
         {
             content.extend_from_slice(&logprobs.content);
@@ -628,7 +620,8 @@ fn merge_logprobs(chat_completions: &[ChatCompletionChunk]) -> Option<ChatComple
         .then_some(ChatCompletionLogprobs { content, refusal })
 }
 
-/// Constructs tool calls from chat completion deltas with tool call chunks.
+/// Builds [`Vec<ToolCall>`] from chat completion chunks containing tool call chunks.
+/// Builds tool calls from chat completion chunk deltas with tool call chunks.
 fn merge_tool_calls(chunks: &[ChatCompletionChunk]) -> Option<Vec<ToolCall>> {
     let mut tool_calls: HashMap<usize, ToolCall> = HashMap::new();
     for chunk in chunks {
@@ -678,6 +671,19 @@ fn merge_tool_calls(chunks: &[ChatCompletionChunk]) -> Option<Vec<ToolCall>> {
         .map(|(_, value)| value)
         .collect::<Vec<_>>();
     (!tool_calls.is_empty()).then_some(tool_calls)
+}
+
+/// Builds [`String`] from chat completion chunks containing content chunks.
+fn merge_content_text(chunks: &[ChatCompletionChunk]) -> String {
+    chunks
+        .iter()
+        .filter_map(|chunk| {
+            chunk
+                .choices
+                .first()
+                .and_then(|choice| choice.delta.content.clone())
+        })
+        .collect::<String>()
 }
 
 /// Consumes a detection batch stream, builds responses, and sends them to a response channel.
