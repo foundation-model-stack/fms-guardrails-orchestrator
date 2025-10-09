@@ -20,7 +20,7 @@ use axum::http::HeaderMap;
 use futures::{StreamExt, TryStreamExt};
 use ginepro::LoadBalancedChannel;
 use tonic::{Code, Request};
-use tracing::{Span, debug, instrument};
+use tracing::{debug, instrument};
 
 use super::{
     BoxStream, Client, Error, create_grpc_client, errors::grpc_to_http_code,
@@ -41,7 +41,6 @@ use crate::{
         },
         grpc::health::v1::{HealthCheckRequest, health_client::HealthClient},
     },
-    utils::trace::trace_context_from_grpc_response,
 };
 
 const DEFAULT_PORT: u16 = 8085;
@@ -74,8 +73,6 @@ impl NlpClient {
         let request = request_with_headers(request, model_id, headers);
         debug!(?request, "sending request to NLP gRPC service");
         let response = client.tokenization_task_predict(request).await?;
-        let span = Span::current();
-        trace_context_from_grpc_response(&span, &response);
         Ok(response.into_inner())
     }
 
@@ -86,12 +83,10 @@ impl NlpClient {
         request: TokenClassificationTaskRequest,
         headers: HeaderMap,
     ) -> Result<TokenClassificationResults, Error> {
-        let span = Span::current();
         let mut client = self.client.clone();
         let request = request_with_headers(request, model_id, headers);
         debug!(?request, "sending request to NLP gRPC service");
         let response = client.token_classification_task_predict(request).await?;
-        trace_context_from_grpc_response(&span, &response);
         Ok(response.into_inner())
     }
 
@@ -106,8 +101,6 @@ impl NlpClient {
         let request = request_with_headers(request, model_id, headers);
         debug!(?request, "sending request to NLP gRPC service");
         let response = client.text_generation_task_predict(request).await?;
-        let span: Span = Span::current();
-        trace_context_from_grpc_response(&span, &response);
         Ok(response.into_inner())
     }
 
@@ -124,8 +117,6 @@ impl NlpClient {
         let response = client
             .server_streaming_text_generation_task_predict(request)
             .await?;
-        let span = Span::current();
-        trace_context_from_grpc_response(&span, &response);
         let response_stream = response.into_inner().map_err(Into::into).boxed();
         Ok(response_stream)
     }

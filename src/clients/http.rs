@@ -205,8 +205,6 @@ impl HttpClient {
                             message: format!("client request timeout: {e}"),
                         }),
                 }?;
-                let span = Span::current();
-                trace::trace_context_from_http_response(&span, &response);
                 Ok(response.into())
             }
             None => Err(builder.body(body).err().map_or_else(
