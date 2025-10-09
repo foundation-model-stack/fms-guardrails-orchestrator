@@ -23,7 +23,7 @@ use opentelemetry::{
     global,
     trace::{TraceContextExt, TraceId, TracerProvider},
 };
-use opentelemetry_http::{HeaderExtractor, HeaderInjector};
+use opentelemetry_http::HeaderInjector;
 use opentelemetry_otlp::{MetricExporter, SpanExporter, WithExportConfig};
 use opentelemetry_sdk::{
     Resource,
@@ -35,10 +35,7 @@ use tracing::{Span, error, info, info_span};
 use tracing_opentelemetry::{MetricsLayer, OpenTelemetrySpanExt};
 use tracing_subscriber::{EnvFilter, Layer, layer::SubscriberExt};
 
-use crate::{
-    args::{LogFormat, OtlpProtocol, TracingConfig},
-    clients::http::TracedResponse,
-};
+use crate::args::{LogFormat, OtlpProtocol, TracingConfig};
 
 pub const DEFAULT_GRPC_OTLP_ENDPOINT: &str = "http://localhost:4317";
 pub const DEFAULT_HTTP_OTLP_ENDPOINT: &str = "http://localhost:4318";
@@ -307,41 +304,6 @@ pub fn with_traceparent_header(ctx: &opentelemetry::Context, headers: HeaderMap)
         propagator.inject_context(ctx, &mut HeaderInjector(&mut headers));
         headers
     })
-}
-
-/// Extracts the `traceparent` header from an HTTP response's headers and uses it to set the current
-/// tracing span context (i.e. use `traceparent` as parent to the current span).
-/// Defaults to using the current context when no `traceparent` is found.
-/// See https://www.w3.org/TR/trace-context/#trace-context-http-headers-format.
-pub fn trace_context_from_http_response(span: &Span, response: &TracedResponse) {
-    let curr_trace = span.context().span().span_context().trace_id();
-    let ctx = global::get_text_map_propagator(|propagator| {
-        // Returns the current context if no `traceparent` is found
-        propagator.extract(&HeaderExtractor(response.headers()))
-    });
-    if ctx.span().span_context().trace_id() == curr_trace
-        && let Err(error) = span.set_parent(ctx)
-    {
-        error!(%error, "Error setting trace parent for HTTP response");
-    }
-}
-
-/// Extracts the `traceparent` header from a gRPC response's metadata and uses it to set the current
-/// tracing span context (i.e. use `traceparent` as parent to the current span).
-/// Defaults to using the current context when no `traceparent` is found.
-/// See https://www.w3.org/TR/trace-context/#trace-context-http-headers-format.
-pub fn trace_context_from_grpc_response<T>(span: &Span, response: &tonic::Response<T>) {
-    let curr_trace = span.context().span().span_context().trace_id();
-    let ctx = global::get_text_map_propagator(|propagator| {
-        let metadata = response.metadata().clone();
-        // Returns the current context if no `traceparent` is found
-        propagator.extract(&HeaderExtractor(&metadata.into_headers()))
-    });
-    if ctx.span().span_context().trace_id() == curr_trace
-        && let Err(error) = span.set_parent(ctx)
-    {
-        error!(%error, "Error setting trace parent for gRPC response");
-    }
 }
 
 /// Returns the `trace_id` of the current span according to the global tracing subscriber.

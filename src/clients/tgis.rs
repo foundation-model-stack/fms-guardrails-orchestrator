@@ -20,7 +20,6 @@ use axum::http::HeaderMap;
 use futures::{StreamExt, TryStreamExt};
 use ginepro::LoadBalancedChannel;
 use tonic::Code;
-use tracing::Span;
 
 use super::{
     BoxStream, Client, Error, create_grpc_client, errors::grpc_to_http_code,
@@ -34,7 +33,6 @@ use crate::{
         BatchedTokenizeResponse, GenerationResponse, ModelInfoRequest, ModelInfoResponse,
         SingleGenerationRequest, generation_service_client::GenerationServiceClient,
     },
-    utils::trace::trace_context_from_grpc_response,
 };
 
 const DEFAULT_PORT: u16 = 8033;
@@ -58,8 +56,6 @@ impl TgisClient {
         let request = grpc_request_with_headers(request, headers);
         let mut client = self.client.clone();
         let response = client.generate(request).await?;
-        let span = Span::current();
-        trace_context_from_grpc_response(&span, &response);
         Ok(response.into_inner())
     }
 
@@ -71,8 +67,6 @@ impl TgisClient {
         let request = grpc_request_with_headers(request, headers);
         let mut client = self.client.clone();
         let response = client.generate_stream(request).await?;
-        let span = Span::current();
-        trace_context_from_grpc_response(&span, &response);
         Ok(response.into_inner().map_err(Into::into).boxed())
     }
 
@@ -84,8 +78,6 @@ impl TgisClient {
         let mut client = self.client.clone();
         let request = grpc_request_with_headers(request, headers);
         let response = client.tokenize(request).await?;
-        let span = Span::current();
-        trace_context_from_grpc_response(&span, &response);
         Ok(response.into_inner())
     }
 
@@ -93,8 +85,6 @@ impl TgisClient {
         let request = grpc_request_with_headers(request, HeaderMap::new());
         let mut client = self.client.clone();
         let response = client.model_info(request).await?;
-        let span = Span::current();
-        trace_context_from_grpc_response(&span, &response);
         Ok(response.into_inner())
     }
 }

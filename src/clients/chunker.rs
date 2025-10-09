@@ -22,7 +22,6 @@ use axum::http::HeaderMap;
 use futures::{Future, StreamExt, TryStreamExt};
 use ginepro::LoadBalancedChannel;
 use tonic::{Code, Request, Response, Status, Streaming};
-use tracing::Span;
 
 use super::{
     BoxStream, Client, Error, create_grpc_client, errors::grpc_to_http_code,
@@ -39,7 +38,6 @@ use crate::{
         caikit_data_model::nlp::{ChunkerTokenizationStreamResult, TokenizationResults},
         grpc::health::v1::{HealthCheckRequest, health_client::HealthClient},
     },
-    utils::trace::trace_context_from_grpc_response,
 };
 
 const DEFAULT_PORT: u16 = 8085;
@@ -74,8 +72,6 @@ impl ChunkerClient {
         let mut client = self.client.clone();
         let request = request_with_headers(request, model_id);
         let response = client.chunker_tokenization_task_predict(request).await?;
-        let span = Span::current();
-        trace_context_from_grpc_response(&span, &response);
         Ok(response.into_inner())
     }
 
@@ -91,8 +87,6 @@ impl ChunkerClient {
         let response_stream_fut: Pin<Box<dyn Future<Output = StreamingTokenizationResult> + Send>> =
             Box::pin(client.bidi_streaming_chunker_tokenization_task_predict(request));
         let response_stream = response_stream_fut.await?;
-        let span = Span::current();
-        trace_context_from_grpc_response(&span, &response_stream);
         Ok(response_stream.into_inner().map_err(Into::into).boxed())
     }
 }
