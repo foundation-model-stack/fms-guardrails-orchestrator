@@ -659,7 +659,6 @@ fn merge_tool_calls(chunks: &[ChatCompletionChunk]) -> Option<Vec<ToolCall>> {
                     }
                     if !custom.input.is_empty() {
                         // Append custom input
-                        // TODO: example not found, confirm handling
                         c.input.push_str(&custom.input);
                     }
                 }

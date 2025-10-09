@@ -194,24 +194,6 @@ async fn handle_output_detection(
     // Spawn detection tasks
     let mut tasks = Vec::with_capacity(chat_completion.choices.len() * detector_groups.len());
     for choice in &chat_completion.choices {
-        if choice
-            .message
-            .content
-            .as_ref()
-            .is_none_or(|content| content.is_empty())
-        {
-            chat_completion
-                .warnings
-                .push(CompletionDetectionWarning::new(
-                    DetectionWarningReason::EmptyOutput,
-                    &format!(
-                        "Choice of index {} has no content. Output detection was not executed",
-                        choice.index
-                    ),
-                ));
-            continue;
-        }
-
         for (detector_type, detectors) in &detector_groups {
             let detection_task = match detector_type {
                 TextContents => tokio::spawn(
