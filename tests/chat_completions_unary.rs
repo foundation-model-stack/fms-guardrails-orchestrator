@@ -32,15 +32,16 @@ use common::{
 use fms_guardrails_orchestr8::{
     clients::{
         chunker::MODEL_ID_HEADER_NAME as CHUNKER_MODEL_ID_HEADER_NAME,
-        detector::{ContentAnalysisRequest, ContentAnalysisResponse},
+        detector::{ChatDetectionRequest, ContentAnalysisRequest, ContentAnalysisResponse},
         openai::{
             ChatCompletion, ChatCompletionChoice, CompletionDetectionWarning, CompletionDetections,
             CompletionInputDetections, CompletionOutputDetections, Content, ContentPart,
-            ContentType, Message, Role, TokenizeResponse,
+            ContentType, Function, Message, Role, StopReason, TokenizeResponse, Tool, ToolCall,
         },
     },
     models::{
-        DetectionWarningReason, DetectorParams, UNSUITABLE_INPUT_MESSAGE, UNSUITABLE_OUTPUT_MESSAGE,
+        DetectionResult, DetectionWarningReason, DetectorParams, UNSUITABLE_INPUT_MESSAGE,
+        UNSUITABLE_OUTPUT_MESSAGE,
     },
     orchestrator::types::Detection,
     pb::{
@@ -55,7 +56,7 @@ use serde_json::json;
 use test_log::test;
 use tracing::debug;
 
-use crate::common::openai::TOKENIZE_ENDPOINT;
+use crate::common::{detectors::TEXT_CHAT_DETECTOR_ENDPOINT, openai::TOKENIZE_ENDPOINT};
 
 pub mod common;
 
@@ -886,6 +887,175 @@ async fn output_detections() -> Result<(), anyhow::Error> {
             DetectionWarningReason::UnsuitableOutput,
             UNSUITABLE_OUTPUT_MESSAGE,
         )]
+    );
+
+    Ok(())
+}
+
+#[test(tokio::test)]
+async fn text_chat_detectors_with_tools() -> Result<(), anyhow::Error> {
+    let tools: Vec<Tool> = serde_json::from_value(json!([{
+        "type": "function",
+        "function": {
+            "name": "get_current_weather",
+            "description": "Get the current weather in a given location",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "location": {
+                        "type": "string",
+                        "description": "The city and state, e.g. San Francisco, CA"
+                    },
+                    "unit": {
+                        "type": "string",
+                        "enum": [
+                            "celsius",
+                            "fahrenheit"
+                        ]
+                    }
+                },
+                "required": [
+                    "location"
+                ]
+            }
+        }
+    }]))
+    .unwrap();
+    let mut openai_server = MockServer::new_http("openai");
+    openai_server.mock(|when, then| {
+        when.post().path(CHAT_COMPLETIONS_ENDPOINT).json(json!({
+        "model": "test-0B",
+        "messages": vec![Message {
+            role: Role::User,
+            content: Some(Content::Text("What's the weather in Boston today?".into())),
+            ..Default::default()
+        }],
+        "tools": tools.clone(),
+        }));
+        then.json(ChatCompletion {
+            id: "chatcmpl-test".into(),
+            object: "chat.completion".into(),
+            created: 1749227854,
+            model: "test-0B".into(),
+            choices: vec![ChatCompletionChoice {
+                index: 0,
+                message: Message {
+                    role: Role::Assistant,
+                    tool_calls: Some(vec![ToolCall {
+                        index: Some(0),
+                        id: "chatcmpl-tool-test".into(),
+                        r#type: "function".into(),
+                        function: Some(Function {
+                            name: "get_current_weather".into(),
+                            arguments: "{\"location\": \"Boston, MA\", \"unit\": \"fahrenheit\"}"
+                                .into(),
+                        }),
+                        ..Default::default()
+                    }]),
+                    ..Default::default()
+                },
+                logprobs: None,
+                finish_reason: "tool_calls".into(),
+                stop_reason: Some(StopReason::Integer(128008)),
+            }],
+            ..Default::default()
+        });
+    });
+
+    // Add assistant message with tool_calls
+    let messages = vec![
+        Message {
+            role: Role::User,
+            content: Some(Content::Text("What's the weather in Boston today?".into())),
+            ..Default::default()
+        },
+        Message {
+            role: Role::Assistant,
+            tool_calls: Some(vec![ToolCall {
+                index: Some(0),
+                id: "chatcmpl-tool-test".into(),
+                r#type: "function".into(),
+                function: Some(Function {
+                    name: "get_current_weather".into(),
+                    arguments: "{\"location\": \"Boston, MA\", \"unit\": \"fahrenheit\"}".into(),
+                }),
+                ..Default::default()
+            }]),
+            ..Default::default()
+        },
+    ];
+    let mut granite_guardian_text_chat_server = MockServer::new_http("granite_guardian_text_chat");
+    granite_guardian_text_chat_server.mock(|when, then| {
+        when.post()
+            .path(TEXT_CHAT_DETECTOR_ENDPOINT)
+            .header("detector-id", "granite_guardian_text_chat")
+            .json(ChatDetectionRequest {
+                messages,
+                tools: tools.clone(),
+                detector_params: [("risk_name", "function_call")].into_iter().collect(),
+            });
+        then.json(vec![DetectionResult {
+            detection: "Yes".into(),
+            detection_type: "risk".into(),
+            score: 0.974,
+            metadata: [("confidence".into(), "High".into())].into(),
+            ..Default::default()
+        }]);
+    });
+
+    let test_server = TestOrchestratorServer::builder()
+        .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
+        .openai_server(&openai_server)
+        .detector_servers([&granite_guardian_text_chat_server])
+        .build()
+        .await?;
+
+    let response = test_server
+        .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
+        .json(&json!({
+            "model": "test-0B",
+            "detectors": {
+                "input": {},
+                "output": {
+                    "granite_guardian_text_chat": {
+                        "risk_name": "function_call"
+                    },
+                },
+            },
+            "messages": [Message {
+                role: Role::User,
+                content: Some(Content::Text("What's the weather in Boston today?".into())),
+                ..Default::default()
+            }],
+            "tools": tools.clone(),
+        }))
+        .send()
+        .await?;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let completion = response.json::<ChatCompletion>().await?;
+
+    // Validate detections
+    assert_eq!(
+        completion.detections,
+        Some(CompletionDetections {
+            input: vec![],
+            output: vec![CompletionOutputDetections {
+                choice_index: 0,
+                results: vec![Detection {
+                    detector_id: Some("granite_guardian_text_chat".into()),
+                    detection_type: "risk".into(),
+                    detection: "Yes".into(),
+                    score: 0.974,
+                    metadata: [(
+                        "confidence".into(),
+                        serde_json::Value::String("High".into())
+                    )]
+                    .into(),
+                    ..Default::default()
+                },],
+            }],
+        })
     );
 
     Ok(())
