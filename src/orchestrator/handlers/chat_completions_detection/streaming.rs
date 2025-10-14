@@ -472,12 +472,7 @@ async fn handle_whole_doc_detection(
             let choice_index = *entry.key();
             let chunks = entry.values().cloned().collect::<Vec<_>>();
             let tool_calls = merge_tool_calls(&chunks);
-            let content_text = merge_content_text(&chunks);
-            let content = if content_text.is_empty() {
-                None
-            } else {
-                Some(Content::Text(content_text))
-            };
+            let content = merge_content(&chunks);
             let message = Message {
                 role: Role::Assistant,
                 content,
@@ -678,9 +673,9 @@ fn merge_tool_calls(chunks: &[ChatCompletionChunk]) -> Option<Vec<ToolCall>> {
     (!tool_calls.is_empty()).then_some(tool_calls)
 }
 
-/// Builds [`String`] from chat completion chunks containing content chunks.
-fn merge_content_text(chunks: &[ChatCompletionChunk]) -> String {
-    chunks
+/// Builds [`Content`] from chat completion chunks containing content chunks.
+fn merge_content(chunks: &[ChatCompletionChunk]) -> Option<Content> {
+    let content_text = chunks
         .iter()
         .filter_map(|chunk| {
             chunk
@@ -688,7 +683,12 @@ fn merge_content_text(chunks: &[ChatCompletionChunk]) -> String {
                 .first()
                 .and_then(|choice| choice.delta.content.clone())
         })
-        .collect::<String>()
+        .collect::<String>();
+    if content_text.is_empty() {
+        None
+    } else {
+        Some(Content::Text(content_text))
+    }
 }
 
 /// Consumes a detection batch stream, builds responses, and sends them to a response channel.
