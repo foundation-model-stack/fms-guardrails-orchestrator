@@ -463,7 +463,8 @@ async fn handle_whole_doc_detection(
     let mut warnings = Vec::new();
 
     // Create vec of choice_index->message
-    // NOTE: we create a message for text chat detectors
+    // NOTE: we build a message from chat completion chunks as it is required for text chat detectors.
+    // Text contents detectors only require the content text.
     let choices = completion_state
         .completions
         .iter()
@@ -472,9 +473,14 @@ async fn handle_whole_doc_detection(
             let chunks = entry.values().cloned().collect::<Vec<_>>();
             let tool_calls = merge_tool_calls(&chunks);
             let content_text = merge_content_text(&chunks);
+            let content = if content_text.is_empty() {
+                None
+            } else {
+                Some(Content::Text(content_text))
+            };
             let message = Message {
                 role: Role::Assistant,
-                content: Some(Content::Text(content_text)),
+                content,
                 tool_calls,
                 ..Default::default()
             };

@@ -2,15 +2,16 @@ pub mod common;
 use common::orchestrator::*;
 use fms_guardrails_orchestr8::{
     clients::{
-        detector::ContentAnalysisRequest,
+        detector::{ChatDetectionRequest, ContentAnalysisRequest},
         openai::{
             ChatCompletionChunk, ChatCompletionChunkChoice, ChatCompletionDelta,
             ChatCompletionLogprob, ChatCompletionLogprobs, CompletionDetections,
-            CompletionInputDetections, CompletionOutputDetections, Content, Message, OpenAiError,
-            OpenAiErrorMessage, Role, TokenizeResponse, Usage,
+            CompletionInputDetections, CompletionOutputDetections, Content, Function, Message,
+            OpenAiError, OpenAiErrorMessage, Role, StopReason, TokenizeResponse, Tool, ToolCall,
+            Usage,
         },
     },
-    models::DetectorParams,
+    models::{DetectionResult, DetectorParams},
     orchestrator::types::Detection,
     pb::{
         caikit::runtime::chunkers::{
@@ -27,7 +28,10 @@ use tracing::debug;
 
 use crate::common::{
     chunker::{CHUNKER_MODEL_ID_HEADER_NAME, CHUNKER_STREAMING_ENDPOINT, CHUNKER_UNARY_ENDPOINT},
-    detectors::{PII_DETECTOR_SENTENCE, PII_DETECTOR_WHOLE_DOC, TEXT_CONTENTS_DETECTOR_ENDPOINT},
+    detectors::{
+        PII_DETECTOR_SENTENCE, PII_DETECTOR_WHOLE_DOC, TEXT_CHAT_DETECTOR_ENDPOINT,
+        TEXT_CONTENTS_DETECTOR_ENDPOINT,
+    },
     openai::{CHAT_COMPLETIONS_ENDPOINT, TOKENIZE_ENDPOINT},
     sse,
 };
@@ -4334,6 +4338,380 @@ async fn output_detectors_and_whole_doc_output_detectors() -> Result<(), anyhow:
             }],
         }),
         "unexpected whole doc detections message"
+    );
+
+    Ok(())
+}
+
+#[test(tokio::test)]
+async fn text_chat_detectors_with_tools() -> Result<(), anyhow::Error> {
+    let tools: Vec<Tool> = serde_json::from_value(json!([{
+        "type": "function",
+        "function": {
+            "name": "get_current_weather",
+            "description": "Get the current weather in a given location",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "location": {
+                        "type": "string",
+                        "description": "The city and state, e.g. San Francisco, CA"
+                    },
+                    "unit": {
+                        "type": "string",
+                        "enum": [
+                            "celsius",
+                            "fahrenheit"
+                        ]
+                    }
+                },
+                "required": [
+                    "location"
+                ]
+            }
+        }
+    }]))
+    .unwrap();
+    let mut openai_server = MockServer::new_http("openai");
+    openai_server.mock(|when, then| {
+        when.post().path(CHAT_COMPLETIONS_ENDPOINT).json(json!({
+        "stream": true,
+        "model": "test-0B",
+        "messages": vec![Message {
+            role: Role::User,
+            content: Some(Content::Text("What's the weather in Boston today?".into())),
+            ..Default::default()
+        }],
+        "tools": tools.clone(),
+        }));
+        then.text_stream(sse([
+            ChatCompletionChunk {
+                id: "chatcmpl-test".into(),
+                object: "chat.completion.chunk".into(),
+                created: 1749227854,
+                model: "test-0B".into(),
+                choices: vec![ChatCompletionChunkChoice {
+                    index: 0,
+                    delta: ChatCompletionDelta {
+                        role: Some(Role::Assistant),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+            ChatCompletionChunk {
+                id: "chatcmpl-test".into(),
+                object: "chat.completion.chunk".into(),
+                created: 1749227854,
+                model: "test-0B".into(),
+                choices: vec![ChatCompletionChunkChoice {
+                    index: 0,
+                    delta: ChatCompletionDelta {
+                        tool_calls: vec![ToolCall {
+                            index: Some(0),
+                            id: "chatcmpl-tool-test".into(),
+                            r#type: "function".into(),
+                            function: Some(Function {
+                                name: "get_current_weather".into(),
+                                ..Default::default()
+                            }),
+                            ..Default::default()
+                        }],
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+            ChatCompletionChunk {
+                id: "chatcmpl-test".into(),
+                object: "chat.completion.chunk".into(),
+                created: 1749227854,
+                model: "test-0B".into(),
+                choices: vec![ChatCompletionChunkChoice {
+                    index: 0,
+                    delta: ChatCompletionDelta {
+                        tool_calls: vec![ToolCall {
+                            index: Some(0),
+                            function: Some(Function {
+                                arguments: "{\"location\": \"".into(),
+                                ..Default::default()
+                            }),
+                            ..Default::default()
+                        }],
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+            ChatCompletionChunk {
+                id: "chatcmpl-test".into(),
+                object: "chat.completion.chunk".into(),
+                created: 1749227854,
+                model: "test-0B".into(),
+                choices: vec![ChatCompletionChunkChoice {
+                    index: 0,
+                    delta: ChatCompletionDelta {
+                        tool_calls: vec![ToolCall {
+                            index: Some(0),
+                            function: Some(Function {
+                                arguments: "Boston".into(),
+                                ..Default::default()
+                            }),
+                            ..Default::default()
+                        }],
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+            ChatCompletionChunk {
+                id: "chatcmpl-test".into(),
+                object: "chat.completion.chunk".into(),
+                created: 1749227854,
+                model: "test-0B".into(),
+                choices: vec![ChatCompletionChunkChoice {
+                    index: 0,
+                    delta: ChatCompletionDelta {
+                        tool_calls: vec![ToolCall {
+                            index: Some(0),
+                            function: Some(Function {
+                                arguments: ",".into(),
+                                ..Default::default()
+                            }),
+                            ..Default::default()
+                        }],
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+            ChatCompletionChunk {
+                id: "chatcmpl-test".into(),
+                object: "chat.completion.chunk".into(),
+                created: 1749227854,
+                model: "test-0B".into(),
+                choices: vec![ChatCompletionChunkChoice {
+                    index: 0,
+                    delta: ChatCompletionDelta {
+                        tool_calls: vec![ToolCall {
+                            index: Some(0),
+                            function: Some(Function {
+                                arguments: " MA\"".into(),
+                                ..Default::default()
+                            }),
+                            ..Default::default()
+                        }],
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+            ChatCompletionChunk {
+                id: "chatcmpl-test".into(),
+                object: "chat.completion.chunk".into(),
+                created: 1749227854,
+                model: "test-0B".into(),
+                choices: vec![ChatCompletionChunkChoice {
+                    index: 0,
+                    delta: ChatCompletionDelta {
+                        tool_calls: vec![ToolCall {
+                            index: Some(0),
+                            function: Some(Function {
+                                arguments: ", \"unit\": \"".into(),
+                                ..Default::default()
+                            }),
+                            ..Default::default()
+                        }],
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+            ChatCompletionChunk {
+                id: "chatcmpl-test".into(),
+                object: "chat.completion.chunk".into(),
+                created: 1749227854,
+                model: "test-0B".into(),
+                choices: vec![ChatCompletionChunkChoice {
+                    index: 0,
+                    delta: ChatCompletionDelta {
+                        tool_calls: vec![ToolCall {
+                            index: Some(0),
+                            function: Some(Function {
+                                arguments: "f".into(),
+                                ..Default::default()
+                            }),
+                            ..Default::default()
+                        }],
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+            ChatCompletionChunk {
+                id: "chatcmpl-test".into(),
+                object: "chat.completion.chunk".into(),
+                created: 1749227854,
+                model: "test-0B".into(),
+                choices: vec![ChatCompletionChunkChoice {
+                    index: 0,
+                    delta: ChatCompletionDelta {
+                        tool_calls: vec![ToolCall {
+                            index: Some(0),
+                            function: Some(Function {
+                                arguments: "ahrenheit\"}".into(),
+                                ..Default::default()
+                            }),
+                            ..Default::default()
+                        }],
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+            ChatCompletionChunk {
+                id: "chatcmpl-test".into(),
+                object: "chat.completion.chunk".into(),
+                created: 1749227854,
+                model: "test-0B".into(),
+                choices: vec![ChatCompletionChunkChoice {
+                    index: 0,
+                    delta: ChatCompletionDelta {
+                        tool_calls: vec![ToolCall {
+                            index: Some(0),
+                            function: Some(Function {
+                                arguments: "".into(),
+                                ..Default::default()
+                            }),
+                            ..Default::default()
+                        }],
+                        ..Default::default()
+                    },
+                    finish_reason: Some("tool_calls".into()),
+                    stop_reason: Some(StopReason::Integer(128008)),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+        ]));
+    });
+
+    // Add assistant message with tool_calls
+    let messages = vec![
+        Message {
+            role: Role::User,
+            content: Some(Content::Text("What's the weather in Boston today?".into())),
+            ..Default::default()
+        },
+        Message {
+            role: Role::Assistant,
+            tool_calls: Some(vec![ToolCall {
+                index: Some(0),
+                id: "chatcmpl-tool-test".into(),
+                r#type: "function".into(),
+                function: Some(Function {
+                    name: "get_current_weather".into(),
+                    arguments: "{\"location\": \"Boston, MA\", \"unit\": \"fahrenheit\"}".into(),
+                }),
+                ..Default::default()
+            }]),
+            ..Default::default()
+        },
+    ];
+    let mut granite_guardian_text_chat_server = MockServer::new_http("granite_guardian_text_chat");
+    granite_guardian_text_chat_server.mock(|when, then| {
+        when.post()
+            .path(TEXT_CHAT_DETECTOR_ENDPOINT)
+            .header("detector-id", "granite_guardian_text_chat")
+            .json(ChatDetectionRequest {
+                messages,
+                tools: tools.clone(),
+                detector_params: [("risk_name", "function_call")].into_iter().collect(),
+            });
+        then.json(vec![DetectionResult {
+            detection: "Yes".into(),
+            detection_type: "risk".into(),
+            score: 0.974,
+            metadata: [("confidence".into(), "High".into())].into(),
+            ..Default::default()
+        }]);
+    });
+
+    let test_server = TestOrchestratorServer::builder()
+        .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
+        .openai_server(&openai_server)
+        .detector_servers([&granite_guardian_text_chat_server])
+        .build()
+        .await?;
+
+    let response = test_server
+        .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
+        .json(&json!({
+            "stream": true,
+            "model": "test-0B",
+            "detectors": {
+                "input": {},
+                "output": {
+                    "granite_guardian_text_chat": {
+                        "risk_name": "function_call"
+                    },
+                },
+            },
+            "messages": [Message {
+                role: Role::User,
+                content: Some(Content::Text("What's the weather in Boston today?".into())),
+                ..Default::default()
+            }],
+            "tools": tools.clone(),
+        }))
+        .send()
+        .await?;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let sse_stream: SseStream<ChatCompletionChunk> = SseStream::new(response.bytes_stream());
+    let messages = sse_stream.try_collect::<Vec<_>>().await?;
+
+    // Validate length
+    assert_eq!(messages.len(), 11, "unexpected number of messages");
+
+    // Validate finish reason
+    assert_eq!(
+        messages[9].choices[0].finish_reason,
+        Some("tool_calls".into()),
+        "unexpected finish reason"
+    );
+
+    // Validate whole doc detections message
+    let last = &messages[10];
+    assert_eq!(
+        last.detections,
+        Some(CompletionDetections {
+            input: vec![],
+            output: vec![CompletionOutputDetections {
+                choice_index: 0,
+                results: vec![Detection {
+                    detector_id: Some("granite_guardian_text_chat".into()),
+                    detection_type: "risk".into(),
+                    detection: "Yes".into(),
+                    score: 0.974,
+                    metadata: [(
+                        "confidence".into(),
+                        serde_json::Value::String("High".into())
+                    )]
+                    .into(),
+                    ..Default::default()
+                },],
+            }],
+        })
     );
 
     Ok(())
