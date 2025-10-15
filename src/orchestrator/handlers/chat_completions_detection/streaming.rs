@@ -684,11 +684,7 @@ fn merge_content(chunks: &[ChatCompletionChunk]) -> Option<Content> {
                 .and_then(|choice| choice.delta.content.clone())
         })
         .collect::<String>();
-    if content_text.is_empty() {
-        None
-    } else {
-        Some(Content::Text(content_text))
-    }
+    (!content_text.is_empty()).then_some(Content::Text(content_text))
 }
 
 /// Consumes a detection batch stream, builds responses, and sends them to a response channel.
