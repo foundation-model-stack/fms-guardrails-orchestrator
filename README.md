@@ -67,13 +67,40 @@ pre-commit install
 
 ### Sample requests
 
-1. Guardrails with text generation
+These requests assume a configured "dummy_detector" detector. Otherwise, leave the `detectors` section off for passthrough behavior of no guardrailing.
+
+1. Guardrails with completions
 ```bash
-curl -v -H "Content-Type: application/json" --request POST --data '{"model_id": "dummy_model_id", "inputs": "dummy input"}' http://localhost:8033/api/v1/task/classification-with-text-generation
+curl -v 'POST' \
+    'http://localhost:8033/api/v2/text/completions-detection' \
+    -H 'accept: application/json' \
+    -H 'Content-Type: application/json' \
+    -d '{
+        "prompt": "sample prompt",
+        "model": "dummy_model_id",
+        "detectors": {
+            "output": {
+                "dummy_detector": {"threshold": 0.1}
+            }
+        }
+    }'
 ```
-2. Guardrails with streaming text generation
+2. Guardrails with streaming completions
 ```bash
-curl -v -H "Content-Type: application/json" --request POST --data '{"model_id": "dummy_model_id", "inputs": "dummy input"}' http://localhost:8033/api/v1/task/server-streaming-classification-with-text-generation
+curl -v 'POST' \
+    'http://localhost:8033/api/v2/text/completions-detection' \
+    -H 'accept: application/json' \
+    -H 'Content-Type: application/json' \
+    -d '{
+        "prompt": "sample prompt",
+        "model": "dummy_model_id",
+        "stream": true,
+        "detectors": {
+            "output": {
+                "dummy_detector": {"threshold": 0.1}
+            }
+        }
+    }'
 ```
 3. Health Probe
 ```bash
