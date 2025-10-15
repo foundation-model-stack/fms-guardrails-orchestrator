@@ -4605,7 +4605,7 @@ async fn text_chat_detectors_with_tools() -> Result<(), anyhow::Error> {
         ]));
     });
 
-    // Add assistant message with tool_calls
+    // Create messages with user message and assistant message with tool_calls
     let messages = vec![
         Message {
             role: Role::User,
