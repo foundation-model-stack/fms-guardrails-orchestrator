@@ -374,6 +374,86 @@ async fn no_detections() -> Result<(), anyhow::Error> {
     assert_eq!(results.warnings, vec![]);
     assert!(results.detections.is_none());
 
+    // Scenario: output detectors on empty choices responses
+    let messages = vec![Message {
+        content: Some(Content::Text(
+            "Please provide me an empty message".to_string(),
+        )),
+        role: Role::User,
+        ..Default::default()
+    }];
+    let expected_choices = vec![
+        ChatCompletionChoice {
+            message: Message {
+                role: Role::Assistant,
+                content: Some(Content::Text("".to_string())),
+                ..Default::default()
+            },
+            index: 0,
+            logprobs: None,
+            finish_reason: "EOS_TOKEN".to_string(),
+            stop_reason: None,
+        },
+        ChatCompletionChoice {
+            message: Message {
+                role: Role::Assistant,
+                ..Default::default()
+            },
+            index: 1,
+            logprobs: None,
+            finish_reason: "EOS_TOKEN".to_string(),
+            stop_reason: None,
+        },
+    ];
+    let chat_completions_response = ChatCompletion {
+        model: MODEL_ID.into(),
+        choices: expected_choices.clone(),
+        detections: None,
+        ..Default::default()
+    };
+
+    mock_openai_server.mocks().mock(|when, then| {
+        when.post().path(CHAT_COMPLETIONS_ENDPOINT).json(json!({
+            "model": MODEL_ID,
+            "messages": messages,
+        }));
+        then.json(&chat_completions_response);
+    });
+
+    let response = orchestrator_server
+        .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
+        .json(&json!({
+            "model": MODEL_ID,
+            "detectors": {
+                "output": {
+                    detector_name: {},
+                },
+            },
+            "messages": messages,
+        }))
+        .send()
+        .await?;
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let results = response.json::<ChatCompletion>().await?;
+    debug!("{}", serde_json::to_string_pretty(&results)?);
+    assert_eq!(results.choices[0], chat_completions_response.choices[0]);
+    assert_eq!(results.choices[1], chat_completions_response.choices[1]);
+    assert!(results.detections.is_none());
+    assert_eq!(
+        results.warnings,
+        vec![
+            CompletionDetectionWarning::new(
+                DetectionWarningReason::EmptyOutput,
+                "Choice of index 0 has no content",
+            ),
+            CompletionDetectionWarning::new(
+                DetectionWarningReason::EmptyOutput,
+                "Choice of index 1 has no content",
+            ),
+        ]
+    );
+
     Ok(())
 }
 
