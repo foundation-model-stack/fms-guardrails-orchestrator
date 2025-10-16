@@ -486,17 +486,27 @@ async fn handle_whole_doc_detection(
     // Spawn detection tasks
     let mut tasks = Vec::with_capacity(choices.len() * detector_groups.len());
     for (choice_index, message) in &choices {
+        if !message.has_content() {
+            // Add no content warning
+            warnings.push(CompletionDetectionWarning::new(
+                DetectionWarningReason::EmptyOutput,
+                &format!("Choice of index {choice_index} has no content"),
+            ));
+        }
         for (detector_type, detectors) in &detector_groups {
             let detection_task = match detector_type {
-                TextContents => tokio::spawn(
-                    common::text_contents_detections(
-                        ctx.clone(),
-                        headers.clone(),
-                        detectors.clone(),
-                        vec![(0, message.text().cloned().unwrap_or_default())],
-                    )
-                    .in_current_span(),
-                ),
+                TextContents => match message.text() {
+                    Some(content_text) => tokio::spawn(
+                        common::text_contents_detections(
+                            ctx.clone(),
+                            headers.clone(),
+                            detectors.clone(),
+                            vec![(0, content_text.clone())],
+                        )
+                        .in_current_span(),
+                    ),
+                    _ => continue, // no content, skip
+                },
                 TextChat => tokio::spawn(
                     common::text_chat_detections(
                         ctx.clone(),

@@ -597,9 +597,16 @@ impl Message {
     /// Returns message text content.
     pub fn text(&self) -> Option<&String> {
         match &self.content {
-            Some(Content::Text(text)) => Some(text),
+            Some(Content::Text(text)) if !text.is_empty() => Some(text),
             _ => None,
         }
+    }
+
+    /// Returns `true` if message contains non-empty content.
+    pub fn has_content(&self) -> bool {
+        self.content
+            .as_ref()
+            .is_some_and(|content| !content.is_empty())
     }
 }
 
