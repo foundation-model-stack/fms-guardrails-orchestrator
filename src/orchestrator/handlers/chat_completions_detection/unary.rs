@@ -45,9 +45,15 @@ pub async fn handle_unary(
     let output_detectors = detectors.output;
 
     validate_detectors(
-        input_detectors.iter().chain(output_detectors.iter()),
+        input_detectors.iter(),
         &ctx.config.detectors,
         &[DetectorType::TextContents],
+        true,
+    )?;
+    validate_detectors(
+        output_detectors.iter(),
+        &ctx.config.detectors,
+        &[DetectorType::TextContents, DetectorType::TextChat],
         true,
     )?;
 
@@ -182,35 +188,42 @@ async fn handle_output_detection(
     use DetectorType::*;
     let detector_groups = group_detectors_by_type(&ctx, detectors);
     let headers = &task.headers;
+    let messages = task.request.messages.as_slice();
+    let tools = task.request.tools.as_ref().cloned().unwrap_or_default();
 
     // Spawn detection tasks
     let mut tasks = Vec::with_capacity(chat_completion.choices.len() * detector_groups.len());
     for choice in &chat_completion.choices {
-        if choice
-            .message
-            .content
-            .as_ref()
-            .is_none_or(|content| content.is_empty())
-        {
+        if !choice.message.has_content() {
+            // Add no content warning
             chat_completion
                 .warnings
                 .push(CompletionDetectionWarning::new(
                     DetectionWarningReason::EmptyOutput,
-                    &format!(
-                        "Choice of index {} has no content. Output detection was not executed",
-                        choice.index
-                    ),
+                    &format!("Choice of index {} has no content", choice.index),
                 ));
-            continue;
         }
         for (detector_type, detectors) in &detector_groups {
             let detection_task = match detector_type {
-                TextContents => tokio::spawn(
-                    common::text_contents_detections(
+                TextContents => match choice.message.text() {
+                    Some(content_text) => tokio::spawn(
+                        common::text_contents_detections(
+                            ctx.clone(),
+                            headers.clone(),
+                            detectors.clone(),
+                            vec![(0, content_text.clone())],
+                        )
+                        .in_current_span(),
+                    ),
+                    _ => continue, // no content, skip
+                },
+                TextChat => tokio::spawn(
+                    common::text_chat_detections(
                         ctx.clone(),
                         headers.clone(),
                         detectors.clone(),
-                        vec![(0, choice.message.text().cloned().unwrap_or_default())],
+                        [messages, std::slice::from_ref(&choice.message)].concat(),
+                        tools.clone(),
                     )
                     .in_current_span(),
                 ),

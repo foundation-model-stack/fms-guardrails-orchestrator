@@ -78,3 +78,9 @@ detectors:
       hostname: localhost
     chunker_id: whole_doc_chunker
     default_threshold: 0.5
+  granite_guardian_text_chat:
+    type: text_chat
+    service:
+      hostname: localhost
+    chunker_id: whole_doc_chunker
+    default_threshold: 0.5

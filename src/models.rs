@@ -77,6 +77,20 @@ impl std::ops::DerefMut for DetectorParams {
     }
 }
 
+impl<K, V> FromIterator<(K, V)> for DetectorParams
+where
+    K: Into<String>,
+    V: Into<serde_json::Value>,
+{
+    fn from_iter<T: IntoIterator<Item = (K, V)>>(iter: T) -> Self {
+        let map: BTreeMap<String, serde_json::Value> = iter
+            .into_iter()
+            .map(|(k, v)| (k.into(), v.into()))
+            .collect();
+        Self(map)
+    }
+}
+
 /// User request to orchestrator
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

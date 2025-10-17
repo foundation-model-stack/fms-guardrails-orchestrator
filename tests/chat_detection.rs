@@ -18,8 +18,8 @@ use std::collections::HashMap;
 
 use common::{
     detectors::{
-        ANSWER_RELEVANCE_DETECTOR_SENTENCE, CHAT_DETECTOR_ENDPOINT, NON_EXISTING_DETECTOR,
-        PII_DETECTOR,
+        ANSWER_RELEVANCE_DETECTOR_SENTENCE, NON_EXISTING_DETECTOR, PII_DETECTOR,
+        TEXT_CHAT_DETECTOR_ENDPOINT,
     },
     errors::DetectorError,
     orchestrator::{
@@ -81,7 +81,7 @@ async fn no_detections() -> Result<(), anyhow::Error> {
     let mut mocks = MockSet::new();
     mocks.mock(|when, then| {
         when.post()
-            .path(CHAT_DETECTOR_ENDPOINT)
+            .path(TEXT_CHAT_DETECTOR_ENDPOINT)
             .json(ChatDetectionRequest {
                 messages: messages.clone(),
                 tools: tools.clone(),
@@ -151,7 +151,7 @@ async fn detections() -> Result<(), anyhow::Error> {
     let mut mocks = MockSet::new();
     mocks.mock(|when, then| {
         when.post()
-            .path(CHAT_DETECTOR_ENDPOINT)
+            .path(TEXT_CHAT_DETECTOR_ENDPOINT)
             .json(ChatDetectionRequest {
                 messages: messages.clone(),
                 tools: vec![],
@@ -218,7 +218,7 @@ async fn client_errors() -> Result<(), anyhow::Error> {
     let mut mocks = MockSet::new();
     mocks.mock(|when, then| {
         when.post()
-            .path(CHAT_DETECTOR_ENDPOINT)
+            .path(TEXT_CHAT_DETECTOR_ENDPOINT)
             .json(ChatDetectionRequest {
                 messages: messages.clone(),
                 tools: vec![],

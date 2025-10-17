@@ -57,9 +57,20 @@ pub async fn handle_streaming(
             let output_detectors = detectors.output;
 
             if let Err(error) = validate_detectors(
-                input_detectors.iter().chain(output_detectors.iter()),
+                input_detectors.iter(),
                 &ctx.config.detectors,
                 &[DetectorType::TextContents],
+                true,
+            ) {
+                let _ = response_tx.send(Err(error)).await;
+                // Send None to signal completion
+                let _ = response_tx.send(Ok(None)).await;
+                return;
+            }
+            if let Err(error) = validate_detectors(
+                output_detectors.iter(),
+                &ctx.config.detectors,
+                &[DetectorType::TextContents, DetectorType::TextChat],
                 true,
             ) {
                 let _ = response_tx.send(Err(error)).await;
@@ -447,53 +458,68 @@ async fn handle_whole_doc_detection(
     use DetectorType::*;
     let detector_groups = group_detectors_by_type(&ctx, detectors);
     let headers = &task.headers;
-    // To align with input detection, use the prompt from the last message only
-    let _prompt = task
-        .request
-        .messages()
-        .last()
-        .and_then(|message| message.text.map(|s| s.to_string()))
-        .unwrap_or_default();
+    let messages = task.request.messages.as_slice();
+    let tools = task.request.tools.as_ref().cloned().unwrap_or_default();
     let mut warnings = Vec::new();
 
-    // Create vec of choice_index->generated_text
+    // Create vec of choice_index->message
+    // NOTE: we build a message from chat completion chunks as it is required for text chat detectors.
+    // Text contents detectors only require the content text.
     let choices = completion_state
         .completions
         .iter()
         .map(|entry| {
             let choice_index = *entry.key();
-            // Concatenate generated text from all completion chunks for this choice
-            let generated_text = entry
-                .values()
-                .map(|chunk| {
-                    chunk
-                        .choices
-                        .first()
-                        .and_then(|choice| choice.delta.content.clone())
-                        .unwrap_or_default()
-                })
-                .collect::<String>();
-            (choice_index, generated_text)
+            let chunks = entry.values().cloned().collect::<Vec<_>>();
+            let tool_calls = merge_tool_calls(&chunks);
+            let content = merge_content(&chunks);
+            let message = Message {
+                role: Role::Assistant,
+                content,
+                tool_calls,
+                ..Default::default()
+            };
+            (choice_index, message)
         })
         .collect::<Vec<_>>();
 
     // Spawn detection tasks
     let mut tasks = Vec::with_capacity(choices.len() * detector_groups.len());
-    for (choice_index, generated_text) in choices {
+    for (choice_index, message) in &choices {
+        if !message.has_content() {
+            // Add no content warning
+            warnings.push(CompletionDetectionWarning::new(
+                DetectionWarningReason::EmptyOutput,
+                &format!("Choice of index {choice_index} has no content"),
+            ));
+        }
         for (detector_type, detectors) in &detector_groups {
             let detection_task = match detector_type {
-                TextContents => tokio::spawn(
-                    common::text_contents_detections(
+                TextContents => match message.text() {
+                    Some(content_text) => tokio::spawn(
+                        common::text_contents_detections(
+                            ctx.clone(),
+                            headers.clone(),
+                            detectors.clone(),
+                            vec![(0, content_text.clone())],
+                        )
+                        .in_current_span(),
+                    ),
+                    _ => continue, // no content, skip
+                },
+                TextChat => tokio::spawn(
+                    common::text_chat_detections(
                         ctx.clone(),
                         headers.clone(),
                         detectors.clone(),
-                        vec![(0, generated_text.clone())],
+                        [messages, std::slice::from_ref(message)].concat(),
+                        tools.clone(),
                     )
                     .in_current_span(),
                 ),
                 _ => unimplemented!(),
             };
-            tasks.push((choice_index, *detector_type, detection_task));
+            tasks.push((*choice_index, *detector_type, detection_task));
         }
     }
 
@@ -589,12 +615,12 @@ fn output_detection_response(
     }
 }
 
-/// Combines logprobs from chat completion chunks to a single [`ChatCompletionLogprobs`].
-fn merge_logprobs(chat_completions: &[ChatCompletionChunk]) -> Option<ChatCompletionLogprobs> {
+/// Builds [`ChatCompletionLogprobs`] from chat completion chunks containing logprobs.
+fn merge_logprobs(chunks: &[ChatCompletionChunk]) -> Option<ChatCompletionLogprobs> {
     let mut content: Vec<ChatCompletionLogprob> = Vec::new();
     let mut refusal: Vec<ChatCompletionLogprob> = Vec::new();
-    for chat_completion in chat_completions {
-        if let Some(choice) = chat_completion.choices.first()
+    for chunk in chunks {
+        if let Some(choice) = chunk.choices.first()
             && let Some(logprobs) = &choice.logprobs
         {
             content.extend_from_slice(&logprobs.content);
@@ -603,6 +629,72 @@ fn merge_logprobs(chat_completions: &[ChatCompletionChunk]) -> Option<ChatComple
     }
     (!content.is_empty() || !refusal.is_empty())
         .then_some(ChatCompletionLogprobs { content, refusal })
+}
+
+/// Builds [`Vec<ToolCall>`] from chat completion chunks containing tool call chunks.
+/// Builds tool calls from chat completion chunk deltas with tool call chunks.
+fn merge_tool_calls(chunks: &[ChatCompletionChunk]) -> Option<Vec<ToolCall>> {
+    let mut tool_calls: HashMap<usize, ToolCall> = HashMap::new();
+    for chunk in chunks {
+        if let Some(choice) = chunk.choices.first() {
+            for tc in &choice.delta.tool_calls {
+                let index = tc.index.unwrap();
+                let entry = tool_calls.entry(index).or_insert_with(|| ToolCall {
+                    index: Some(index),
+                    ..Default::default()
+                });
+                if !tc.id.is_empty() {
+                    // Set ID
+                    entry.id = tc.id.clone();
+                }
+                if let Some(function) = &tc.function {
+                    let f = entry.function.get_or_insert_default();
+                    if !function.name.is_empty() {
+                        // Set type to "function"
+                        entry.r#type = "function".into();
+                        // Set function name
+                        f.name = function.name.clone();
+                    }
+                    if !function.arguments.is_empty() {
+                        // Append function arguments
+                        f.arguments.push_str(&function.arguments);
+                    }
+                }
+                if let Some(custom) = &tc.custom {
+                    let c = entry.custom.get_or_insert_default();
+                    if !custom.name.is_empty() {
+                        // Set type to "custom"
+                        entry.r#type = "custom".into();
+                        // Set custom name
+                        c.name = custom.name.clone();
+                    }
+                    if !custom.input.is_empty() {
+                        // Append custom input
+                        c.input.push_str(&custom.input);
+                    }
+                }
+            }
+        }
+    }
+    let tool_calls = tool_calls
+        .into_iter()
+        .map(|(_, value)| value)
+        .collect::<Vec<_>>();
+    (!tool_calls.is_empty()).then_some(tool_calls)
+}
+
+/// Builds [`Content`] from chat completion chunks containing content chunks.
+fn merge_content(chunks: &[ChatCompletionChunk]) -> Option<Content> {
+    let content_text = chunks
+        .iter()
+        .filter_map(|chunk| {
+            chunk
+                .choices
+                .first()
+                .and_then(|choice| choice.delta.content.clone())
+        })
+        .collect::<String>();
+    (!content_text.is_empty()).then_some(Content::Text(content_text))
 }
 
 /// Consumes a detection batch stream, builds responses, and sends them to a response channel.
@@ -663,4 +755,40 @@ async fn process_detection_batch_stream(
         }
     }
     info!(%trace_id, "task completed: detection batch stream closed");
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_merge_tool_calls() {
+        let chunks_json = serde_json::json!([
+            {"id":"chatcmpl-d20f671e9f9546858ed53274bd45836e","object":"chat.completion.chunk","created":1759439369,"model":"example","choices":[{"index":0,"delta":{"role":"assistant","content":""},"logprobs":null,"finish_reason":null}]},
+            {"id":"chatcmpl-d20f671e9f9546858ed53274bd45836e","object":"chat.completion.chunk","created":1759439369,"model":"example","choices":[{"index":0,"delta":{"tool_calls":[{"id":"chatcmpl-tool-17c2d16c3c734bd69235c88771175bf4","type":"function","index":0,"function":{"name":"get_current_weather"}}]},"logprobs":null,"finish_reason":null}]},
+            {"id":"chatcmpl-d20f671e9f9546858ed53274bd45836e","object":"chat.completion.chunk","created":1759439369,"model":"example","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"location\": \""}}]},"logprobs":null,"finish_reason":null}]},
+            {"id":"chatcmpl-d20f671e9f9546858ed53274bd45836e","object":"chat.completion.chunk","created":1759439369,"model":"example","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"Boston"}}]},"logprobs":null,"finish_reason":null}]},
+            {"id":"chatcmpl-d20f671e9f9546858ed53274bd45836e","object":"chat.completion.chunk","created":1759439369,"model":"example","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":","}}]},"logprobs":null,"finish_reason":null}]},
+            {"id":"chatcmpl-d20f671e9f9546858ed53274bd45836e","object":"chat.completion.chunk","created":1759439369,"model":"example","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":" MA\""}}]},"logprobs":null,"finish_reason":null}]},
+            {"id":"chatcmpl-d20f671e9f9546858ed53274bd45836e","object":"chat.completion.chunk","created":1759439369,"model":"example","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":", \"unit\": \""}}]},"logprobs":null,"finish_reason":null}]},
+            {"id":"chatcmpl-d20f671e9f9546858ed53274bd45836e","object":"chat.completion.chunk","created":1759439369,"model":"example","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"f"}}]},"logprobs":null,"finish_reason":null}]},
+            {"id":"chatcmpl-d20f671e9f9546858ed53274bd45836e","object":"chat.completion.chunk","created":1759439369,"model":"example","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"ahrenheit\"}"}}]},"logprobs":null,"finish_reason":null}]},
+            {"id":"chatcmpl-d20f671e9f9546858ed53274bd45836e","object":"chat.completion.chunk","created":1759439369,"model":"example","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":""}}]},"logprobs":null,"finish_reason":"tool_calls","stop_reason":128008}]},
+        ]);
+        let chunks = serde_json::from_value::<Vec<ChatCompletionChunk>>(chunks_json).unwrap();
+        let tool_calls = merge_tool_calls(&chunks);
+        assert_eq!(
+            tool_calls,
+            Some(vec![ToolCall {
+                index: Some(0),
+                id: "chatcmpl-tool-17c2d16c3c734bd69235c88771175bf4".into(),
+                r#type: "function".into(),
+                function: Some(Function {
+                    name: "get_current_weather".into(),
+                    arguments: "{\"location\": \"Boston, MA\", \"unit\": \"fahrenheit\"}".into(),
+                }),
+                custom: None,
+            }])
+        );
+    }
 }
