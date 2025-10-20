@@ -1377,4 +1377,31 @@ mod test {
             Some(StopReason::String("32007".to_string()))
         );
     }
+
+    #[test]
+    fn test_deserialize_error_response() -> Result<(), serde_json::Error> {
+        let message = "This model's maximum context length is 32768 tokens. However, you requested 39197 tokens in the messages, Please reduce the length of the messages.";
+        let error_response_v1_json = json!({
+            "object": "error",
+            "message": message,
+            "type": "BadRequestError",
+            "param": null,
+            "code": 400
+        });
+        let error_response = ErrorResponse::deserialize(&error_response_v1_json)?;
+        assert!(matches!(error_response, ErrorResponse::V1(_)));
+
+        let error_response_v2_json = json!({
+          "error": {
+            "message": message,
+            "type": "BadRequestError",
+            "param": null,
+            "code": 400
+          }
+        });
+        let error_response = ErrorResponse::deserialize(&error_response_v2_json)?;
+        assert!(matches!(error_response, ErrorResponse::V2(_)));
+
+        Ok(())
+    }
 }
