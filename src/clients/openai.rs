@@ -168,11 +168,7 @@ impl OpenAiClient {
                                     let error =
                                         match serde_json::from_str::<ErrorResponse>(&event.data) {
                                             // Return error with code and message from downstream server
-                                            Ok(response) => Error::Http {
-                                                code: StatusCode::from_u16(response.code())
-                                                    .unwrap(),
-                                                message: response.message().into(),
-                                            },
+                                            Ok(response) => response.into(),
                                             // Failed to deserialize to S and ErrorResponse
                                             // Return internal server error
                                             Err(serde_error) => Error::Http {
@@ -1135,6 +1131,15 @@ impl From<ErrorResponseV2> for ErrorResponse {
 impl From<ErrorInfo> for ErrorResponse {
     fn from(error: ErrorInfo) -> Self {
         Self::V2(ErrorResponseV2 { error })
+    }
+}
+
+impl From<ErrorResponse> for Error {
+    fn from(value: ErrorResponse) -> Self {
+        Error::Http {
+            code: StatusCode::from_u16(value.code()).unwrap(),
+            message: value.message().into(),
+        }
     }
 }
 
