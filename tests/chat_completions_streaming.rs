@@ -6,9 +6,8 @@ use fms_guardrails_orchestr8::{
         openai::{
             ChatCompletionChunk, ChatCompletionChunkChoice, ChatCompletionDelta,
             ChatCompletionLogprob, ChatCompletionLogprobs, CompletionDetections,
-            CompletionInputDetections, CompletionOutputDetections, Content, Function, Message,
-            OpenAiError, OpenAiErrorMessage, Role, StopReason, TokenizeResponse, Tool, ToolCall,
-            Usage,
+            CompletionInputDetections, CompletionOutputDetections, Content, ErrorResponse,
+            Function, Message, Role, StopReason, TokenizeResponse, Tool, ToolCall, Usage,
         },
     },
     models::{DetectionResult, DetectorParams},
@@ -4727,18 +4726,34 @@ async fn openai_bad_request_error() -> Result<(), anyhow::Error> {
                 "stream": true,
                 "model": "test-0B",
                 "messages": [
-                    Message { role: Role::User, content: Some(Content::Text("Hey".into())), ..Default::default()},
+                    Message { role: Role::User, content: Some(Content::Text("Hey v1".into())), ..Default::default()},
                 ],
                 "prompt_logprobs": true
             })
         );
-        then.bad_request().json(OpenAiError {
-            object: Some("error".into()),
-            message: r#"[{'type': 'value_error', 'loc': ('body',), 'msg': 'Value error, `prompt_logprobs` are not available when `stream=True`.', 'input': {'model': 'test-0B', 'messages': [{'role': 'user', 'content': 'Hey'}],'n': 1, 'seed': 1337, 'stream': True, 'prompt_logprobs': True}, 'ctx': {'error': ValueError('`prompt_logprobs` are not available when `stream=True`.')}}]"#.into(),
-            r#type: Some("BadRequestError".into()),
-            param: None,
-            code: 400,
-        });
+        then.bad_request().json(ErrorResponse::new_v1(
+            400,
+            r#"[{'type': 'value_error', 'loc': ('body',), 'msg': 'Value error, `prompt_logprobs` are not available when `stream=True`.', 'input': {'model': 'test-0B', 'messages': [{'role': 'user', 'content': 'Hey'}],'n': 1, 'seed': 1337, 'stream': True, 'prompt_logprobs': True}, 'ctx': {'error': ValueError('`prompt_logprobs` are not available when `stream=True`.')}}]"#.into(),
+            "BadRequestError".into(),
+            None));
+    });
+    openai_server.mock(|when, then| {
+        when.post()
+            .path(CHAT_COMPLETIONS_ENDPOINT)
+            .json(json!({
+                "stream": true,
+                "model": "test-0B",
+                "messages": [
+                    Message { role: Role::User, content: Some(Content::Text("Hey v2".into())), ..Default::default()},
+                ],
+                "prompt_logprobs": true
+            })
+        );
+        then.bad_request().json(ErrorResponse::new_v2(
+            400,
+            r#"[{'type': 'value_error', 'loc': ('body',), 'msg': 'Value error, `prompt_logprobs` are not available when `stream=True`.', 'input': {'model': 'test-0B', 'messages': [{'role': 'user', 'content': 'Hey'}],'n': 1, 'seed': 1337, 'stream': True, 'prompt_logprobs': True}, 'ctx': {'error': ValueError('`prompt_logprobs` are not available when `stream=True`.')}}]"#.into(),
+            "BadRequestError".into(),
+            None));
     });
 
     let test_server = TestOrchestratorServer::builder()
@@ -4757,7 +4772,38 @@ async fn openai_bad_request_error() -> Result<(), anyhow::Error> {
                 "output": {},
             },
             "messages": [
-                Message { role: Role::User, content: Some(Content::Text("Hey".into())), ..Default::default()},
+                Message { role: Role::User, content: Some(Content::Text("Hey v1".into())), ..Default::default()},
+            ],
+            "prompt_logprobs": true
+        }))
+        .send()
+        .await?;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let sse_stream: SseStream<ChatCompletionChunk> = SseStream::new(response.bytes_stream());
+    let messages = sse_stream.collect::<Vec<_>>().await;
+
+    // Validate length
+    assert_eq!(messages.len(), 1, "unexpected number of messages");
+
+    // Validate error message
+    assert!(
+        messages[0]
+            .as_ref()
+            .is_err_and(|e| e.code == http::StatusCode::BAD_REQUEST)
+    );
+
+    let response = test_server
+        .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
+        .json(&json!({
+            "stream": true,
+            "model": "test-0B",
+            "detectors": {
+                "input": {},
+                "output": {},
+            },
+            "messages": [
+                Message { role: Role::User, content: Some(Content::Text("Hey v2".into())), ..Default::default()},
             ],
             "prompt_logprobs": true
         }))
@@ -4782,7 +4828,7 @@ async fn openai_bad_request_error() -> Result<(), anyhow::Error> {
 }
 
 #[test(tokio::test)]
-async fn openai_stream_error() -> Result<(), anyhow::Error> {
+async fn openai_runtime_error() -> Result<(), anyhow::Error> {
     let mut openai_server = MockServer::new_http("openai");
     openai_server.mock(|when, then| {
         when.post()
@@ -4797,15 +4843,7 @@ async fn openai_stream_error() -> Result<(), anyhow::Error> {
         );
         // Return an error message over the stream
         then.text_stream(sse([
-            OpenAiErrorMessage {
-                error: OpenAiError {
-                    object: Some("error".into()),
-                    message: "".into(),
-                    r#type: Some("InternalServerError".into()),
-                    param: None,
-                    code: 500
-                }
-            }
+            ErrorResponse::new_v2(500, "unexpected error occurred".into(), "InternalServerError".into(), None),
         ]));
     });
 
