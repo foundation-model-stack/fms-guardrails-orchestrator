@@ -1,6 +1,6 @@
 [package]
 name = "fms-guardrails-orchestr8"
-version = "0.17.1"
+version = "0.18.0"
 edition = "2024"
 authors = ["Evaline Ju", "Gaurav Kumbhat", "Dan Clark"]
 description = "Foundation models orchestration server"
