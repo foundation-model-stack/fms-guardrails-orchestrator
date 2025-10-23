@@ -123,8 +123,8 @@ impl OpenAiClient {
             _ => {
                 // Return error with code and message from downstream server
                 let code = response.status();
-                let message = if let Ok(response) = response.json::<OpenAiError>().await {
-                    response.message
+                let message = if let Ok(response) = response.json::<ErrorResponse>().await {
+                    response.message().into()
                 } else {
                     "unknown error occurred".into()
                 };
@@ -164,25 +164,20 @@ impl OpenAiClient {
                                     let _ = tx.send(Ok(Some(message))).await;
                                 }
                                 Err(_serde_error) => {
-                                    // Failed to deserialize to S, attempt to deserialize to OpenAiErrorMessage
-                                    let error = match serde_json::from_str::<OpenAiErrorMessage>(
-                                        &event.data,
-                                    ) {
-                                        // Return error with code and message from downstream server
-                                        Ok(openai_error) => Error::Http {
-                                            code: StatusCode::from_u16(openai_error.error.code)
-                                                .unwrap(),
-                                            message: openai_error.error.message,
-                                        },
-                                        // Failed to deserialize to S and OpenAiErrorMessage
-                                        // Return internal server error
-                                        Err(serde_error) => Error::Http {
-                                            code: StatusCode::INTERNAL_SERVER_ERROR,
-                                            message: format!(
-                                                "deserialization error: {serde_error}"
-                                            ),
-                                        },
-                                    };
+                                    // Failed to deserialize to S, attempt to deserialize to ErrorResponse.
+                                    let error =
+                                        match serde_json::from_str::<ErrorResponse>(&event.data) {
+                                            // Return error with code and message from downstream server
+                                            Ok(response) => response.into(),
+                                            // Failed to deserialize to S and ErrorResponse
+                                            // Return internal server error
+                                            Err(serde_error) => Error::Http {
+                                                code: StatusCode::INTERNAL_SERVER_ERROR,
+                                                message: format!(
+                                                    "deserialization error: {serde_error}"
+                                                ),
+                                            },
+                                        };
                                     let _ = tx.send(Err(error.into())).await;
                                 }
                             },
@@ -203,8 +198,8 @@ impl OpenAiClient {
             _ => {
                 // Return error with code and message from downstream server
                 let code = response.status();
-                let message = if let Ok(response) = response.json::<OpenAiError>().await {
-                    response.message
+                let message = if let Ok(response) = response.json::<ErrorResponse>().await {
+                    response.message().into()
                 } else {
                     "unknown error occurred".into()
                 };
@@ -1049,21 +1044,103 @@ pub enum StopTokens {
     String(String),
 }
 
-/// OpenAI error response.
+/// Error response v1, for backwards compatability.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OpenAiError {
-    pub object: Option<String>,
+pub struct ErrorResponseV1 {
+    pub object: String,
     pub message: String,
     #[serde(rename = "type")]
-    pub r#type: Option<String>,
+    pub r#type: String,
     pub param: Option<String>,
     pub code: u16,
 }
 
-/// OpenAI streaming error message.
+/// Error response v2. vLLM >= v0.10.1.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OpenAiErrorMessage {
-    pub error: OpenAiError,
+pub struct ErrorResponseV2 {
+    pub error: ErrorInfo,
+}
+
+/// Error info.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ErrorInfo {
+    pub message: String,
+    #[serde(rename = "type")]
+    pub r#type: String,
+    pub param: Option<String>,
+    pub code: u16,
+}
+
+/// Error response.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum ErrorResponse {
+    V1(ErrorResponseV1),
+    V2(ErrorResponseV2),
+}
+
+impl ErrorResponse {
+    pub fn new_v1(code: u16, message: String, r#type: String, param: Option<String>) -> Self {
+        Self::V1(ErrorResponseV1 {
+            object: "error".into(),
+            message,
+            r#type,
+            param,
+            code,
+        })
+    }
+
+    pub fn new_v2(code: u16, message: String, r#type: String, param: Option<String>) -> Self {
+        Self::V2(ErrorResponseV2 {
+            error: ErrorInfo {
+                message,
+                r#type,
+                param,
+                code,
+            },
+        })
+    }
+
+    pub fn message(&self) -> &str {
+        match self {
+            Self::V1(v1) => &v1.message,
+            Self::V2(v2) => &v2.error.message,
+        }
+    }
+
+    pub fn code(&self) -> u16 {
+        match self {
+            Self::V1(v1) => v1.code,
+            Self::V2(v2) => v2.error.code,
+        }
+    }
+}
+
+impl From<ErrorResponseV1> for ErrorResponse {
+    fn from(value: ErrorResponseV1) -> Self {
+        Self::V1(value)
+    }
+}
+
+impl From<ErrorResponseV2> for ErrorResponse {
+    fn from(value: ErrorResponseV2) -> Self {
+        Self::V2(value)
+    }
+}
+
+impl From<ErrorInfo> for ErrorResponse {
+    fn from(error: ErrorInfo) -> Self {
+        Self::V2(ErrorResponseV2 { error })
+    }
+}
+
+impl From<ErrorResponse> for Error {
+    fn from(value: ErrorResponse) -> Self {
+        Error::Http {
+            code: StatusCode::from_u16(value.code()).unwrap(),
+            message: value.message().into(),
+        }
+    }
 }
 
 /// Guardrails completion detections.
@@ -1304,5 +1381,32 @@ mod test {
             choice.stop_reason,
             Some(StopReason::String("32007".to_string()))
         );
+    }
+
+    #[test]
+    fn test_deserialize_error_response() -> Result<(), serde_json::Error> {
+        let message = "This model's maximum context length is 32768 tokens. However, you requested 39197 tokens in the messages, Please reduce the length of the messages.";
+        let error_response_v1_json = json!({
+            "object": "error",
+            "message": message,
+            "type": "BadRequestError",
+            "param": null,
+            "code": 400
+        });
+        let error_response = ErrorResponse::deserialize(&error_response_v1_json)?;
+        assert!(matches!(error_response, ErrorResponse::V1(_)));
+
+        let error_response_v2_json = json!({
+          "error": {
+            "message": message,
+            "type": "BadRequestError",
+            "param": null,
+            "code": 400
+          }
+        });
+        let error_response = ErrorResponse::deserialize(&error_response_v2_json)?;
+        assert!(matches!(error_response, ErrorResponse::V2(_)));
+
+        Ok(())
     }
 }

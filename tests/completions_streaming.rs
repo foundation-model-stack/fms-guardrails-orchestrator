@@ -7,8 +7,7 @@ use fms_guardrails_orchestr8::{
         detector::{ContentAnalysisRequest, GenerationDetectionRequest},
         openai::{
             Completion, CompletionChoice, CompletionDetections, CompletionInputDetections,
-            CompletionLogprobs, CompletionOutputDetections, OpenAiError, OpenAiErrorMessage,
-            TokenizeResponse, Usage,
+            CompletionLogprobs, CompletionOutputDetections, ErrorResponse, TokenizeResponse, Usage,
         },
     },
     models::{DetectionResult, DetectorParams},
@@ -4065,17 +4064,33 @@ async fn openai_bad_request_error() -> Result<(), anyhow::Error> {
             .json(json!({
                 "stream": true,
                 "model": model_id,
-                "prompt": "Hey",
+                "prompt": "Hey v1",
                 "prompt_logprobs": true
             })
         );
-        then.bad_request().json(OpenAiError {
-            object: Some("error".into()),
-            message: r#"[{'type': 'value_error', 'loc': ('body',), 'msg': 'Value error, `prompt_logprobs` are not available when `stream=True`.', 'input': {'model': 'test-0B', 'messages': [{'role': 'user', 'content': 'Hey'}],'n': 1, 'seed': 1337, 'stream': True, 'prompt_logprobs': True}, 'ctx': {'error': ValueError('`prompt_logprobs` are not available when `stream=True`.')}}]"#.into(),
-            r#type: Some("BadRequestError".into()),
-            param: None,
-            code: 400,
-        });
+        then.bad_request().json(ErrorResponse::new_v1(
+            400,
+            r#"[{'type': 'value_error', 'loc': ('body',), 'msg': 'Value error, `prompt_logprobs` are not available when `stream=True`.', 'input': {'model': 'test-0B', 'messages': [{'role': 'user', 'content': 'Hey'}],'n': 1, 'seed': 1337, 'stream': True, 'prompt_logprobs': True}, 'ctx': {'error': ValueError('`prompt_logprobs` are not available when `stream=True`.')}}]"#.into(),
+            "BadRequestError".into(),
+            None
+        ));
+    });
+    openai_server.mock(|when, then| {
+        when.post()
+            .path(COMPLETIONS_ENDPOINT)
+            .json(json!({
+                "stream": true,
+                "model": model_id,
+                "prompt": "Hey v2",
+                "prompt_logprobs": true
+            })
+        );
+        then.bad_request().json(ErrorResponse::new_v2(
+            400,
+            r#"[{'type': 'value_error', 'loc': ('body',), 'msg': 'Value error, `prompt_logprobs` are not available when `stream=True`.', 'input': {'model': 'test-0B', 'messages': [{'role': 'user', 'content': 'Hey'}],'n': 1, 'seed': 1337, 'stream': True, 'prompt_logprobs': True}, 'ctx': {'error': ValueError('`prompt_logprobs` are not available when `stream=True`.')}}]"#.into(),
+            "BadRequestError".into(),
+            None
+        ));
     });
 
     let test_server = TestOrchestratorServer::builder()
@@ -4093,7 +4108,36 @@ async fn openai_bad_request_error() -> Result<(), anyhow::Error> {
                 "input": {},
                 "output": {},
             },
-            "prompt": "Hey",
+            "prompt": "Hey v1",
+            "prompt_logprobs": true
+        }))
+        .send()
+        .await?;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let sse_stream: SseStream<Completion> = SseStream::new(response.bytes_stream());
+    let messages = sse_stream.collect::<Vec<_>>().await;
+
+    // Validate length
+    assert_eq!(messages.len(), 1, "unexpected number of messages");
+
+    // Validate error message
+    assert!(
+        messages[0]
+            .as_ref()
+            .is_err_and(|e| e.code == http::StatusCode::BAD_REQUEST)
+    );
+
+    let response = test_server
+        .post(ORCHESTRATOR_COMPLETIONS_DETECTION_ENDPOINT)
+        .json(&json!({
+            "stream": true,
+            "model": model_id,
+            "detectors": {
+                "input": {},
+                "output": {},
+            },
+            "prompt": "Hey v2",
             "prompt_logprobs": true
         }))
         .send()
@@ -4117,7 +4161,7 @@ async fn openai_bad_request_error() -> Result<(), anyhow::Error> {
 }
 
 #[test(tokio::test)]
-async fn openai_stream_error() -> Result<(), anyhow::Error> {
+async fn openai_runtime_error() -> Result<(), anyhow::Error> {
     let model_id = "test-0B";
     let mut openai_server = MockServer::new_http("openai");
     openai_server.mock(|when, then| {
@@ -4127,15 +4171,12 @@ async fn openai_stream_error() -> Result<(), anyhow::Error> {
             "prompt": "Hey"
         }));
         // Return an error message over the stream
-        then.text_stream(sse([OpenAiErrorMessage {
-            error: OpenAiError {
-                object: Some("error".into()),
-                message: "".into(),
-                r#type: Some("InternalServerError".into()),
-                param: None,
-                code: 500,
-            },
-        }]));
+        then.text_stream(sse([ErrorResponse::new_v2(
+            500,
+            "unexpected error occurred".into(),
+            "InternalServerError".into(),
+            None,
+        )]));
     });
 
     let test_server = TestOrchestratorServer::builder()
