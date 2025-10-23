@@ -1,6 +1,6 @@
 [package]
 name = "fms-guardrails-orchestr8"
-version = "0.17.1"
+version = "0.18.0"
 edition = "2024"
 authors = ["Evaline Ju", "Gaurav Kumbhat", "Dan Clark"]
 description = "Foundation models orchestration server"
@@ -19,7 +19,7 @@ async-trait = "0.1.89"
 axum = { version = "0.8.6", features = ["json"] }
 axum-extra = { version = "0.10.3", features = ["json-lines"] }
 bytes = "1.10.1"
-clap = { version = "4.5.48", features = ["derive", "env"] }
+clap = { version = "4.5.50", features = ["derive", "env"] }
 dashmap = "6.1.0"
 eventsource-stream = "0.2.3"
 futures = "0.3.31"
@@ -53,13 +53,13 @@ opentelemetry-otlp = { version = "0.31.0", features = [
 opentelemetry_sdk = { version = "0.31.0", features = ["rt-tokio", "metrics"] }
 pin-project-lite = "0.2.16"
 prost = "0.14.1"
-reqwest = { version = "0.12.23", features = [
+reqwest = { version = "0.12.24", features = [
     "blocking",
     "rustls-tls",
     "json",
     "stream",
 ] }
-rustls = { version = "0.23.32", default-features = false, features = [
+rustls = { version = "0.23.34", default-features = false, features = [
     "ring",
     "std",
 ] }
@@ -70,7 +70,7 @@ serde = { version = "1.0.228", features = ["derive"] }
 serde_json = { version = "1.0.145", features = ["preserve_order"] }
 serde_yml = "0.0.12"
 thiserror = "2.0.17"
-tokio = { version = "1.47.1", features = [
+tokio = { version = "1.48.0", features = [
     "rt",
     "rt-multi-thread",
     "parking_lot",
