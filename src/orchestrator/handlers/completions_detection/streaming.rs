@@ -615,12 +615,19 @@ async fn process_detection_batch_stream(
     mut detection_batch_stream: DetectionBatchStream,
     response_tx: mpsc::Sender<Result<Option<Completion>, Error>>,
 ) {
+    let mut batch_tracker: HashMap<u32, Vec<(usize, usize)>> = HashMap::new();
     while let Some(result) = detection_batch_stream.next().await {
         match result {
             Ok((choice_index, chunk, detections)) => {
+                let indices = (chunk.input_start_index, chunk.input_end_index);
                 match output_detection_response(&completion_state, choice_index, chunk, detections)
                 {
                     Ok(completion) => {
+                        // Record batch indices to tracker
+                        batch_tracker
+                            .entry(choice_index)
+                            .and_modify(|entry| entry.push(indices))
+                            .or_insert(vec![indices]);
                         // Send completion to response channel
                         debug!(%trace_id, %choice_index, ?completion, "sending completion chunk to response channel");
                         if response_tx.send(Ok(Some(completion))).await.is_err() {
@@ -640,6 +647,27 @@ async fn process_detection_batch_stream(
                 error!(%trace_id, %error, "task failed: error received from detection batch stream");
                 // Send error to response channel and terminate
                 let _ = response_tx.send(Err(error)).await;
+                return;
+            }
+        }
+    }
+    // Ensure last completion chunk with finish_reason is sent for each choice
+    for (choice_index, indices) in batch_tracker {
+        // Get last completion chunk
+        let completions = completion_state.completions.get(&choice_index).unwrap();
+        let (last_index, completion) = completions
+            .last_key_value()
+            .map(|(index, completion)| (*index, completion.clone()))
+            .unwrap();
+        let (_start_index, end_index) = indices.last().copied().unwrap();
+        if last_index != end_index {
+            if last_index != end_index + 1 {
+                warn!(%trace_id, %choice_index, %last_index, %end_index, "unexpected number of completion chunks remaining for choice");
+                debug!(%trace_id, ?completions);
+            }
+            debug!(%trace_id, %choice_index, ?completion, "sending last completion chunk to response channel");
+            if response_tx.send(Ok(Some(completion))).await.is_err() {
+                info!(%trace_id, "task completed: client disconnected");
                 return;
             }
         }
