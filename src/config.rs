@@ -86,6 +86,8 @@ pub struct ServiceConfig {
     pub http2_keep_alive_interval: Option<u64>,
     /// Keep-alive timeout in seconds for client calls [currently only for grpc generation]
     pub keep_alive_timeout: Option<u64>,
+    /// Name of environment variable that contains the API key to use for this service [currently only for http generation]
+    pub api_token: Option<String>,
 }
 
 impl ServiceConfig {
@@ -101,6 +103,7 @@ impl ServiceConfig {
             max_retries: None,
             http2_keep_alive_interval: None,
             keep_alive_timeout: None,
+            api_token: None,
         }
     }
 }
