@@ -657,7 +657,7 @@ async fn process_detection_batch_stream(
         let completions = completion_state.completions.get(&choice_index).unwrap();
         let (last_index, completion) = completions
             .last_key_value()
-            .map(|(index, completion)| (*index, completion.clone()))
+            .map(|(index, completion)| (*index, completion))
             .unwrap();
         let (_start_index, end_index) = indices.last().copied().unwrap();
         if last_index != end_index {
@@ -666,7 +666,11 @@ async fn process_detection_batch_stream(
                 debug!(%trace_id, ?completions);
             }
             debug!(%trace_id, %choice_index, ?completion, "sending last completion chunk to response channel");
-            if response_tx.send(Ok(Some(completion))).await.is_err() {
+            if response_tx
+                .send(Ok(Some(completion.clone())))
+                .await
+                .is_err()
+            {
                 info!(%trace_id, "task completed: client disconnected");
                 return;
             }
