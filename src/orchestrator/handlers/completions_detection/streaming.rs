@@ -651,7 +651,10 @@ async fn process_detection_batch_stream(
             }
         }
     }
-    // Ensure last completion chunk with finish_reason is sent for each choice
+    // Ensure last completion chunk with finish_reason is sent for each choice.
+    //
+    // NOTE: A known edge case where the last completion chunk would not have been included in the final batch
+    // is if it has empty choice text. This is because chunks without choice text are not sent to the detection pipeline.
     for (choice_index, indices) in batch_tracker {
         // Get last completion chunk
         let completions = completion_state.completions.get(&choice_index).unwrap();
