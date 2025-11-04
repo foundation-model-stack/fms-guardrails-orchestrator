@@ -623,7 +623,7 @@ async fn process_detection_batch_stream(
                 match output_detection_response(&completion_state, choice_index, chunk, detections)
                 {
                     Ok(completion) => {
-                        // Record batch indices to tracker
+                        // Record indices for this batch
                         batch_tracker
                             .entry(choice_index)
                             .and_modify(|entry| entry.push(indices))
@@ -651,19 +651,21 @@ async fn process_detection_batch_stream(
             }
         }
     }
-    // Ensure last completion chunk with finish_reason is sent for each choice.
+    // Ensure the last completion chunk including finish_reason is sent for each choice.
     //
-    // NOTE: A known edge case where the last completion chunk would not have been included in the final batch
-    // is if it has empty choice text. This is because chunks without choice text are not sent to the detection pipeline.
+    // An edge case exists where the last completion chunk would not be included in the final batch
+    // if it has empty choice text. This is because chunks without choice text are not sent to the detection pipeline.
     for (choice_index, indices) in batch_tracker {
-        // Get last completion chunk
+        // Lookup the last completion chunk received
         let completions = completion_state.completions.get(&choice_index).unwrap();
         let (last_index, completion) = completions
             .last_key_value()
             .map(|(index, completion)| (*index, completion))
             .unwrap();
+        // Get the index of last completion chunk included in the last batch
         let (_start_index, end_index) = indices.last().copied().unwrap();
         if last_index != end_index {
+            // The last batch didn't include the last completion chunk, send it to the response channel
             if last_index != end_index + 1 {
                 warn!(%trace_id, %choice_index, %last_index, %end_index, "unexpected number of completion chunks remaining for choice");
                 debug!(%trace_id, ?completions);
