@@ -144,9 +144,7 @@ impl HttpClient {
 
     /// Injects the API token as a Bearer token in the Authorization header if configured and present in the environment.
     fn inject_api_token(&self, headers: &mut HeaderMap) -> Result<(), Error> {
-        if let Some(env_var) = &self.api_token
-            && let Ok(token) = std::env::var(env_var)
-        {
+        if let Some(token) = &self.api_token {
             headers.insert(
                 http::header::AUTHORIZATION,
                 HeaderValue::from_str(&format!("Bearer {}", token)).map_err(|e| Error::Http {

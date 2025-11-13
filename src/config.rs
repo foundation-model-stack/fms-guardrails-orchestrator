@@ -23,7 +23,10 @@ use std::{
 use serde::Deserialize;
 use tracing::{debug, error, info, warn};
 
-use crate::clients::{chunker::DEFAULT_CHUNKER_ID, is_valid_hostname};
+use crate::{
+    clients::{chunker::DEFAULT_CHUNKER_ID, is_valid_hostname},
+    utils::from_env,
+};
 
 /// Default allowed headers to passthrough to clients.
 const DEFAULT_ALLOWED_HEADERS: &[&str] = &[];
@@ -87,6 +90,7 @@ pub struct ServiceConfig {
     /// Keep-alive timeout in seconds for client calls [currently only for grpc generation]
     pub keep_alive_timeout: Option<u64>,
     /// Name of environment variable that contains the API key to use for this service [currently only for http generation]
+    #[serde(default, deserialize_with = "from_env")]
     pub api_token: Option<String>,
 }
 
