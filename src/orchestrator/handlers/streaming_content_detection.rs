@@ -19,7 +19,7 @@ use std::{collections::HashMap, pin::Pin, sync::Arc};
 use futures::{Stream, StreamExt, stream::Peekable};
 use http::HeaderMap;
 use opentelemetry::trace::TraceId;
-use tokio::sync::mpsc;
+use tokio::sync::{broadcast, mpsc};
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{Instrument, error, info, instrument};
 
@@ -125,6 +125,8 @@ async fn handle_detection(
 ) {
     // Create input channel for detection pipeline
     let (input_tx, input_rx) = mpsc::channel(128);
+    // Create channel to shutdown detection pipeline
+    let (_shutdown_tx, shutdown_rx) = broadcast::channel::<()>(1);
     // Create detection streams
     let detection_streams =
         common::text_contents_detection_streams(ctx, headers, detectors.clone(), 0, input_rx).await;
@@ -138,6 +140,7 @@ async fn handle_detection(
                     let detection_batch_stream = DetectionBatchStream::new(
                         MaxProcessedIndexBatcher::new(detectors.len()),
                         detection_streams,
+                        shutdown_rx,
                     );
                     process_detection_batch_stream(trace_id, detection_batch_stream, response_tx)
                         .await;

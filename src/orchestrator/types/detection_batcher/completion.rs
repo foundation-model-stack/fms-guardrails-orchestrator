@@ -96,7 +96,7 @@ mod test {
     use std::task::Poll;
 
     use futures::StreamExt;
-    use tokio::sync::mpsc;
+    use tokio::sync::{broadcast, mpsc};
     use tokio_stream::wrappers::ReceiverStream;
 
     use super::*;
@@ -464,7 +464,9 @@ mod test {
 
         // Create detection batch stream
         let streams = vec![pii_detections_stream, hap_detections_stream];
-        let mut detection_batch_stream = DetectionBatchStream::new(batcher, streams);
+        // Create channel to shutdown detection pipeline
+        let (_shutdown_tx, shutdown_rx) = broadcast::channel::<()>(1);
+        let mut detection_batch_stream = DetectionBatchStream::new(batcher, streams, shutdown_rx);
 
         for choice_index in 0..choices {
             // Send chunk-2 detections for pii detector
