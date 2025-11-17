@@ -254,7 +254,11 @@ pub async fn create_http_client(
         .layer(http_trace_layer())
         .layer(TimeoutLayer::new(request_timeout))
         .service(client);
-    Ok(HttpClient::new(base_url, client))
+    Ok(HttpClient::new(
+        base_url,
+        service_config.api_token.clone(),
+        client,
+    ))
 }
 
 pub async fn create_grpc_client<C: Debug + Clone>(

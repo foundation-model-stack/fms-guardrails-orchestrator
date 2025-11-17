@@ -34,3 +34,56 @@ where
         OneOrMany::Many(values) => Ok(values),
     }
 }
+
+/// Serde helper to deserialize value from environment variable.
+pub fn from_env<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let env_name: Option<String> = Option::deserialize(deserializer)?;
+    if let Some(env_name) = env_name {
+        let value = std::env::var(&env_name)
+            .map_err(|_| serde::de::Error::custom(format!("env var `{env_name}` not found")))?;
+        Ok(Some(value))
+    } else {
+        Ok(None)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde::Deserialize;
+    use serde_json::json;
+
+    use super::from_env;
+
+    #[derive(Debug, Deserialize)]
+    pub struct Config {
+        #[serde(default, deserialize_with = "from_env")]
+        pub api_token: Option<String>,
+    }
+
+    #[test]
+    fn test_from_env() -> Result<(), Box<dyn std::error::Error>> {
+        // Test no value
+        let config: Config = serde_json::from_value(json!({}))?;
+        assert_eq!(config.api_token, None);
+
+        // Test invalid value
+        let config: Result<Config, serde_json::error::Error> = serde_json::from_value(json!({
+            "api_token": "DOES_NOT_EXIST"
+        }));
+        assert!(config.is_err_and(|err| err.to_string() == "env var `DOES_NOT_EXIST` not found"));
+
+        // Test valid value
+        unsafe {
+            std::env::set_var("CLIENT_API_TOKEN", "token");
+        }
+        let config: Config = serde_json::from_value(json!({
+            "api_token": "CLIENT_API_TOKEN"
+        }))?;
+        assert_eq!(config.api_token, Some("token".into()));
+
+        Ok(())
+    }
+}
