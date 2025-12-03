@@ -3,9 +3,9 @@ import logging
 
 from fms_guardrails_orchestr8 import (
     get_guardrails_orchestrator,
-    ContextDocsHttpRequest,
+    PyContextDocsHttpRequest,
     ContextType,
-    TextContentDetectionHttpRequest,
+    PyTextContentDetectionHttpRequest,
 )
 
 
@@ -22,22 +22,25 @@ async def detect_content():
     # Showing async initialization
     orch8 = await get_guardrails_orchestrator(config_path=CONFIG_FILE, start_up_health_check=False)
 
-    request = TextContentDetectionHttpRequest(
-        content="This is stupid text.",
-        detectors= {
-            "en_syntax_slate.38m.hap": {
-                "foo": "bar"
+    try:
+        request = PyTextContentDetectionHttpRequest(
+            content="This is stupid text.",
+            detectors= {
+                "en_syntax_slate.38m.hap": {
+                    "foo": "bar"
+                }
             }
-        }
-    )
-
+        )
+    except Exception as ex:
+        print(ex)
+        raise ex
 
     result = await orch8.detection_content(request)
     print(result)
 
 
 async def detect_context():
-    request = ContextDocsHttpRequest(
+    request = PyContextDocsHttpRequest(
         content="This is a good document",
         context_type=PyContextType.DOCUMENT,
         context=["Document 1", "Document 2", "Document 3"],

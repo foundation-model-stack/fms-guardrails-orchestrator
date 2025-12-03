@@ -18,10 +18,14 @@
 #![allow(unused_qualifications)]
 
 use std::collections::{BTreeMap, HashMap};
+use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
+use pyo3::prelude::*;
 use pyo3::pyclass;
 use pyo3::types::PyDict;
+use pyo3::conversion::{FromPyObject};
+use pythonize::depythonize;
 
 
 use crate::{
@@ -370,8 +374,8 @@ pub struct ClassifiedGeneratedTextResult {
     pub input_tokens: Option<Vec<GeneratedToken>>,
 }
 
+
 /// The request format expected in the /api/v2/text/detection/content endpoint.
-#[pyclass]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TextContentDetectionHttpRequest {
@@ -1433,5 +1437,96 @@ mod tests {
         assert!(!value.contains_key("threshold"));
         assert_eq!(value.pop_threshold(), None);
         Ok(())
+    }
+}
+
+
+/// Python Interfaces
+
+#[pyclass]
+#[derive(Serialize, Deserialize)]
+pub struct PyDetectorsObj(HashMap<String, DetectorParams>);
+
+// NOTE: If this moves to orchestrator object itself, we don't need to do double conversion
+// and we can implement the trait directly there
+impl<'py> FromPyObject<'py> for PyDetectorsObj {
+    fn extract_bound(ob: &Bound<'py, PyAny>) -> PyResult<Self> {
+        let dict = ob.downcast::<pyo3::types::PyDict>()?;
+
+        let mut result = HashMap::new();
+
+        for (key, value) in dict.iter() {
+            let key = key.extract::<String>()?;
+             let inner_dict = value.downcast::<pyo3::types::PyDict>()?;
+            // let mut inner_result = BTreeMap::new();
+            let mut inner_result = DetectorParams::new();
+
+            for (inner_key, inner_value) in inner_dict.iter() {
+                let inner_key = inner_key.extract::<String>()?;
+                let inner_value = depythonize(&inner_value).unwrap();
+                inner_result.insert(inner_key, inner_value);
+            }
+            result.insert(key, inner_result);
+        }
+        Ok(PyDetectorsObj(result))
+    }
+}
+
+// Into trait for PyDetectorsObj which translates to
+// HashMap<String, DetectorParams>
+impl Into<HashMap<String, DetectorParams>> for PyDetectorsObj {
+    fn into(self) -> HashMap<String, DetectorParams> {
+        self.0
+    }
+}
+
+impl From<&PyDetectorsObj> for HashMap<String, DetectorParams> {
+    fn from(obj: &PyDetectorsObj) -> Self {
+        obj.0.clone()
+    }
+}
+
+#[pyclass]
+#[derive(Clone)]
+pub struct PyTextContentDetectionHttpRequest {
+    #[pyo3(get, set)]
+    pub content: String,
+    // pub detectors: Arc<Mutex<PyDetectorsObj>>,
+    pub detectors: Arc<PyDetectorsObj>,
+}
+
+#[pymethods]
+impl PyTextContentDetectionHttpRequest {
+    #[new]
+    fn new(content: String, detectors: PyDetectorsObj) -> Self {
+        PyTextContentDetectionHttpRequest {
+            content,
+            // detectors: Arc::new(Mutex::new(detectors)), // Wrap HashMap in Arc and Mutex for thread-safe access
+            detectors: Arc::new(detectors)
+        }
+    }
+
+}
+
+#[pyclass]
+#[derive(Clone)]
+pub struct PyContextDocsHttpRequest{
+    /// The map of detectors to be used, along with their respective parameters, e.g. thresholds.
+    pub detectors: Arc<PyDetectorsObj>,
+    pub content: String,
+    pub context_type: ContextType,
+    pub context: Vec<String>,
+}
+
+#[pymethods]
+impl PyContextDocsHttpRequest {
+    #[new]
+    fn new(content: String, context_type: ContextType, context: Vec<String>, detectors: PyDetectorsObj) -> Self {
+        Self {
+            content,
+            context,
+            context_type: context_type.into(),
+            detectors: detectors.into()
+        }
     }
 }

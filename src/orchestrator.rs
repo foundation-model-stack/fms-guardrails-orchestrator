@@ -31,7 +31,10 @@ use crate::{
         openai::OpenAiClient,
     },
     config::{GenerationProvider, OrchestratorConfig},
+    orchestrator::handlers::{TextContentDetectionTask},
     health::{HealthCheckResult, HealthStatus},
+    models::{PyTextContentDetectionHttpRequest, TextContentDetectionHttpRequest},
+    utils::trace
 };
 
 use pyo3::exceptions::{PyOSError};
@@ -111,6 +114,62 @@ impl Orchestrator {
         }
         health
     }
+
+    fn detection_content<'py>(&self, py: Python<'py>, request: PyTextContentDetectionHttpRequest) -> PyResult<Bound<'py, PyAny>> {
+        let trace_id = trace::current_trace_id();
+        // TODO: Replace this with real headers input
+        let headers = HeaderMap::new();
+        let detectors = &request.detectors;
+
+        let content = request.content;
+        let request = TextContentDetectionHttpRequest {
+            content,
+            detectors: detectors.as_ref().into(),
+        };
+
+        // TODO: Add request validation here
+
+        let task = TextContentDetectionTask::new(trace_id, request, headers);
+
+        let guardrails_orch = Arc::clone(self);
+
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+                match guardrails_orch.handle(task).await {
+                    Ok(response) => {
+                        // Left it as an example.
+                        // let serialized_response = serde_json::to_string(&response).unwrap();
+                        // Ok(serialized_response)
+                        Ok(PyTextContentDetectionResult(response))
+                    },
+                    // TODO: Handle errors properly with correct types
+                    Err(error) => Err(PyTypeError::new_err(error.to_string())),
+                }
+        })
+
+    }
+
+
+    fn detect_context_documents<'py>(&self, py: Python<'py>, request: PyContextDocsHttpRequest) -> PyResult<Bound<'py, PyAny>> {
+        let trace_id = trace::current_trace_id();
+        // TODO: Replace this with real headers input
+        let headers = HeaderMap::new();
+
+        let request: ContextDocsHttpRequest = request.into();
+
+        let task = ContextDocsDetectionTask::new(trace_id, request, headers);
+        let guardrails_orch = Arc::clone(&self.orchestrator);
+
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            match guardrails_orch.handle(task).await {
+                Ok(response) => {
+                    Ok(PyContextDocsResult(response))
+                },
+                // TODO: Handle errors properly with correct types
+                Err(error) => Err(PyTypeError::new_err(error.to_string())),
+            }
+    })
+    }
+
 }
 
 async fn create_clients(config: &OrchestratorConfig) -> Result<ClientMap, Error> {
