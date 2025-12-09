@@ -403,7 +403,7 @@ async fn input_detector_detections() -> Result<(), anyhow::Error> {
     ];
 
     // Add input detection mock response for input detections
-    let expected_detections = vec![
+    let expected_detections = [
         ContentAnalysisResponse {
             start: 5,
             end: 18,
@@ -811,7 +811,7 @@ async fn input_detector_client_error() -> Result<(), anyhow::Error> {
 #[test(tokio::test)]
 async fn output_detector_detections() -> Result<(), anyhow::Error> {
     // Add output detection mock response for output multiple detections
-    let expected_detections = vec![
+    let expected_detections = [
         ContentAnalysisResponse {
             start: 5,
             end: 18,
@@ -856,7 +856,7 @@ async fn output_detector_detections() -> Result<(), anyhow::Error> {
     ];
 
     // Add generation mock response for output detections
-    let mock_generation_responses = vec![
+    let mock_generation_responses = [
         GeneratedTextResult {
             generated_text: "This sentence does not have a detection. But <this one does>.".into(),
             ..Default::default()
