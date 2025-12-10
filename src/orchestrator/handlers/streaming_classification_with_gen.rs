@@ -23,7 +23,7 @@ use std::{
 use futures::StreamExt;
 use http::HeaderMap;
 use opentelemetry::trace::TraceId;
-use tokio::sync::mpsc;
+use tokio::sync::{broadcast, mpsc};
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{Instrument, error, info, instrument};
 
@@ -231,6 +231,8 @@ async fn handle_output_detection(
     let trace_id = task.trace_id;
     // Create input channel for detection pipeline
     let (input_tx, input_rx) = mpsc::channel(128);
+    // Create channel to shutdown detection pipeline
+    let (_shutdown_tx, shutdown_rx) = broadcast::channel::<()>(1);
     // Create shared generations
     let generations: Arc<RwLock<Vec<ClassifiedGeneratedTextStreamResult>>> =
         Arc::new(RwLock::new(Vec::new()));
@@ -254,6 +256,7 @@ async fn handle_output_detection(
                     let detection_batch_stream = DetectionBatchStream::new(
                         MaxProcessedIndexBatcher::new(detectors.len()),
                         detection_streams,
+                        shutdown_rx,
                     );
                     process_detection_batch_stream(
                         trace_id,

@@ -18,7 +18,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use futures::{StreamExt, future::try_join_all};
 use opentelemetry::trace::TraceId;
-use tokio::sync::mpsc;
+use tokio::sync::{broadcast, mpsc};
 use tracing::{Instrument, debug, error, info, instrument, warn};
 use uuid::Uuid;
 
@@ -121,7 +121,7 @@ pub async fn handle_streaming(
 
             if output_detectors.is_empty() {
                 // No output detectors, forward chat completion chunks to response channel
-                process_chat_completion_stream(trace_id, chat_completion_stream, None, None, Some(response_tx.clone())).await;
+                process_chat_completion_stream(trace_id, chat_completion_stream, None, None, response_tx.clone(), true, None).await;
                 info!(%trace_id, "task completed: chat completion stream closed");
             } else {
                 // Handle output detection
@@ -255,6 +255,8 @@ async fn handle_output_detection(
 
     if !chunk_detectors.is_empty() {
         // Set up streaming detection pipeline
+        // Create channel to shutdown detection pipeline
+        let (shutdown_tx, shutdown_rx) = broadcast::channel::<()>(1);
         // n represents how many choices to generate for each input message
         // Choices are processed independently so each choice has its own input channels and detection streams.
         let n = request.extra.get("n").and_then(|v| v.as_i64()).unwrap_or(1) as usize;
@@ -295,12 +297,15 @@ async fn handle_output_detection(
             chat_completion_stream,
             Some(completion_state.clone()),
             Some(input_txs),
-            None,
+            response_tx.clone(),
+            false,
+            Some(shutdown_tx.clone()),
         ));
         // Process detection streams and await completion
         let detection_batch_stream = DetectionBatchStream::new(
             CompletionBatcher::new(chunk_detectors.len()),
             detection_streams,
+            shutdown_rx,
         );
         process_detection_batch_stream(
             trace_id,
@@ -317,7 +322,9 @@ async fn handle_output_detection(
             chat_completion_stream,
             Some(completion_state.clone()),
             None,
-            Some(response_tx.clone()),
+            response_tx.clone(),
+            true,
+            None,
         )
         .await;
     }
@@ -368,15 +375,18 @@ async fn process_chat_completion_stream(
     mut chat_completion_stream: ChatCompletionStream,
     completion_state: Option<Arc<CompletionState<ChatCompletionChunk>>>,
     input_txs: Option<HashMap<u32, mpsc::Sender<Result<(usize, String), Error>>>>,
-    response_tx: Option<mpsc::Sender<Result<Option<ChatCompletionChunk>, Error>>>,
+    response_tx: mpsc::Sender<Result<Option<ChatCompletionChunk>, Error>>,
+    passthrough: bool,
+    shutdown_tx: Option<broadcast::Sender<()>>,
 ) {
+    let mut no_generated_text = false;
     while let Some((message_index, result)) = chat_completion_stream.next().await {
         match result {
             Ok(Some(chat_completion)) => {
                 // Send chat completion chunk to response channel
                 // NOTE: this forwards chat completion chunks without detections and is only
                 // done here for 2 cases: a) no output detectors b) only whole doc output detectors
-                if let Some(response_tx) = &response_tx
+                if passthrough
                     && response_tx
                         .send(Ok(Some(chat_completion.clone())))
                         .await
@@ -385,6 +395,32 @@ async fn process_chat_completion_stream(
                     info!(%trace_id, "task completed: client disconnected");
                     return;
                 }
+
+                // First message contains finish_reason, no text was generated
+                if message_index == 0
+                    && chat_completion
+                        .choices
+                        .first()
+                        .and_then(|choice| choice.finish_reason.as_ref())
+                        .is_some()
+                {
+                    warn!(%trace_id, ?chat_completion, "first message contains finish_reason, no text was generated");
+                    no_generated_text = true;
+                    // Send shutdown signal to detection batch stream
+                    if let Some(shutdown_tx) = &shutdown_tx {
+                        let _ = shutdown_tx.send(());
+                    }
+                    // Send stop message
+                    let _ = response_tx.send(Ok(Some(chat_completion))).await;
+                    // NOTE: we can't terminate here as the next (final) message contains usage and also needs to be sent
+                    continue;
+                }
+                if no_generated_text && chat_completion.usage.is_some() {
+                    // Send usage message and terminate task
+                    let _ = response_tx.send(Ok(Some(chat_completion))).await;
+                    return;
+                }
+
                 if let Some(usage) = &chat_completion.usage
                     && chat_completion.choices.is_empty()
                 {
@@ -434,9 +470,7 @@ async fn process_chat_completion_stream(
             Err(error) => {
                 error!(%trace_id, %error, "task failed: error received from chat completion stream");
                 // Send error to response channel
-                if let Some(response_tx) = &response_tx {
-                    let _ = response_tx.send(Err(error.clone())).await;
-                }
+                let _ = response_tx.send(Err(error.clone())).await;
                 // Send error to detection input channels
                 if let Some(input_txs) = &input_txs {
                     for input_tx in input_txs.values() {
