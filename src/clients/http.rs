@@ -125,6 +125,11 @@ pub struct HttpClient {
 
 impl HttpClient {
     pub fn new(base_url: Url, api_token: Option<String>, inner: HttpClientInner) -> Self {
+        // Ensure base_url has trailing slash for proper path joining
+        let mut base_url = base_url;
+        if !base_url.path().ends_with('/') {
+            base_url.set_path(&format!("{}/", base_url.path()));
+        }
         let health_url = base_url.join("health").unwrap();
         Self {
             base_url,
@@ -139,6 +144,7 @@ impl HttpClient {
     }
 
     pub fn endpoint(&self, path: &str) -> Url {
+        let path = path.trim_start_matches('/');
         self.base_url.join(path).unwrap()
     }
 
