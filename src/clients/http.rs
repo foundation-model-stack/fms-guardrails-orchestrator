@@ -119,15 +119,17 @@ pub trait HttpClientExt: Client {
 pub struct HttpClient {
     base_url: Url,
     health_url: Url,
+    api_token: Option<String>,
     inner: HttpClientInner,
 }
 
 impl HttpClient {
-    pub fn new(base_url: Url, inner: HttpClientInner) -> Self {
+    pub fn new(base_url: Url, api_token: Option<String>, inner: HttpClientInner) -> Self {
         let health_url = base_url.join("health").unwrap();
         Self {
             base_url,
             health_url,
+            api_token,
             inner,
         }
     }
@@ -140,6 +142,19 @@ impl HttpClient {
         self.base_url.join(path).unwrap()
     }
 
+    /// Injects the API token as a Bearer token in the Authorization header if configured and present in the environment.
+    fn inject_api_token(&self, headers: &mut HeaderMap) -> Result<(), Error> {
+        if let Some(token) = &self.api_token {
+            headers.insert(
+                http::header::AUTHORIZATION,
+                HeaderValue::from_str(&format!("Bearer {}", token)).map_err(|e| Error::Http {
+                    code: StatusCode::INTERNAL_SERVER_ERROR,
+                    message: format!("invalid authorization header: {e}"),
+                })?,
+            );
+        }
+        Ok(())
+    }
     pub async fn get(
         &self,
         url: Url,
@@ -162,11 +177,14 @@ impl HttpClient {
         &self,
         url: Url,
         method: Method,
-        headers: HeaderMap,
+        mut headers: HeaderMap,
         body: impl RequestBody,
     ) -> Result<Response, Error> {
         let ctx = Span::current().context();
+
+        self.inject_api_token(&mut headers)?;
         let headers = trace::with_traceparent_header(&ctx, headers);
+
         let mut builder = hyper::http::request::Builder::new()
             .method(method)
             .uri(url.as_uri());
