@@ -18,7 +18,6 @@
 #![allow(unused_qualifications)]
 
 use std::collections::{BTreeMap, HashMap};
-use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 use pyo3::prelude::*;
@@ -53,9 +52,9 @@ pub struct InfoParams {
 }
 
 /// Parameters relevant to each detector
-#[pyclass]
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-pub struct DetectorParams(BTreeMap<String, serde_json::Value>);
+pub struct DetectorParams(pub BTreeMap<String, serde_json::Value>);
+
 
 pub type Metadata = BTreeMap<String, serde_json::Value>;
 
@@ -376,17 +375,21 @@ pub struct ClassifiedGeneratedTextResult {
 
 
 /// The request format expected in the /api/v2/text/detection/content endpoint.
+#[pyclass(name = "TextContentDetectionRequest")]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TextContentDetectionHttpRequest {
+
     /// The content to run detectors on
+    #[pyo3(set)]
     pub content: String,
 
     /// The map of detectors to be used, along with their respective parameters, e.g. thresholds.
+    #[pyo3(set)]
     pub detectors: HashMap<String, DetectorParams>,
 }
-
 impl TextContentDetectionHttpRequest {
+
     /// Upfront validation of user request
     pub fn validate(&self) -> Result<(), ValidationError> {
         // Validate required parameters
@@ -411,6 +414,7 @@ pub struct TextContentDetectionResult {
     /// Detection results
     pub detections: Vec<ContentAnalysisResponse>,
 }
+
 /// Streaming classification result on text produced by a text generation model, containing
 /// information from the original text generation output as well as the result of
 /// classification on the generated text. Also indicates where in stream is processed.
@@ -1483,50 +1487,5 @@ impl Into<HashMap<String, DetectorParams>> for PyDetectorsObj {
 impl From<&PyDetectorsObj> for HashMap<String, DetectorParams> {
     fn from(obj: &PyDetectorsObj) -> Self {
         obj.0.clone()
-    }
-}
-
-#[pyclass]
-#[derive(Clone)]
-pub struct PyTextContentDetectionHttpRequest {
-    #[pyo3(get, set)]
-    pub content: String,
-    // pub detectors: Arc<Mutex<PyDetectorsObj>>,
-    pub detectors: Arc<PyDetectorsObj>,
-}
-
-#[pymethods]
-impl PyTextContentDetectionHttpRequest {
-    #[new]
-    fn new(content: String, detectors: PyDetectorsObj) -> Self {
-        PyTextContentDetectionHttpRequest {
-            content,
-            // detectors: Arc::new(Mutex::new(detectors)), // Wrap HashMap in Arc and Mutex for thread-safe access
-            detectors: Arc::new(detectors)
-        }
-    }
-
-}
-
-#[pyclass]
-#[derive(Clone)]
-pub struct PyContextDocsHttpRequest{
-    /// The map of detectors to be used, along with their respective parameters, e.g. thresholds.
-    pub detectors: Arc<PyDetectorsObj>,
-    pub content: String,
-    pub context_type: ContextType,
-    pub context: Vec<String>,
-}
-
-#[pymethods]
-impl PyContextDocsHttpRequest {
-    #[new]
-    fn new(content: String, context_type: ContextType, context: Vec<String>, detectors: PyDetectorsObj) -> Self {
-        Self {
-            content,
-            context,
-            context_type: context_type.into(),
-            detectors: detectors.into()
-        }
     }
 }

@@ -18,6 +18,7 @@ pub mod errors;
 pub use errors::Error;
 pub mod common;
 pub mod handlers;
+pub mod python_interface;
 pub mod types;
 
 use std::{collections::HashMap, sync::Arc};
