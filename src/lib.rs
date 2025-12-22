@@ -29,30 +29,30 @@ pub mod utils;
 #[allow(unused_imports)]
 pub(crate) use utils::AsUriExt;
 
-use pyo3::prelude::*;
+// use pyo3::prelude::*;
 
-use crate::models::{
-    ContextDocsResult,
-    DetectorParams,
-    PyTextContentDetectionHttpRequest,
-    PyContextDocsHttpRequest,
-    TextContentDetectionResult
-};
+// use crate::models::{
+//     ContextDocsResult,
+//     DetectorParams,
+//     PyTextContentDetectionHttpRequest,
+//     PyContextDocsHttpRequest,
+//     TextContentDetectionResult
+// };
 
 
-/// A Python module implemented in Rust.
-#[pymodule]
-fn fms_guardrails_orchestr8(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
+// /// A Python module implemented in Rust.
+// #[pymodule]
+// fn fms_guardrails_orchestr8(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
 
-    // TODO: Replace this with proper implementation
-    let _ = rustls::crypto::ring::default_provider().install_default();
+//     // TODO: Replace this with proper implementation
+//     let _ = rustls::crypto::ring::default_provider().install_default();
 
-    m.add_class::<PyTextContentDetectionHttpRequest>()?;
-    m.add_class::<DetectorParams>()?;
-    m.add_class::<TextContentDetectionResult>()?;
-    m.add_class::<clients::detector::ContextType>()?;
-    m.add_class::<PyContextDocsHttpRequest>()?;
-    m.add_class::<ContextDocsResult>()?;
-    m.add_function(wrap_pyfunction!(orchestrator::get_guardrails_orchestrator, m)?)?;
-    Ok(())
-}
+//     m.add_class::<PyTextContentDetectionHttpRequest>()?;
+//     m.add_class::<DetectorParams>()?;
+//     m.add_class::<TextContentDetectionResult>()?;
+//     m.add_class::<clients::detector::ContextType>()?;
+//     m.add_class::<PyContextDocsHttpRequest>()?;
+//     m.add_class::<ContextDocsResult>()?;
+//     // m.add_function(wrap_pyfunction!(orchestrator::get_guardrails_orchestrator, m)?)?;
+//     Ok(())
+// }

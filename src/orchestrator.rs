@@ -31,16 +31,8 @@ use crate::{
         openai::OpenAiClient,
     },
     config::{GenerationProvider, OrchestratorConfig},
-    orchestrator::handlers::{TextContentDetectionTask},
     health::{HealthCheckResult, HealthStatus},
-    models::{PyTextContentDetectionHttpRequest, TextContentDetectionHttpRequest},
-    utils::trace
 };
-
-use pyo3::exceptions::{PyOSError};
-use pyo3::prelude::*;
-use pyo3::pyclass;
-use pyo3_async_runtimes::tokio::future_into_py;
 
 const DEFAULT_MAX_RETRIES: usize = 3;
 
@@ -57,7 +49,6 @@ impl Context {
 }
 
 /// Handles orchestrator tasks.
-#[pyclass]
 #[cfg_attr(test, derive(Default))]
 pub struct Orchestrator {
     ctx: Arc<Context>,
@@ -115,61 +106,6 @@ impl Orchestrator {
         health
     }
 
-    fn detection_content<'py>(&self, py: Python<'py>, request: PyTextContentDetectionHttpRequest) -> PyResult<Bound<'py, PyAny>> {
-        let trace_id = trace::current_trace_id();
-        // TODO: Replace this with real headers input
-        let headers = HeaderMap::new();
-        let detectors = &request.detectors;
-
-        let content = request.content;
-        let request = TextContentDetectionHttpRequest {
-            content,
-            detectors: detectors.as_ref().into(),
-        };
-
-        // TODO: Add request validation here
-
-        let task = TextContentDetectionTask::new(trace_id, request, headers);
-
-        let guardrails_orch = Arc::clone(self);
-
-        pyo3_async_runtimes::tokio::future_into_py(py, async move {
-                match guardrails_orch.handle(task).await {
-                    Ok(response) => {
-                        // Left it as an example.
-                        // let serialized_response = serde_json::to_string(&response).unwrap();
-                        // Ok(serialized_response)
-                        Ok(PyTextContentDetectionResult(response))
-                    },
-                    // TODO: Handle errors properly with correct types
-                    Err(error) => Err(PyTypeError::new_err(error.to_string())),
-                }
-        })
-
-    }
-
-
-    fn detect_context_documents<'py>(&self, py: Python<'py>, request: PyContextDocsHttpRequest) -> PyResult<Bound<'py, PyAny>> {
-        let trace_id = trace::current_trace_id();
-        // TODO: Replace this with real headers input
-        let headers = HeaderMap::new();
-
-        let request: ContextDocsHttpRequest = request.into();
-
-        let task = ContextDocsDetectionTask::new(trace_id, request, headers);
-        let guardrails_orch = Arc::clone(&self.orchestrator);
-
-        pyo3_async_runtimes::tokio::future_into_py(py, async move {
-            match guardrails_orch.handle(task).await {
-                Ok(response) => {
-                    Ok(PyContextDocsResult(response))
-                },
-                // TODO: Handle errors properly with correct types
-                Err(error) => Err(PyTypeError::new_err(error.to_string())),
-            }
-    })
-    }
-
 }
 
 async fn create_clients(config: &OrchestratorConfig) -> Result<ClientMap, Error> {
@@ -220,29 +156,29 @@ async fn create_clients(config: &OrchestratorConfig) -> Result<ClientMap, Error>
     Ok(clients)
 }
 
-// Async Factory function to create a guardrails orchestrator
-#[pyfunction]
-#[pyo3(text_signature = "(config_path=config.yaml, start_up_health_check=True)")]
-pub fn get_guardrails_orchestrator<'py>(py: Python<'py>, config_path: String, start_up_health_check: bool) -> PyResult<Bound<'py, PyAny>> {
+// // Async Factory function to create a guardrails orchestrator
+// #[pyfunction]
+// #[pyo3(text_signature = "(config_path=config.yaml, start_up_health_check=True)")]
+// pub fn get_guardrails_orchestrator<'py>(py: Python<'py>, config_path: String, start_up_health_check: bool) -> PyResult<Bound<'py, PyAny>> {
 
-    let guardrails_orch8_future = async move {
-        let config_result = OrchestratorConfig::load(config_path).await;
+//     let guardrails_orch8_future = async move {
+//         let config_result = OrchestratorConfig::load(config_path).await;
 
-        let config = match config_result {
-            Ok(config) => config,
-            Err(err) => return Err(PyOSError::new_err(format!("Error loading orchestrator configuration: {}", err)))
-        };
+//         let config = match config_result {
+//             Ok(config) => config,
+//             Err(err) => return Err(PyOSError::new_err(format!("Error loading orchestrator configuration: {}", err)))
+//         };
 
-        let orchestrator_result = Orchestrator::new(config, start_up_health_check).await;
+//         let orchestrator_result = Orchestrator::new(config, start_up_health_check).await;
 
-        match orchestrator_result {
-            Ok(orchestrator) => Ok(orchestrator),
-            Err(err) => Err(PyOSError::new_err(format!("Error creating orchestrator: {}", err)))
-        }
-    };
+//         match orchestrator_result {
+//             Ok(orchestrator) => Ok(orchestrator),
+//             Err(err) => Err(PyOSError::new_err(format!("Error creating orchestrator: {}", err)))
+//         }
+//     };
 
-    // Convert the Future into a Python awaitable
-    future_into_py(py, guardrails_orch8_future)
+//     // Convert the Future into a Python awaitable
+//     future_into_py(py, guardrails_orch8_future)
 
-}
+// }
 
