@@ -106,7 +106,6 @@ impl Orchestrator {
         }
         health
     }
-
 }
 
 async fn create_clients(config: &OrchestratorConfig) -> Result<ClientMap, Error> {
@@ -182,4 +181,3 @@ async fn create_clients(config: &OrchestratorConfig) -> Result<ClientMap, Error>
 //     future_into_py(py, guardrails_orch8_future)
 
 // }
-

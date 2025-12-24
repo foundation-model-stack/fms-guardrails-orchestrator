@@ -19,13 +19,9 @@
 
 use std::collections::{BTreeMap, HashMap};
 
-use serde::{Deserialize, Serialize};
-use pyo3::prelude::*;
-use pyo3::pyclass;
-use pyo3::types::PyDict;
-use pyo3::conversion::{FromPyObject};
+use pyo3::{conversion::FromPyObject, prelude::*, pyclass, types::PyDict};
 use pythonize::depythonize;
-
+use serde::{Deserialize, Serialize};
 
 use crate::{
     clients::{
@@ -54,7 +50,6 @@ pub struct InfoParams {
 /// Parameters relevant to each detector
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct DetectorParams(pub BTreeMap<String, serde_json::Value>);
-
 
 pub type Metadata = BTreeMap<String, serde_json::Value>;
 
@@ -373,13 +368,11 @@ pub struct ClassifiedGeneratedTextResult {
     pub input_tokens: Option<Vec<GeneratedToken>>,
 }
 
-
 /// The request format expected in the /api/v2/text/detection/content endpoint.
 #[pyclass(name = "TextContentDetectionRequest")]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TextContentDetectionHttpRequest {
-
     /// The content to run detectors on
     #[pyo3(set)]
     pub content: String,
@@ -389,7 +382,6 @@ pub struct TextContentDetectionHttpRequest {
     pub detectors: HashMap<String, DetectorParams>,
 }
 impl TextContentDetectionHttpRequest {
-
     /// Upfront validation of user request
     pub fn validate(&self) -> Result<(), ValidationError> {
         // Validate required parameters
@@ -572,6 +564,7 @@ impl DetectionWarning {
 /// Since this enum's variants do not hold data, we can easily define them as `#[repr(C)]`
 /// which helps with FFI.
 #[repr(C)]
+#[pyclass]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum DetectionWarningReason {
     /// Unsuitable text detected on input
@@ -1444,7 +1437,6 @@ mod tests {
     }
 }
 
-
 /// Python Interfaces
 
 #[pyclass]
@@ -1453,15 +1445,18 @@ pub struct PyDetectorsObj(HashMap<String, DetectorParams>);
 
 // NOTE: If this moves to orchestrator object itself, we don't need to do double conversion
 // and we can implement the trait directly there
-impl<'py> FromPyObject<'py> for PyDetectorsObj {
-    fn extract_bound(ob: &Bound<'py, PyAny>) -> PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for PyDetectorsObj {
+    // Add an associated Error type
+    type Error = PyErr;
+
+    fn extract(ob: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
         let dict = ob.downcast::<pyo3::types::PyDict>()?;
 
         let mut result = HashMap::new();
 
         for (key, value) in dict.iter() {
             let key = key.extract::<String>()?;
-             let inner_dict = value.downcast::<pyo3::types::PyDict>()?;
+            let inner_dict = value.downcast::<pyo3::types::PyDict>()?;
             // let mut inner_result = BTreeMap::new();
             let mut inner_result = DetectorParams::new();
 

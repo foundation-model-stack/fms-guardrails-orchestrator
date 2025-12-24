@@ -27,6 +27,9 @@ use serde_json::{Map, Value};
 use tokio::sync::mpsc;
 use url::Url;
 
+use pyo3::{prelude::*, pyclass};
+use pythonize::pythonize;
+
 use super::{
     Client, Error, HttpClient, create_http_client,
     http::{HttpClientExt, RequestBody},
@@ -343,6 +346,7 @@ impl ChatCompletionsRequest {
 /// This is to avoid tracking and updating OpenAI and vLLM
 /// parameter additions/changes. Full validation is delegated to
 /// the downstream server implementation.
+#[pyclass(name = "CompletionsRequest")]
 #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CompletionsRequest {
     /// Detector config.
@@ -416,6 +420,7 @@ impl TokenizeRequest {
 }
 
 /// Detector config.
+#[pyclass(name = "DetectorConfig")]
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DetectorConfig {
@@ -426,6 +431,7 @@ pub struct DetectorConfig {
 }
 
 /// Response format.
+#[pyclass(name = "ResponseFormat")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResponseFormat {
     /// The type of response format being defined.
@@ -436,6 +442,7 @@ pub struct ResponseFormat {
 }
 
 /// Tool.
+#[pyclass(get_all)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Tool {
@@ -444,6 +451,7 @@ pub enum Tool {
 }
 
 /// Function tool.
+#[pyclass(get_all)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FunctionTool {
     /// The type of the tool. Always `function`.
@@ -477,6 +485,7 @@ impl From<FunctionTool> for Tool {
 }
 
 /// Custom tool.
+#[pyclass(get_all)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CustomTool {
     /// The type of the tool. Always `custom`.
@@ -510,6 +519,7 @@ impl From<CustomTool> for Tool {
 }
 
 /// A function tool that can be used to generate a response.
+#[pyclass]
 #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FunctionDefinition {
     /// The name of the function to be called.
@@ -527,19 +537,33 @@ pub struct FunctionDefinition {
 }
 
 /// A custom tool that processes input using a specified format.
+#[pyclass]
 #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CustomDefinition {
     /// The name of the custom tool, used to identify it in tool calls.
+    #[pyo3(get)]
     pub name: String,
     /// Optional description of the custom tool, used to provide more context.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[pyo3(get)]
     pub description: Option<String>,
     /// The input format for the custom tool. Default is unconstrained text.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub format: Option<serde_json::Value>,
 }
 
+#[pymethods]
+impl CustomDefinition {
+    #[getter(format)]
+    fn get_format<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        // Use pythonize to convert serde_json::Value to a Python dict/list
+        pythonize(py, &self.format)
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
+    }
+}
+
 /// Stream options.
+#[pyclass(get_all)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StreamOptions {
     /// If set, an additional chunk will be streamed before the data: [DONE] message.
@@ -551,6 +575,7 @@ pub struct StreamOptions {
 }
 
 /// Role.
+#[pyclass(get_all)]
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum Role {
@@ -563,6 +588,7 @@ pub enum Role {
 }
 
 /// Message.
+#[pyclass(name = "ChatCompletionMessage", get_all, set_all)]
 #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Message {
     /// The role of the author of this message.
@@ -606,12 +632,15 @@ impl Message {
 }
 
 /// Content.
+#[pyclass]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(untagged)]
 pub enum Content {
     /// The text contents of the message.
+    #[pyo3(constructor = (_0))] // Makes the value accessible via content._0
     Text(String),
-    /// Array of content parts.
+    /// Array of content parts. // Makes the value accessible via content._0
+    #[pyo3(constructor = (_0))]
     Array(Vec<ContentPart>),
 }
 
@@ -661,6 +690,7 @@ impl From<Vec<String>> for Content {
 }
 
 /// Content type.
+#[pyclass(get_all)]
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
 pub enum ContentType {
     #[serde(rename = "text")]
@@ -671,6 +701,7 @@ pub enum ContentType {
 }
 
 /// Content part.
+#[pyclass(get_all)]
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ContentPart {
     /// The type of the content part.
@@ -701,6 +732,7 @@ impl ContentPart {
 }
 
 /// Image url.
+#[pyclass(get_all)]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ImageUrl {
     /// Either a URL of the image or the base64 encoded image data.
@@ -711,6 +743,7 @@ pub struct ImageUrl {
 }
 
 /// Tool call.
+#[pyclass(get_all)]
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ToolCall {
     /// Index (streaming)
@@ -731,6 +764,7 @@ pub struct ToolCall {
 }
 
 /// Function.
+#[pyclass(get_all)]
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Function {
     /// The name of the function to call.
@@ -742,6 +776,7 @@ pub struct Function {
 }
 
 /// Custom.
+#[pyclass(get_all)]
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Custom {
     /// The name of the custom tool to call.
@@ -753,38 +788,50 @@ pub struct Custom {
 }
 
 /// Chat completion response.
+#[pyclass]
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ChatCompletion {
     /// A unique identifier for the chat completion.
+    #[pyo3(get)]
     pub id: String,
     /// The object type, which is always `chat.completion`.
+    #[pyo3(get)]
     pub object: String,
     /// The Unix timestamp (in seconds) of when the chat completion was created.
+    #[pyo3(get)]
     pub created: i64,
     /// The model used for the chat completion.
+    #[pyo3(get)]
     pub model: String,
     /// A list of chat completion choices. Can be more than one if n is greater than 1.
+    #[pyo3(get)]
     pub choices: Vec<ChatCompletionChoice>,
     /// Usage statistics for the completion request.
+    #[pyo3(get)]
     pub usage: Usage,
     /// Prompt logprobs.
+    #[pyo3(get)]
     pub prompt_logprobs: Option<Vec<Option<HashMap<String, Logprob>>>>,
     /// This fingerprint represents the backend configuration that the model runs with.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[pyo3(get)]
     pub system_fingerprint: Option<String>,
     /// The service tier used for processing the request.
     /// This field is only included if the `service_tier` parameter is specified in the request.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[pyo3(get)]
     pub service_tier: Option<String>,
     /// Detections
     #[serde(skip_serializing_if = "Option::is_none")]
     pub detections: Option<CompletionDetections>,
     /// Warnings
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[pyo3(get)]
     pub warnings: Vec<CompletionDetectionWarning>,
 }
 
 /// Helper to accept both string and integer for stop_reason.
+#[pyclass(get_all)]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(untagged)]
 pub enum StopReason {
@@ -793,6 +840,7 @@ pub enum StopReason {
 }
 
 /// Chat completion choice.
+#[pyclass(get_all)]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ChatCompletionChoice {
     /// The index of the choice in the list of choices.
@@ -808,6 +856,7 @@ pub struct ChatCompletionChoice {
 }
 
 /// Chat completion logprobs.
+#[pyclass(get_all)]
 #[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq)]
 pub struct ChatCompletionLogprobs {
     /// A list of message content tokens with log probability information.
@@ -819,6 +868,7 @@ pub struct ChatCompletionLogprobs {
 }
 
 /// Chat completion logprob.
+#[pyclass(get_all)]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ChatCompletionLogprob {
     /// The token.
@@ -832,6 +882,7 @@ pub struct ChatCompletionLogprob {
 }
 
 /// Chat completion top logprob.
+#[pyclass(get_all)]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ChatCompletionTopLogprob {
     /// The token.
@@ -843,32 +894,42 @@ pub struct ChatCompletionTopLogprob {
 }
 
 /// Streaming chat completion chunk.
+#[pyclass]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ChatCompletionChunk {
     /// A unique identifier for the chat completion. Each chunk has the same ID.
+    #[pyo3(get)]
     pub id: String,
     /// The object type, which is always `chat.completion.chunk`.
+    #[pyo3(get)]
     pub object: String,
     /// The Unix timestamp (in seconds) of when the chat completion was created. Each chunk has the same timestamp.
+    #[pyo3(get)]
     pub created: i64,
     /// The model to generate the completion.
+    #[pyo3(get)]
     pub model: String,
     /// This fingerprint represents the backend configuration that the model runs with.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[pyo3(get)]
     pub system_fingerprint: Option<String>,
     /// A list of chat completion choices.
+    #[pyo3(get)]
     pub choices: Vec<ChatCompletionChunkChoice>,
     /// The service tier used for processing the request.
     /// This field is only included if the service_tier parameter is specified in the request.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[pyo3(get)]
     pub service_tier: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[pyo3(get)]
     pub usage: Option<Usage>,
     /// Detections
     #[serde(skip_serializing_if = "Option::is_none")]
     pub detections: Option<CompletionDetections>,
     /// Warnings
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[pyo3(get)]
     pub warnings: Vec<CompletionDetectionWarning>,
 }
 
@@ -890,6 +951,7 @@ impl Default for ChatCompletionChunk {
 }
 
 /// Streaming chat completion chunk choice.
+#[pyclass(get_all)]
 #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ChatCompletionChunkChoice {
     /// The index of the choice in the list of choices.
@@ -905,6 +967,7 @@ pub struct ChatCompletionChunkChoice {
 }
 
 /// Streaming chat completion delta.
+#[pyclass(get_all)]
 #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ChatCompletionDelta {
     /// The role of the author of this message.
@@ -922,28 +985,37 @@ pub struct ChatCompletionDelta {
 }
 
 /// Completion (legacy) response. Also used for streaming.
+#[pyclass]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Completion {
     /// A unique identifier for the completion.
+    #[pyo3(get)]
     pub id: String,
     /// The object type, which is always `text_completion`.
+    #[pyo3(get)]
     pub object: String,
     /// The Unix timestamp (in seconds) of when the chat completion was created.
+    #[pyo3(get)]
     pub created: i64,
     /// The model used for the completion.
+    #[pyo3(get)]
     pub model: String,
     /// A list of completion choices. Can be more than one if n is greater than 1.
+    #[pyo3(get)]
     pub choices: Vec<CompletionChoice>,
     /// Usage statistics for the completion request.
+    #[pyo3(get)]
     pub usage: Option<Usage>,
     /// This fingerprint represents the backend configuration that the model runs with.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[pyo3(get)]
     pub system_fingerprint: Option<String>,
     /// Detections
     #[serde(skip_serializing_if = "Option::is_none")]
     pub detections: Option<CompletionDetections>,
     /// Warnings
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[pyo3(get)]
     pub warnings: Vec<CompletionDetectionWarning>,
 }
 
@@ -964,6 +1036,7 @@ impl Default for Completion {
 }
 
 /// Completion (legacy) choice.
+#[pyclass(get_all)]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct CompletionChoice {
     /// The index of the choice in the list of choices.
@@ -982,6 +1055,7 @@ pub struct CompletionChoice {
 }
 
 /// Completion logprobs.
+#[pyclass(get_all)]
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Default)]
 pub struct CompletionLogprobs {
     /// Tokens generated by the model.
@@ -995,6 +1069,7 @@ pub struct CompletionLogprobs {
 }
 
 /// Logprob.
+#[pyclass(get_all)]
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub struct Logprob {
     /// The logprob of the chosen token
@@ -1006,6 +1081,7 @@ pub struct Logprob {
 }
 
 /// Completion usage statistics.
+#[pyclass(get_all)]
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Usage {
     /// Number of tokens in the prompt.
@@ -1023,6 +1099,7 @@ pub struct Usage {
 }
 
 /// Completion token details.
+#[pyclass(get_all)]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct CompletionTokenDetails {
     pub audio_tokens: u32,
@@ -1030,6 +1107,7 @@ pub struct CompletionTokenDetails {
 }
 
 /// Prompt token details.
+#[pyclass(get_all)]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PromptTokenDetails {
     pub audio_tokens: u32,
@@ -1037,6 +1115,7 @@ pub struct PromptTokenDetails {
 }
 
 /// Stop tokens.
+#[pyclass(get_all)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum StopTokens {
@@ -1045,6 +1124,7 @@ pub enum StopTokens {
 }
 
 /// Error response v1, for backwards compatability.
+#[pyclass(get_all)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ErrorResponseV1 {
     pub object: String,
@@ -1056,12 +1136,14 @@ pub struct ErrorResponseV1 {
 }
 
 /// Error response v2. vLLM >= v0.10.1.
+#[pyclass(get_all)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ErrorResponseV2 {
     pub error: ErrorInfo,
 }
 
 /// Error info.
+#[pyclass(get_all)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ErrorInfo {
     pub message: String,
@@ -1072,6 +1154,7 @@ pub struct ErrorInfo {
 }
 
 /// Error response.
+#[pyclass(get_all)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum ErrorResponse {
@@ -1169,6 +1252,7 @@ pub struct CompletionOutputDetections {
 }
 
 /// Guardrails completion detection warning.
+#[pyclass(get_all)]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct CompletionDetectionWarning {
     r#type: DetectionWarningReason,

@@ -31,26 +31,47 @@ pub(crate) use utils::AsUriExt;
 
 use pyo3::prelude::*;
 
-use crate::models::{
-    ContextDocsResult,
-    ContextDocsHttpRequest,
-    TextContentDetectionHttpRequest,
-    TextContentDetectionResult
+use crate::{
+    clients::openai::{DetectorConfig, Message},
+    models::{
+        ContextDocsHttpRequest, ContextDocsResult, TextContentDetectionHttpRequest,
+        TextContentDetectionResult,
+    },
 };
-
 
 /// A Python module implemented in Rust.
 #[pymodule]
 fn fms_guardrails_orchestr8(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
-
     // TODO: Replace this with proper implementation
     let _ = rustls::crypto::ring::default_provider().install_default();
 
     m.add_class::<orchestrator::python_interface::GuardrailsOrchestrator>()?;
+
+    // Text Content Detection
     m.add_class::<TextContentDetectionHttpRequest>()?; // TextContentDetectionRequest
     m.add_class::<TextContentDetectionResult>()?;
+
+    // Context Detection
     m.add_class::<clients::detector::ContextType>()?;
     m.add_class::<ContextDocsHttpRequest>()?;
     m.add_class::<ContextDocsResult>()?;
+
+    // Chat Completion Detection
+    m.add_class::<orchestrator::python_interface::PyChatCompletionsRequest>()?;
+    m.add_class::<orchestrator::python_interface::PyChatCompletionsStream>()?;
+    m.add_class::<clients::openai::ChatCompletion>()?;
+    m.add_class::<clients::openai::ChatCompletionChoice>()?;
+    m.add_class::<clients::openai::ChatCompletionLogprobs>()?;
+
+    // Completion Detection
+    m.add_class::<clients::openai::Content>()?;
+    m.add_class::<clients::openai::CompletionChoice>()?;
+    m.add_class::<clients::openai::Message>()?;
+    m.add_class::<clients::openai::StopReason>()?;
+    m.add_class::<clients::openai::CompletionLogprobs>()?;
+    m.add_class::<clients::openai::Logprob>()?;
+    m.add_class::<DetectorConfig>()?;
+    m.add_class::<Message>()?;
+
     Ok(())
 }

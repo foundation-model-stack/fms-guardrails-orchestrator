@@ -18,30 +18,41 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+use pyo3::prelude::*;
+
 use crate::{clients::detector, models};
 
 /// A detection.
+#[pyclass]
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Detection {
     /// Start index of the detection
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[pyo3(get)]
     pub start: Option<usize>,
     /// End index of the detection
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[pyo3(get)]
     pub end: Option<usize>,
     /// Text corresponding to the detection
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[pyo3(get)]
     pub text: Option<String>,
     /// ID of the detector
+    #[pyo3(get)]
     pub detector_id: Option<String>,
     /// Type of detection
+    #[pyo3(get)]
     pub detection_type: String,
     /// Detection class
+    #[pyo3(get)]
     pub detection: String,
     /// Confidence level of the detection class
+    #[pyo3(get)]
     pub score: f64,
     /// Detection evidence
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[pyo3(get)]
     pub evidence: Vec<DetectionEvidence>,
     /// Detection metadata
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -49,6 +60,7 @@ pub struct Detection {
 }
 
 /// Detection evidence.
+#[pyclass[get_all]]
 #[derive(Default, Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct DetectionEvidence {
     /// Evidence name
@@ -65,6 +77,7 @@ pub struct DetectionEvidence {
 }
 
 /// Additional detection evidence.
+#[pyclass[get_all]]
 #[derive(Default, Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Evidence {
     pub name: String,
