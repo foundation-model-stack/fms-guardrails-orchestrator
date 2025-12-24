@@ -55,9 +55,9 @@ opentelemetry-otlp = { version = "0.31.0", features = [
 opentelemetry_sdk = { version = "0.31.0", features = ["rt-tokio", "metrics"] }
 pin-project-lite = "0.2.16"
 prost = "0.14.1"
-pyo3 = { version = "0.26.0", features = ["extension-module"]}
-pyo3-async-runtimes = { version = "0.26.0", features = ["attributes", "tokio-runtime"] }
-pythonize = "0.26.0"
+pyo3 = { version = "0.27.2", features = ["extension-module", "serde", "hashbrown"]}
+pyo3-async-runtimes = { version = "0.27.0", features = ["attributes", "tokio-runtime"] }
+pythonize = "0.27.0"
 reqwest = { version = "0.12.25", features = [
     "blocking",
     "rustls-tls",
