@@ -1,9 +1,14 @@
 import asyncio
 import logging
 
+from openai.types.chat import ChatCompletionMessage
 from fms_guardrails_orchestr8 import (
+    ChatCompletionsRequest,
+    ChatCompletion,
+    DetectorConfig,
     GuardrailsOrchestrator,
     # DetectorParams,
+    # ChatCompletionMessage, # Can be imported from openai.types
     TextContentDetectionRequest,
     TextContentDetectionResult,
 )
@@ -19,9 +24,6 @@ CONFIG_FILE = "config/local_config.yaml"
 orch8 = GuardrailsOrchestrator(config_path=CONFIG_FILE, start_up_health_check=False)
 
 async def detect_content():
-    # Showing async initialization
-    # orch8 = await get_guardrails_orchestrator(config_path=CONFIG_FILE, start_up_health_check=False)
-
     try:
         request = TextContentDetectionRequest(
             content="This is stupid text.",
@@ -39,22 +41,41 @@ async def detect_content():
     print(result)
 
 
-# async def detect_context():
-#     request = PyContextDocsHttpRequest(
-#         content="This is a good document",
-#         context_type=PyContextType.DOCUMENT,
-#         context=["Document 1", "Document 2", "Document 3"],
-#         detectors={
-#                 "granite-guardian-context": {
-#                     "risk_name": "context_relevance"
-#                 }
-#         }
-#     )
-#     result = await orch8.detect_context_documents(request)
-#     print(result)
+async def chat_completion_detection():
+    stream = False
+    try:
+        request = ChatCompletionsRequest(
+            model="meta-llama/Llama-3.2-1B-Instruct",
+            messages=[ChatCompletionMessage(
+                content="This is completely stupid",
+                role="assistant"
+            ).dict()], # Note: Currently we need to convert these to dict form or pass dict directly or use our own typ
+            detectors=DetectorConfig(
+                input = {
+                    "en_syntax_slate.38m.hap": {}
+                },
+            ),
+            stream=stream,
+        )
+        if not stream:
+            result = await orch8.chat_completions_detection(request)
+            print(result)
+            breakpoint()
+        else:
+            async for response in await orch8.chat_completions_detection(request):
+                if len(response.choices) > 0:
+                    print(response.choices[0].delta.content)
+                if len(response.detections) > 0:
+                    print(response.detections)
 
+                # breakpoint()
+    except Exception as ex:
+        print(ex)
+        raise ex
 
 
 if __name__ == "__main__":
-    asyncio.run(detect_content())
+    # asyncio.run(detect_content())
     # asyncio.run(detect_context())
+
+    asyncio.run(chat_completion_detection())
