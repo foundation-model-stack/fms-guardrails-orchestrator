@@ -85,7 +85,6 @@ impl GuardrailsOrchestrator {
         future_into_py(py, async move {
             match orchestrator.handle(task).await {
                 Ok(response) => {
-                    println!("Response: {:?}", response);
                     Ok(response)
                 }
                 // TODO: Handle errors properly with correct types
@@ -112,27 +111,11 @@ impl GuardrailsOrchestrator {
         future_into_py(py, async move {
             match orchestrator.handle(task).await {
                 Ok(ChatCompletionsResponse::Unary(response)) => {
-                    println!("Response: {:?}", response);
-                    // response.into_pyobject(py)
-                    // response.into_pyobject(py).map(|obj| obj.into())
-                    // Ok(Python::attach(|py| pythonize(py, &*response)))
-                    // Ok(Python::attach(|py| response.into_py_any(py)))
-                    // let result_py_object: Py<PyAny> = Python::attach(|py| {
-                    //     let bound_any = pythonize(py, &response)
-                    //         .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
-                    //     // 3. .unbind() converts Bound<'py, PyAny> to Py<PyAny> (aka PyObject)
-                    //     // This "erases" the lifetime so it can safely leave the closure
-                    //     Ok::<pyo3::Py<pyo3::PyAny>, PyErr>(bound_any.unbind())
-                    // })?;
-
-                    // Ok(result_py_object)
                     let py_obj = Python::attach(|py| {
                         let bound_any = Bound::new(py, *response)?.into_any();
 
-                        Ok::<PyObject, PyErr>(bound_any.unbind())
-                        // bound_any.unbind()
-                        // bound_any
+                        Ok::<Py<PyAny>, PyErr>(bound_any.unbind())
                     });
                     // Ok(py_obj)
                     println!("{:?}", py_obj);
@@ -143,23 +126,10 @@ impl GuardrailsOrchestrator {
                     let py_stream = PyChatCompletionsStream {
                         receiver: Arc::new(Mutex::new(receiver_stream)),
                     };
-                    // Ok(Python::attach(|py| pythonize(py, py_stream)))
-                    // Ok(Python::attach(|py| py_stream.into_py_any(py)))
-                    // py_stream.into_pyobject(py)
-                    // py_stream.into_pyobject(py).map(|obj| obj.into())
-                    // let result_py_object: Py<PyAny> = Python::attach(|py| {
-                    //     let bound_any = pythonize(py, &py_stream)
-                    //         .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
-
-                    //     // 3. .unbind() converts Bound<'py, PyAny> to Py<PyAny> (aka PyObject)
-                    //     // This "erases" the lifetime so it can safely leave the closure
-                    //     Ok::<pyo3::Py<pyo3::PyAny>, PyErr>(bound_any.unbind())
-                    // })?;
-                    // Ok(result_py_object)
 
                     let py_obj = Python::attach(|py| {
                         let bound_any = Bound::new(py, py_stream)?.into_any();
-                        Ok::<PyObject, PyErr>(bound_any.unbind())
+                        Ok::<Py<PyAny>, PyErr>(bound_any.unbind())
                     });
                     py_obj
                 }
