@@ -84,9 +84,7 @@ impl GuardrailsOrchestrator {
 
         future_into_py(py, async move {
             match orchestrator.handle(task).await {
-                Ok(response) => {
-                    Ok(response)
-                }
+                Ok(response) => Ok(response),
                 // TODO: Handle errors properly with correct types
                 Err(error) => Err(PyTypeError::new_err(error.to_string())),
             }
@@ -111,7 +109,6 @@ impl GuardrailsOrchestrator {
         future_into_py(py, async move {
             match orchestrator.handle(task).await {
                 Ok(ChatCompletionsResponse::Unary(response)) => {
-
                     let py_obj = Python::attach(|py| {
                         let bound_any = Bound::new(py, *response)?.into_any();
 
