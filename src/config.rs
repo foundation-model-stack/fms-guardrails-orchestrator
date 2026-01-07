@@ -73,6 +73,8 @@ pub struct ServiceConfig {
     pub hostname: String,
     /// Port for service
     pub port: Option<u16>,
+    /// Path prefix for service endpoints (e.g., "/namespace/service-name")
+    pub path_prefix: Option<String>,
     /// Timeout in seconds for request to be handled
     pub request_timeout: Option<u64>,
     /// TLS provider info
@@ -99,6 +101,7 @@ impl ServiceConfig {
         Self {
             hostname,
             port: Some(port),
+            path_prefix: None,
             request_timeout: None,
             tls: None,
             grpc_dns_probe_interval: None,
