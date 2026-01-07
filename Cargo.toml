@@ -1,6 +1,6 @@
 [package]
 name = "fms-guardrails-orchestr8"
-version = "0.18.2"
+version = "0.18.3"
 edition = "2024"
 authors = ["Evaline Ju", "Gaurav Kumbhat", "Dan Clark"]
 description = "Foundation models orchestration server"
@@ -16,10 +16,10 @@ path = "src/main.rs"
 [dependencies]
 anyhow = "1.0.100"
 async-trait = "0.1.89"
-axum = { version = "0.8.7", features = ["json"] }
+axum = { version = "0.8.8", features = ["json"] }
 axum-extra = { version = "0.10.3", features = ["json-lines"] }
 bytes = "1.11.0"
-clap = { version = "4.5.53", features = ["derive", "env"] }
+clap = { version = "4.5.54", features = ["derive", "env"] }
 dashmap = "6.1.0"
 eventsource-stream = "0.2.3"
 futures = "0.3.31"
@@ -53,24 +53,24 @@ opentelemetry-otlp = { version = "0.31.0", features = [
 opentelemetry_sdk = { version = "0.31.0", features = ["rt-tokio", "metrics"] }
 pin-project-lite = "0.2.16"
 prost = "0.14.1"
-reqwest = { version = "0.12.25", features = [
+reqwest = { version = "0.12.28", features = [
     "blocking",
     "rustls-tls",
     "json",
     "stream",
 ] }
-rustls = { version = "0.23.35", default-features = false, features = [
+rustls = { version = "0.23.36", default-features = false, features = [
     "ring",
     "std",
 ] }
 rustls-pemfile = "2.2.0"
-rustls-pki-types = "1.13.1"
+rustls-pki-types = "1.13.2"
 rustls-webpki = { version = "0.103.8", features = ["ring"] }
 serde = { version = "1.0.228", features = ["derive"] }
-serde_json = { version = "1.0.145", features = ["preserve_order"] }
+serde_json = { version = "1.0.149", features = ["preserve_order"] }
 serde_yml = "0.0.12"
 thiserror = "2.0.17"
-tokio = { version = "1.48.0", features = [
+tokio = { version = "1.49.0", features = [
     "rt",
     "rt-multi-thread",
     "parking_lot",
@@ -81,7 +81,7 @@ tokio = { version = "1.48.0", features = [
 tokio-rustls = { version = "0.26.4", default-features = false, features = [
     "ring",
 ] }
-tokio-stream = { version = "0.1.17", features = ["sync"] }
+tokio-stream = { version = "0.1.18", features = ["sync"] }
 tonic = { version = "0.14.2", features = [
     "tls-ring",
     "tls-native-roots",
@@ -90,10 +90,10 @@ tonic = { version = "0.14.2", features = [
 tonic-prost = "0.14.2"
 tower = { version = "0.5.2", features = ["timeout"] }
 tower-http = { version = "0.6.8", features = ["trace"] }
-tracing = "0.1.43"
+tracing = "0.1.44"
 tracing-opentelemetry = "0.32.0"
 tracing-subscriber = { version = "0.3.22", features = ["json", "env-filter"] }
-url = "2.5.7"
+url = "2.5.8"
 uuid = { version = "1.19.0", features = ["v4"] }
 
 [build-dependencies]
