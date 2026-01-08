@@ -14,7 +14,7 @@
  limitations under the License.
 
 */
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use futures::{StreamExt, future::try_join_all};
 use opentelemetry::trace::TraceId;
@@ -38,6 +38,14 @@ use crate::{
         },
     },
 };
+
+/// Timeout duration when waiting for completion state entries to become available.
+/// This handles the race condition where detectors respond faster than the LLM stream inserts completions.
+///
+/// The waiting mechanism uses cooperative yielding via `tokio::task::yield_now()`, not busy waiting.
+/// Each yield returns immediately in the normal case (microseconds), so this timeout only matters
+/// if the generation server is exceptionally slow or experiencing issues.
+const COMPLETION_WAIT_TIMEOUT: Duration = Duration::from_secs(30);
 
 pub async fn handle_streaming(
     ctx: Arc<Context>,
@@ -563,14 +571,33 @@ async fn handle_whole_doc_detection(
 }
 
 /// Builds a response with output detections.
-fn output_detection_response(
+async fn output_detection_response(
     completion_state: &Arc<CompletionState<ChatCompletionChunk>>,
     choice_index: u32,
     chunk: Chunk,
     detections: Vec<Detection>,
 ) -> Result<ChatCompletionChunk, Error> {
-    // Get chat completions for this choice index
-    let chat_completions = completion_state.completions.get(&choice_index).unwrap();
+    // Wait for entry to exist (yields to other tasks until ready)
+    let chat_completions = {
+        let wait_for_entry = async {
+            loop {
+                if let Some(entry) = completion_state.completions.get(&choice_index) {
+                    return entry;
+                }
+                tokio::task::yield_now().await;
+            }
+        };
+
+        match tokio::time::timeout(COMPLETION_WAIT_TIMEOUT, wait_for_entry).await {
+            Ok(entry) => entry,
+            Err(_) => {
+                return Err(Error::Other(format!(
+                    "completion entry for choice_index {} not ready after {:?} timeout",
+                    choice_index, COMPLETION_WAIT_TIMEOUT
+                )));
+            }
+        }
+    };
     // Get range of chat completions for this chunk
     let chat_completions = chat_completions
         .range(chunk.input_start_index..=chunk.input_end_index)
@@ -709,6 +736,7 @@ async fn process_detection_batch_stream(
             Ok((choice_index, chunk, detections)) => {
                 let input_end_index = chunk.input_end_index;
                 match output_detection_response(&completion_state, choice_index, chunk, detections)
+                    .await
                 {
                     Ok(chat_completion) => {
                         // Send chat completion to response channel
@@ -718,8 +746,29 @@ async fn process_detection_batch_stream(
                             return;
                         }
                         // If this is the final chat completion chunk with content, send chat completion chunk with finish reason
-                        let chat_completions =
-                            completion_state.completions.get(&choice_index).unwrap();
+                        // Wait for entry to exist (yields to other tasks until ready)
+                        let chat_completions = {
+                            let wait_for_entry = async {
+                                loop {
+                                    if let Some(entry) =
+                                        completion_state.completions.get(&choice_index)
+                                    {
+                                        return entry;
+                                    }
+                                    tokio::task::yield_now().await;
+                                }
+                            };
+
+                            match tokio::time::timeout(COMPLETION_WAIT_TIMEOUT, wait_for_entry)
+                                .await
+                            {
+                                Ok(entry) => entry,
+                                Err(_) => {
+                                    error!(%trace_id, %choice_index, "completion entry not ready after {:?} timeout", COMPLETION_WAIT_TIMEOUT);
+                                    return;
+                                }
+                            }
+                        };
                         if chat_completions.keys().rev().nth(1) == Some(&input_end_index)
                             && let Some((_, chat_completion)) = chat_completions.last_key_value()
                             && chat_completion

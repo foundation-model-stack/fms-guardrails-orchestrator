@@ -5512,3 +5512,142 @@ async fn detector_internal_server_error() -> Result<(), anyhow::Error> {
 
     Ok(())
 }
+
+#[test(tokio::test)]
+async fn fast_detector_race_condition() -> Result<(), anyhow::Error> {
+    // This test verifies the fix for the race condition where detectors respond faster
+    // than the LLM stream inserts completions into shared state.
+
+    let mut openai_server = MockServer::new_http("openai");
+    openai_server.mock(|when, then| {
+        when.post()
+            .path(CHAT_COMPLETIONS_ENDPOINT)
+            .json(json!({
+                "stream": true,
+                "model": "test-0B",
+                "messages": [
+                    Message { role: Role::User, content: Some(Content::Text("Hello!".into())), ..Default::default()},
+                ]
+            })
+        );
+        then.text_stream(sse([
+            ChatCompletionChunk {
+                id: "chatcmpl-test".into(),
+                object: "chat.completion.chunk".into(),
+                created: 1749227854,
+                model: "test-0B".into(),
+                choices: vec![ChatCompletionChunkChoice {
+                    index: 0,
+                    delta: ChatCompletionDelta {
+                        role: Some(Role::Assistant),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+            ChatCompletionChunk {
+                id: "chatcmpl-test".into(),
+                object: "chat.completion.chunk".into(),
+                created: 1749227854,
+                model: "test-0B".into(),
+                choices: vec![ChatCompletionChunkChoice {
+                    index: 0,
+                    delta: ChatCompletionDelta {
+                        content: Some("Hi!".into()),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+            ChatCompletionChunk {
+                id: "chatcmpl-test".into(),
+                object: "chat.completion.chunk".into(),
+                created: 1749227854,
+                model: "test-0B".into(),
+                choices: vec![ChatCompletionChunkChoice {
+                    index: 0,
+                    finish_reason: Some("stop".into()),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+        ]));
+    });
+
+    let mut sentence_chunker_server = MockServer::new_grpc("sentence_chunker");
+    sentence_chunker_server.mock(|when, then| {
+        when.post()
+            .path(CHUNKER_STREAMING_ENDPOINT)
+            .header(CHUNKER_MODEL_ID_HEADER_NAME, "sentence_chunker")
+            .pb_stream(vec![BidiStreamingChunkerTokenizationTaskRequest {
+                text_stream: "Hi!".into(),
+                input_index_stream: 1,
+            }]);
+        then.pb_stream(vec![ChunkerTokenizationStreamResult {
+            results: vec![Token {
+                start: 0,
+                end: 3,
+                text: "Hi!".into(),
+            }],
+            token_count: 0,
+            processed_index: 3,
+            start_index: 0,
+            input_start_index: 1,
+            input_end_index: 1,
+        }]);
+    });
+
+    // Fast detector that responds immediately with no detections
+    let mut pii_detector_sentence_server = MockServer::new_http("pii_detector_sentence");
+    pii_detector_sentence_server.mock(|when, then| {
+        when.post()
+            .path(TEXT_CONTENTS_DETECTOR_ENDPOINT)
+            .header("detector-id", PII_DETECTOR_SENTENCE)
+            .json(ContentAnalysisRequest {
+                contents: vec!["Hi!".into()],
+                detector_params: DetectorParams::default(),
+            });
+        // Detector responds immediately with no detections
+        then.json(json!([[]]));
+    });
+
+    let test_server = TestOrchestratorServer::builder()
+        .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
+        .openai_server(&openai_server)
+        .chunker_servers([&sentence_chunker_server])
+        .detector_servers([&pii_detector_sentence_server])
+        .build()
+        .await?;
+
+    let response = test_server
+        .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
+        .json(&json!({
+            "stream": true,
+            "model": "test-0B",
+            "detectors": {
+                "input": {},
+                "output": {
+                    "pii_detector_sentence": {}
+                }
+            },
+            "messages": [
+                Message { role: Role::User, content: Some(Content::Text("Hello!".into())), ..Default::default()},
+            ],
+        }))
+        .send()
+        .await?;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let sse_stream: SseStream<ChatCompletionChunk> = SseStream::new(response.bytes_stream());
+    let messages = sse_stream.try_collect::<Vec<_>>().await?;
+
+    // The key assertion: request completes successfully without panicking
+
+    assert!(messages.len() >= 2, "should complete without panicking");
+    assert_eq!(messages[0].choices[0].delta.role, Some(Role::Assistant));
+    assert!(messages.last().unwrap().choices[0].finish_reason.is_some());
+
+    Ok(())
+}
