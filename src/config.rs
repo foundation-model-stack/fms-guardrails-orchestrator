@@ -21,7 +21,7 @@ use std::{
 };
 
 use serde::Deserialize;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
 use crate::{
     clients::{chunker::DEFAULT_CHUNKER_ID, is_valid_hostname},

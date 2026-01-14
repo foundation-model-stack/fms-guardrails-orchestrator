@@ -16,7 +16,6 @@
 */
 
 use hyper::StatusCode;
-use tracing::error;
 
 /// Client errors.
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
