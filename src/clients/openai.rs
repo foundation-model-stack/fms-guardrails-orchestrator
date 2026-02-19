@@ -37,6 +37,7 @@ use crate::{
     models::{DetectionWarningReason, DetectorParams, ValidationError},
     orchestrator::{self, types::Detection},
 };
+use uuid::Uuid;
 
 const DEFAULT_PORT: u16 = 8080;
 
@@ -87,19 +88,72 @@ impl OpenAiClient {
         }
     }
 
+    // pub async fn completions(
+    //     &self,
+    //     request: CompletionsRequest,
+    //     headers: HeaderMap,
+    // ) -> Result<CompletionsResponse, Error> {
+    //     let url = self.client.endpoint(COMPLETIONS_ENDPOINT);
+    //     if let Some(true) = request.stream {
+    //         let rx = self.handle_streaming(url, request, headers).await?;
+    //         Ok(CompletionsResponse::Streaming(rx))
+    //     } else {
+    //         let completion = self.handle_unary(url, request, headers).await?;
+    //         Ok(CompletionsResponse::Unary(completion))
+    //     }
+    // }
+
     pub async fn completions(
-        &self,
-        request: CompletionsRequest,
-        headers: HeaderMap,
+    &self,
+    request: CompletionsRequest,
+    mut headers: HeaderMap,
     ) -> Result<CompletionsResponse, Error> {
-        let url = self.client.endpoint(COMPLETIONS_ENDPOINT);
-        if let Some(true) = request.stream {
-            let rx = self.handle_streaming(url, request, headers).await?;
-            Ok(CompletionsResponse::Streaming(rx))
-        } else {
-            let completion = self.handle_unary(url, request, headers).await?;
-            Ok(CompletionsResponse::Unary(completion))
-        }
+    // ADD ROUTER HEADERS
+    headers.insert(
+        "x-model-name",
+        request.model.parse().map_err(|e| Error::Http {
+            code: StatusCode::BAD_REQUEST,
+            message: format!("Invalid model name: {}", e),
+        })?
+    );
+    
+    headers.insert(
+        "x-method",
+        "generate".parse().map_err(|e| Error::Http {
+            code: StatusCode::BAD_REQUEST,
+            message: format!("Invalid method: {}", e),
+        })?
+    );
+    
+    headers.insert(
+        "x-sla-seconds",
+        "60".parse().map_err(|e| Error::Http {
+            code: StatusCode::BAD_REQUEST,
+            message: format!("Invalid SLA: {}", e),
+        })?
+    );
+    
+    if !headers.contains_key("x-global-transaction-id") {
+        headers.insert(
+            "x-global-transaction-id",
+            Uuid::new_v4().to_string().parse()
+                .map_err(|e| Error::Http {
+                    code: StatusCode::BAD_REQUEST,
+                    message: format!("Invalid transaction ID: {}", e),
+                })?
+        );
+    }
+    
+    // CHANGE ENDPOINT TO ROUTER'S /handle
+    if let Some(true) = request.stream {
+        let url = self.client.endpoint("/handle-stream");
+        let rx = self.handle_streaming(url, request, headers).await?;
+        Ok(CompletionsResponse::Streaming(rx))
+    } else {
+        let url = self.client.endpoint("/handle");
+        let completion = self.handle_unary(url, request, headers).await?;
+        Ok(CompletionsResponse::Unary(completion))
+    }
     }
 
     pub async fn tokenize(
