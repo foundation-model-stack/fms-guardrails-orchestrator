@@ -132,8 +132,12 @@ async fn create_clients(config: &OrchestratorConfig) -> Result<ClientMap, Error>
 
     // Create chat completions client
     if let Some(openai) = &config.openai {
-        let openai_client =
-            OpenAiClient::new(&openai.service, openai.health_service.as_ref()).await?;
+        let openai_client = OpenAiClient::new(
+            &openai.service,
+            openai.health_service.as_ref(),
+            openai.router.clone(),
+        )
+        .await?;
         clients.insert("openai".to_string(), openai_client);
     }
 
