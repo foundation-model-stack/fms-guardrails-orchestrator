@@ -52,14 +52,9 @@ const ROUTER_HANDLE_STREAM_ENDPOINT: &str = "/ml/v1-private/router/handle-stream
 
 #[derive(Clone)]
 pub struct OpenAiClient {
-    /// HTTP client for the direct model endpoint (e.g. `vllm-router-svc:443`).
     client: HttpClient,
     health_client: Option<HttpClient>,
-    /// HTTP client for the router sender sidecar (e.g. `localhost:19080`).
-    /// Present only when `router_config.enabled` is true.
     router_client: Option<HttpClient>,
-    /// Router configuration. When `Some` and `enabled: true`, `completions()` routes
-    /// requests through the router sender sidecar instead of calling the model directly.
     router_config: Option<RouterConfig>,
 }
 
@@ -119,8 +114,6 @@ impl OpenAiClient {
         request: CompletionsRequest,
         headers: HeaderMap,
     ) -> Result<CompletionsResponse, Error> {
-        // Check if router is enabled; if so, route through the router sender sidecar.
-        // Otherwise, fall back to a direct HTTP call to the model endpoint.
         let use_router = self
             .router_config
             .as_ref()
@@ -141,34 +134,15 @@ impl OpenAiClient {
         }
     }
 
-    /// Routes a completions request through the router sender sidecar via Redis queues.
-    ///
-    /// **Streaming** (`stream: true`):
-    ///   - Uses `x-method: completions_stream`
-    ///   - Body = WatsonX `TextGenRequest` JSON: `{"model_id":"...","input":"...","parameters":{...}}`
-    ///   - The receiver's vLLM backend (`handleCompletionsStream`) deserializes this,
-    ///     converts it to a vLLM request, and streams the response back.
-    ///   - Each SSE event from the router sender is wrapped in:
-    ///     `event: msg\ndata: {"content":"<vllm-json>","metrics":{...}}`
-    ///
-    /// **Non-streaming** (`stream: false` or absent):
-    ///   - Uses `x-method: http_pass`
-    ///   - Body = `HttpPassPayload` wrapping the vLLM request JSON
-    ///   - The receiver's http_pass backend forwards the request directly to vLLM.
-    ///
-    /// This matches exactly how the inference proxy calls the router for vLLM completions.
     async fn completions_via_router(
         &self,
         request: CompletionsRequest,
         mut headers: HeaderMap,
     ) -> Result<CompletionsResponse, Error> {
-        // SAFETY: caller guarantees router_config is Some and enabled.
         let router = self.router_config.as_ref().expect("router config must be present");
 
         let model_name = &request.model;
 
-        // --- Common outer HTTP headers sent to the router sender ---
-        // x-model-name: used by the sender to pick the correct Redis queue.
         headers.insert(
             "x-model-name",
             model_name.parse().map_err(|e| Error::Http {
@@ -176,7 +150,7 @@ impl OpenAiClient {
                 message: format!("invalid model name for x-model-name header: {e}"),
             })?,
         );
-        // x-reply-type: "redis" (reply goes back via Redis) or "http".
+
         headers.insert(
             "x-reply-type",
             router.reply_type.parse().map_err(|e| Error::Http {
@@ -184,7 +158,7 @@ impl OpenAiClient {
                 message: format!("failed to set x-reply-type header: {e}"),
             })?,
         );
-        // x-sla-seconds: queue timeout in seconds.
+
         headers.insert(
             "x-sla-seconds",
             router.sla_seconds.to_string().parse().map_err(|e| Error::Http {
@@ -193,7 +167,7 @@ impl OpenAiClient {
             })?,
         );
 
-        // Ensure a transaction ID exists; generate one if the caller didn't provide it.
+
         let transaction_id = if let Some(v) = headers.get("x-global-transaction-id") {
             v.to_str().unwrap_or("").to_string()
         } else {
@@ -208,20 +182,12 @@ impl OpenAiClient {
             tid
         };
 
-        // Use the dedicated router sender client (localhost:19080), not the direct model client.
         let router_client = self
             .router_client
             .as_ref()
             .expect("router_client must be present when router is enabled");
 
         if let Some(true) = request.stream {
-            // ---------------------------------------------------------------
-            // STREAMING PATH
-            // ---------------------------------------------------------------
-            // The inference proxy uses METHOD_COMPLETIONS_STREAM for streaming vLLM.
-            // The receiver's vLLM backend (handleCompletionsStream) expects a
-            // WatsonX TextGenRequest: {"model_id":"...","input":"...","parameters":{...}}
-            // It converts this to a vLLM CompletionsRequest internally.
             headers.insert(
                 "x-method",
                 "completions_stream".parse().map_err(|e| Error::Http {
@@ -230,8 +196,6 @@ impl OpenAiClient {
                 })?,
             );
 
-            // Build WatsonX TextGenRequest from the OpenAI CompletionsRequest.
-            // Fields: model_id (required), input (the prompt), parameters (extra params).
             let mut parameters: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
             for (key, value) in &request.extra {
                 if key != "detectors" && key != "_prompt_masks" && key != "stream" {
@@ -255,12 +219,6 @@ impl OpenAiClient {
             ).await?;
             Ok(CompletionsResponse::Streaming(rx))
         } else {
-            // ---------------------------------------------------------------
-            // NON-STREAMING PATH
-            // ---------------------------------------------------------------
-            // The inference proxy uses METHOD_HTTP_PASS for non-streaming vLLM.
-            // The receiver's http_pass backend expects an HttpPassPayload wrapping
-            // the vLLM CompletionsRequest JSON.
             headers.insert(
                 "x-method",
                 "http_pass".parse().map_err(|e| Error::Http {
@@ -269,7 +227,6 @@ impl OpenAiClient {
                 })?,
             );
 
-            // Build the clean vLLM request body (strip orchestrator-specific fields).
             let mut vllm_request = serde_json::json!({
                 "model": request.model,
                 "prompt": request.prompt,
@@ -282,23 +239,14 @@ impl OpenAiClient {
                 }
             }
 
-            // Serialise the vLLM request to bytes; serde will base64-encode it inside the
-            // JSON payload because the `payload` field is `[]byte` in the Go struct.
             let vllm_json_bytes = serde_json::to_vec(&vllm_request).map_err(|e| Error::Http {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
                 message: format!("failed to serialise vLLM request: {e}"),
             })?;
 
-            // Build HttpPassPayload — mirrors the Go struct used by the inference proxy:
-            //   type HttpPassPayload struct {
-            //       Method  string            `json:"method"`
-            //       Path    string            `json:"path"`
-            //       Headers map[string]string `json:"headers"`
-            //       Payload []byte            `json:"payload"`   // base64-encoded in JSON
-            //   }
             let http_pass_payload = serde_json::json!({
                 "method": "POST",
-                "path": COMPLETIONS_ENDPOINT,   // "/v1/completions"
+                "path": COMPLETIONS_ENDPOINT,   
                 "headers": {
                     "Content-Type": "application/json",
                     "x-request-id": transaction_id,
@@ -445,26 +393,6 @@ impl OpenAiClient {
         }
     }
 
-    /// Streaming handler for the router sender's `/handle-stream` endpoint when using
-    /// `x-method: completions_stream`.
-    ///
-    /// The receiver's vLLM backend converts each vLLM chunk to a WatsonX `TextGenResponse`
-    /// and the router sender wraps it in an SSE envelope:
-    /// ```
-    /// event: msg
-    /// data: {"content":"{\"model_id\":\"...\",\"results\":[{\"generated_text\":\"...\"}]}","metrics":{...}}
-    /// ```
-    ///
-    /// This method:
-    /// 1. Unwraps the router SSE envelope to get the `content` string
-    /// 2. Parses the WatsonX `TextGenResponse` from `content`
-    /// 3. Converts it to an OpenAI `Completion` struct
-    /// 4. Sends it to the channel
-    ///
-    /// Event types:
-    /// - `msg`  — data chunk; `content` is WatsonX `TextGenResponse` JSON
-    /// - `png`  — ping/keepalive; skip silently
-    /// - `err`  — error; `data` is an error string
     async fn handle_router_completions_stream(
         &self,
         client: &HttpClient,
@@ -494,8 +422,6 @@ impl OpenAiClient {
                                         let _ = tx.send(Err(error.into())).await;
                                         break;
                                     }
-                                    // "msg" (or default) — router envelope:
-                                    // {"content":"<watsonx-textgen-response-json>","metrics":{...}}
                                     _ => {
                                         // Step 1: parse the router envelope JSON
                                         let content_str = match serde_json::from_str::<serde_json::Value>(&event.data) {
@@ -569,12 +495,6 @@ impl OpenAiClient {
 
 }
 
-// ---------------------------------------------------------------------------
-// WatsonX TextGenResponse → OpenAI Completion conversion
-// ---------------------------------------------------------------------------
-
-/// Minimal WatsonX `TextGenResponse` for deserialization from the router sender stream.
-/// The receiver's vLLM backend converts each vLLM chunk to this format.
 #[derive(Debug, Deserialize)]
 struct WatsonxTextGenResponse {
     model_id: String,
@@ -594,11 +514,6 @@ struct WatsonxTextGenResult {
     stop_reason: Option<String>,
 }
 
-/// Convert a WatsonX `TextGenResponse` to an OpenAI `Completion`.
-///
-/// The receiver's vLLM backend (`handleCompletionsStream`) converts each vLLM
-/// streaming chunk to WatsonX format. We convert it back to OpenAI format so
-/// the rest of the orchestrator pipeline can process it unchanged.
 fn watsonx_to_completion(resp: WatsonxTextGenResponse, model: &str) -> Completion {
     let model_id = if resp.model_id.is_empty() {
         model.to_string()
@@ -611,9 +526,6 @@ fn watsonx_to_completion(resp: WatsonxTextGenResponse, model: &str) -> Completio
         .into_iter()
         .enumerate()
         .map(|(i, result)| {
-            // Map WatsonX stop_reason to OpenAI finish_reason.
-            // WatsonX: "not_finished", "max_tokens", "eos_token", "stop_sequence", etc.
-            // OpenAI:  "stop", "length", null (still generating)
             let finish_reason = result.stop_reason.as_deref().and_then(|r| match r {
                 "not_finished" => None,
                 "max_tokens" => Some("length".to_string()),
@@ -632,9 +544,7 @@ fn watsonx_to_completion(resp: WatsonxTextGenResponse, model: &str) -> Completio
         })
         .collect();
 
-    // Build usage if we have token counts from the first result.
-    // (For streaming chunks, these are typically 0 except for the final chunk.)
-    let usage = None; // Token counts in streaming are per-chunk; skip for now.
+    let usage = None; 
 
     Completion {
         id: String::new(),

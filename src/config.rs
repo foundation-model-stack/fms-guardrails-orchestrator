@@ -151,43 +151,16 @@ pub struct GenerationConfig {
     pub service: ServiceConfig,
 }
 
-/// Router configuration for routing model calls via Redis queue through the router sender sidecar.
-///
-/// When `enabled` is true, the orchestrator connects to the router sender at `hostname:port`
-/// (typically `localhost:19080` — the sidecar in the same pod) and enqueues requests via Redis.
-/// When `enabled` is false, the orchestrator falls back to a direct HTTP call using
-/// `openai.service` (e.g. `vllm-router-svc:443`).
-///
-/// Example configmap entry:
-/// ```yaml
-/// openai:
-///   service:
-///     hostname: vllm-router-svc
-///     port: 443
-///   router:
-///     enabled: true
-///     hostname: localhost
-///     port: 19080
-///     sla_seconds: 60
-///     reply_type: redis
-/// ```
 #[derive(Default, Clone, Debug, Deserialize)]
 pub struct RouterConfig {
-    /// Enable router flow. If true, requests are enqueued via the router sender sidecar.
-    /// If false, direct HTTP calls are made to `openai.service`.
     #[serde(default)]
     pub enabled: bool,
-    /// Hostname of the router sender sidecar (typically `localhost`).
     #[serde(default = "default_router_hostname")]
     pub hostname: String,
-    /// Port the router sender sidecar listens on (typically `19080`).
     #[serde(default = "default_router_port")]
     pub port: u16,
-    /// SLA in seconds — how long the router will wait for a reply before timing out.
-    /// Defaults to 60 seconds.
     #[serde(default = "default_router_sla_seconds")]
     pub sla_seconds: u64,
-    /// Reply type: "redis" (default) or "http".
     #[serde(default = "default_router_reply_type")]
     pub reply_type: String,
 }
