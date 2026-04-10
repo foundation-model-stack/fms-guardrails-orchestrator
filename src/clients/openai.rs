@@ -261,15 +261,119 @@ impl OpenAiClient {
         }
     }
 
+    // pub async fn tokenize(
+    //     &self,
+    //     request: TokenizeRequest,
+    //     headers: HeaderMap,
+    // ) -> Result<TokenizeResponse, Error> {
+    //     let url = self.client.endpoint(TOKENIZE_ENDPOINT);
+    //     let response = self.handle_unary(url, request, headers).await?;
+    //     Ok(response)
+    // }
+
     pub async fn tokenize(
-        &self,
-        request: TokenizeRequest,
-        headers: HeaderMap,
-    ) -> Result<TokenizeResponse, Error> {
+    &self,
+    request: TokenizeRequest,
+    headers: HeaderMap,
+) -> Result<TokenizeResponse, Error> {
+    // Check if router is enabled
+    if self.router_config.is_some() && self.router_config.as_ref().unwrap().enabled {
+        // Route through router queue
+        self.tokenize_via_router(request, headers).await
+    } else {
+        // Direct call (legacy path)
         let url = self.client.endpoint(TOKENIZE_ENDPOINT);
         let response = self.handle_unary(url, request, headers).await?;
         Ok(response)
     }
+}
+
+async fn tokenize_via_router(
+    &self,
+    request: TokenizeRequest,
+    mut headers: HeaderMap,
+) -> Result<TokenizeResponse, Error> {
+    let router = self.router_config.as_ref().expect("router config must be present");
+    
+    // Add router headers
+    headers.insert(
+        "x-model-name",
+        request.model.parse().map_err(|e| Error::Http {
+            code: StatusCode::BAD_REQUEST,
+            message: format!("invalid model name for x-model-name header: {e}"),
+        })?,
+    );
+    
+    headers.insert(
+        "x-reply-type",
+        router.reply_type.parse().map_err(|e| Error::Http {
+            code: StatusCode::BAD_REQUEST,
+            message: format!("failed to set x-reply-type header: {e}"),
+        })?,
+    );
+    
+    headers.insert(
+        "x-sla-seconds",
+        router.sla_seconds.to_string().parse().map_err(|e| Error::Http {
+            code: StatusCode::BAD_REQUEST,
+            message: format!("failed to set x-sla-seconds header: {e}"),
+        })?,
+    );
+    
+    headers.insert(
+        "x-method",
+        "http_pass".parse().map_err(|e| Error::Http {
+            code: StatusCode::BAD_REQUEST,
+            message: format!("failed to set x-method header: {e}"),
+        })?,
+    );
+    
+    let transaction_id = if let Some(v) = headers.get("x-global-transaction-id") {
+        v.to_str().unwrap_or("").to_string()
+    } else {
+        let tid = Uuid::new_v4().to_string();
+        headers.insert(
+            "x-global-transaction-id",
+            tid.parse().map_err(|e| Error::Http {
+                code: StatusCode::BAD_REQUEST,
+                message: format!("failed to set x-global-transaction-id header: {e}"),
+            })?,
+        );
+        tid
+    };
+    
+    let router_client = self
+        .router_client
+        .as_ref()
+        .expect("router_client must be present when router is enabled");
+    
+    // Build tokenize request payload
+    let tokenize_json = serde_json::to_value(&request).map_err(|e| Error::Http {
+        code: StatusCode::INTERNAL_SERVER_ERROR,
+        message: format!("failed to serialize tokenize request: {e}"),
+    })?;
+    
+    let tokenize_json_bytes = serde_json::to_vec(&tokenize_json).map_err(|e| Error::Http {
+        code: StatusCode::INTERNAL_SERVER_ERROR,
+        message: format!("failed to serialize tokenize request: {e}"),
+    })?;
+    
+    // Build HTTP passthrough payload
+    let http_pass_payload = serde_json::json!({
+        "method": "POST",
+        "path": TOKENIZE_ENDPOINT,  // "/tokenize"
+        "headers": {
+            "Content-Type": "application/json",
+            "x-request-id": transaction_id,
+        },
+        "payload": tokenize_json_bytes,
+    });
+    
+    let url = router_client.endpoint(ROUTER_HANDLE_ENDPOINT);
+    let response = self.handle_unary_with_body(router_client, url, http_pass_payload, headers).await?;
+    Ok(response)
+}
+
 
     async fn handle_unary<R, S>(&self, url: Url, request: R, headers: HeaderMap) -> Result<S, Error>
     where
