@@ -149,8 +149,7 @@ async fn create_clients(config: &OrchestratorConfig) -> Result<ClientMap, Error>
         }
     }
 
-    let router_config = config.openai.as_ref()
-    .and_then(|o| o.router.clone());
+    let router_config = config.openai.as_ref().and_then(|o| o.router.clone());
 
     // Create detector clients
     for (detector_id, detector) in &config.detectors {

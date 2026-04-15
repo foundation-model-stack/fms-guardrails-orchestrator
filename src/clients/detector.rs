@@ -22,7 +22,7 @@ use axum::http::HeaderMap;
 use http::header::CONTENT_TYPE;
 use hyper::StatusCode;
 use serde::{Deserialize, Serialize};
-use tracing::{info, debug};
+use tracing::{debug, info};
 use url::Url;
 use uuid::Uuid;
 
@@ -35,7 +35,7 @@ use crate::{
         Client, HttpClient, create_http_client,
         openai::{Message, Tool},
     },
-    config::{ServiceConfig, RouterConfig},
+    config::{RouterConfig, ServiceConfig},
     health::HealthCheckResult,
     models::{DetectionResult, DetectorParams, EvidenceObj, Metadata},
 };
@@ -54,9 +54,9 @@ const ROUTER_HANDLE_ENDPOINT: &str = "/ml/v1-private/router/handle";
 pub struct DetectorClient {
     client: HttpClient,
     health_client: Option<HttpClient>,
-    router_client: Option<HttpClient>,      
-    router_config: Option<RouterConfig>,    
-    detector_id: String, 
+    router_client: Option<HttpClient>,
+    router_config: Option<RouterConfig>,
+    detector_id: String,
 }
 
 impl DetectorClient {
@@ -64,7 +64,7 @@ impl DetectorClient {
         detector_id: String,
         config: &ServiceConfig,
         health_config: Option<&ServiceConfig>,
-        router_config: Option<RouterConfig>, 
+        router_config: Option<RouterConfig>,
     ) -> Result<Self, Error> {
         let client = create_http_client(DEFAULT_PORT, config).await?;
         let health_client = if let Some(health_config) = health_config {
@@ -85,8 +85,8 @@ impl DetectorClient {
         Ok(Self {
             client,
             health_client,
-            router_client,           
-            router_config,           
+            router_client,
+            router_config,
             detector_id,
         })
     }
@@ -99,10 +99,7 @@ impl DetectorClient {
         request: impl RequestBody,
     ) -> Result<U, Error> {
         // Check if router is enabled (same pattern as openai.rs lines 117-120)
-        let use_router = self
-            .router_config
-            .as_ref()
-            .is_some_and(|r| r.enabled);
+        let use_router = self.router_config.as_ref().is_some_and(|r| r.enabled);
 
         if use_router {
             self.post_via_router(model_id, url, headers, request).await
@@ -129,14 +126,17 @@ impl DetectorClient {
         }
     }
 
-async fn post_via_router<U: ResponseBody>(
+    async fn post_via_router<U: ResponseBody>(
         &self,
         model_id: &str,
         url: Url,
         mut headers: HeaderMap,
         request: impl RequestBody,
     ) -> Result<U, Error> {
-        let router = self.router_config.as_ref().expect("router config must be present");
+        let router = self
+            .router_config
+            .as_ref()
+            .expect("router config must be present");
         debug!("Routing detector request via router: model={}", model_id);
 
         // Add router headers
@@ -158,10 +158,14 @@ async fn post_via_router<U: ResponseBody>(
 
         headers.insert(
             "x-sla-seconds",
-            router.sla_seconds.to_string().parse().map_err(|e| Error::Http {
-                code: StatusCode::BAD_REQUEST,
-                message: format!("failed to set x-sla-seconds header: {e}"),
-            })?,
+            router
+                .sla_seconds
+                .to_string()
+                .parse()
+                .map_err(|e| Error::Http {
+                    code: StatusCode::BAD_REQUEST,
+                    message: format!("failed to set x-sla-seconds header: {e}"),
+                })?,
         );
 
         // Generate or use existing transaction ID (same pattern as openai.rs lines 171-183)
@@ -218,7 +222,7 @@ async fn post_via_router<U: ResponseBody>(
 
         let router_url = router_client.endpoint(ROUTER_HANDLE_ENDPOINT);
         debug!("Posting to router-sender: {}", router_url);
-        
+
         // Send to router and get response
         let response = router_client
             .post(router_url, headers.clone(), http_pass_payload)
