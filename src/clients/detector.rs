@@ -137,16 +137,12 @@ async fn post_via_router<U: ResponseBody>(
         request: impl RequestBody,
     ) -> Result<U, Error> {
         let router = self.router_config.as_ref().expect("router config must be present");
-        
-        // Add "detector:" prefix to model name for queue routing
-        let queue_model_name = format!("detector:{}", model_id);
-        
-        debug!("Routing detector request via router: model={}", queue_model_name);
+        debug!("Routing detector request via router: model={}", model_id);
 
-        // Add router headers (same pattern as openai.rs lines 146-168)
+        // Add router headers
         headers.insert(
             "x-model-name",
-            queue_model_name.parse().map_err(|e| Error::Http {
+            model_id.parse().map_err(|e| Error::Http {
                 code: StatusCode::BAD_REQUEST,
                 message: format!("invalid model name for x-model-name header: {e}"),
             })?,
