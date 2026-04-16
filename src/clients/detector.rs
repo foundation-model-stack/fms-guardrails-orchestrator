@@ -98,7 +98,7 @@ impl DetectorClient {
         mut headers: HeaderMap,
         request: impl RequestBody,
     ) -> Result<U, Error> {
-        // Check if router is enabled (same pattern as openai.rs lines 117-120)
+        // Check if router is enabled
         let use_router = self.router_config.as_ref().is_some_and(|r| r.enabled);
 
         if use_router {
@@ -168,7 +168,7 @@ impl DetectorClient {
                 })?,
         );
 
-        // Generate or use existing transaction ID (same pattern as openai.rs lines 171-183)
+        // Generate or use existing transaction ID
         let transaction_id = if let Some(v) = headers.get("x-global-transaction-id") {
             v.to_str().unwrap_or("").to_string()
         } else {
@@ -188,7 +188,7 @@ impl DetectorClient {
             .as_ref()
             .expect("router_client must be present when router is enabled");
 
-        // Use http_pass method (same pattern as openai.rs lines 222-260)
+        // Use http_pass method for detector requests
         headers.insert(
             "x-method",
             "http_pass".parse().map_err(|e| Error::Http {
