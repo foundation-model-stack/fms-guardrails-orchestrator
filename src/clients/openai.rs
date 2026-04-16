@@ -48,6 +48,7 @@ const TOKENIZE_ENDPOINT: &str = "/tokenize"; // This endpoint is vLLM-specific
 /// Router sender endpoint for unary (non-streaming) requests.
 const ROUTER_HANDLE_ENDPOINT: &str = "/ml/v1-private/router/handle";
 /// Router sender endpoint for streaming requests.
+/// This endpoint maintains request handles and streams responses back via HTTP.
 const ROUTER_HANDLE_STREAM_ENDPOINT: &str = "/ml/v1-private/router/handle-stream";
 
 #[derive(Clone)]
@@ -99,13 +100,23 @@ impl OpenAiClient {
         headers: HeaderMap,
     ) -> Result<ChatCompletionsResponse, Error> {
         tracing::debug!(?headers, "chat_completions headers");
-        let url = self.client.endpoint(CHAT_COMPLETIONS_ENDPOINT);
-        if let Some(true) = request.stream {
-            let rx = self.handle_streaming(url, request, headers).await?;
-            Ok(ChatCompletionsResponse::Streaming(rx))
+
+        // Check if router is enabled
+        let use_router = self.router_config.as_ref().is_some_and(|r| r.enabled);
+
+        if use_router {
+            // Route via router sender
+            self.chat_completions_via_router(request, headers).await
         } else {
-            let chat_completion = self.handle_unary(url, request, headers).await?;
-            Ok(ChatCompletionsResponse::Unary(chat_completion))
+            // Direct HTTP path (original behavior)
+            let url = self.client.endpoint(CHAT_COMPLETIONS_ENDPOINT);
+            if let Some(true) = request.stream {
+                let rx = self.handle_streaming(url, request, headers).await?;
+                Ok(ChatCompletionsResponse::Streaming(rx))
+            } else {
+                let chat_completion = self.handle_unary(url, request, headers).await?;
+                Ok(ChatCompletionsResponse::Unary(chat_completion))
+            }
         }
     }
 
@@ -114,10 +125,7 @@ impl OpenAiClient {
         request: CompletionsRequest,
         headers: HeaderMap,
     ) -> Result<CompletionsResponse, Error> {
-        let use_router = self
-            .router_config
-            .as_ref()
-            .is_some_and(|r| r.enabled);
+        let use_router = self.router_config.as_ref().is_some_and(|r| r.enabled);
 
         if use_router {
             self.completions_via_router(request, headers).await
@@ -139,7 +147,10 @@ impl OpenAiClient {
         request: CompletionsRequest,
         mut headers: HeaderMap,
     ) -> Result<CompletionsResponse, Error> {
-        let router = self.router_config.as_ref().expect("router config must be present");
+        let router = self
+            .router_config
+            .as_ref()
+            .expect("router config must be present");
 
         let model_name = &request.model;
 
@@ -161,12 +172,15 @@ impl OpenAiClient {
 
         headers.insert(
             "x-sla-seconds",
-            router.sla_seconds.to_string().parse().map_err(|e| Error::Http {
-                code: StatusCode::BAD_REQUEST,
-                message: format!("failed to set x-sla-seconds header: {e}"),
-            })?,
+            router
+                .sla_seconds
+                .to_string()
+                .parse()
+                .map_err(|e| Error::Http {
+                    code: StatusCode::BAD_REQUEST,
+                    message: format!("failed to set x-sla-seconds header: {e}"),
+                })?,
         );
-
 
         let transaction_id = if let Some(v) = headers.get("x-global-transaction-id") {
             v.to_str().unwrap_or("").to_string()
@@ -210,13 +224,15 @@ impl OpenAiClient {
             });
 
             let url = router_client.endpoint(ROUTER_HANDLE_STREAM_ENDPOINT);
-            let rx = self.handle_router_completions_stream(
-                router_client,
-                url,
-                watsonx_request,
-                headers,
-                request.model.clone(),
-            ).await?;
+            let rx = self
+                .handle_router_completions_stream(
+                    router_client,
+                    url,
+                    watsonx_request,
+                    headers,
+                    request.model.clone(),
+                )
+                .await?;
             Ok(CompletionsResponse::Streaming(rx))
         } else {
             headers.insert(
@@ -246,7 +262,7 @@ impl OpenAiClient {
 
             let http_pass_payload = serde_json::json!({
                 "method": "POST",
-                "path": COMPLETIONS_ENDPOINT,   
+                "path": COMPLETIONS_ENDPOINT,
                 "headers": {
                     "Content-Type": "application/json",
                     "x-request-id": transaction_id,
@@ -255,9 +271,150 @@ impl OpenAiClient {
             });
 
             let url = router_client.endpoint(ROUTER_HANDLE_ENDPOINT);
-            let completion =
-                self.handle_unary_with_body(router_client, url, http_pass_payload, headers).await?;
+            let completion = self
+                .handle_unary_with_body(router_client, url, http_pass_payload, headers)
+                .await?;
             Ok(CompletionsResponse::Unary(completion))
+        }
+    }
+    async fn chat_completions_via_router(
+        &self,
+        request: ChatCompletionsRequest,
+        headers: HeaderMap,
+    ) -> Result<ChatCompletionsResponse, Error> {
+        // Build router headers
+        let mut headers = headers;
+
+        // x-model-name: Determines which Redis queue to use
+        headers.insert(
+            "x-model-name",
+            request.model.parse().map_err(|e| Error::Http {
+                code: StatusCode::BAD_REQUEST,
+                message: format!("failed to set x-model-name header: {e}"),
+            })?,
+        );
+
+        // x-sla-seconds: Request timeout
+        let router_config = self.router_config.as_ref().unwrap();
+        headers.insert(
+            "x-sla-seconds",
+            router_config
+                .sla_seconds
+                .to_string()
+                .parse()
+                .map_err(|e| Error::Http {
+                    code: StatusCode::BAD_REQUEST,
+                    message: format!("failed to set x-sla-seconds header: {e}"),
+                })?,
+        );
+
+        // x-reply-type: Response type (redis for async)
+        headers.insert(
+            "x-reply-type",
+            router_config.reply_type.parse().map_err(|e| Error::Http {
+                code: StatusCode::BAD_REQUEST,
+                message: format!("failed to set x-reply-type header: {e}"),
+            })?,
+        );
+
+        // x-global-transaction-id: Unique request ID
+        let transaction_id = {
+            let tid = Uuid::new_v4().to_string();
+            headers.insert(
+                "x-global-transaction-id",
+                tid.parse().map_err(|e| Error::Http {
+                    code: StatusCode::BAD_REQUEST,
+                    message: format!("failed to set x-global-transaction-id header: {e}"),
+                })?,
+            );
+            tid
+        };
+
+        let router_client = self
+            .router_client
+            .as_ref()
+            .expect("router_client must be present when router is enabled");
+
+        if let Some(true) = request.stream {
+            // STREAMING: Use chat_completions_stream method
+            headers.insert(
+                "x-method",
+                "chat_completions_stream".parse().map_err(|e| Error::Http {
+                    code: StatusCode::BAD_REQUEST,
+                    message: format!("failed to set x-method header: {e}"),
+                })?,
+            );
+
+            // Convert OpenAI chat request to Watsonx chat format
+            let mut parameters: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
+            for (key, value) in &request.extra {
+                if key != "detectors" && key != "_prompt_masks" && key != "stream" {
+                    parameters.insert(key.clone(), value.clone());
+                }
+            }
+
+            // Build Watsonx chat format request
+            let watsonx_request = serde_json::json!({
+                "model_id": request.model,
+                "messages": request.messages,  // Messages array stays the same
+                "parameters": parameters,
+            });
+
+            let url = router_client.endpoint(ROUTER_HANDLE_STREAM_ENDPOINT);
+            let rx = self
+                .handle_router_chat_completions_stream(
+                    router_client,
+                    url,
+                    watsonx_request,
+                    headers,
+                    request.model.clone(),
+                )
+                .await?;
+            Ok(ChatCompletionsResponse::Streaming(rx))
+        } else {
+            // UNARY: Use http_pass method
+            headers.insert(
+                "x-method",
+                "http_pass".parse().map_err(|e| Error::Http {
+                    code: StatusCode::BAD_REQUEST,
+                    message: format!("failed to set x-method header: {e}"),
+                })?,
+            );
+
+            // Build OpenAI/vLLM format request (no conversion needed)
+            let mut vllm_request = serde_json::json!({
+                "model": request.model,
+                "messages": request.messages,
+            });
+
+            if let Some(obj) = vllm_request.as_object_mut() {
+                for (key, value) in &request.extra {
+                    if key != "detectors" && key != "_prompt_masks" {
+                        obj.insert(key.clone(), value.clone());
+                    }
+                }
+            }
+
+            let vllm_json_bytes = serde_json::to_vec(&vllm_request).map_err(|e| Error::Http {
+                code: StatusCode::INTERNAL_SERVER_ERROR,
+                message: format!("failed to serialise vLLM request: {e}"),
+            })?;
+
+            let http_pass_payload = serde_json::json!({
+                "method": "POST",
+                "path": CHAT_COMPLETIONS_ENDPOINT,
+                "headers": {
+                    "Content-Type": "application/json",
+                    "x-request-id": transaction_id,
+                },
+                "payload": vllm_json_bytes,
+            });
+
+            let url = router_client.endpoint(ROUTER_HANDLE_ENDPOINT);
+            let chat_completion = self
+                .handle_unary_with_body(router_client, url, http_pass_payload, headers)
+                .await?;
+            Ok(ChatCompletionsResponse::Unary(chat_completion))
         }
     }
 
@@ -272,108 +429,116 @@ impl OpenAiClient {
     // }
 
     pub async fn tokenize(
-    &self,
-    request: TokenizeRequest,
-    headers: HeaderMap,
-) -> Result<TokenizeResponse, Error> {
-    // Check if router is enabled
-    if self.router_config.is_some() && self.router_config.as_ref().unwrap().enabled {
-        // Route through router queue
-        self.tokenize_via_router(request, headers).await
-    } else {
-        // Direct call (legacy path)
-        let url = self.client.endpoint(TOKENIZE_ENDPOINT);
-        let response = self.handle_unary(url, request, headers).await?;
-        Ok(response)
+        &self,
+        request: TokenizeRequest,
+        headers: HeaderMap,
+    ) -> Result<TokenizeResponse, Error> {
+        // Check if router is enabled
+        if self.router_config.is_some() && self.router_config.as_ref().unwrap().enabled {
+            // Route through router queue
+            self.tokenize_via_router(request, headers).await
+        } else {
+            // Direct call (legacy path)
+            let url = self.client.endpoint(TOKENIZE_ENDPOINT);
+            let response = self.handle_unary(url, request, headers).await?;
+            Ok(response)
+        }
     }
-}
 
-async fn tokenize_via_router(
-    &self,
-    request: TokenizeRequest,
-    mut headers: HeaderMap,
-) -> Result<TokenizeResponse, Error> {
-    let router = self.router_config.as_ref().expect("router config must be present");
-    
-    // Add router headers
-    headers.insert(
-        "x-model-name",
-        request.model.parse().map_err(|e| Error::Http {
-            code: StatusCode::BAD_REQUEST,
-            message: format!("invalid model name for x-model-name header: {e}"),
-        })?,
-    );
-    
-    headers.insert(
-        "x-reply-type",
-        router.reply_type.parse().map_err(|e| Error::Http {
-            code: StatusCode::BAD_REQUEST,
-            message: format!("failed to set x-reply-type header: {e}"),
-        })?,
-    );
-    
-    headers.insert(
-        "x-sla-seconds",
-        router.sla_seconds.to_string().parse().map_err(|e| Error::Http {
-            code: StatusCode::BAD_REQUEST,
-            message: format!("failed to set x-sla-seconds header: {e}"),
-        })?,
-    );
-    
-    headers.insert(
-        "x-method",
-        "http_pass".parse().map_err(|e| Error::Http {
-            code: StatusCode::BAD_REQUEST,
-            message: format!("failed to set x-method header: {e}"),
-        })?,
-    );
-    
-    let transaction_id = if let Some(v) = headers.get("x-global-transaction-id") {
-        v.to_str().unwrap_or("").to_string()
-    } else {
-        let tid = Uuid::new_v4().to_string();
+    async fn tokenize_via_router(
+        &self,
+        request: TokenizeRequest,
+        mut headers: HeaderMap,
+    ) -> Result<TokenizeResponse, Error> {
+        let router = self
+            .router_config
+            .as_ref()
+            .expect("router config must be present");
+
+        // Add router headers
         headers.insert(
-            "x-global-transaction-id",
-            tid.parse().map_err(|e| Error::Http {
+            "x-model-name",
+            request.model.parse().map_err(|e| Error::Http {
                 code: StatusCode::BAD_REQUEST,
-                message: format!("failed to set x-global-transaction-id header: {e}"),
+                message: format!("invalid model name for x-model-name header: {e}"),
             })?,
         );
-        tid
-    };
-    
-    let router_client = self
-        .router_client
-        .as_ref()
-        .expect("router_client must be present when router is enabled");
-    
-    // Build tokenize request payload
-    let tokenize_json = serde_json::to_value(&request).map_err(|e| Error::Http {
-        code: StatusCode::INTERNAL_SERVER_ERROR,
-        message: format!("failed to serialize tokenize request: {e}"),
-    })?;
-    
-    let tokenize_json_bytes = serde_json::to_vec(&tokenize_json).map_err(|e| Error::Http {
-        code: StatusCode::INTERNAL_SERVER_ERROR,
-        message: format!("failed to serialize tokenize request: {e}"),
-    })?;
-    
-    // Build HTTP passthrough payload
-    let http_pass_payload = serde_json::json!({
-        "method": "POST",
-        "path": TOKENIZE_ENDPOINT,  // "/tokenize"
-        "headers": {
-            "Content-Type": "application/json",
-            "x-request-id": transaction_id,
-        },
-        "payload": tokenize_json_bytes,
-    });
-    
-    let url = router_client.endpoint(ROUTER_HANDLE_ENDPOINT);
-    let response = self.handle_unary_with_body(router_client, url, http_pass_payload, headers).await?;
-    Ok(response)
-}
 
+        headers.insert(
+            "x-reply-type",
+            router.reply_type.parse().map_err(|e| Error::Http {
+                code: StatusCode::BAD_REQUEST,
+                message: format!("failed to set x-reply-type header: {e}"),
+            })?,
+        );
+
+        headers.insert(
+            "x-sla-seconds",
+            router
+                .sla_seconds
+                .to_string()
+                .parse()
+                .map_err(|e| Error::Http {
+                    code: StatusCode::BAD_REQUEST,
+                    message: format!("failed to set x-sla-seconds header: {e}"),
+                })?,
+        );
+
+        headers.insert(
+            "x-method",
+            "http_pass".parse().map_err(|e| Error::Http {
+                code: StatusCode::BAD_REQUEST,
+                message: format!("failed to set x-method header: {e}"),
+            })?,
+        );
+
+        let transaction_id = if let Some(v) = headers.get("x-global-transaction-id") {
+            v.to_str().unwrap_or("").to_string()
+        } else {
+            let tid = Uuid::new_v4().to_string();
+            headers.insert(
+                "x-global-transaction-id",
+                tid.parse().map_err(|e| Error::Http {
+                    code: StatusCode::BAD_REQUEST,
+                    message: format!("failed to set x-global-transaction-id header: {e}"),
+                })?,
+            );
+            tid
+        };
+
+        let router_client = self
+            .router_client
+            .as_ref()
+            .expect("router_client must be present when router is enabled");
+
+        // Build tokenize request payload
+        let tokenize_json = serde_json::to_value(&request).map_err(|e| Error::Http {
+            code: StatusCode::INTERNAL_SERVER_ERROR,
+            message: format!("failed to serialize tokenize request: {e}"),
+        })?;
+
+        let tokenize_json_bytes = serde_json::to_vec(&tokenize_json).map_err(|e| Error::Http {
+            code: StatusCode::INTERNAL_SERVER_ERROR,
+            message: format!("failed to serialize tokenize request: {e}"),
+        })?;
+
+        // Build HTTP passthrough payload
+        let http_pass_payload = serde_json::json!({
+            "method": "POST",
+            "path": TOKENIZE_ENDPOINT,  // "/tokenize"
+            "headers": {
+                "Content-Type": "application/json",
+                "x-request-id": transaction_id,
+            },
+            "payload": tokenize_json_bytes,
+        });
+
+        let url = router_client.endpoint(ROUTER_HANDLE_ENDPOINT);
+        let response = self
+            .handle_unary_with_body(router_client, url, http_pass_payload, headers)
+            .await?;
+        Ok(response)
+    }
 
     async fn handle_unary<R, S>(&self, url: Url, request: R, headers: HeaderMap) -> Result<S, Error>
     where
@@ -528,34 +693,43 @@ async fn tokenize_via_router(
                                     }
                                     _ => {
                                         // Step 1: parse the router envelope JSON
-                                        let content_str = match serde_json::from_str::<serde_json::Value>(&event.data) {
-                                            Ok(envelope) => {
-                                                match envelope.get("content").and_then(|v| v.as_str()) {
-                                                    Some(s) => s.to_string(),
-                                                    None => {
-                                                        if event.data == "[DONE]" {
-                                                            let _ = tx.send(Ok(None)).await;
-                                                            break;
+                                        let content_str =
+                                            match serde_json::from_str::<serde_json::Value>(
+                                                &event.data,
+                                            ) {
+                                                Ok(envelope) => {
+                                                    match envelope
+                                                        .get("content")
+                                                        .and_then(|v| v.as_str())
+                                                    {
+                                                        Some(s) => s.to_string(),
+                                                        None => {
+                                                            if event.data == "[DONE]" {
+                                                                let _ = tx.send(Ok(None)).await;
+                                                                break;
+                                                            }
+                                                            // No content field — try using data directly
+                                                            event.data.clone()
                                                         }
-                                                        // No content field — try using data directly
-                                                        event.data.clone()
                                                     }
                                                 }
-                                            }
-                                            Err(_) => {
-                                                if event.data == "[DONE]" {
-                                                    let _ = tx.send(Ok(None)).await;
-                                                    break;
+                                                Err(_) => {
+                                                    if event.data == "[DONE]" {
+                                                        let _ = tx.send(Ok(None)).await;
+                                                        break;
+                                                    }
+                                                    event.data.clone()
                                                 }
-                                                event.data.clone()
-                                            }
-                                        };
+                                            };
 
                                         // Step 2: parse WatsonX TextGenResponse from content_str
-                                        match serde_json::from_str::<WatsonxTextGenResponse>(&content_str) {
+                                        match serde_json::from_str::<WatsonxTextGenResponse>(
+                                            &content_str,
+                                        ) {
                                             Ok(watsonx_resp) => {
                                                 // Step 3: convert to OpenAI Completion
-                                                let completion = watsonx_to_completion(watsonx_resp, &model);
+                                                let completion =
+                                                    watsonx_to_completion(watsonx_resp, &model);
                                                 let _ = tx.send(Ok(Some(completion))).await;
                                             }
                                             Err(serde_error) => {
@@ -596,7 +770,109 @@ async fn tokenize_via_router(
             }
         }
     }
+    async fn handle_router_chat_completions_stream(
+        &self,
+        client: &HttpClient,
+        url: Url,
+        body: serde_json::Value,
+        headers: HeaderMap,
+        model: String,
+    ) -> Result<mpsc::Receiver<Result<Option<ChatCompletionChunk>, orchestrator::Error>>, Error>
+    {
+        let (tx, rx) = mpsc::channel(32);
+        let response = client.post(url, headers, body).await?;
+        match response.status() {
+            StatusCode::OK => {
+                let mut event_stream = response.0.into_data_stream().eventsource();
+                tokio::spawn(async move {
+                    while let Some(result) = event_stream.next().await {
+                        match result {
+                            Ok(event) => {
+                                match event.event.as_str() {
+                                    "png" => continue, // Keepalive ping
+                                    "err" => {
+                                        let error = Error::Http {
+                                            code: StatusCode::INTERNAL_SERVER_ERROR,
+                                            message: event.data.clone(),
+                                        };
+                                        let _ = tx.send(Err(error.into())).await;
+                                        break;
+                                    }
+                                    _ => {
+                                        if event.data == "[DONE]" {
+                                            let _ = tx.send(Ok(None)).await;
+                                            break;
+                                        }
 
+                                        // Parse router envelope
+                                        let content_str =
+                                            match serde_json::from_str::<serde_json::Value>(
+                                                &event.data,
+                                            ) {
+                                                Ok(envelope) => {
+                                                    match envelope
+                                                        .get("content")
+                                                        .and_then(|v| v.as_str())
+                                                    {
+                                                        Some(s) => s.to_string(),
+                                                        None => event.data.clone(),
+                                                    }
+                                                }
+                                                Err(_) => event.data.clone(),
+                                            };
+
+                                        // Parse Watsonx response
+                                        match serde_json::from_str::<WatsonxTextGenResponse>(
+                                            &content_str,
+                                        ) {
+                                            Ok(watsonx_resp) => {
+                                                // Convert Watsonx to OpenAI ChatCompletionChunk
+                                                let chunk = watsonx_to_chat_completion_chunk(
+                                                    watsonx_resp,
+                                                    &model,
+                                                );
+                                                let _ = tx.send(Ok(Some(chunk))).await;
+                                            }
+                                            Err(e) => {
+                                                let error = Error::Http {
+                                                    code: StatusCode::INTERNAL_SERVER_ERROR,
+                                                    message: format!(
+                                                        "failed to parse Watsonx response: {e}"
+                                                    ),
+                                                };
+                                                let _ = tx.send(Err(error.into())).await;
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            Err(error) => {
+                                let error = Error::Http {
+                                    code: StatusCode::INTERNAL_SERVER_ERROR,
+                                    message: error.to_string(),
+                                };
+                                let _ = tx.send(Err(error.into())).await;
+                                break;
+                            }
+                        }
+                    }
+                    // Stream ended — signal completion
+                    let _ = tx.send(Ok(None)).await;
+                });
+                Ok(rx)
+            }
+            _ => {
+                let code = response.status();
+                let message = if let Ok(response) = response.json::<ErrorResponse>().await {
+                    response.message().into()
+                } else {
+                    "unknown error occurred".into()
+                };
+                Err(Error::Http { code, message })
+            }
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -648,7 +924,7 @@ fn watsonx_to_completion(resp: WatsonxTextGenResponse, model: &str) -> Completio
         })
         .collect();
 
-    let usage = None; 
+    let usage = None;
 
     Completion {
         id: String::new(),
@@ -658,6 +934,56 @@ fn watsonx_to_completion(resp: WatsonxTextGenResponse, model: &str) -> Completio
         choices,
         usage,
         system_fingerprint: None,
+        detections: None,
+        warnings: Vec::new(),
+    }
+}
+fn watsonx_to_chat_completion_chunk(
+    resp: WatsonxTextGenResponse,
+    model: &str,
+) -> ChatCompletionChunk {
+    let model_id = if resp.model_id.is_empty() {
+        model.to_string()
+    } else {
+        resp.model_id
+    };
+
+    let choices: Vec<ChatCompletionChunkChoice> = resp
+        .results
+        .into_iter()
+        .enumerate()
+        .map(|(i, result)| {
+            let finish_reason = result.stop_reason.as_deref().and_then(|r| match r {
+                "not_finished" => None,
+                "max_tokens" => Some("length".to_string()),
+                "eos_token" | "stop_sequence" => Some("stop".to_string()),
+                other => Some(other.to_string()),
+            });
+
+            ChatCompletionChunkChoice {
+                index: i as u32,
+                delta: ChatCompletionDelta {
+                    role: None,
+                    content: Some(result.generated_text),
+                    refusal: None,
+                    tool_calls: Vec::new(),
+                },
+                finish_reason,
+                logprobs: None,
+                stop_reason: None,
+            }
+        })
+        .collect();
+
+    ChatCompletionChunk {
+        id: String::new(),
+        object: "chat.completion.chunk".into(),
+        created: 0,
+        model: model_id,
+        choices,
+        system_fingerprint: None,
+        service_tier: None,
+        usage: None,
         detections: None,
         warnings: Vec::new(),
     }
