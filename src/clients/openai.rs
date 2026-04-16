@@ -17,16 +17,6 @@
 
 use std::collections::{BTreeMap, HashMap};
 
-use super::{
-    Client, Error, HttpClient, create_http_client,
-    http::{HttpClientExt, RequestBody},
-};
-use crate::{
-    config::{RouterConfig, ServiceConfig},
-    health::HealthCheckResult,
-    models::{DetectionWarningReason, DetectorParams, ValidationError},
-    orchestrator::{self, types::Detection},
-};
 use async_trait::async_trait;
 use eventsource_stream::Eventsource;
 use futures::StreamExt;
@@ -37,6 +27,17 @@ use serde_json::{Map, Value};
 use tokio::sync::mpsc;
 use url::Url;
 use uuid::Uuid;
+
+use super::{
+    Client, Error, HttpClient, create_http_client,
+    http::{HttpClientExt, RequestBody},
+};
+use crate::{
+    config::{RouterConfig, ServiceConfig},
+    health::HealthCheckResult,
+    models::{DetectionWarningReason, DetectorParams, ValidationError},
+    orchestrator::{self, types::Detection},
+};
 
 const DEFAULT_PORT: u16 = 8080;
 
