@@ -622,8 +622,10 @@ impl OpenAiClient {
                                             }
 
                                             // Remove "data: " prefix if present
-                                            let data_content = if trimmed.starts_with("data: ") {
-                                                &trimmed[6..]
+                                            let data_content = if let Some(stripped) =
+                                                trimmed.strip_prefix("data: ")
+                                            {
+                                                stripped
                                             } else {
                                                 trimmed
                                             };

@@ -20,7 +20,6 @@
 #[cfg(test)]
 mod router_config_tests {
     use fms_guardrails_orchestr8::config::RouterConfig;
-    use serde_yml;
 
     #[test]
     fn test_router_config_defaults() {
@@ -30,7 +29,7 @@ hostname: "localhost"
 port: 19080
 "#;
         let config: RouterConfig = serde_yml::from_str(yaml).unwrap();
-        assert_eq!(config.enabled, true);
+        assert!(config.enabled);
         assert_eq!(config.hostname, "localhost");
         assert_eq!(config.port, 19080);
         assert_eq!(config.sla_seconds, 60); // default
@@ -45,7 +44,7 @@ hostname: "localhost"
 port: 19080
 "#;
         let config: RouterConfig = serde_yml::from_str(yaml).unwrap();
-        assert_eq!(config.enabled, false);
+        assert!(!config.enabled);
         assert_eq!(config.hostname, "localhost");
         assert_eq!(config.port, 19080);
     }
@@ -60,7 +59,7 @@ sla_seconds: 120
 reply_type: "http"
 "#;
         let config: RouterConfig = serde_yml::from_str(yaml).unwrap();
-        assert_eq!(config.enabled, true);
+        assert!(config.enabled);
         assert_eq!(config.hostname, "router.example.com");
         assert_eq!(config.port, 9090);
         assert_eq!(config.sla_seconds, 120);
@@ -75,7 +74,7 @@ hostname: "router"
 port: 8080
 "#;
         let config: RouterConfig = serde_yml::from_str(yaml).unwrap();
-        assert_eq!(config.enabled, true);
+        assert!(config.enabled);
         assert_eq!(config.hostname, "router");
         assert_eq!(config.port, 8080);
         // Check defaults are applied
@@ -93,7 +92,7 @@ sla_seconds: 90
 reply_type: "redis"
 "#;
         let config: RouterConfig = serde_yml::from_str(yaml).unwrap();
-        assert_eq!(config.enabled, true);
+        assert!(config.enabled);
         assert_eq!(config.hostname, "router.cluster.local");
         assert_eq!(config.port, 19080);
         assert_eq!(config.sla_seconds, 90);
@@ -142,7 +141,7 @@ port: "not_a_number"
 enabled: true
 "#;
         let config: RouterConfig = serde_yml::from_str(yaml).unwrap();
-        assert_eq!(config.enabled, true);
+        assert!(config.enabled);
         // Verify defaults are applied
         assert_eq!(config.hostname, "localhost");
         assert_eq!(config.port, 19080);
@@ -160,7 +159,7 @@ extra_field: "ignored"
 another_field: 123
 "#;
         let config: RouterConfig = serde_yml::from_str(yaml).unwrap();
-        assert_eq!(config.enabled, true);
+        assert!(config.enabled);
         assert_eq!(config.hostname, "localhost");
         assert_eq!(config.port, 19080);
     }
@@ -547,13 +546,7 @@ mod http_pass_payload_tests {
             let event = create_event("message", "[DONE]");
 
             // Check for [DONE] first
-            if event.data == "[DONE]" {
-                // Should terminate here without attempting to parse
-                assert!(true);
-            } else {
-                // Should not reach here
-                assert!(false, "Should have detected [DONE] signal");
-            }
+            assert_eq!(event.data, "[DONE]", "Should have detected [DONE] signal");
         }
 
         #[test]
