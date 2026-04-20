@@ -135,7 +135,7 @@ async fn create_clients(config: &OrchestratorConfig) -> Result<ClientMap, Error>
         let openai_client = OpenAiClient::new(
             &openai.service,
             openai.health_service.as_ref(),
-            openai.router.clone(),
+            config.router.clone(),
         )
         .await?;
         clients.insert("openai".to_string(), openai_client);
@@ -149,7 +149,7 @@ async fn create_clients(config: &OrchestratorConfig) -> Result<ClientMap, Error>
         }
     }
 
-    let router_config = config.openai.as_ref().and_then(|o| o.router.clone());
+    let router_config = config.router.clone();
 
     // Create detector clients
     for (detector_id, detector) in &config.detectors {

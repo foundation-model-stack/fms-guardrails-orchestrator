@@ -19,6 +19,7 @@ use std::{collections::BTreeMap, fmt::Debug};
 
 use async_trait::async_trait;
 use axum::http::HeaderMap;
+use base64::{Engine as _, engine::general_purpose};
 use http::header::CONTENT_TYPE;
 use hyper::StatusCode;
 use serde::{Deserialize, Serialize};
@@ -91,6 +92,74 @@ impl DetectorClient {
         })
     }
 
+    fn build_router_headers(
+        &self,
+        model_name: &str,
+        headers: &mut HeaderMap,
+    ) -> Result<(String, &HttpClient), Error> {
+        let router = self.router_config.as_ref().ok_or_else(|| Error::Http {
+            code: StatusCode::INTERNAL_SERVER_ERROR,
+            message: "router config must be present when router is enabled".to_string(),
+        })?;
+
+        headers.insert(
+            "x-model-name",
+            model_name.parse().map_err(|e| Error::Http {
+                code: StatusCode::BAD_REQUEST,
+                message: format!("invalid model name for x-model-name header: {e}"),
+            })?,
+        );
+
+        headers.insert(
+            "x-reply-type",
+            router.reply_type.parse().map_err(|e| Error::Http {
+                code: StatusCode::BAD_REQUEST,
+                message: format!("failed to set x-reply-type header: {e}"),
+            })?,
+        );
+
+        headers.insert(
+            "x-sla-seconds",
+            router
+                .sla_seconds
+                .to_string()
+                .parse()
+                .map_err(|e| Error::Http {
+                    code: StatusCode::BAD_REQUEST,
+                    message: format!("failed to set x-sla-seconds header: {e}"),
+                })?,
+        );
+
+        let transaction_id = if let Some(v) = headers.get("x-global-transaction-id") {
+            v.to_str().unwrap_or("").to_string()
+        } else {
+            let tid = Uuid::new_v4().to_string();
+            headers.insert(
+                "x-global-transaction-id",
+                tid.parse().map_err(|e| Error::Http {
+                    code: StatusCode::BAD_REQUEST,
+                    message: format!("failed to set x-global-transaction-id header: {e}"),
+                })?,
+            );
+            tid
+        };
+
+        headers.insert(
+            "x-method",
+            "http_pass".parse().map_err(|e| Error::Http {
+                code: StatusCode::BAD_REQUEST,
+                message: format!("failed to set x-method header: {e}"),
+            })?,
+        );
+
+        let router_client = self.router_client.as_ref().ok_or_else(|| Error::Http {
+            code: StatusCode::INTERNAL_SERVER_ERROR,
+            message: "router_client must be present when router is enabled".to_string(),
+        })?;
+
+        Ok((transaction_id, router_client))
+    }
+
     async fn post<U: ResponseBody>(
         &self,
         model_id: &str,
@@ -133,69 +202,9 @@ impl DetectorClient {
         mut headers: HeaderMap,
         request: impl RequestBody,
     ) -> Result<U, Error> {
-        let router = self
-            .router_config
-            .as_ref()
-            .expect("router config must be present");
         debug!("Routing detector request via router: model={}", model_id);
 
-        // Add router headers
-        headers.insert(
-            "x-model-name",
-            model_id.parse().map_err(|e| Error::Http {
-                code: StatusCode::BAD_REQUEST,
-                message: format!("invalid model name for x-model-name header: {e}"),
-            })?,
-        );
-
-        headers.insert(
-            "x-reply-type",
-            router.reply_type.parse().map_err(|e| Error::Http {
-                code: StatusCode::BAD_REQUEST,
-                message: format!("failed to set x-reply-type header: {e}"),
-            })?,
-        );
-
-        headers.insert(
-            "x-sla-seconds",
-            router
-                .sla_seconds
-                .to_string()
-                .parse()
-                .map_err(|e| Error::Http {
-                    code: StatusCode::BAD_REQUEST,
-                    message: format!("failed to set x-sla-seconds header: {e}"),
-                })?,
-        );
-
-        // Generate or use existing transaction ID
-        let transaction_id = if let Some(v) = headers.get("x-global-transaction-id") {
-            v.to_str().unwrap_or("").to_string()
-        } else {
-            let tid = Uuid::new_v4().to_string();
-            headers.insert(
-                "x-global-transaction-id",
-                tid.parse().map_err(|e| Error::Http {
-                    code: StatusCode::BAD_REQUEST,
-                    message: format!("failed to set x-global-transaction-id header: {e}"),
-                })?,
-            );
-            tid
-        };
-
-        let router_client = self
-            .router_client
-            .as_ref()
-            .expect("router_client must be present when router is enabled");
-
-        // Use http_pass method for detector requests
-        headers.insert(
-            "x-method",
-            "http_pass".parse().map_err(|e| Error::Http {
-                code: StatusCode::BAD_REQUEST,
-                message: format!("failed to set x-method header: {e}"),
-            })?,
-        );
+        let (transaction_id, router_client) = self.build_router_headers(model_id, &mut headers)?;
 
         // Serialize the detector request
         let request_json = serde_json::to_value(&request).map_err(|e| Error::Http {
@@ -208,6 +217,9 @@ impl DetectorClient {
             message: format!("failed to serialize detector request to bytes: {e}"),
         })?;
 
+        // Base64-encode the payload bytes (router expects base64, not array of numbers)
+        let payload_base64 = general_purpose::STANDARD.encode(&request_bytes);
+
         // Build HTTP passthrough payload (same structure as openai.rs lines 247-255)
         let http_pass_payload = serde_json::json!({
             "method": "POST",
@@ -217,7 +229,7 @@ impl DetectorClient {
                 "x-request-id": transaction_id,
                 "detector-id": model_id,
             },
-            "payload": request_bytes,
+            "payload": payload_base64,
         });
 
         let router_url = router_client.endpoint(ROUTER_HANDLE_ENDPOINT);

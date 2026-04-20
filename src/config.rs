@@ -188,9 +188,6 @@ pub struct OpenAiConfig {
     pub service: ServiceConfig,
     /// Generation health service connection information
     pub health_service: Option<ServiceConfig>,
-    /// Optional router configuration. When present and `enabled: true`, the orchestrator
-    /// routes model calls through the router sender sidecar via Redis queues.
-    pub router: Option<RouterConfig>,
 }
 
 /// Chunker parser type
@@ -254,6 +251,10 @@ pub struct OrchestratorConfig {
     /// Map of TLS connections, allowing reuse across services
     /// that may require the same TLS information
     pub tls: Option<HashMap<String, TlsConfig>>,
+    /// Optional router configuration. When present and `enabled: true`, the orchestrator
+    /// routes calls through the router sender sidecar via Redis queues.
+    /// This applies to both OpenAI clients and detector clients.
+    pub router: Option<RouterConfig>,
     // List of header keys allowed to be passed to downstream servers
     #[serde(default)]
     pub passthrough_headers: HashSet<String>,
@@ -464,6 +465,7 @@ impl Default for OrchestratorConfig {
             chunkers: None,
             detectors: HashMap::default(),
             tls: None,
+            router: None,
             passthrough_headers: HashSet::default(),
             rewrite_forwarded_access_header: false,
             detector_concurrent_requests: default_detector_concurrent_requests(),
