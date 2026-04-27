@@ -2042,4 +2042,99 @@ mod test {
 
         Ok(())
     }
+
+    #[test]
+    fn test_watsonx_to_completion_basic() {
+        let watsonx_resp = WatsonxTextGenResponse {
+            model_id: "test-model".to_string(),
+            results: vec![WatsonxTextGenResult {
+                generated_text: "Hello world".to_string(),
+                generated_token_count: 2,
+                input_token_count: 1,
+                stop_reason: Some("eos_token".to_string()),
+            }],
+        };
+
+        let completion = watsonx_to_completion(watsonx_resp, "test-model");
+        assert_eq!(completion.model, "test-model");
+        assert_eq!(completion.object, "text_completion");
+        assert_eq!(completion.choices.len(), 1);
+        assert_eq!(completion.choices[0].text, "Hello world");
+        assert_eq!(completion.choices[0].index, 0);
+        assert_eq!(
+            completion.choices[0].finish_reason,
+            Some("stop".to_string())
+        );
+        assert!(completion.usage.is_none());
+    }
+
+    #[test]
+    fn test_watsonx_to_completion_stop_reasons() {
+        let test_cases = vec![
+            ("eos_token", Some("stop")),
+            ("max_tokens", Some("length")),
+            ("stop_sequence", Some("stop")),
+            ("not_finished", None),
+            ("cancelled", Some("cancelled")),
+            ("error", Some("error")),
+        ];
+
+        for (watsonx_reason, expected_openai_reason) in test_cases {
+            let watsonx_resp = WatsonxTextGenResponse {
+                model_id: "test".to_string(),
+                results: vec![WatsonxTextGenResult {
+                    generated_text: "test".to_string(),
+                    generated_token_count: 1,
+                    input_token_count: 1,
+                    stop_reason: Some(watsonx_reason.to_string()),
+                }],
+            };
+
+            let completion = watsonx_to_completion(watsonx_resp, "test");
+            assert_eq!(
+                completion.choices[0].finish_reason.as_deref(),
+                expected_openai_reason,
+                "Failed for stop_reason: {}",
+                watsonx_reason
+            );
+        }
+    }
+
+    #[test]
+    fn test_watsonx_to_chat_completion_chunk_basic() {
+        let watsonx_resp = WatsonxTextGenResponse {
+            model_id: "chat-model".to_string(),
+            results: vec![WatsonxTextGenResult {
+                generated_text: "Hi there".to_string(),
+                generated_token_count: 2,
+                input_token_count: 3,
+                stop_reason: None,
+            }],
+        };
+
+        let chunk = watsonx_to_chat_completion_chunk(watsonx_resp, "chat-model");
+        assert_eq!(chunk.model, "chat-model");
+        assert_eq!(chunk.object, "chat.completion.chunk");
+        assert_eq!(chunk.choices.len(), 1);
+        assert_eq!(chunk.choices[0].index, 0);
+        assert_eq!(chunk.choices[0].delta.content, Some("Hi there".to_string()));
+        assert_eq!(chunk.choices[0].delta.role, None);
+        assert_eq!(chunk.choices[0].finish_reason, None);
+    }
+
+    #[test]
+    fn test_watsonx_to_chat_completion_chunk_with_finish_reason() {
+        let watsonx_resp = WatsonxTextGenResponse {
+            model_id: "chat-model".to_string(),
+            results: vec![WatsonxTextGenResult {
+                generated_text: "Done".to_string(),
+                generated_token_count: 1,
+                input_token_count: 1,
+                stop_reason: Some("eos_token".to_string()),
+            }],
+        };
+
+        let chunk = watsonx_to_chat_completion_chunk(watsonx_resp, "chat-model");
+        assert_eq!(chunk.choices[0].finish_reason, Some("stop".to_string()));
+    }
 }

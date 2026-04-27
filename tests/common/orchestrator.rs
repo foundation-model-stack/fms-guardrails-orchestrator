@@ -74,6 +74,7 @@ pub struct TestOrchestratorServerBuilder<'a> {
     health_port: Option<u16>,
     generation_server: Option<&'a MockServer>,
     openai_server: Option<&'a MockServer>,
+    router_server: Option<&'a MockServer>,
     detector_servers: Option<Vec<&'a MockServer>>,
     chunker_servers: Option<Vec<&'a MockServer>>,
 }
@@ -108,6 +109,11 @@ impl<'a> TestOrchestratorServerBuilder<'a> {
         self
     }
 
+    pub fn router_server(mut self, server: &'a MockServer) -> Self {
+        self.router_server = Some(server);
+        self
+    }
+
     pub fn detector_servers(mut self, servers: impl IntoIterator<Item = &'a MockServer>) -> Self {
         self.detector_servers = Some(servers.into_iter().collect());
         self
@@ -128,6 +134,7 @@ impl<'a> TestOrchestratorServerBuilder<'a> {
         // Start & configure mock servers
         initialize_generation_server(self.generation_server, &mut config).await?;
         initialize_openai_server(self.openai_server, &mut config).await?;
+        initialize_router_server(self.router_server, &mut config).await?;
         initialize_detectors(self.detector_servers.as_deref(), &mut config).await?;
         initialize_chunkers(self.chunker_servers.as_deref(), &mut config).await?;
 
@@ -222,6 +229,21 @@ async fn initialize_openai_server(
     if let Some(openai_server) = openai_server {
         openai_server.start().await?;
         config.openai.as_mut().unwrap().service.port = Some(openai_server.addr().unwrap().port());
+    };
+    Ok(())
+}
+
+/// Starts and configures router server.
+async fn initialize_router_server(
+    router_server: Option<&MockServer>,
+    config: &mut OrchestratorConfig,
+) -> Result<(), anyhow::Error> {
+    if let Some(router_server) = router_server {
+        router_server.start().await?;
+        if let Some(router_config) = config.router.as_mut() {
+            router_config.enabled = true;
+            router_config.port = router_server.addr().unwrap().port();
+        }
     };
     Ok(())
 }

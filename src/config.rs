@@ -546,6 +546,51 @@ tls: {}
     }
 
     #[test]
+    fn test_router_config_defaults() {
+        let yaml = r#"
+enabled: true
+hostname: "localhost"
+port: 19080
+"#;
+        let config: RouterConfig = serde_yml::from_str(yaml).unwrap();
+        assert!(config.enabled);
+        assert_eq!(config.hostname, "localhost");
+        assert_eq!(config.port, 19080);
+        assert_eq!(config.sla_seconds, 60); // default
+        assert_eq!(config.reply_type, "redis"); // default
+    }
+
+    #[test]
+    fn test_router_config_disabled() {
+        let yaml = r#"
+enabled: false
+hostname: "localhost"
+port: 19080
+"#;
+        let config: RouterConfig = serde_yml::from_str(yaml).unwrap();
+        assert!(!config.enabled);
+        assert_eq!(config.hostname, "localhost");
+        assert_eq!(config.port, 19080);
+    }
+
+    #[test]
+    fn test_router_config_custom_values() {
+        let yaml = r#"
+enabled: true
+hostname: "router.example.com"
+port: 9090
+sla_seconds: 120
+reply_type: "http"
+"#;
+        let config: RouterConfig = serde_yml::from_str(yaml).unwrap();
+        assert!(config.enabled);
+        assert_eq!(config.hostname, "router.example.com");
+        assert_eq!(config.port, 9090);
+        assert_eq!(config.sla_seconds, 120);
+        assert_eq!(config.reply_type, "http");
+    }
+
+    #[test]
     fn test_deserialize_config_detector_tls_signed() -> Result<(), Error> {
         let s = r#"
 generation:

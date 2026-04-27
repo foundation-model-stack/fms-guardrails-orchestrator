@@ -15,609 +15,530 @@
 
 */
 
-//! Unit tests for router integration functionality
+//! Integration tests for router functionality
+//!
+//! These tests verify that the orchestrator correctly integrates with the router
+//! by using mock HTTP servers to simulate router behavior.
 
-#[cfg(test)]
-mod router_config_tests {
-    use fms_guardrails_orchestr8::config::RouterConfig;
+pub mod common;
 
-    #[test]
-    fn test_router_config_defaults() {
-        let yaml = r#"
-enabled: true
-hostname: "localhost"
-port: 19080
-"#;
-        let config: RouterConfig = serde_yml::from_str(yaml).unwrap();
-        assert!(config.enabled);
-        assert_eq!(config.hostname, "localhost");
-        assert_eq!(config.port, 19080);
-        assert_eq!(config.sla_seconds, 60); // default
-        assert_eq!(config.reply_type, "redis"); // default
-    }
+use fms_guardrails_orchestr8::clients::openai::{
+    ChatCompletionChunk, Completion, CompletionChoice,
+};
+use futures::TryStreamExt;
+use mocktail::prelude::*;
+use reqwest::StatusCode;
+use serde_json::json;
+use test_log::test;
+use tracing::debug;
 
-    #[test]
-    fn test_router_config_disabled() {
-        let yaml = r#"
-enabled: false
-hostname: "localhost"
-port: 19080
-"#;
-        let config: RouterConfig = serde_yml::from_str(yaml).unwrap();
-        assert!(!config.enabled);
-        assert_eq!(config.hostname, "localhost");
-        assert_eq!(config.port, 19080);
-    }
+use crate::common::orchestrator::{
+    ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT, ORCHESTRATOR_COMPLETIONS_DETECTION_ENDPOINT,
+    ORCHESTRATOR_CONFIG_FILE_PATH, SseStream, TestOrchestratorServer,
+};
 
-    #[test]
-    fn test_router_config_custom_values() {
-        let yaml = r#"
-enabled: true
-hostname: "router.example.com"
-port: 9090
-sla_seconds: 120
-reply_type: "http"
-"#;
-        let config: RouterConfig = serde_yml::from_str(yaml).unwrap();
-        assert!(config.enabled);
-        assert_eq!(config.hostname, "router.example.com");
-        assert_eq!(config.port, 9090);
-        assert_eq!(config.sla_seconds, 120);
-        assert_eq!(config.reply_type, "http");
-    }
+/// Router sender endpoint for streaming requests
+const ROUTER_HANDLE_STREAM_ENDPOINT: &str = "/ml/v1-private/router/handle-stream";
+/// Router sender endpoint for unary requests
+const ROUTER_HANDLE_ENDPOINT: &str = "/ml/v1-private/router/handle";
 
-    #[test]
-    fn test_router_config_minimal() {
-        let yaml = r#"
-enabled: true
-hostname: "router"
-port: 8080
-"#;
-        let config: RouterConfig = serde_yml::from_str(yaml).unwrap();
-        assert!(config.enabled);
-        assert_eq!(config.hostname, "router");
-        assert_eq!(config.port, 8080);
-        // Check defaults are applied
-        assert_eq!(config.sla_seconds, 60);
-        assert_eq!(config.reply_type, "redis");
-    }
-
-    #[test]
-    fn test_router_config_all_fields() {
-        let yaml = r#"
-enabled: true
-hostname: "router.cluster.local"
-port: 19080
-sla_seconds: 90
-reply_type: "redis"
-"#;
-        let config: RouterConfig = serde_yml::from_str(yaml).unwrap();
-        assert!(config.enabled);
-        assert_eq!(config.hostname, "router.cluster.local");
-        assert_eq!(config.port, 19080);
-        assert_eq!(config.sla_seconds, 90);
-        assert_eq!(config.reply_type, "redis");
-    }
-
-    #[test]
-    fn test_router_config_zero_sla() {
-        let yaml = r#"
-enabled: true
-hostname: "localhost"
-port: 19080
-sla_seconds: 0
-"#;
-        let config: RouterConfig = serde_yml::from_str(yaml).unwrap();
-        assert_eq!(config.sla_seconds, 0);
-    }
-
-    #[test]
-    fn test_router_config_large_sla() {
-        let yaml = r#"
-enabled: true
-hostname: "localhost"
-port: 19080
-sla_seconds: 3600
-"#;
-        let config: RouterConfig = serde_yml::from_str(yaml).unwrap();
-        assert_eq!(config.sla_seconds, 3600);
-    }
-
-    #[test]
-    fn test_router_config_invalid_yaml() {
-        let yaml = r#"
-enabled: true
-hostname: "localhost"
-port: "not_a_number"
-"#;
-        let result: Result<RouterConfig, _> = serde_yml::from_str(yaml);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_router_config_missing_required_fields() {
-        // All fields have defaults, so even minimal config should succeed
-        let yaml = r#"
-enabled: true
-"#;
-        let config: RouterConfig = serde_yml::from_str(yaml).unwrap();
-        assert!(config.enabled);
-        // Verify defaults are applied
-        assert_eq!(config.hostname, "localhost");
-        assert_eq!(config.port, 19080);
-        assert_eq!(config.sla_seconds, 60);
-        assert_eq!(config.reply_type, "redis");
-    }
-
-    #[test]
-    fn test_router_config_extra_fields_ignored() {
-        let yaml = r#"
-enabled: true
-hostname: "localhost"
-port: 19080
-extra_field: "ignored"
-another_field: 123
-"#;
-        let config: RouterConfig = serde_yml::from_str(yaml).unwrap();
-        assert!(config.enabled);
-        assert_eq!(config.hostname, "localhost");
-        assert_eq!(config.port, 19080);
-    }
+/// Helper function to create router envelope format with SSE
+fn router_sse_envelope(content: &str) -> String {
+    let envelope = json!({
+        "content": content
+    });
+    format!("data: {}\n\n", envelope)
 }
 
-#[cfg(test)]
-mod watsonx_conversion_tests {
-    // Import the ACTUAL production functions and types from openai.rs
-    use fms_guardrails_orchestr8::clients::openai::{
-        WatsonxTextGenResponse, WatsonxTextGenResult, watsonx_to_chat_completion_chunk,
-        watsonx_to_completion,
+/// Helper function to create SSE events with router envelope for watsonx responses
+fn router_sse_watsonx(
+    messages: impl IntoIterator<Item = serde_json::Value>,
+) -> impl IntoIterator<Item = String> {
+    messages.into_iter().map(|msg| {
+        let msg_str = serde_json::to_string(&msg).unwrap();
+        router_sse_envelope(&msg_str)
+    })
+}
+
+#[test(tokio::test)]
+async fn test_router_completions_streaming() -> Result<(), anyhow::Error> {
+    let model_id = "test-model";
+    let mut router_server = MockServer::new_http("router");
+
+    // Simulate router response with watsonx format
+    let watsonx_chunks = [
+        json!({
+            "model_id": model_id,
+            "results": [{
+                "generated_text": "Hello",
+                "generated_token_count": 1,
+                "input_token_count": 5,
+                "stop_reason": null
+            }]
+        }),
+        json!({
+            "model_id": model_id,
+            "results": [{
+                "generated_text": " world",
+                "generated_token_count": 1,
+                "input_token_count": 5,
+                "stop_reason": null
+            }]
+        }),
+        json!({
+            "model_id": model_id,
+            "results": [{
+                "generated_text": "!",
+                "generated_token_count": 1,
+                "input_token_count": 5,
+                "stop_reason": "eos_token"
+            }]
+        }),
+    ];
+
+    router_server.mock(|when, then| {
+        when.post().path(ROUTER_HANDLE_STREAM_ENDPOINT);
+        then.text_stream(router_sse_watsonx(watsonx_chunks.clone()));
+    });
+
+    let test_server = TestOrchestratorServer::builder()
+        .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
+        .router_server(&router_server)
+        .build()
+        .await?;
+
+    let response = test_server
+        .post(ORCHESTRATOR_COMPLETIONS_DETECTION_ENDPOINT)
+        .json(&json!({
+            "stream": true,
+            "model": model_id,
+            "prompt": "Say hello",
+        }))
+        .send()
+        .await?;
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let sse_stream: SseStream<Completion> = SseStream::new(response.bytes_stream());
+    let messages = sse_stream.try_collect::<Vec<_>>().await?;
+    debug!("Received messages: {messages:#?}");
+
+    assert_eq!(messages.len(), 3);
+    assert_eq!(messages[0].choices[0].text, "Hello");
+    assert_eq!(messages[1].choices[0].text, " world");
+    assert_eq!(messages[2].choices[0].text, "!");
+    assert_eq!(
+        messages[2].choices[0].finish_reason,
+        Some("stop".to_string())
+    );
+
+    Ok(())
+}
+
+#[test(tokio::test)]
+async fn test_router_completions_with_keepalive() -> Result<(), anyhow::Error> {
+    let model_id = "test-model";
+    let mut router_server = MockServer::new_http("router");
+
+    // Mix data events with keepalive (png) events
+    let events = vec![
+        "event: png\ndata: \n\n".to_string(), // Keepalive
+        router_sse_envelope(
+            &json!({
+                "model_id": model_id,
+                "results": [{
+                    "generated_text": "Test",
+                    "generated_token_count": 1,
+                    "input_token_count": 1,
+                    "stop_reason": null
+                }]
+            })
+            .to_string(),
+        ),
+        "event: png\ndata: \n\n".to_string(), // Keepalive
+        router_sse_envelope(
+            &json!({
+                "model_id": model_id,
+                "results": [{
+                    "generated_text": " response",
+                    "generated_token_count": 1,
+                    "input_token_count": 1,
+                    "stop_reason": "eos_token"
+                }]
+            })
+            .to_string(),
+        ),
+    ];
+
+    router_server.mock(|when, then| {
+        when.post().path(ROUTER_HANDLE_STREAM_ENDPOINT);
+        then.text_stream(events);
+    });
+
+    let test_server = TestOrchestratorServer::builder()
+        .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
+        .router_server(&router_server)
+        .build()
+        .await?;
+
+    let response = test_server
+        .post(ORCHESTRATOR_COMPLETIONS_DETECTION_ENDPOINT)
+        .json(&json!({
+            "stream": true,
+            "model": model_id,
+            "prompt": "Test",
+        }))
+        .send()
+        .await?;
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let sse_stream: SseStream<Completion> = SseStream::new(response.bytes_stream());
+    let messages = sse_stream.try_collect::<Vec<_>>().await?;
+
+    // Should only get 2 data messages (keepalives filtered out)
+    assert_eq!(messages.len(), 2);
+    assert_eq!(messages[0].choices[0].text, "Test");
+    assert_eq!(messages[1].choices[0].text, " response");
+
+    Ok(())
+}
+
+#[test(tokio::test)]
+async fn test_router_chat_completions_streaming() -> Result<(), anyhow::Error> {
+    let model_id = "chat-model";
+    let mut router_server = MockServer::new_http("router");
+
+    let watsonx_chunks = [
+        json!({
+            "model_id": model_id,
+            "results": [{
+                "generated_text": "I'm",
+                "generated_token_count": 1,
+                "input_token_count": 10,
+                "stop_reason": null
+            }]
+        }),
+        json!({
+            "model_id": model_id,
+            "results": [{
+                "generated_text": " doing",
+                "generated_token_count": 1,
+                "input_token_count": 10,
+                "stop_reason": null
+            }]
+        }),
+        json!({
+            "model_id": model_id,
+            "results": [{
+                "generated_text": " well!",
+                "generated_token_count": 1,
+                "input_token_count": 10,
+                "stop_reason": "eos_token"
+            }]
+        }),
+    ];
+
+    router_server.mock(|when, then| {
+        when.post().path(ROUTER_HANDLE_STREAM_ENDPOINT);
+        then.text_stream(router_sse_watsonx(watsonx_chunks.clone()));
+    });
+
+    let test_server = TestOrchestratorServer::builder()
+        .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
+        .router_server(&router_server)
+        .build()
+        .await?;
+
+    let response = test_server
+        .post(ORCHESTRATOR_CHAT_COMPLETIONS_DETECTION_ENDPOINT)
+        .json(&json!({
+            "stream": true,
+            "model": model_id,
+            "messages": [
+                {"role": "user", "content": "How are you?"}
+            ],
+        }))
+        .send()
+        .await?;
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let sse_stream: SseStream<ChatCompletionChunk> = SseStream::new(response.bytes_stream());
+    let messages = sse_stream.try_collect::<Vec<_>>().await?;
+    debug!("Chat chunks: {messages:#?}");
+
+    assert_eq!(messages.len(), 3);
+    assert_eq!(
+        messages[0].choices[0].delta.content,
+        Some("I'm".to_string())
+    );
+    assert_eq!(
+        messages[1].choices[0].delta.content,
+        Some(" doing".to_string())
+    );
+    assert_eq!(
+        messages[2].choices[0].delta.content,
+        Some(" well!".to_string())
+    );
+    assert_eq!(
+        messages[2].choices[0].finish_reason,
+        Some("stop".to_string())
+    );
+
+    Ok(())
+}
+
+#[test(tokio::test)]
+async fn test_router_error_event_handling() -> Result<(), anyhow::Error> {
+    let model_id = "test-model";
+    let mut router_server = MockServer::new_http("router");
+
+    // Simulate router sending an error event
+    let events = vec![
+        router_sse_envelope(
+            &json!({
+                "model_id": model_id,
+                "results": [{
+                    "generated_text": "Start",
+                    "generated_token_count": 1,
+                    "input_token_count": 1,
+                    "stop_reason": null
+                }]
+            })
+            .to_string(),
+        ),
+        "event: err\ndata: Router internal error\n\n".to_string(),
+    ];
+
+    router_server.mock(|when, then| {
+        when.post().path(ROUTER_HANDLE_STREAM_ENDPOINT);
+        then.text_stream(events);
+    });
+
+    let test_server = TestOrchestratorServer::builder()
+        .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
+        .router_server(&router_server)
+        .build()
+        .await?;
+
+    let response = test_server
+        .post(ORCHESTRATOR_COMPLETIONS_DETECTION_ENDPOINT)
+        .json(&json!({
+            "stream": true,
+            "model": model_id,
+            "prompt": "Test",
+        }))
+        .send()
+        .await?;
+
+    // Should still get OK status initially
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let sse_stream: SseStream<Completion> = SseStream::new(response.bytes_stream());
+    let result = sse_stream.try_collect::<Vec<_>>().await;
+
+    // Should get an error due to the err event
+    assert!(result.is_err(), "Expected error from err event");
+
+    Ok(())
+}
+
+#[test(tokio::test)]
+async fn test_router_unary_completions() -> Result<(), anyhow::Error> {
+    let model_id = "test-model";
+    let mut router_server = MockServer::new_http("router");
+
+    // For unary (non-streaming), router uses http_pass mode which forwards to vLLM
+    // and returns vLLM's response directly (OpenAI format, not watsonx)
+    let vllm_response = Completion {
+        id: "cmpl-test".into(),
+        model: model_id.to_string(),
+        created: 1754506038,
+        object: "text_completion".into(),
+        choices: vec![CompletionChoice {
+            index: 0,
+            text: "Complete response".into(),
+            finish_reason: Some("stop".into()),
+            ..Default::default()
+        }],
+        ..Default::default()
     };
 
-    #[test]
-    fn test_watsonx_to_completion_basic() {
-        let watsonx_resp = WatsonxTextGenResponse {
-            model_id: "test-model".to_string(),
-            results: vec![WatsonxTextGenResult {
-                generated_text: "Hello world".to_string(),
-                generated_token_count: 2,
-                input_token_count: 1,
-                stop_reason: Some("eos_token".to_string()),
-            }],
-        };
+    router_server.mock(|when, then| {
+        when.post().path(ROUTER_HANDLE_ENDPOINT);
+        then.json(&vllm_response);
+    });
 
-        let completion = watsonx_to_completion(watsonx_resp, "test-model");
-        assert_eq!(completion.model, "test-model");
-        assert_eq!(completion.object, "text_completion");
-        assert_eq!(completion.choices.len(), 1);
-        assert_eq!(completion.choices[0].text, "Hello world");
-        assert_eq!(completion.choices[0].index, 0);
-        assert_eq!(
-            completion.choices[0].finish_reason,
-            Some("stop".to_string())
-        );
-        // Real implementation returns usage: None
-        assert!(completion.usage.is_none());
-    }
+    let test_server = TestOrchestratorServer::builder()
+        .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
+        .router_server(&router_server)
+        .build()
+        .await?;
 
-    #[test]
-    fn test_watsonx_to_completion_empty_model_id() {
-        let watsonx_resp = WatsonxTextGenResponse {
-            model_id: "".to_string(),
-            results: vec![WatsonxTextGenResult {
-                generated_text: "test".to_string(),
-                generated_token_count: 1,
-                input_token_count: 1,
-                stop_reason: None,
-            }],
-        };
+    let response = test_server
+        .post(ORCHESTRATOR_COMPLETIONS_DETECTION_ENDPOINT)
+        .json(&json!({
+            "stream": false,
+            "model": model_id,
+            "prompt": "Test prompt",
+        }))
+        .send()
+        .await?;
 
-        let completion = watsonx_to_completion(watsonx_resp, "fallback-model");
-        assert_eq!(completion.model, "fallback-model");
-    }
+    assert_eq!(response.status(), StatusCode::OK);
 
-    #[test]
-    fn test_watsonx_to_completion_empty_results() {
-        let watsonx_resp = WatsonxTextGenResponse {
-            model_id: "test-model".to_string(),
-            results: vec![],
-        };
+    let completion: Completion = response.json().await?;
+    debug!("Unary completion: {completion:#?}");
 
-        let completion = watsonx_to_completion(watsonx_resp, "fallback-model");
-        assert_eq!(completion.model, "test-model");
-        // Real implementation returns empty choices array for empty results
-        assert_eq!(completion.choices.len(), 0);
-        assert!(completion.usage.is_none());
-    }
+    assert_eq!(completion.model, model_id);
+    assert_eq!(completion.choices.len(), 1);
+    assert_eq!(completion.choices[0].text, "Complete response");
+    assert_eq!(
+        completion.choices[0].finish_reason,
+        Some("stop".to_string())
+    );
 
-    #[test]
-    fn test_watsonx_to_completion_stop_reasons() {
-        let test_cases = vec![
-            ("eos_token", Some("stop")),
-            ("max_tokens", Some("length")),
-            ("stop_sequence", Some("stop")),
-            ("not_finished", None), // Real implementation: not_finished -> None
-            ("cancelled", Some("cancelled")), // Real implementation: unknown reasons pass through
-            ("error", Some("error")),
-        ];
-
-        for (watsonx_reason, expected_openai_reason) in test_cases {
-            let watsonx_resp = WatsonxTextGenResponse {
-                model_id: "test".to_string(),
-                results: vec![WatsonxTextGenResult {
-                    generated_text: "test".to_string(),
-                    generated_token_count: 1,
-                    input_token_count: 1,
-                    stop_reason: Some(watsonx_reason.to_string()),
-                }],
-            };
-
-            let completion = watsonx_to_completion(watsonx_resp, "test");
-            assert_eq!(
-                completion.choices[0].finish_reason.as_deref(),
-                expected_openai_reason,
-                "Failed for stop_reason: {}",
-                watsonx_reason
-            );
-        }
-    }
-
-    #[test]
-    fn test_watsonx_to_completion_no_stop_reason() {
-        let watsonx_resp = WatsonxTextGenResponse {
-            model_id: "test".to_string(),
-            results: vec![WatsonxTextGenResult {
-                generated_text: "incomplete".to_string(),
-                generated_token_count: 1,
-                input_token_count: 1,
-                stop_reason: None,
-            }],
-        };
-
-        let completion = watsonx_to_completion(watsonx_resp, "test");
-        assert_eq!(completion.choices[0].finish_reason, None);
-    }
-
-    #[test]
-    fn test_watsonx_to_chat_completion_chunk_basic() {
-        let watsonx_resp = WatsonxTextGenResponse {
-            model_id: "chat-model".to_string(),
-            results: vec![WatsonxTextGenResult {
-                generated_text: "Hi there".to_string(),
-                generated_token_count: 2,
-                input_token_count: 3,
-                stop_reason: None,
-            }],
-        };
-
-        let chunk = watsonx_to_chat_completion_chunk(watsonx_resp, "chat-model");
-        assert_eq!(chunk.model, "chat-model");
-        assert_eq!(chunk.object, "chat.completion.chunk");
-        assert_eq!(chunk.choices.len(), 1);
-        assert_eq!(chunk.choices[0].index, 0);
-        assert_eq!(chunk.choices[0].delta.content, Some("Hi there".to_string()));
-        assert_eq!(chunk.choices[0].delta.role, None);
-        assert_eq!(chunk.choices[0].finish_reason, None);
-    }
-
-    #[test]
-    fn test_watsonx_to_chat_completion_chunk_with_finish_reason() {
-        let watsonx_resp = WatsonxTextGenResponse {
-            model_id: "chat-model".to_string(),
-            results: vec![WatsonxTextGenResult {
-                generated_text: "Done".to_string(),
-                generated_token_count: 1,
-                input_token_count: 1,
-                stop_reason: Some("eos_token".to_string()),
-            }],
-        };
-
-        let chunk = watsonx_to_chat_completion_chunk(watsonx_resp, "chat-model");
-        assert_eq!(chunk.choices[0].finish_reason, Some("stop".to_string()));
-    }
-
-    #[test]
-    fn test_watsonx_to_chat_completion_chunk_empty_results() {
-        let watsonx_resp = WatsonxTextGenResponse {
-            model_id: "chat-model".to_string(),
-            results: vec![],
-        };
-
-        let chunk = watsonx_to_chat_completion_chunk(watsonx_resp, "fallback");
-        assert_eq!(chunk.model, "chat-model");
-        // Real implementation returns empty choices array for empty results
-        assert_eq!(chunk.choices.len(), 0);
-    }
-
-    #[test]
-    fn test_watsonx_to_chat_completion_chunk_fallback_model() {
-        let watsonx_resp = WatsonxTextGenResponse {
-            model_id: "".to_string(),
-            results: vec![WatsonxTextGenResult {
-                generated_text: "test".to_string(),
-                generated_token_count: 1,
-                input_token_count: 1,
-                stop_reason: None,
-            }],
-        };
-
-        let chunk = watsonx_to_chat_completion_chunk(watsonx_resp, "fallback-model");
-        assert_eq!(chunk.model, "fallback-model");
-    }
+    Ok(())
 }
 
-#[cfg(test)]
-mod http_pass_payload_tests {
-    use serde_json::json;
+#[test(tokio::test)]
+async fn test_router_done_signal() -> Result<(), anyhow::Error> {
+    let model_id = "test-model";
+    let mut router_server = MockServer::new_http("router");
 
-    #[test]
-    fn test_http_pass_payload_structure() {
-        let payload = json!({
-            "method": "POST",
-            "path": "/api/v1/text/contents",
-            "headers": {
-                "Content-Type": "application/json",
-                "x-request-id": "test-123",
-            },
-            "payload": b"test data",
-        });
+    // Include [DONE] signal at the end
+    let events = vec![
+        router_sse_envelope(
+            &json!({
+                "model_id": model_id,
+                "results": [{
+                    "generated_text": "Response",
+                    "generated_token_count": 1,
+                    "input_token_count": 1,
+                    "stop_reason": "eos_token"
+                }]
+            })
+            .to_string(),
+        ),
+        "data: [DONE]\n\n".to_string(),
+    ];
 
-        assert_eq!(payload["method"], "POST");
-        assert_eq!(payload["path"], "/api/v1/text/contents");
-        assert!(payload["headers"].is_object());
-        assert_eq!(payload["headers"]["Content-Type"], "application/json");
-        assert_eq!(payload["headers"]["x-request-id"], "test-123");
-    }
+    router_server.mock(|when, then| {
+        when.post().path(ROUTER_HANDLE_STREAM_ENDPOINT);
+        then.text_stream(events);
+    });
 
-    #[test]
-    fn test_http_pass_payload_with_bytes() {
-        let test_data = b"binary data";
-        let payload = json!({
-            "method": "POST",
-            "path": "/tokenize",
-            "headers": {
-                "Content-Type": "application/json",
-            },
-            "payload": test_data,
-        });
+    let test_server = TestOrchestratorServer::builder()
+        .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
+        .router_server(&router_server)
+        .build()
+        .await?;
 
-        assert!(payload["payload"].is_array());
-    }
+    let response = test_server
+        .post(ORCHESTRATOR_COMPLETIONS_DETECTION_ENDPOINT)
+        .json(&json!({
+            "stream": true,
+            "model": model_id,
+            "prompt": "Test",
+        }))
+        .send()
+        .await?;
 
-    #[test]
-    fn test_http_pass_payload_multiple_headers() {
-        let payload = json!({
-            "method": "POST",
-            "path": "/api/v1/text/contents",
-            "headers": {
-                "Content-Type": "application/json",
-                "x-request-id": "req-123",
-                "x-model-name": "test-model",
-                "x-sla-seconds": "60",
-            },
-            "payload": [],
-        });
+    assert_eq!(response.status(), StatusCode::OK);
 
-        let headers = payload["headers"].as_object().unwrap();
-        assert_eq!(headers.len(), 4);
-        assert_eq!(headers["x-model-name"], "test-model");
-        assert_eq!(headers["x-sla-seconds"], "60");
-    }
+    let sse_stream: SseStream<Completion> = SseStream::new(response.bytes_stream());
+    let messages = sse_stream.try_collect::<Vec<_>>().await?;
 
-    #[cfg(test)]
-    mod stream_handler_tests {
-        use serde_json::json;
+    // Should get 1 message before [DONE]
+    assert_eq!(messages.len(), 1);
+    assert_eq!(messages[0].choices[0].text, "Response");
 
-        /// Mock event structure for testing
-        #[derive(Debug, Clone)]
-        struct MockEvent {
-            event: String,
-            data: String,
-        }
+    Ok(())
+}
 
-        /// Mock event creation helper
-        fn create_event(event_type: &str, data: &str) -> MockEvent {
-            MockEvent {
-                event: event_type.to_string(),
-                data: data.to_string(),
-            }
-        }
+// Made with Bob
 
-        #[test]
-        fn test_ping_keepalive_skipped() {
-            let event = create_event("png", "");
-            // In actual implementation, "png" events should be skipped (continue)
-            assert_eq!(event.event, "png");
-            // This event should not produce any output in the stream
-        }
+#[test(tokio::test)]
+async fn test_router_with_detectors() -> Result<(), anyhow::Error> {
+    let model_id = "test-model";
+    let mut router_server = MockServer::new_http("router");
 
-        #[test]
-        fn test_err_event_produces_error() {
-            let error_message = "Internal server error occurred";
-            let event = create_event("err", error_message);
+    // Detector response - router returns this directly (no envelope for http_pass)
+    // ContentAnalysisResponse requires: start, end, text, detection, detection_type, score
+    let detector_response = json!([[{
+        "start": 0,
+        "end": 11,
+        "text": "Test prompt",
+        "detection": "safe",
+        "detection_type": "content",
+        "score": 0.1,
+        "evidence": []
+    }]]);
 
-            assert_eq!(event.event, "err");
-            assert_eq!(event.data, error_message);
-            // In actual implementation, this should:
-            // 1. Create an Error::Http with INTERNAL_SERVER_ERROR
-            // 2. Send error to channel
-            // 3. Break the loop
-        }
+    // Mock generation response (watsonx format in router envelope)
+    let watsonx_response = json!({
+        "model_id": model_id,
+        "results": [{
+            "generated_text": "This is a safe response",
+            "generated_token_count": 5,
+            "input_token_count": 3,
+            "stop_reason": "eos_token"
+        }]
+    });
 
-        #[test]
-        fn test_done_signal_terminates_stream() {
-            let event = create_event("message", "[DONE]");
+    // Router will receive TWO requests:
+    // 1. Detector request to /ml/v1-private/router/handle (http_pass mode)
+    // 2. Generation request to /ml/v1-private/router/handle-stream (streaming)
 
-            assert_eq!(event.data, "[DONE]");
-            // In actual implementation, this should:
-            // 1. Send Ok(None) to channel
-            // 2. Break the loop
-        }
+    // Mock detector call (unary, http_pass) - returns response directly
+    router_server.mock(|when, then| {
+        when.post().path(ROUTER_HANDLE_ENDPOINT);
+        then.json(&detector_response);
+    });
 
-        #[test]
-        fn test_router_envelope_parsing() {
-            let envelope = json!({
-                "content": "{\"model_id\":\"test\",\"results\":[{\"generated_text\":\"Hello\"}]}"
-            });
+    // Mock generation call (streaming)
+    router_server.mock(|when, then| {
+        when.post().path(ROUTER_HANDLE_STREAM_ENDPOINT);
+        then.text_stream(router_sse_watsonx([watsonx_response.clone()]));
+    });
 
-            let envelope_str = envelope.to_string();
-            let event = create_event("message", &envelope_str);
+    let test_server = TestOrchestratorServer::builder()
+        .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
+        .router_server(&router_server)
+        .build()
+        .await?;
 
-            // Parse the envelope
-            let parsed: serde_json::Value = serde_json::from_str(&event.data).unwrap();
-            let content = parsed.get("content").and_then(|v| v.as_str()).unwrap();
-
-            assert!(content.contains("model_id"));
-            assert!(content.contains("generated_text"));
-        }
-
-        #[test]
-        fn test_router_envelope_without_content_field() {
-            let direct_data = json!({
-                "model_id": "test",
-                "results": [{"generated_text": "Hello"}]
-            });
-
-            let data_str = direct_data.to_string();
-            let event = create_event("message", &data_str);
-
-            // Parse as envelope first
-            let parsed: serde_json::Value = serde_json::from_str(&event.data).unwrap();
-            let content = parsed.get("content").and_then(|v| v.as_str());
-
-            // If no content field, use the data directly
-            let final_content = content.unwrap_or(&event.data);
-            assert!(final_content.contains("model_id"));
-        }
-
-        #[test]
-        fn test_malformed_json_in_envelope() {
-            let malformed = "{ invalid json }";
-            let event = create_event("message", malformed);
-
-            // Attempt to parse
-            let result: Result<serde_json::Value, _> = serde_json::from_str(&event.data);
-            assert!(result.is_err());
-            // In actual implementation, this should:
-            // 1. Fall back to using event.data directly
-            // 2. Attempt to parse as WatsonxTextGenResponse
-            // 3. If that fails, send deserialization error
-        }
-
-        #[test]
-        fn test_malformed_watsonx_response() {
-            let envelope = json!({
-                "content": "{ \"invalid\": \"structure\" }"
-            });
-
-            let envelope_str = envelope.to_string();
-            let event = create_event("message", &envelope_str);
-
-            // Parse envelope
-            let parsed: serde_json::Value = serde_json::from_str(&event.data).unwrap();
-            let content = parsed.get("content").and_then(|v| v.as_str()).unwrap();
-
-            // Try to parse as WatsonxTextGenResponse (should fail)
-            #[derive(serde::Deserialize)]
-            #[allow(dead_code)]
-            struct WatsonxTextGenResponse {
-                model_id: String,
-                results: Vec<serde_json::Value>,
-            }
-
-            let result: Result<WatsonxTextGenResponse, _> = serde_json::from_str(content);
-            assert!(result.is_err());
-            // In actual implementation, this should:
-            // 1. Send deserialization error to channel
-            // 2. Break the loop
-        }
-
-        #[test]
-        fn test_empty_event_data() {
-            let event = create_event("message", "");
-
-            assert_eq!(event.data, "");
-            // In actual implementation, this should be handled gracefully
-            // Either skip or attempt to parse (which will fail)
-        }
-
-        #[test]
-        fn test_done_signal_before_envelope_parsing() {
-            // Test that [DONE] check happens BEFORE envelope parsing
-            let event = create_event("message", "[DONE]");
-
-            // Check for [DONE] first
-            assert_eq!(event.data, "[DONE]", "Should have detected [DONE] signal");
-        }
-
-        #[test]
-        fn test_multiple_events_sequence() {
-            let events = vec![
-                create_event("png", ""),                            // Keepalive - skip
-                create_event("message", "{\"content\":\"test1\"}"), // Valid data
-                create_event("png", ""),                            // Keepalive - skip
-                create_event("message", "{\"content\":\"test2\"}"), // Valid data
-                create_event("message", "[DONE]"),                  // Termination signal
-            ];
-
-            let mut processed_count = 0;
-            for event in events {
-                match event.event.as_str() {
-                    "png" => continue, // Skip keepalive
-                    "err" => break,    // Error terminates
-                    _ => {
-                        if event.data == "[DONE]" {
-                            break; // Done terminates
-                        }
-                        processed_count += 1;
-                    }
+    let response = test_server
+        .post(ORCHESTRATOR_COMPLETIONS_DETECTION_ENDPOINT)
+        .json(&json!({
+            "stream": true,
+            "model": model_id,
+            "prompt": "Test prompt",
+            "detectors": {
+                "input": {
+                    "pii_detector_whole_doc": {}
                 }
             }
+        }))
+        .send()
+        .await?;
 
-            assert_eq!(
-                processed_count, 2,
-                "Should process 2 valid messages before [DONE]"
-            );
-        }
+    assert_eq!(response.status(), StatusCode::OK);
 
-        #[test]
-        fn test_error_event_terminates_immediately() {
-            let events = vec![
-                create_event("message", "{\"content\":\"test1\"}"),
-                create_event("err", "Something went wrong"),
-                create_event("message", "{\"content\":\"test2\"}"), // Should not be processed
-            ];
+    let sse_stream: SseStream<Completion> = SseStream::new(response.bytes_stream());
+    let messages = sse_stream.try_collect::<Vec<_>>().await?;
+    debug!("Messages with detector: {messages:#?}");
 
-            let mut processed_count = 0;
-            for event in events {
-                match event.event.as_str() {
-                    "err" => break,
-                    _ => processed_count += 1,
-                }
-            }
+    // Verify we got the generation response
+    assert_eq!(messages.len(), 1);
+    assert_eq!(messages[0].choices[0].text, "This is a safe response");
+    assert_eq!(
+        messages[0].choices[0].finish_reason,
+        Some("stop".to_string())
+    );
 
-            assert_eq!(
-                processed_count, 1,
-                "Should stop processing after error event"
-            );
-        }
+    debug!("Detections present: {:?}", messages[0].detections.is_some());
 
-        #[test]
-        fn test_base64_payload_in_envelope() {
-            use base64::{Engine as _, engine::general_purpose};
-
-            // Router sends base64-encoded payloads
-            let base64_content = general_purpose::STANDARD.encode(b"test payload");
-            let envelope = json!({
-                "content": base64_content
-            });
-
-            let envelope_str = envelope.to_string();
-            let parsed: serde_json::Value = serde_json::from_str(&envelope_str).unwrap();
-            let content = parsed.get("content").and_then(|v| v.as_str()).unwrap();
-
-            // Decode base64
-            let decoded = general_purpose::STANDARD.decode(content).unwrap();
-            assert_eq!(decoded, b"test payload");
-        }
-    }
+    Ok(())
 }
