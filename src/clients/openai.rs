@@ -40,6 +40,12 @@ use crate::{
     orchestrator::{self, types::Detection},
 };
 
+/// Response type from router, eliminating the invalid "both None" state
+enum RouterResponse<UnaryResp, StreamChunk> {
+    Unary(UnaryResp),
+    Streaming(mpsc::Receiver<Result<Option<StreamChunk>, orchestrator::Error>>),
+}
+
 const DEFAULT_PORT: u16 = 8080;
 
 const CHAT_COMPLETIONS_ENDPOINT: &str = "/v1/chat/completions";
@@ -49,7 +55,6 @@ const TOKENIZE_ENDPOINT: &str = "/tokenize"; // This endpoint is vLLM-specific
 /// Router sender endpoint for unary (non-streaming) requests.
 const ROUTER_HANDLE_ENDPOINT: &str = "/ml/v1-private/router/handle";
 /// Router sender endpoint for streaming requests.
-/// This endpoint maintains request handles and streams responses back via HTTP.
 const ROUTER_HANDLE_STREAM_ENDPOINT: &str = "/ml/v1-private/router/handle-stream";
 
 #[derive(Clone)]
@@ -164,6 +169,85 @@ impl OpenAiClient {
         Ok((transaction_id, router_client))
     }
 
+    /// Generic helper for routing requests through the router
+    /// Handles both streaming and unary requests with different response types
+    async fn route_via_router<UnaryResp, StreamChunk>(
+        &self,
+        model_name: &str,
+        vllm_request: serde_json::Value,
+        endpoint: &str,
+        is_streaming: bool,
+        mut headers: HeaderMap,
+    ) -> Result<RouterResponse<UnaryResp, StreamChunk>, Error>
+    where
+        UnaryResp: DeserializeOwned,
+        StreamChunk: DeserializeOwned + Send + 'static,
+    {
+        if is_streaming {
+            // STREAMING: Use http_pass_stream method
+            let (transaction_id, router_client) =
+                self.build_router_headers(model_name, "http_pass_stream", &mut headers)?;
+            let http_pass_payload =
+                self.build_router_payload(endpoint, &vllm_request, &transaction_id)?;
+            let url = router_client.endpoint(ROUTER_HANDLE_STREAM_ENDPOINT);
+            let rx = self
+                .handle_stream_with_body::<StreamChunk>(
+                    router_client,
+                    url,
+                    http_pass_payload,
+                    headers,
+                )
+                .await?;
+            Ok(RouterResponse::Streaming(rx))
+        } else {
+            // UNARY: Use http_pass method
+            let (transaction_id, router_client) =
+                self.build_router_headers(model_name, "http_pass", &mut headers)?;
+            let http_pass_payload =
+                self.build_router_payload(endpoint, &vllm_request, &transaction_id)?;
+            let url = router_client.endpoint(ROUTER_HANDLE_ENDPOINT);
+            let response = self
+                .handle_unary_with_body(router_client, url, http_pass_payload, headers)
+                .await?;
+            Ok(RouterResponse::Unary(response))
+        }
+    }
+
+    /// Merge extra fields from request into vLLM request JSON, excluding detector-specific fields
+    fn merge_extra_fields(target: &mut serde_json::Value, extra: &Map<String, Value>) {
+        if let Some(obj) = target.as_object_mut() {
+            for (key, value) in extra {
+                if key != "detectors" && key != "_prompt_masks" {
+                    obj.insert(key.clone(), value.clone());
+                }
+            }
+        }
+    }
+
+    /// Build router HTTP passthrough payload envelope
+    /// Serializes the request body, base64-encodes it, and wraps it in the router envelope format
+    fn build_router_payload<T: Serialize>(
+        &self,
+        endpoint: &str,
+        body: &T,
+        transaction_id: &str,
+    ) -> Result<serde_json::Value, Error> {
+        let bytes = serde_json::to_vec(body).map_err(|e| Error::Http {
+            code: StatusCode::INTERNAL_SERVER_ERROR,
+            message: format!("failed to serialise request: {e}"),
+        })?;
+        let payload_base64 = general_purpose::STANDARD.encode(&bytes);
+        Ok(serde_json::json!({
+            "method": "POST",
+            "path": endpoint,
+            "headers": {
+                "Content-Type": "application/json",
+                "x-request-id": transaction_id,
+            },
+            "payload": payload_base64,
+        }))
+    }
+
     pub async fn chat_completions(
         &self,
         request: ChatCompletionsRequest,
@@ -215,79 +299,31 @@ impl OpenAiClient {
     async fn completions_via_router(
         &self,
         request: CompletionsRequest,
-        mut headers: HeaderMap,
+        headers: HeaderMap,
     ) -> Result<CompletionsResponse, Error> {
-        let model_name = &request.model;
-
+        // Build vLLM request with extra fields
+        let mut vllm_request = serde_json::json!({
+            "model": request.model,
+            "prompt": request.prompt,
+        });
         if let Some(true) = request.stream {
-            let (_transaction_id, router_client) =
-                self.build_router_headers(model_name, "completions_stream", &mut headers)?;
+            vllm_request["stream"] = serde_json::json!(true);
+        }
+        Self::merge_extra_fields(&mut vllm_request, &request.extra);
 
-            let mut parameters: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
-            for (key, value) in &request.extra {
-                if key != "detectors" && key != "_prompt_masks" && key != "stream" {
-                    parameters.insert(key.clone(), value.clone());
-                }
-            }
-            // Explicitly add stream parameter for LLM backend
-            parameters.insert("stream".to_string(), serde_json::json!(true));
+        let response = self
+            .route_via_router::<Box<Completion>, Completion>(
+                &request.model,
+                vllm_request,
+                COMPLETIONS_ENDPOINT,
+                request.stream.unwrap_or(false),
+                headers,
+            )
+            .await?;
 
-            let watsonx_request = serde_json::json!({
-                "model_id": request.model,
-                "input": request.prompt,
-                "parameters": parameters,
-            });
-
-            let url = router_client.endpoint(ROUTER_HANDLE_STREAM_ENDPOINT);
-            let rx = self
-                .handle_router_completions_stream(
-                    router_client,
-                    url,
-                    watsonx_request,
-                    headers,
-                    request.model.clone(),
-                )
-                .await?;
-            Ok(CompletionsResponse::Streaming(rx))
-        } else {
-            let (transaction_id, router_client) =
-                self.build_router_headers(model_name, "http_pass", &mut headers)?;
-
-            let mut vllm_request = serde_json::json!({
-                "model": request.model,
-                "prompt": request.prompt,
-            });
-            if let Some(obj) = vllm_request.as_object_mut() {
-                for (key, value) in &request.extra {
-                    if key != "detectors" && key != "_prompt_masks" {
-                        obj.insert(key.clone(), value.clone());
-                    }
-                }
-            }
-
-            let vllm_json_bytes = serde_json::to_vec(&vllm_request).map_err(|e| Error::Http {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
-                message: format!("failed to serialise vLLM request: {e}"),
-            })?;
-
-            // Base64-encode the payload bytes (router expects base64, not array of numbers)
-            let payload_base64 = general_purpose::STANDARD.encode(&vllm_json_bytes);
-
-            let http_pass_payload = serde_json::json!({
-                "method": "POST",
-                "path": COMPLETIONS_ENDPOINT,
-                "headers": {
-                    "Content-Type": "application/json",
-                    "x-request-id": transaction_id,
-                },
-                "payload": payload_base64,
-            });
-
-            let url = router_client.endpoint(ROUTER_HANDLE_ENDPOINT);
-            let completion = self
-                .handle_unary_with_body(router_client, url, http_pass_payload, headers)
-                .await?;
-            Ok(CompletionsResponse::Unary(completion))
+        match response {
+            RouterResponse::Streaming(rx) => Ok(CompletionsResponse::Streaming(rx)),
+            RouterResponse::Unary(completion) => Ok(CompletionsResponse::Unary(completion)),
         }
     }
     async fn chat_completions_via_router(
@@ -295,84 +331,31 @@ impl OpenAiClient {
         request: ChatCompletionsRequest,
         headers: HeaderMap,
     ) -> Result<ChatCompletionsResponse, Error> {
-        let mut headers = headers;
-        let model_name = &request.model;
-
+        // Build vLLM request with extra fields
+        let mut vllm_request = serde_json::json!({
+            "model": request.model,
+            "messages": request.messages,
+        });
         if let Some(true) = request.stream {
-            // STREAMING: Use chat_completions_stream method
-            let (_transaction_id, router_client) =
-                self.build_router_headers(model_name, "chat_completions_stream", &mut headers)?;
+            vllm_request["stream"] = serde_json::json!(true);
+        }
+        Self::merge_extra_fields(&mut vllm_request, &request.extra);
 
-            // Convert OpenAI chat request to Watsonx chat format
-            let mut parameters: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
-            for (key, value) in &request.extra {
-                if key != "detectors" && key != "_prompt_masks" && key != "stream" {
-                    parameters.insert(key.clone(), value.clone());
-                }
+        let response = self
+            .route_via_router::<Box<ChatCompletion>, ChatCompletionChunk>(
+                &request.model,
+                vllm_request,
+                CHAT_COMPLETIONS_ENDPOINT,
+                request.stream.unwrap_or(false),
+                headers,
+            )
+            .await?;
+
+        match response {
+            RouterResponse::Streaming(rx) => Ok(ChatCompletionsResponse::Streaming(rx)),
+            RouterResponse::Unary(chat_completion) => {
+                Ok(ChatCompletionsResponse::Unary(chat_completion))
             }
-            // Explicitly add stream parameter for LLM backend
-            parameters.insert("stream".to_string(), serde_json::json!(true));
-
-            // Build Watsonx chat format request
-            let watsonx_request = serde_json::json!({
-                "model_id": request.model,
-                "messages": request.messages,  // Messages array stays the same
-                "parameters": parameters,
-            });
-
-            let url = router_client.endpoint(ROUTER_HANDLE_STREAM_ENDPOINT);
-            let rx = self
-                .handle_router_chat_completions_stream(
-                    router_client,
-                    url,
-                    watsonx_request,
-                    headers,
-                    request.model.clone(),
-                )
-                .await?;
-            Ok(ChatCompletionsResponse::Streaming(rx))
-        } else {
-            // UNARY: Use http_pass method
-            let (transaction_id, router_client) =
-                self.build_router_headers(model_name, "http_pass", &mut headers)?;
-
-            // Build OpenAI/vLLM format request (no conversion needed)
-            let mut vllm_request = serde_json::json!({
-                "model": request.model,
-                "messages": request.messages,
-            });
-
-            if let Some(obj) = vllm_request.as_object_mut() {
-                for (key, value) in &request.extra {
-                    if key != "detectors" && key != "_prompt_masks" {
-                        obj.insert(key.clone(), value.clone());
-                    }
-                }
-            }
-
-            let vllm_json_bytes = serde_json::to_vec(&vllm_request).map_err(|e| Error::Http {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
-                message: format!("failed to serialise vLLM request: {e}"),
-            })?;
-
-            // Base64-encode the payload bytes (router expects base64, not array of numbers)
-            let payload_base64 = general_purpose::STANDARD.encode(&vllm_json_bytes);
-
-            let http_pass_payload = serde_json::json!({
-                "method": "POST",
-                "path": CHAT_COMPLETIONS_ENDPOINT,
-                "headers": {
-                    "Content-Type": "application/json",
-                    "x-request-id": transaction_id,
-                },
-                "payload": payload_base64,
-            });
-
-            let url = router_client.endpoint(ROUTER_HANDLE_ENDPOINT);
-            let chat_completion = self
-                .handle_unary_with_body(router_client, url, http_pass_payload, headers)
-                .await?;
-            Ok(ChatCompletionsResponse::Unary(chat_completion))
         }
     }
 
@@ -382,7 +365,7 @@ impl OpenAiClient {
         headers: HeaderMap,
     ) -> Result<TokenizeResponse, Error> {
         // Check if router is enabled
-        if self.router_config.is_some() && self.router_config.as_ref().unwrap().enabled {
+        if self.router_config.as_ref().is_some_and(|r| r.enabled) {
             // Route through router queue
             self.tokenize_via_router(request, headers).await
         } else {
@@ -398,40 +381,27 @@ impl OpenAiClient {
         request: TokenizeRequest,
         mut headers: HeaderMap,
     ) -> Result<TokenizeResponse, Error> {
-        // Build router headers using shared helper
         let (transaction_id, router_client) =
             self.build_router_headers(&request.model, "http_pass", &mut headers)?;
 
-        // Build tokenize request payload
-        let tokenize_json = serde_json::to_value(&request).map_err(|e| Error::Http {
-            code: StatusCode::INTERNAL_SERVER_ERROR,
-            message: format!("failed to serialize tokenize request: {e}"),
-        })?;
-
-        let tokenize_json_bytes = serde_json::to_vec(&tokenize_json).map_err(|e| Error::Http {
-            code: StatusCode::INTERNAL_SERVER_ERROR,
-            message: format!("failed to serialize tokenize request: {e}"),
-        })?;
-
-        // Base64-encode the payload bytes (router expects base64, not array of numbers)
-        let payload_base64 = general_purpose::STANDARD.encode(&tokenize_json_bytes);
-
-        // Build HTTP passthrough payload
-        let http_pass_payload = serde_json::json!({
-            "method": "POST",
-            "path": TOKENIZE_ENDPOINT,  // "/tokenize"
-            "headers": {
-                "Content-Type": "application/json",
-                "x-request-id": transaction_id,
-            },
-            "payload": payload_base64,
-        });
+        let http_pass_payload =
+            self.build_router_payload(TOKENIZE_ENDPOINT, &request, &transaction_id)?;
 
         let url = router_client.endpoint(ROUTER_HANDLE_ENDPOINT);
-        let response = self
-            .handle_unary_with_body(router_client, url, http_pass_payload, headers)
-            .await?;
-        Ok(response)
+        self.handle_unary_with_body(router_client, url, http_pass_payload, headers)
+            .await
+    }
+
+    /// Extract error from HTTP response
+    /// Attempts to deserialize error response, falls back to generic message
+    async fn http_error(response: super::http::Response) -> Error {
+        let code = response.status();
+        let message = response
+            .json::<ErrorResponse>()
+            .await
+            .map(|r| r.message().into())
+            .unwrap_or_else(|_| "unknown error occurred".into());
+        Error::Http { code, message }
     }
 
     async fn handle_unary<R, S>(&self, url: Url, request: R, headers: HeaderMap) -> Result<S, Error>
@@ -442,16 +412,7 @@ impl OpenAiClient {
         let response = self.client.post(url, headers, request).await?;
         match response.status() {
             StatusCode::OK => response.json::<S>().await,
-            _ => {
-                // Return error with code and message from downstream server
-                let code = response.status();
-                let message = if let Ok(response) = response.json::<ErrorResponse>().await {
-                    response.message().into()
-                } else {
-                    "unknown error occurred".into()
-                };
-                Err(Error::Http { code, message })
-            }
+            _ => Err(Self::http_error(response).await),
         }
     }
 
@@ -500,7 +461,11 @@ impl OpenAiClient {
                                                 ),
                                             },
                                         };
-                                    let _ = tx.send(Err(error.into())).await;
+                                    if tx.send(Err(error.into())).await.is_err() {
+                                        tracing::warn!(
+                                            "failed to send deserialization error to stream consumer (receiver dropped)"
+                                        );
+                                    }
                                 }
                             },
                             Err(error) => {
@@ -510,7 +475,11 @@ impl OpenAiClient {
                                     code: StatusCode::INTERNAL_SERVER_ERROR,
                                     message: error.to_string(),
                                 };
-                                let _ = tx.send(Err(error.into())).await;
+                                if tx.send(Err(error.into())).await.is_err() {
+                                    tracing::warn!(
+                                        "failed to send event stream error to stream consumer (receiver dropped)"
+                                    );
+                                }
                                 break;
                             }
                         }
@@ -518,16 +487,7 @@ impl OpenAiClient {
                 });
                 Ok(rx)
             }
-            _ => {
-                // Return error with code and message from downstream server
-                let code = response.status();
-                let message = if let Ok(response) = response.json::<ErrorResponse>().await {
-                    response.message().into()
-                } else {
-                    "unknown error occurred".into()
-                };
-                Err(Error::Http { code, message })
-            }
+            _ => Err(Self::http_error(response).await),
         }
     }
 
@@ -544,30 +504,22 @@ impl OpenAiClient {
         let response = client.post(url, headers, body).await?;
         match response.status() {
             StatusCode::OK => response.json::<S>().await,
-            _ => {
-                // Return error with code and message from downstream server
-                let code = response.status();
-                let message = if let Ok(response) = response.json::<ErrorResponse>().await {
-                    response.message().into()
-                } else {
-                    "unknown error occurred".into()
-                };
-                Err(Error::Http { code, message })
-            }
+            _ => Err(Self::http_error(response).await),
         }
     }
 
-    async fn handle_router_stream<T>(
+    /// Handle streaming with pre-constructed body (used for router HTTP passthrough)
+    /// This method handles streaming responses when the request body is already constructed
+    /// as a JSON Value (e.g., router envelope with base64-encoded payload).
+    async fn handle_stream_with_body<T>(
         &self,
         client: &HttpClient,
         url: Url,
         body: serde_json::Value,
         headers: HeaderMap,
-        model: String,
-        converter: impl Fn(WatsonxTextGenResponse, &str) -> T + Send + 'static,
     ) -> Result<mpsc::Receiver<Result<Option<T>, orchestrator::Error>>, Error>
     where
-        T: Send + 'static,
+        T: DeserializeOwned + Send + 'static,
     {
         let (tx, rx) = mpsc::channel(32);
         let response = client.post(url, headers, body).await?;
@@ -585,17 +537,15 @@ impl OpenAiClient {
                                             code: StatusCode::INTERNAL_SERVER_ERROR,
                                             message: event.data.clone(),
                                         };
-                                        let _ = tx.send(Err(error.into())).await;
+                                        if tx.send(Err(error.into())).await.is_err() {
+                                            tracing::warn!(
+                                                "failed to send router error event to stream consumer (receiver dropped)"
+                                            );
+                                        }
                                         break;
                                     }
                                     _ => {
-                                        // Check for [DONE] before parsing envelope
-                                        if event.data == "[DONE]" {
-                                            let _ = tx.send(Ok(None)).await;
-                                            break;
-                                        }
-
-                                        // Parse router envelope - may contain concatenated SSE data
+                                        // Parse router envelope to extract content
                                         let content_str =
                                             match serde_json::from_str::<serde_json::Value>(
                                                 &event.data,
@@ -606,15 +556,20 @@ impl OpenAiClient {
                                                         .and_then(|v| v.as_str())
                                                     {
                                                         Some(s) => s.to_string(),
-                                                        None => event.data.clone(),
+                                                        None => {
+                                                            // No content field, treat entire data as content
+                                                            event.data.clone()
+                                                        }
                                                     }
                                                 }
-                                                Err(_) => event.data.clone(),
+                                                Err(_) => {
+                                                    // Not a valid JSON envelope, treat as raw content
+                                                    event.data.clone()
+                                                }
                                             };
 
-                                        // Handle concatenated SSE data from router
-                                        // Router may send: "data: {...}\n\ndata: {...}\n\ndata: [DONE]\n\n"
-                                        let mut done_found = false;
+                                        // Handle SSE format: "data: {...}\n\n"
+                                        // Router may send concatenated SSE events
                                         for line in content_str.split("\n\n") {
                                             let trimmed = line.trim();
                                             if trimmed.is_empty() {
@@ -622,7 +577,7 @@ impl OpenAiClient {
                                             }
 
                                             // Remove "data: " prefix if present
-                                            let data_content = if let Some(stripped) =
+                                            let json_str = if let Some(stripped) =
                                                 trimmed.strip_prefix("data: ")
                                             {
                                                 stripped
@@ -630,53 +585,67 @@ impl OpenAiClient {
                                                 trimmed
                                             };
 
-                                            // Check for [DONE] signal
-                                            if data_content == "[DONE]" {
-                                                done_found = true;
-                                                break;
+                                            // Check for [DONE] marker
+                                            if json_str == "[DONE]" {
+                                                let _ = tx.send(Ok(None)).await;
+                                                return; // Exit the task
                                             }
 
-                                            // Parse WatsonX response and convert
-                                            match serde_json::from_str::<WatsonxTextGenResponse>(
-                                                data_content,
-                                            ) {
-                                                Ok(watsonx_resp) => {
-                                                    let converted = converter(watsonx_resp, &model);
-                                                    let _ = tx.send(Ok(Some(converted))).await;
+                                            // Parse the JSON content
+                                            match serde_json::from_str::<T>(json_str) {
+                                                Ok(message) => {
+                                                    let _ = tx.send(Ok(Some(message))).await;
                                                 }
-                                                Err(serde_error) => {
-                                                    tracing::warn!(
-                                                        "Failed to parse watsonx response: {}, data: {}",
-                                                        serde_error,
-                                                        data_content
-                                                    );
-                                                    let error = Error::Http {
-                                                        code: StatusCode::INTERNAL_SERVER_ERROR,
-                                                        message: format!(
-                                                            "router stream deserialization error: {serde_error}"
-                                                        ),
-                                                    };
-                                                    let _ = tx.send(Err(error.into())).await;
-                                                    done_found = true;
-                                                    break;
+                                                Err(parse_error) => {
+                                                    // Try to parse as error response
+                                                    match serde_json::from_str::<ErrorResponse>(
+                                                        json_str,
+                                                    ) {
+                                                        Ok(error_response) => {
+                                                            let error: Error =
+                                                                error_response.into();
+                                                            if tx
+                                                                .send(Err(error.into()))
+                                                                .await
+                                                                .is_err()
+                                                            {
+                                                                tracing::warn!(
+                                                                    "failed to send error response to stream consumer (receiver dropped)"
+                                                                );
+                                                            }
+                                                        }
+                                                        Err(_) => {
+                                                            let error = Error::Http {
+                                                                code: StatusCode::INTERNAL_SERVER_ERROR,
+                                                                message: format!("failed to parse response: {}", parse_error),
+                                                            };
+                                                            if tx
+                                                                .send(Err(error.into()))
+                                                                .await
+                                                                .is_err()
+                                                            {
+                                                                tracing::warn!(
+                                                                    "failed to send parse error to stream consumer (receiver dropped)"
+                                                                );
+                                                            }
+                                                        }
+                                                    }
                                                 }
                                             }
-                                        }
-
-                                        // If [DONE] was found in concatenated data, send completion and break
-                                        if done_found {
-                                            let _ = tx.send(Ok(None)).await;
-                                            break;
                                         }
                                     }
                                 }
                             }
-                            Err(error) => {
+                            Err(stream_error) => {
                                 let error = Error::Http {
                                     code: StatusCode::INTERNAL_SERVER_ERROR,
-                                    message: error.to_string(),
+                                    message: format!("stream error: {}", stream_error),
                                 };
-                                let _ = tx.send(Err(error.into())).await;
+                                if tx.send(Err(error.into())).await.is_err() {
+                                    tracing::warn!(
+                                        "failed to send stream error to stream consumer (receiver dropped)"
+                                    );
+                                }
                                 break;
                             }
                         }
@@ -684,161 +653,8 @@ impl OpenAiClient {
                 });
                 Ok(rx)
             }
-            _ => {
-                let code = response.status();
-                let message = if let Ok(response) = response.json::<ErrorResponse>().await {
-                    response.message().into()
-                } else {
-                    "unknown error occurred".into()
-                };
-                Err(Error::Http { code, message })
-            }
+            _ => Err(Self::http_error(response).await),
         }
-    }
-
-    async fn handle_router_completions_stream(
-        &self,
-        client: &HttpClient,
-        url: Url,
-        body: serde_json::Value,
-        headers: HeaderMap,
-        model: String,
-    ) -> Result<mpsc::Receiver<Result<Option<Completion>, orchestrator::Error>>, Error> {
-        self.handle_router_stream(client, url, body, headers, model, watsonx_to_completion)
-            .await
-    }
-    async fn handle_router_chat_completions_stream(
-        &self,
-        client: &HttpClient,
-        url: Url,
-        body: serde_json::Value,
-        headers: HeaderMap,
-        model: String,
-    ) -> Result<mpsc::Receiver<Result<Option<ChatCompletionChunk>, orchestrator::Error>>, Error>
-    {
-        self.handle_router_stream(
-            client,
-            url,
-            body,
-            headers,
-            model,
-            watsonx_to_chat_completion_chunk,
-        )
-        .await
-    }
-}
-
-#[derive(Debug, Deserialize)]
-pub struct WatsonxTextGenResponse {
-    pub model_id: String,
-    #[serde(default)]
-    pub results: Vec<WatsonxTextGenResult>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct WatsonxTextGenResult {
-    #[serde(default)]
-    pub generated_text: String,
-    #[serde(default)]
-    pub generated_token_count: u32,
-    #[serde(default)]
-    pub input_token_count: u32,
-    #[serde(default)]
-    pub stop_reason: Option<String>,
-}
-
-pub fn watsonx_to_completion(resp: WatsonxTextGenResponse, model: &str) -> Completion {
-    let model_id = if resp.model_id.is_empty() {
-        model.to_string()
-    } else {
-        resp.model_id
-    };
-
-    let choices: Vec<CompletionChoice> = resp
-        .results
-        .into_iter()
-        .enumerate()
-        .map(|(i, result)| {
-            let finish_reason = result.stop_reason.as_deref().and_then(|r| match r {
-                "not_finished" => None,
-                "max_tokens" => Some("length".to_string()),
-                "eos_token" | "stop_sequence" => Some("stop".to_string()),
-                other => Some(other.to_string()),
-            });
-
-            CompletionChoice {
-                index: i as u32,
-                text: result.generated_text,
-                finish_reason,
-                logprobs: None,
-                stop_reason: None,
-                prompt_logprobs: None,
-            }
-        })
-        .collect();
-
-    let usage = None;
-
-    Completion {
-        id: String::new(),
-        object: "text_completion".into(),
-        created: 0,
-        model: model_id,
-        choices,
-        usage,
-        system_fingerprint: None,
-        detections: None,
-        warnings: Vec::new(),
-    }
-}
-pub fn watsonx_to_chat_completion_chunk(
-    resp: WatsonxTextGenResponse,
-    model: &str,
-) -> ChatCompletionChunk {
-    let model_id = if resp.model_id.is_empty() {
-        model.to_string()
-    } else {
-        resp.model_id
-    };
-
-    let choices: Vec<ChatCompletionChunkChoice> = resp
-        .results
-        .into_iter()
-        .enumerate()
-        .map(|(i, result)| {
-            let finish_reason = result.stop_reason.as_deref().and_then(|r| match r {
-                "not_finished" => None,
-                "max_tokens" => Some("length".to_string()),
-                "eos_token" | "stop_sequence" => Some("stop".to_string()),
-                other => Some(other.to_string()),
-            });
-
-            ChatCompletionChunkChoice {
-                index: i as u32,
-                delta: ChatCompletionDelta {
-                    role: None,
-                    content: Some(result.generated_text),
-                    refusal: None,
-                    tool_calls: Vec::new(),
-                },
-                finish_reason,
-                logprobs: None,
-                stop_reason: None,
-            }
-        })
-        .collect();
-
-    ChatCompletionChunk {
-        id: String::new(),
-        object: "chat.completion.chunk".into(),
-        created: 0,
-        model: model_id,
-        choices,
-        system_fingerprint: None,
-        service_tier: None,
-        usage: None,
-        detections: None,
-        warnings: Vec::new(),
     }
 }
 
@@ -939,26 +755,26 @@ impl ChatCompletionsRequest {
         }
 
         if !self.detectors.input.is_empty() {
-            // Content of type Array is not supported yet
-            // Adding this validation separately as we do plan to support arrays of string in the future
-            if let Some(Content::Array(_)) = self.messages.last().unwrap().content {
-                return Err(ValidationError::Invalid(
-                    "Detection on array is not supported".into(),
-                ));
-            }
-
             // As text_content detections only run on last message at the moment, only the last
             // message is being validated.
-            if let Some(message) = self.messages.last()
-                && message
+            if let Some(message) = self.messages.last() {
+                // Content of type Array is not supported yet
+                if let Some(Content::Array(_)) = &message.content {
+                    return Err(ValidationError::Invalid(
+                        "Detection on array is not supported".into(),
+                    ));
+                }
+                // Content must not be empty
+                if message
                     .content
                     .as_ref()
                     .is_none_or(|content| content.is_empty())
-            {
-                return Err(ValidationError::Invalid(
-                    "if input detectors are provided, `content` must not be empty on last message"
-                        .into(),
-                ));
+                {
+                    return Err(ValidationError::Invalid(
+                        "if input detectors are provided, `content` must not be empty on last message"
+                            .into(),
+                    ));
+                }
             }
         }
 
@@ -1223,9 +1039,20 @@ pub struct Message {
 
 impl Message {
     /// Returns message text content.
+    /// For array content, attempts to extract text from text-type parts.
     pub fn text(&self) -> Option<&String> {
         match &self.content {
             Some(Content::Text(text)) if !text.is_empty() => Some(text),
+            Some(Content::Array(parts)) => {
+                // Try to find first non-empty text part
+                parts.iter().find_map(|part| {
+                    if part.r#type == ContentType::Text {
+                        part.text.as_ref().filter(|t| !t.is_empty())
+                    } else {
+                        None
+                    }
+                })
+            }
             _ => None,
         }
     }
@@ -2041,100 +1868,5 @@ mod test {
         assert!(matches!(error_response, ErrorResponse::V2(_)));
 
         Ok(())
-    }
-
-    #[test]
-    fn test_watsonx_to_completion_basic() {
-        let watsonx_resp = WatsonxTextGenResponse {
-            model_id: "test-model".to_string(),
-            results: vec![WatsonxTextGenResult {
-                generated_text: "Hello world".to_string(),
-                generated_token_count: 2,
-                input_token_count: 1,
-                stop_reason: Some("eos_token".to_string()),
-            }],
-        };
-
-        let completion = watsonx_to_completion(watsonx_resp, "test-model");
-        assert_eq!(completion.model, "test-model");
-        assert_eq!(completion.object, "text_completion");
-        assert_eq!(completion.choices.len(), 1);
-        assert_eq!(completion.choices[0].text, "Hello world");
-        assert_eq!(completion.choices[0].index, 0);
-        assert_eq!(
-            completion.choices[0].finish_reason,
-            Some("stop".to_string())
-        );
-        assert!(completion.usage.is_none());
-    }
-
-    #[test]
-    fn test_watsonx_to_completion_stop_reasons() {
-        let test_cases = vec![
-            ("eos_token", Some("stop")),
-            ("max_tokens", Some("length")),
-            ("stop_sequence", Some("stop")),
-            ("not_finished", None),
-            ("cancelled", Some("cancelled")),
-            ("error", Some("error")),
-        ];
-
-        for (watsonx_reason, expected_openai_reason) in test_cases {
-            let watsonx_resp = WatsonxTextGenResponse {
-                model_id: "test".to_string(),
-                results: vec![WatsonxTextGenResult {
-                    generated_text: "test".to_string(),
-                    generated_token_count: 1,
-                    input_token_count: 1,
-                    stop_reason: Some(watsonx_reason.to_string()),
-                }],
-            };
-
-            let completion = watsonx_to_completion(watsonx_resp, "test");
-            assert_eq!(
-                completion.choices[0].finish_reason.as_deref(),
-                expected_openai_reason,
-                "Failed for stop_reason: {}",
-                watsonx_reason
-            );
-        }
-    }
-
-    #[test]
-    fn test_watsonx_to_chat_completion_chunk_basic() {
-        let watsonx_resp = WatsonxTextGenResponse {
-            model_id: "chat-model".to_string(),
-            results: vec![WatsonxTextGenResult {
-                generated_text: "Hi there".to_string(),
-                generated_token_count: 2,
-                input_token_count: 3,
-                stop_reason: None,
-            }],
-        };
-
-        let chunk = watsonx_to_chat_completion_chunk(watsonx_resp, "chat-model");
-        assert_eq!(chunk.model, "chat-model");
-        assert_eq!(chunk.object, "chat.completion.chunk");
-        assert_eq!(chunk.choices.len(), 1);
-        assert_eq!(chunk.choices[0].index, 0);
-        assert_eq!(chunk.choices[0].delta.content, Some("Hi there".to_string()));
-        assert_eq!(chunk.choices[0].delta.role, None);
-        assert_eq!(chunk.choices[0].finish_reason, None);
-    }
-
-    #[test]
-    fn test_watsonx_to_chat_completion_chunk_with_finish_reason() {
-        let watsonx_resp = WatsonxTextGenResponse {
-            model_id: "chat-model".to_string(),
-            results: vec![WatsonxTextGenResult {
-                generated_text: "Done".to_string(),
-                generated_token_count: 1,
-                input_token_count: 1,
-                stop_reason: Some("eos_token".to_string()),
-            }],
-        };
-
-        let chunk = watsonx_to_chat_completion_chunk(watsonx_resp, "chat-model");
-        assert_eq!(chunk.choices[0].finish_reason, Some("stop".to_string()));
     }
 }

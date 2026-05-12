@@ -42,21 +42,13 @@ const ROUTER_HANDLE_STREAM_ENDPOINT: &str = "/ml/v1-private/router/handle-stream
 /// Router sender endpoint for unary requests
 const ROUTER_HANDLE_ENDPOINT: &str = "/ml/v1-private/router/handle";
 
-/// Helper function to create router envelope format with SSE
-fn router_sse_envelope(content: &str) -> String {
-    let envelope = json!({
-        "content": content
-    });
-    format!("data: {}\n\n", envelope)
-}
-
-/// Helper function to create SSE events with router envelope for watsonx responses
-fn router_sse_watsonx(
+/// Helper function to create SSE events in OpenAI/vLLM format (no router envelope needed)
+fn sse_events(
     messages: impl IntoIterator<Item = serde_json::Value>,
 ) -> impl IntoIterator<Item = String> {
     messages.into_iter().map(|msg| {
         let msg_str = serde_json::to_string(&msg).unwrap();
-        router_sse_envelope(&msg_str)
+        format!("data: {}\n\n", msg_str)
     })
 }
 
@@ -65,40 +57,46 @@ async fn test_router_completions_streaming() -> Result<(), anyhow::Error> {
     let model_id = "test-model";
     let mut router_server = MockServer::new_http("router");
 
-    // Simulate router response with watsonx format
-    let watsonx_chunks = [
+    // Router now returns vLLM/OpenAI format directly (no watsonx conversion)
+    let vllm_chunks = [
         json!({
-            "model_id": model_id,
-            "results": [{
-                "generated_text": "Hello",
-                "generated_token_count": 1,
-                "input_token_count": 5,
-                "stop_reason": null
+            "id": "cmpl-test",
+            "object": "text_completion",
+            "created": 1754506038,
+            "model": model_id,
+            "choices": [{
+                "index": 0,
+                "text": "Hello",
+                "finish_reason": null
             }]
         }),
         json!({
-            "model_id": model_id,
-            "results": [{
-                "generated_text": " world",
-                "generated_token_count": 1,
-                "input_token_count": 5,
-                "stop_reason": null
+            "id": "cmpl-test",
+            "object": "text_completion",
+            "created": 1754506038,
+            "model": model_id,
+            "choices": [{
+                "index": 0,
+                "text": " world",
+                "finish_reason": null
             }]
         }),
         json!({
-            "model_id": model_id,
-            "results": [{
-                "generated_text": "!",
-                "generated_token_count": 1,
-                "input_token_count": 5,
-                "stop_reason": "eos_token"
+            "id": "cmpl-test",
+            "object": "text_completion",
+            "created": 1754506038,
+            "model": model_id,
+            "choices": [{
+                "index": 0,
+                "text": "!",
+                "finish_reason": "stop"
             }]
         }),
     ];
 
     router_server.mock(|when, then| {
         when.post().path(ROUTER_HANDLE_STREAM_ENDPOINT);
-        then.text_stream(router_sse_watsonx(watsonx_chunks.clone()));
+        then.text_stream(sse_events(vllm_chunks.clone()));
     });
 
     let test_server = TestOrchestratorServer::builder()
@@ -140,33 +138,37 @@ async fn test_router_completions_with_keepalive() -> Result<(), anyhow::Error> {
     let model_id = "test-model";
     let mut router_server = MockServer::new_http("router");
 
-    // Mix data events with keepalive (png) events
+    // Mix data events with keepalive (png) events - now in vLLM format
     let events = vec![
         "event: png\ndata: \n\n".to_string(), // Keepalive
-        router_sse_envelope(
-            &json!({
-                "model_id": model_id,
-                "results": [{
-                    "generated_text": "Test",
-                    "generated_token_count": 1,
-                    "input_token_count": 1,
-                    "stop_reason": null
+        format!(
+            "data: {}\n\n",
+            json!({
+                "id": "cmpl-test",
+                "object": "text_completion",
+                "created": 1754506038,
+                "model": model_id,
+                "choices": [{
+                    "index": 0,
+                    "text": "Test",
+                    "finish_reason": null
                 }]
             })
-            .to_string(),
         ),
         "event: png\ndata: \n\n".to_string(), // Keepalive
-        router_sse_envelope(
-            &json!({
-                "model_id": model_id,
-                "results": [{
-                    "generated_text": " response",
-                    "generated_token_count": 1,
-                    "input_token_count": 1,
-                    "stop_reason": "eos_token"
+        format!(
+            "data: {}\n\n",
+            json!({
+                "id": "cmpl-test",
+                "object": "text_completion",
+                "created": 1754506038,
+                "model": model_id,
+                "choices": [{
+                    "index": 0,
+                    "text": " response",
+                    "finish_reason": "stop"
                 }]
             })
-            .to_string(),
         ),
     ];
 
@@ -209,39 +211,46 @@ async fn test_router_chat_completions_streaming() -> Result<(), anyhow::Error> {
     let model_id = "chat-model";
     let mut router_server = MockServer::new_http("router");
 
-    let watsonx_chunks = [
+    // Router now returns vLLM/OpenAI chat format directly
+    let vllm_chunks = [
         json!({
-            "model_id": model_id,
-            "results": [{
-                "generated_text": "I'm",
-                "generated_token_count": 1,
-                "input_token_count": 10,
-                "stop_reason": null
+            "id": "chatcmpl-test",
+            "object": "chat.completion.chunk",
+            "created": 1754506038,
+            "model": model_id,
+            "choices": [{
+                "index": 0,
+                "delta": {"content": "I'm"},
+                "finish_reason": null
             }]
         }),
         json!({
-            "model_id": model_id,
-            "results": [{
-                "generated_text": " doing",
-                "generated_token_count": 1,
-                "input_token_count": 10,
-                "stop_reason": null
+            "id": "chatcmpl-test",
+            "object": "chat.completion.chunk",
+            "created": 1754506038,
+            "model": model_id,
+            "choices": [{
+                "index": 0,
+                "delta": {"content": " doing"},
+                "finish_reason": null
             }]
         }),
         json!({
-            "model_id": model_id,
-            "results": [{
-                "generated_text": " well!",
-                "generated_token_count": 1,
-                "input_token_count": 10,
-                "stop_reason": "eos_token"
+            "id": "chatcmpl-test",
+            "object": "chat.completion.chunk",
+            "created": 1754506038,
+            "model": model_id,
+            "choices": [{
+                "index": 0,
+                "delta": {"content": " well!"},
+                "finish_reason": "stop"
             }]
         }),
     ];
 
     router_server.mock(|when, then| {
         when.post().path(ROUTER_HANDLE_STREAM_ENDPOINT);
-        then.text_stream(router_sse_watsonx(watsonx_chunks.clone()));
+        then.text_stream(sse_events(vllm_chunks.clone()));
     });
 
     let test_server = TestOrchestratorServer::builder()
@@ -294,19 +303,21 @@ async fn test_router_error_event_handling() -> Result<(), anyhow::Error> {
     let model_id = "test-model";
     let mut router_server = MockServer::new_http("router");
 
-    // Simulate router sending an error event
+    // Simulate router sending an error event - now in vLLM format
     let events = vec![
-        router_sse_envelope(
-            &json!({
-                "model_id": model_id,
-                "results": [{
-                    "generated_text": "Start",
-                    "generated_token_count": 1,
-                    "input_token_count": 1,
-                    "stop_reason": null
+        format!(
+            "data: {}\n\n",
+            json!({
+                "id": "cmpl-test",
+                "object": "text_completion",
+                "created": 1754506038,
+                "model": model_id,
+                "choices": [{
+                    "index": 0,
+                    "text": "Start",
+                    "finish_reason": null
                 }]
             })
-            .to_string(),
         ),
         "event: err\ndata: Router internal error\n\n".to_string(),
     ];
@@ -407,19 +418,21 @@ async fn test_router_done_signal() -> Result<(), anyhow::Error> {
     let model_id = "test-model";
     let mut router_server = MockServer::new_http("router");
 
-    // Include [DONE] signal at the end
+    // Include [DONE] signal at the end - now in vLLM format
     let events = vec![
-        router_sse_envelope(
-            &json!({
-                "model_id": model_id,
-                "results": [{
-                    "generated_text": "Response",
-                    "generated_token_count": 1,
-                    "input_token_count": 1,
-                    "stop_reason": "eos_token"
+        format!(
+            "data: {}\n\n",
+            json!({
+                "id": "cmpl-test",
+                "object": "text_completion",
+                "created": 1754506038,
+                "model": model_id,
+                "choices": [{
+                    "index": 0,
+                    "text": "Response",
+                    "finish_reason": "stop"
                 }]
             })
-            .to_string(),
         ),
         "data: [DONE]\n\n".to_string(),
     ];
@@ -476,20 +489,22 @@ async fn test_router_with_detectors() -> Result<(), anyhow::Error> {
         "evidence": []
     }]]);
 
-    // Mock generation response (watsonx format in router envelope)
-    let watsonx_response = json!({
-        "model_id": model_id,
-        "results": [{
-            "generated_text": "This is a safe response",
-            "generated_token_count": 5,
-            "input_token_count": 3,
-            "stop_reason": "eos_token"
+    // Mock generation response - now in vLLM/OpenAI format
+    let vllm_response = json!({
+        "id": "cmpl-test",
+        "object": "text_completion",
+        "created": 1754506038,
+        "model": model_id,
+        "choices": [{
+            "index": 0,
+            "text": "This is a safe response",
+            "finish_reason": "stop"
         }]
     });
 
     // Router will receive TWO requests:
     // 1. Detector request to /ml/v1-private/router/handle (http_pass mode)
-    // 2. Generation request to /ml/v1-private/router/handle-stream (streaming)
+    // 2. Generation request to /ml/v1-private/router/handle-stream (http_pass_stream mode)
 
     // Mock detector call (unary, http_pass) - returns response directly
     router_server.mock(|when, then| {
@@ -497,10 +512,10 @@ async fn test_router_with_detectors() -> Result<(), anyhow::Error> {
         then.json(&detector_response);
     });
 
-    // Mock generation call (streaming)
+    // Mock generation call (streaming, http_pass_stream) - returns vLLM format directly
     router_server.mock(|when, then| {
         when.post().path(ROUTER_HANDLE_STREAM_ENDPOINT);
-        then.text_stream(router_sse_watsonx([watsonx_response.clone()]));
+        then.text_stream(sse_events([vllm_response.clone()]));
     });
 
     let test_server = TestOrchestratorServer::builder()
