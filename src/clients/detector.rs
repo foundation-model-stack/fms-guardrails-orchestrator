@@ -58,6 +58,7 @@ pub struct DetectorClient {
     router_client: Option<HttpClient>,
     router_config: Option<RouterConfig>,
     detector_id: String,
+    model_id: Option<String>,
 }
 
 impl DetectorClient {
@@ -66,6 +67,7 @@ impl DetectorClient {
         config: &ServiceConfig,
         health_config: Option<&ServiceConfig>,
         router_config: Option<RouterConfig>,
+        model_id: Option<String>,
     ) -> Result<Self, Error> {
         let client = create_http_client(DEFAULT_PORT, config).await?;
         let health_client = if let Some(health_config) = health_config {
@@ -89,6 +91,7 @@ impl DetectorClient {
             router_client,
             router_config,
             detector_id,
+            model_id,
         })
     }
 
@@ -202,9 +205,18 @@ impl DetectorClient {
         mut headers: HeaderMap,
         request: impl RequestBody,
     ) -> Result<U, Error> {
-        debug!("Routing detector request via router: model={}", model_id);
+        // Use model_id from config if present, otherwise use detector_id
+        // This allows detectors that are also models (like Granite Guardian) to route
+        // to the correct model queue name
+        let queue_model_name = self.model_id.as_ref().unwrap_or(&self.detector_id);
 
-        let (transaction_id, router_client) = self.build_router_headers(model_id, &mut headers)?;
+        debug!(
+            "Routing detector request via router: detector_id={}, queue_model_name={}",
+            model_id, queue_model_name
+        );
+
+        let (transaction_id, router_client) =
+            self.build_router_headers(queue_model_name, &mut headers)?;
 
         // Serialize the detector request
         let request_json = serde_json::to_value(&request).map_err(|e| Error::Http {

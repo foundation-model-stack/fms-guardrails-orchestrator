@@ -259,8 +259,17 @@ impl OpenAiClient {
         let use_router = self.router_config.as_ref().is_some_and(|r| r.enabled);
 
         if use_router {
+            // Extract model_id from x-model-id header for queue routing (may include cfm- prefix)
+            // Keep request.model as-is for vLLM payload (without prefix)
+            let model_id_for_routing = headers
+                .get("x-model-id")
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| request.model.clone());
+
             // Route via router sender
-            self.chat_completions_via_router(request, headers).await
+            self.chat_completions_via_router(request, headers, model_id_for_routing)
+                .await
         } else {
             // Direct HTTP path (original behavior)
             let url = self.client.endpoint(CHAT_COMPLETIONS_ENDPOINT);
@@ -282,7 +291,16 @@ impl OpenAiClient {
         let use_router = self.router_config.as_ref().is_some_and(|r| r.enabled);
 
         if use_router {
-            self.completions_via_router(request, headers).await
+            // Extract model_id from x-model-id header for queue routing (may include cfm- prefix)
+            // Keep request.model as-is for vLLM payload (without prefix)
+            let model_id_for_routing = headers
+                .get("x-model-id")
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| request.model.clone());
+
+            self.completions_via_router(request, headers, model_id_for_routing)
+                .await
         } else {
             // Direct HTTP path (original behaviour)
             let url = self.client.endpoint(COMPLETIONS_ENDPOINT);
@@ -300,8 +318,10 @@ impl OpenAiClient {
         &self,
         request: CompletionsRequest,
         headers: HeaderMap,
+        model_id_for_routing: String,
     ) -> Result<CompletionsResponse, Error> {
         // Build vLLM request with extra fields
+        // Use request.model (without cfm- prefix) for the vLLM payload
         let mut vllm_request = serde_json::json!({
             "model": request.model,
             "prompt": request.prompt,
@@ -311,9 +331,10 @@ impl OpenAiClient {
         }
         Self::merge_extra_fields(&mut vllm_request, &request.extra);
 
+        // Use model_id_for_routing (with cfm- prefix if present) for queue routing
         let response = self
             .route_via_router::<Box<Completion>, Completion>(
-                &request.model,
+                &model_id_for_routing,
                 vllm_request,
                 COMPLETIONS_ENDPOINT,
                 request.stream.unwrap_or(false),
@@ -330,8 +351,10 @@ impl OpenAiClient {
         &self,
         request: ChatCompletionsRequest,
         headers: HeaderMap,
+        model_id_for_routing: String,
     ) -> Result<ChatCompletionsResponse, Error> {
         // Build vLLM request with extra fields
+        // Use request.model (without cfm- prefix) for the vLLM payload
         let mut vllm_request = serde_json::json!({
             "model": request.model,
             "messages": request.messages,
@@ -341,9 +364,10 @@ impl OpenAiClient {
         }
         Self::merge_extra_fields(&mut vllm_request, &request.extra);
 
+        // Use model_id_for_routing (with cfm- prefix if present) for queue routing
         let response = self
             .route_via_router::<Box<ChatCompletion>, ChatCompletionChunk>(
-                &request.model,
+                &model_id_for_routing,
                 vllm_request,
                 CHAT_COMPLETIONS_ENDPOINT,
                 request.stream.unwrap_or(false),
@@ -366,8 +390,17 @@ impl OpenAiClient {
     ) -> Result<TokenizeResponse, Error> {
         // Check if router is enabled
         if self.router_config.as_ref().is_some_and(|r| r.enabled) {
+            // Extract model_id from x-model-id header for queue routing (may include cfm- prefix)
+            // Keep request.model as-is for vLLM payload (without prefix)
+            let model_id_for_routing = headers
+                .get("x-model-id")
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| request.model.clone());
+
             // Route through router queue
-            self.tokenize_via_router(request, headers).await
+            self.tokenize_via_router(request, headers, model_id_for_routing)
+                .await
         } else {
             // Direct call (legacy path)
             let url = self.client.endpoint(TOKENIZE_ENDPOINT);
@@ -380,9 +413,11 @@ impl OpenAiClient {
         &self,
         request: TokenizeRequest,
         mut headers: HeaderMap,
+        model_id_for_routing: String,
     ) -> Result<TokenizeResponse, Error> {
+        // Use model_id_for_routing (with cfm- prefix if present) for queue routing
         let (transaction_id, router_client) =
-            self.build_router_headers(&request.model, "http_pass", &mut headers)?;
+            self.build_router_headers(&model_id_for_routing, "http_pass", &mut headers)?;
 
         let http_pass_payload =
             self.build_router_payload(TOKENIZE_ENDPOINT, &request, &transaction_id)?;

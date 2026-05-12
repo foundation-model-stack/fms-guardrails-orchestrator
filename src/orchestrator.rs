@@ -160,6 +160,7 @@ async fn create_clients(config: &OrchestratorConfig) -> Result<ClientMap, Error>
                 &detector.service,
                 detector.health_service.as_ref(),
                 router_config.clone(),
+                detector.model_id.clone(),
             )
             .await?,
         );

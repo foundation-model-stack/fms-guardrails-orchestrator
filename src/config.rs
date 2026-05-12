@@ -222,6 +222,13 @@ pub struct DetectorConfig {
     /// Type of detection this detector performs
     #[serde(rename = "type")]
     pub r#type: DetectorType,
+    /// Optional model ID for router queue routing. When specified, this model_id
+    /// will be used as the x-model-name header value for queue routing instead of
+    /// the detector ID. This is useful for detectors that are also models (e.g.,
+    /// Granite Guardian) where the vLLM model listens to a queue with a different
+    /// name than the detector ID.
+    /// Example: detector_id="granite_guardian_3_2_5b", model_id="ibm/granite-guardian-3-2-5b"
+    pub model_id: Option<String>,
 }
 
 #[derive(Default, Clone, Copy, Debug, Deserialize, PartialEq, Eq, Hash)]
