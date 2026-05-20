@@ -442,6 +442,7 @@ dependencies = [
  "async-trait",
  "axum",
  "axum-extra",
+ "base64",
  "bytes",
  "clap",
  "dashmap",

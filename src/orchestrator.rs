@@ -132,8 +132,12 @@ async fn create_clients(config: &OrchestratorConfig) -> Result<ClientMap, Error>
 
     // Create chat completions client
     if let Some(openai) = &config.openai {
-        let openai_client =
-            OpenAiClient::new(&openai.service, openai.health_service.as_ref()).await?;
+        let openai_client = OpenAiClient::new(
+            &openai.service,
+            openai.health_service.as_ref(),
+            config.router.clone(),
+        )
+        .await?;
         clients.insert("openai".to_string(), openai_client);
     }
 
@@ -145,11 +149,20 @@ async fn create_clients(config: &OrchestratorConfig) -> Result<ClientMap, Error>
         }
     }
 
+    let router_config = config.router.clone();
+
     // Create detector clients
     for (detector_id, detector) in &config.detectors {
         clients.insert(
             detector_id.into(),
-            DetectorClient::new(&detector.service, detector.health_service.as_ref()).await?,
+            DetectorClient::new(
+                detector_id.clone(),
+                &detector.service,
+                detector.health_service.as_ref(),
+                router_config.clone(),
+                detector.model_id.clone(),
+            )
+            .await?,
         );
     }
     Ok(clients)

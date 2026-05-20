@@ -18,6 +18,7 @@
 use std::collections::{BTreeMap, HashMap};
 
 use async_trait::async_trait;
+use base64::{Engine as _, engine::general_purpose};
 use eventsource_stream::Eventsource;
 use futures::StreamExt;
 use http_body_util::BodyExt;
@@ -26,17 +27,24 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Map, Value};
 use tokio::sync::mpsc;
 use url::Url;
+use uuid::Uuid;
 
 use super::{
     Client, Error, HttpClient, create_http_client,
     http::{HttpClientExt, RequestBody},
 };
 use crate::{
-    config::ServiceConfig,
+    config::{RouterConfig, ServiceConfig},
     health::HealthCheckResult,
     models::{DetectionWarningReason, DetectorParams, ValidationError},
     orchestrator::{self, types::Detection},
 };
+
+/// Response type from router, eliminating the invalid "both None" state
+enum RouterResponse<UnaryResp, StreamChunk> {
+    Unary(UnaryResp),
+    Streaming(mpsc::Receiver<Result<Option<StreamChunk>, orchestrator::Error>>),
+}
 
 const DEFAULT_PORT: u16 = 8080;
 
@@ -44,16 +52,24 @@ const CHAT_COMPLETIONS_ENDPOINT: &str = "/v1/chat/completions";
 const COMPLETIONS_ENDPOINT: &str = "/v1/completions";
 const TOKENIZE_ENDPOINT: &str = "/tokenize"; // This endpoint is vLLM-specific
 
+/// Router sender endpoint for unary (non-streaming) requests.
+const ROUTER_HANDLE_ENDPOINT: &str = "/ml/v1-private/router/handle";
+/// Router sender endpoint for streaming requests.
+const ROUTER_HANDLE_STREAM_ENDPOINT: &str = "/ml/v1-private/router/handle-stream";
+
 #[derive(Clone)]
 pub struct OpenAiClient {
     client: HttpClient,
     health_client: Option<HttpClient>,
+    router_client: Option<HttpClient>,
+    router_config: Option<RouterConfig>,
 }
 
 impl OpenAiClient {
     pub async fn new(
         config: &ServiceConfig,
         health_config: Option<&ServiceConfig>,
+        router_config: Option<RouterConfig>,
     ) -> Result<Self, Error> {
         let client = create_http_client(DEFAULT_PORT, config).await?;
         let health_client = if let Some(health_config) = health_config {
@@ -61,14 +77,175 @@ impl OpenAiClient {
         } else {
             None
         };
+        // Build a dedicated HTTP client for the router sender sidecar when enabled.
+        let router_client = if let Some(ref rc) = router_config {
+            if rc.enabled {
+                let router_service = ServiceConfig::new(rc.hostname.clone(), rc.port);
+                Some(create_http_client(rc.port, &router_service).await?)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
         Ok(Self {
             client,
             health_client,
+            router_client,
+            router_config,
         })
     }
 
     pub fn client(&self) -> &HttpClient {
         &self.client
+    }
+
+    fn build_router_headers(
+        &self,
+        model_name: &str,
+        method: &str,
+        headers: &mut HeaderMap,
+    ) -> Result<(String, &HttpClient), Error> {
+        let router = self.router_config.as_ref().ok_or_else(|| Error::Http {
+            code: StatusCode::INTERNAL_SERVER_ERROR,
+            message: "router config must be present when router is enabled".to_string(),
+        })?;
+
+        headers.insert(
+            "x-model-name",
+            model_name.parse().map_err(|e| Error::Http {
+                code: StatusCode::BAD_REQUEST,
+                message: format!("invalid model name for x-model-name header: {e}"),
+            })?,
+        );
+
+        headers.insert(
+            "x-reply-type",
+            router.reply_type.parse().map_err(|e| Error::Http {
+                code: StatusCode::BAD_REQUEST,
+                message: format!("failed to set x-reply-type header: {e}"),
+            })?,
+        );
+
+        headers.insert(
+            "x-sla-seconds",
+            router
+                .sla_seconds
+                .to_string()
+                .parse()
+                .map_err(|e| Error::Http {
+                    code: StatusCode::BAD_REQUEST,
+                    message: format!("failed to set x-sla-seconds header: {e}"),
+                })?,
+        );
+
+        let transaction_id = if let Some(v) = headers.get("x-global-transaction-id") {
+            v.to_str().unwrap_or("").to_string()
+        } else {
+            let tid = Uuid::new_v4().to_string();
+            headers.insert(
+                "x-global-transaction-id",
+                tid.parse().map_err(|e| Error::Http {
+                    code: StatusCode::BAD_REQUEST,
+                    message: format!("failed to set x-global-transaction-id header: {e}"),
+                })?,
+            );
+            tid
+        };
+
+        headers.insert(
+            "x-method",
+            method.parse().map_err(|e| Error::Http {
+                code: StatusCode::BAD_REQUEST,
+                message: format!("failed to set x-method header: {e}"),
+            })?,
+        );
+
+        let router_client = self.router_client.as_ref().ok_or_else(|| Error::Http {
+            code: StatusCode::INTERNAL_SERVER_ERROR,
+            message: "router_client must be present when router is enabled".to_string(),
+        })?;
+
+        Ok((transaction_id, router_client))
+    }
+
+    /// Generic helper for routing requests through the router
+    /// Handles both streaming and unary requests with different response types
+    async fn route_via_router<UnaryResp, StreamChunk>(
+        &self,
+        model_name: &str,
+        vllm_request: serde_json::Value,
+        endpoint: &str,
+        is_streaming: bool,
+        mut headers: HeaderMap,
+    ) -> Result<RouterResponse<UnaryResp, StreamChunk>, Error>
+    where
+        UnaryResp: DeserializeOwned,
+        StreamChunk: DeserializeOwned + Send + 'static,
+    {
+        if is_streaming {
+            // STREAMING: Use http_pass_stream method
+            let (transaction_id, router_client) =
+                self.build_router_headers(model_name, "http_pass_stream", &mut headers)?;
+            let http_pass_payload =
+                self.build_router_payload(endpoint, &vllm_request, &transaction_id)?;
+            let url = router_client.endpoint(ROUTER_HANDLE_STREAM_ENDPOINT);
+            let rx = self
+                .handle_stream_with_body::<StreamChunk>(
+                    router_client,
+                    url,
+                    http_pass_payload,
+                    headers,
+                )
+                .await?;
+            Ok(RouterResponse::Streaming(rx))
+        } else {
+            // UNARY: Use http_pass method
+            let (transaction_id, router_client) =
+                self.build_router_headers(model_name, "http_pass", &mut headers)?;
+            let http_pass_payload =
+                self.build_router_payload(endpoint, &vllm_request, &transaction_id)?;
+            let url = router_client.endpoint(ROUTER_HANDLE_ENDPOINT);
+            let response = self
+                .handle_unary_with_body(router_client, url, http_pass_payload, headers)
+                .await?;
+            Ok(RouterResponse::Unary(response))
+        }
+    }
+
+    /// Merge extra fields from request into vLLM request JSON, excluding detector-specific fields
+    fn merge_extra_fields(target: &mut serde_json::Value, extra: &Map<String, Value>) {
+        if let Some(obj) = target.as_object_mut() {
+            for (key, value) in extra {
+                if key != "detectors" && key != "_prompt_masks" {
+                    obj.insert(key.clone(), value.clone());
+                }
+            }
+        }
+    }
+
+    /// Build router HTTP passthrough payload envelope
+    /// Serializes the request body, base64-encodes it, and wraps it in the router envelope format
+    fn build_router_payload<T: Serialize>(
+        &self,
+        endpoint: &str,
+        body: &T,
+        transaction_id: &str,
+    ) -> Result<serde_json::Value, Error> {
+        let bytes = serde_json::to_vec(body).map_err(|e| Error::Http {
+            code: StatusCode::INTERNAL_SERVER_ERROR,
+            message: format!("failed to serialise request: {e}"),
+        })?;
+        let payload_base64 = general_purpose::STANDARD.encode(&bytes);
+        Ok(serde_json::json!({
+            "method": "POST",
+            "path": endpoint,
+            "headers": {
+                "Content-Type": "application/json",
+                "x-request-id": transaction_id,
+            },
+            "payload": payload_base64,
+        }))
     }
 
     pub async fn chat_completions(
@@ -77,13 +254,32 @@ impl OpenAiClient {
         headers: HeaderMap,
     ) -> Result<ChatCompletionsResponse, Error> {
         tracing::debug!(?headers, "chat_completions headers");
-        let url = self.client.endpoint(CHAT_COMPLETIONS_ENDPOINT);
-        if let Some(true) = request.stream {
-            let rx = self.handle_streaming(url, request, headers).await?;
-            Ok(ChatCompletionsResponse::Streaming(rx))
+
+        // Check if router is enabled
+        let use_router = self.router_config.as_ref().is_some_and(|r| r.enabled);
+
+        if use_router {
+            // Extract model_id from x-model-id header for queue routing (may include cfm- prefix)
+            // Keep request.model as-is for vLLM payload (without prefix)
+            let model_id_for_routing = headers
+                .get("x-model-id")
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| request.model.clone());
+
+            // Route via router sender
+            self.chat_completions_via_router(request, headers, model_id_for_routing)
+                .await
         } else {
-            let chat_completion = self.handle_unary(url, request, headers).await?;
-            Ok(ChatCompletionsResponse::Unary(chat_completion))
+            // Direct HTTP path (original behavior)
+            let url = self.client.endpoint(CHAT_COMPLETIONS_ENDPOINT);
+            if let Some(true) = request.stream {
+                let rx = self.handle_streaming(url, request, headers).await?;
+                Ok(ChatCompletionsResponse::Streaming(rx))
+            } else {
+                let chat_completion = self.handle_unary(url, request, headers).await?;
+                Ok(ChatCompletionsResponse::Unary(chat_completion))
+            }
         }
     }
 
@@ -92,13 +288,98 @@ impl OpenAiClient {
         request: CompletionsRequest,
         headers: HeaderMap,
     ) -> Result<CompletionsResponse, Error> {
-        let url = self.client.endpoint(COMPLETIONS_ENDPOINT);
-        if let Some(true) = request.stream {
-            let rx = self.handle_streaming(url, request, headers).await?;
-            Ok(CompletionsResponse::Streaming(rx))
+        let use_router = self.router_config.as_ref().is_some_and(|r| r.enabled);
+
+        if use_router {
+            // Extract model_id from x-model-id header for queue routing (may include cfm- prefix)
+            // Keep request.model as-is for vLLM payload (without prefix)
+            let model_id_for_routing = headers
+                .get("x-model-id")
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| request.model.clone());
+
+            self.completions_via_router(request, headers, model_id_for_routing)
+                .await
         } else {
-            let completion = self.handle_unary(url, request, headers).await?;
-            Ok(CompletionsResponse::Unary(completion))
+            // Direct HTTP path (original behaviour)
+            let url = self.client.endpoint(COMPLETIONS_ENDPOINT);
+            if let Some(true) = request.stream {
+                let rx = self.handle_streaming(url, request, headers).await?;
+                Ok(CompletionsResponse::Streaming(rx))
+            } else {
+                let completion = self.handle_unary(url, request, headers).await?;
+                Ok(CompletionsResponse::Unary(completion))
+            }
+        }
+    }
+
+    async fn completions_via_router(
+        &self,
+        request: CompletionsRequest,
+        headers: HeaderMap,
+        model_id_for_routing: String,
+    ) -> Result<CompletionsResponse, Error> {
+        // Build vLLM request with extra fields
+        // Use request.model (without cfm- prefix) for the vLLM payload
+        let mut vllm_request = serde_json::json!({
+            "model": request.model,
+            "prompt": request.prompt,
+        });
+        if let Some(true) = request.stream {
+            vllm_request["stream"] = serde_json::json!(true);
+        }
+        Self::merge_extra_fields(&mut vllm_request, &request.extra);
+
+        // Use model_id_for_routing (with cfm- prefix if present) for queue routing
+        let response = self
+            .route_via_router::<Box<Completion>, Completion>(
+                &model_id_for_routing,
+                vllm_request,
+                COMPLETIONS_ENDPOINT,
+                request.stream.unwrap_or(false),
+                headers,
+            )
+            .await?;
+
+        match response {
+            RouterResponse::Streaming(rx) => Ok(CompletionsResponse::Streaming(rx)),
+            RouterResponse::Unary(completion) => Ok(CompletionsResponse::Unary(completion)),
+        }
+    }
+    async fn chat_completions_via_router(
+        &self,
+        request: ChatCompletionsRequest,
+        headers: HeaderMap,
+        model_id_for_routing: String,
+    ) -> Result<ChatCompletionsResponse, Error> {
+        // Build vLLM request with extra fields
+        // Use request.model (without cfm- prefix) for the vLLM payload
+        let mut vllm_request = serde_json::json!({
+            "model": request.model,
+            "messages": request.messages,
+        });
+        if let Some(true) = request.stream {
+            vllm_request["stream"] = serde_json::json!(true);
+        }
+        Self::merge_extra_fields(&mut vllm_request, &request.extra);
+
+        // Use model_id_for_routing (with cfm- prefix if present) for queue routing
+        let response = self
+            .route_via_router::<Box<ChatCompletion>, ChatCompletionChunk>(
+                &model_id_for_routing,
+                vllm_request,
+                CHAT_COMPLETIONS_ENDPOINT,
+                request.stream.unwrap_or(false),
+                headers,
+            )
+            .await?;
+
+        match response {
+            RouterResponse::Streaming(rx) => Ok(ChatCompletionsResponse::Streaming(rx)),
+            RouterResponse::Unary(chat_completion) => {
+                Ok(ChatCompletionsResponse::Unary(chat_completion))
+            }
         }
     }
 
@@ -107,9 +388,55 @@ impl OpenAiClient {
         request: TokenizeRequest,
         headers: HeaderMap,
     ) -> Result<TokenizeResponse, Error> {
-        let url = self.client.endpoint(TOKENIZE_ENDPOINT);
-        let response = self.handle_unary(url, request, headers).await?;
-        Ok(response)
+        // Check if router is enabled
+        if self.router_config.as_ref().is_some_and(|r| r.enabled) {
+            // Extract model_id from x-model-id header for queue routing (may include cfm- prefix)
+            // Keep request.model as-is for vLLM payload (without prefix)
+            let model_id_for_routing = headers
+                .get("x-model-id")
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| request.model.clone());
+
+            // Route through router queue
+            self.tokenize_via_router(request, headers, model_id_for_routing)
+                .await
+        } else {
+            // Direct call (legacy path)
+            let url = self.client.endpoint(TOKENIZE_ENDPOINT);
+            let response = self.handle_unary(url, request, headers).await?;
+            Ok(response)
+        }
+    }
+
+    async fn tokenize_via_router(
+        &self,
+        request: TokenizeRequest,
+        mut headers: HeaderMap,
+        model_id_for_routing: String,
+    ) -> Result<TokenizeResponse, Error> {
+        // Use model_id_for_routing (with cfm- prefix if present) for queue routing
+        let (transaction_id, router_client) =
+            self.build_router_headers(&model_id_for_routing, "http_pass", &mut headers)?;
+
+        let http_pass_payload =
+            self.build_router_payload(TOKENIZE_ENDPOINT, &request, &transaction_id)?;
+
+        let url = router_client.endpoint(ROUTER_HANDLE_ENDPOINT);
+        self.handle_unary_with_body(router_client, url, http_pass_payload, headers)
+            .await
+    }
+
+    /// Extract error from HTTP response
+    /// Attempts to deserialize error response, falls back to generic message
+    async fn http_error(response: super::http::Response) -> Error {
+        let code = response.status();
+        let message = response
+            .json::<ErrorResponse>()
+            .await
+            .map(|r| r.message().into())
+            .unwrap_or_else(|_| "unknown error occurred".into());
+        Error::Http { code, message }
     }
 
     async fn handle_unary<R, S>(&self, url: Url, request: R, headers: HeaderMap) -> Result<S, Error>
@@ -120,16 +447,7 @@ impl OpenAiClient {
         let response = self.client.post(url, headers, request).await?;
         match response.status() {
             StatusCode::OK => response.json::<S>().await,
-            _ => {
-                // Return error with code and message from downstream server
-                let code = response.status();
-                let message = if let Ok(response) = response.json::<ErrorResponse>().await {
-                    response.message().into()
-                } else {
-                    "unknown error occurred".into()
-                };
-                Err(Error::Http { code, message })
-            }
+            _ => Err(Self::http_error(response).await),
         }
     }
 
@@ -178,7 +496,11 @@ impl OpenAiClient {
                                                 ),
                                             },
                                         };
-                                    let _ = tx.send(Err(error.into())).await;
+                                    if tx.send(Err(error.into())).await.is_err() {
+                                        tracing::warn!(
+                                            "failed to send deserialization error to stream consumer (receiver dropped)"
+                                        );
+                                    }
                                 }
                             },
                             Err(error) => {
@@ -188,23 +510,185 @@ impl OpenAiClient {
                                     code: StatusCode::INTERNAL_SERVER_ERROR,
                                     message: error.to_string(),
                                 };
-                                let _ = tx.send(Err(error.into())).await;
+                                if tx.send(Err(error.into())).await.is_err() {
+                                    tracing::warn!(
+                                        "failed to send event stream error to stream consumer (receiver dropped)"
+                                    );
+                                }
+                                break;
                             }
                         }
                     }
                 });
                 Ok(rx)
             }
-            _ => {
-                // Return error with code and message from downstream server
-                let code = response.status();
-                let message = if let Ok(response) = response.json::<ErrorResponse>().await {
-                    response.message().into()
-                } else {
-                    "unknown error occurred".into()
-                };
-                Err(Error::Http { code, message })
+            _ => Err(Self::http_error(response).await),
+        }
+    }
+
+    async fn handle_unary_with_body<S>(
+        &self,
+        client: &HttpClient,
+        url: Url,
+        body: serde_json::Value,
+        headers: HeaderMap,
+    ) -> Result<S, Error>
+    where
+        S: DeserializeOwned,
+    {
+        let response = client.post(url, headers, body).await?;
+        match response.status() {
+            StatusCode::OK => response.json::<S>().await,
+            _ => Err(Self::http_error(response).await),
+        }
+    }
+
+    /// Handle streaming with pre-constructed body (used for router HTTP passthrough)
+    /// This method handles streaming responses when the request body is already constructed
+    /// as a JSON Value (e.g., router envelope with base64-encoded payload).
+    async fn handle_stream_with_body<T>(
+        &self,
+        client: &HttpClient,
+        url: Url,
+        body: serde_json::Value,
+        headers: HeaderMap,
+    ) -> Result<mpsc::Receiver<Result<Option<T>, orchestrator::Error>>, Error>
+    where
+        T: DeserializeOwned + Send + 'static,
+    {
+        let (tx, rx) = mpsc::channel(32);
+        let response = client.post(url, headers, body).await?;
+        match response.status() {
+            StatusCode::OK => {
+                let mut event_stream = response.0.into_data_stream().eventsource();
+                tokio::spawn(async move {
+                    while let Some(result) = event_stream.next().await {
+                        match result {
+                            Ok(event) => {
+                                match event.event.as_str() {
+                                    "png" => continue, // Keepalive ping
+                                    "err" => {
+                                        let error = Error::Http {
+                                            code: StatusCode::INTERNAL_SERVER_ERROR,
+                                            message: event.data.clone(),
+                                        };
+                                        if tx.send(Err(error.into())).await.is_err() {
+                                            tracing::warn!(
+                                                "failed to send router error event to stream consumer (receiver dropped)"
+                                            );
+                                        }
+                                        break;
+                                    }
+                                    _ => {
+                                        // Parse router envelope to extract content
+                                        let content_str =
+                                            match serde_json::from_str::<serde_json::Value>(
+                                                &event.data,
+                                            ) {
+                                                Ok(envelope) => {
+                                                    match envelope
+                                                        .get("content")
+                                                        .and_then(|v| v.as_str())
+                                                    {
+                                                        Some(s) => s.to_string(),
+                                                        None => {
+                                                            // No content field, treat entire data as content
+                                                            event.data.clone()
+                                                        }
+                                                    }
+                                                }
+                                                Err(_) => {
+                                                    // Not a valid JSON envelope, treat as raw content
+                                                    event.data.clone()
+                                                }
+                                            };
+
+                                        // Handle SSE format: "data: {...}\n\n"
+                                        // Router may send concatenated SSE events
+                                        for line in content_str.split("\n\n") {
+                                            let trimmed = line.trim();
+                                            if trimmed.is_empty() {
+                                                continue;
+                                            }
+
+                                            // Remove "data: " prefix if present
+                                            let json_str = if let Some(stripped) =
+                                                trimmed.strip_prefix("data: ")
+                                            {
+                                                stripped
+                                            } else {
+                                                trimmed
+                                            };
+
+                                            // Check for [DONE] marker
+                                            if json_str == "[DONE]" {
+                                                let _ = tx.send(Ok(None)).await;
+                                                return; // Exit the task
+                                            }
+
+                                            // Parse the JSON content
+                                            match serde_json::from_str::<T>(json_str) {
+                                                Ok(message) => {
+                                                    let _ = tx.send(Ok(Some(message))).await;
+                                                }
+                                                Err(parse_error) => {
+                                                    // Try to parse as error response
+                                                    match serde_json::from_str::<ErrorResponse>(
+                                                        json_str,
+                                                    ) {
+                                                        Ok(error_response) => {
+                                                            let error: Error =
+                                                                error_response.into();
+                                                            if tx
+                                                                .send(Err(error.into()))
+                                                                .await
+                                                                .is_err()
+                                                            {
+                                                                tracing::warn!(
+                                                                    "failed to send error response to stream consumer (receiver dropped)"
+                                                                );
+                                                            }
+                                                        }
+                                                        Err(_) => {
+                                                            let error = Error::Http {
+                                                                code: StatusCode::INTERNAL_SERVER_ERROR,
+                                                                message: format!("failed to parse response: {}", parse_error),
+                                                            };
+                                                            if tx
+                                                                .send(Err(error.into()))
+                                                                .await
+                                                                .is_err()
+                                                            {
+                                                                tracing::warn!(
+                                                                    "failed to send parse error to stream consumer (receiver dropped)"
+                                                                );
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            Err(stream_error) => {
+                                let error = Error::Http {
+                                    code: StatusCode::INTERNAL_SERVER_ERROR,
+                                    message: format!("stream error: {}", stream_error),
+                                };
+                                if tx.send(Err(error.into())).await.is_err() {
+                                    tracing::warn!(
+                                        "failed to send stream error to stream consumer (receiver dropped)"
+                                    );
+                                }
+                                break;
+                            }
+                        }
+                    }
+                });
+                Ok(rx)
             }
+            _ => Err(Self::http_error(response).await),
         }
     }
 }
@@ -306,26 +790,26 @@ impl ChatCompletionsRequest {
         }
 
         if !self.detectors.input.is_empty() {
-            // Content of type Array is not supported yet
-            // Adding this validation separately as we do plan to support arrays of string in the future
-            if let Some(Content::Array(_)) = self.messages.last().unwrap().content {
-                return Err(ValidationError::Invalid(
-                    "Detection on array is not supported".into(),
-                ));
-            }
-
             // As text_content detections only run on last message at the moment, only the last
             // message is being validated.
-            if let Some(message) = self.messages.last()
-                && message
+            if let Some(message) = self.messages.last() {
+                // Content of type Array is not supported yet
+                if let Some(Content::Array(_)) = &message.content {
+                    return Err(ValidationError::Invalid(
+                        "Detection on array is not supported".into(),
+                    ));
+                }
+                // Content must not be empty
+                if message
                     .content
                     .as_ref()
                     .is_none_or(|content| content.is_empty())
-            {
-                return Err(ValidationError::Invalid(
-                    "if input detectors are provided, `content` must not be empty on last message"
-                        .into(),
-                ));
+                {
+                    return Err(ValidationError::Invalid(
+                        "if input detectors are provided, `content` must not be empty on last message"
+                            .into(),
+                    ));
+                }
             }
         }
 
@@ -590,9 +1074,20 @@ pub struct Message {
 
 impl Message {
     /// Returns message text content.
+    /// For array content, attempts to extract text from text-type parts.
     pub fn text(&self) -> Option<&String> {
         match &self.content {
             Some(Content::Text(text)) if !text.is_empty() => Some(text),
+            Some(Content::Array(parts)) => {
+                // Try to find first non-empty text part
+                parts.iter().find_map(|part| {
+                    if part.r#type == ContentType::Text {
+                        part.text.as_ref().filter(|t| !t.is_empty())
+                    } else {
+                        None
+                    }
+                })
+            }
             _ => None,
         }
     }

@@ -151,6 +151,36 @@ pub struct GenerationConfig {
     pub service: ServiceConfig,
 }
 
+#[derive(Default, Clone, Debug, Deserialize)]
+pub struct RouterConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_router_hostname")]
+    pub hostname: String,
+    #[serde(default = "default_router_port")]
+    pub port: u16,
+    #[serde(default = "default_router_sla_seconds")]
+    pub sla_seconds: u64,
+    #[serde(default = "default_router_reply_type")]
+    pub reply_type: String,
+}
+
+fn default_router_hostname() -> String {
+    "localhost".to_string()
+}
+
+const fn default_router_port() -> u16 {
+    19080
+}
+
+const fn default_router_sla_seconds() -> u64 {
+    60
+}
+
+fn default_router_reply_type() -> String {
+    "redis".to_string()
+}
+
 /// OpenAI service configuration
 #[derive(Default, Clone, Debug, Deserialize)]
 pub struct OpenAiConfig {
@@ -192,6 +222,13 @@ pub struct DetectorConfig {
     /// Type of detection this detector performs
     #[serde(rename = "type")]
     pub r#type: DetectorType,
+    /// Optional model ID for router queue routing. When specified, this model_id
+    /// will be used as the x-model-name header value for queue routing instead of
+    /// the detector ID. This is useful for detectors that are also models (e.g.,
+    /// Granite Guardian) where the vLLM model listens to a queue with a different
+    /// name than the detector ID.
+    /// Example: detector_id="granite_guardian_3_2_5b", model_id="ibm/granite-guardian-3-2-5b"
+    pub model_id: Option<String>,
 }
 
 #[derive(Default, Clone, Copy, Debug, Deserialize, PartialEq, Eq, Hash)]
@@ -221,6 +258,10 @@ pub struct OrchestratorConfig {
     /// Map of TLS connections, allowing reuse across services
     /// that may require the same TLS information
     pub tls: Option<HashMap<String, TlsConfig>>,
+    /// Optional router configuration. When present and `enabled: true`, the orchestrator
+    /// routes calls through the router sender sidecar via Redis queues.
+    /// This applies to both OpenAI clients and detector clients.
+    pub router: Option<RouterConfig>,
     // List of header keys allowed to be passed to downstream servers
     #[serde(default)]
     pub passthrough_headers: HashSet<String>,
@@ -431,6 +472,7 @@ impl Default for OrchestratorConfig {
             chunkers: None,
             detectors: HashMap::default(),
             tls: None,
+            router: None,
             passthrough_headers: HashSet::default(),
             rewrite_forwarded_access_header: false,
             detector_concurrent_requests: default_detector_concurrent_requests(),
@@ -508,6 +550,51 @@ tls: {}
                 && config.detectors.len() == 1
         );
         Ok(())
+    }
+
+    #[test]
+    fn test_router_config_defaults() {
+        let yaml = r#"
+enabled: true
+hostname: "localhost"
+port: 19080
+"#;
+        let config: RouterConfig = serde_yml::from_str(yaml).unwrap();
+        assert!(config.enabled);
+        assert_eq!(config.hostname, "localhost");
+        assert_eq!(config.port, 19080);
+        assert_eq!(config.sla_seconds, 60); // default
+        assert_eq!(config.reply_type, "redis"); // default
+    }
+
+    #[test]
+    fn test_router_config_disabled() {
+        let yaml = r#"
+enabled: false
+hostname: "localhost"
+port: 19080
+"#;
+        let config: RouterConfig = serde_yml::from_str(yaml).unwrap();
+        assert!(!config.enabled);
+        assert_eq!(config.hostname, "localhost");
+        assert_eq!(config.port, 19080);
+    }
+
+    #[test]
+    fn test_router_config_custom_values() {
+        let yaml = r#"
+enabled: true
+hostname: "router.example.com"
+port: 9090
+sla_seconds: 120
+reply_type: "http"
+"#;
+        let config: RouterConfig = serde_yml::from_str(yaml).unwrap();
+        assert!(config.enabled);
+        assert_eq!(config.hostname, "router.example.com");
+        assert_eq!(config.port, 9090);
+        assert_eq!(config.sla_seconds, 120);
+        assert_eq!(config.reply_type, "http");
     }
 
     #[test]

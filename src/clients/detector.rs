@@ -19,11 +19,13 @@ use std::{collections::BTreeMap, fmt::Debug};
 
 use async_trait::async_trait;
 use axum::http::HeaderMap;
+use base64::{Engine as _, engine::general_purpose};
 use http::header::CONTENT_TYPE;
 use hyper::StatusCode;
 use serde::{Deserialize, Serialize};
-use tracing::info;
+use tracing::{debug, info};
 use url::Url;
+use uuid::Uuid;
 
 use super::{
     Error,
@@ -34,7 +36,7 @@ use crate::{
         Client, HttpClient, create_http_client,
         openai::{Message, Tool},
     },
-    config::ServiceConfig,
+    config::{RouterConfig, ServiceConfig},
     health::HealthCheckResult,
     models::{DetectionResult, DetectorParams, EvidenceObj, Metadata},
 };
@@ -47,16 +49,25 @@ pub const CHAT_DETECTOR_ENDPOINT: &str = "/api/v1/text/chat";
 pub const CONTEXT_DOC_DETECTOR_ENDPOINT: &str = "/api/v1/text/context/doc";
 pub const GENERATION_DETECTOR_ENDPOINT: &str = "/api/v1/text/generation";
 
+const ROUTER_HANDLE_ENDPOINT: &str = "/ml/v1-private/router/handle";
+
 #[derive(Clone)]
 pub struct DetectorClient {
     client: HttpClient,
     health_client: Option<HttpClient>,
+    router_client: Option<HttpClient>,
+    router_config: Option<RouterConfig>,
+    detector_id: String,
+    model_id: Option<String>,
 }
 
 impl DetectorClient {
     pub async fn new(
+        detector_id: String,
         config: &ServiceConfig,
         health_config: Option<&ServiceConfig>,
+        router_config: Option<RouterConfig>,
+        model_id: Option<String>,
     ) -> Result<Self, Error> {
         let client = create_http_client(DEFAULT_PORT, config).await?;
         let health_client = if let Some(health_config) = health_config {
@@ -64,10 +75,92 @@ impl DetectorClient {
         } else {
             None
         };
+        let router_client = if let Some(ref rc) = router_config {
+            if rc.enabled {
+                let router_service = ServiceConfig::new(rc.hostname.clone(), rc.port);
+                Some(create_http_client(rc.port, &router_service).await?)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
         Ok(Self {
             client,
             health_client,
+            router_client,
+            router_config,
+            detector_id,
+            model_id,
         })
+    }
+
+    fn build_router_headers(
+        &self,
+        model_name: &str,
+        headers: &mut HeaderMap,
+    ) -> Result<(String, &HttpClient), Error> {
+        let router = self.router_config.as_ref().ok_or_else(|| Error::Http {
+            code: StatusCode::INTERNAL_SERVER_ERROR,
+            message: "router config must be present when router is enabled".to_string(),
+        })?;
+
+        headers.insert(
+            "x-model-name",
+            model_name.parse().map_err(|e| Error::Http {
+                code: StatusCode::BAD_REQUEST,
+                message: format!("invalid model name for x-model-name header: {e}"),
+            })?,
+        );
+
+        headers.insert(
+            "x-reply-type",
+            router.reply_type.parse().map_err(|e| Error::Http {
+                code: StatusCode::BAD_REQUEST,
+                message: format!("failed to set x-reply-type header: {e}"),
+            })?,
+        );
+
+        headers.insert(
+            "x-sla-seconds",
+            router
+                .sla_seconds
+                .to_string()
+                .parse()
+                .map_err(|e| Error::Http {
+                    code: StatusCode::BAD_REQUEST,
+                    message: format!("failed to set x-sla-seconds header: {e}"),
+                })?,
+        );
+
+        let transaction_id = if let Some(v) = headers.get("x-global-transaction-id") {
+            v.to_str().unwrap_or("").to_string()
+        } else {
+            let tid = Uuid::new_v4().to_string();
+            headers.insert(
+                "x-global-transaction-id",
+                tid.parse().map_err(|e| Error::Http {
+                    code: StatusCode::BAD_REQUEST,
+                    message: format!("failed to set x-global-transaction-id header: {e}"),
+                })?,
+            );
+            tid
+        };
+
+        headers.insert(
+            "x-method",
+            "http_pass".parse().map_err(|e| Error::Http {
+                code: StatusCode::BAD_REQUEST,
+                message: format!("failed to set x-method header: {e}"),
+            })?,
+        );
+
+        let router_client = self.router_client.as_ref().ok_or_else(|| Error::Http {
+            code: StatusCode::INTERNAL_SERVER_ERROR,
+            message: "router_client must be present when router is enabled".to_string(),
+        })?;
+
+        Ok((transaction_id, router_client))
     }
 
     async fn post<U: ResponseBody>(
@@ -77,12 +170,87 @@ impl DetectorClient {
         mut headers: HeaderMap,
         request: impl RequestBody,
     ) -> Result<U, Error> {
-        headers.append(DETECTOR_ID_HEADER_NAME, model_id.parse().unwrap());
-        headers.append(CONTENT_TYPE, JSON_CONTENT_TYPE);
-        // Header used by a router component, if available
-        headers.append(MODEL_HEADER_NAME, model_id.parse().unwrap());
+        // Check if router is enabled
+        let use_router = self.router_config.as_ref().is_some_and(|r| r.enabled);
 
-        let response = self.client.post(url, headers, request).await?;
+        if use_router {
+            self.post_via_router(model_id, url, headers, request).await
+        } else {
+            // Original direct HTTP path
+            headers.append(DETECTOR_ID_HEADER_NAME, model_id.parse().unwrap());
+            headers.append(CONTENT_TYPE, JSON_CONTENT_TYPE);
+            headers.append(MODEL_HEADER_NAME, model_id.parse().unwrap());
+
+            let response = self.client.post(url, headers, request).await?;
+
+            let status = response.status();
+            match status {
+                StatusCode::OK => Ok(response.json().await?),
+                _ => Err(response
+                    .json::<DetectorError>()
+                    .await
+                    .unwrap_or(DetectorError {
+                        code: status.as_u16(),
+                        message: "".into(),
+                    })
+                    .into()),
+            }
+        }
+    }
+
+    async fn post_via_router<U: ResponseBody>(
+        &self,
+        model_id: &str,
+        url: Url,
+        mut headers: HeaderMap,
+        request: impl RequestBody,
+    ) -> Result<U, Error> {
+        // Use model_id from config if present, otherwise use detector_id
+        // This allows detectors that are also models (like Granite Guardian) to route
+        // to the correct model queue name
+        let queue_model_name = self.model_id.as_ref().unwrap_or(&self.detector_id);
+
+        debug!(
+            "Routing detector request via router: detector_id={}, queue_model_name={}",
+            model_id, queue_model_name
+        );
+
+        let (transaction_id, router_client) =
+            self.build_router_headers(queue_model_name, &mut headers)?;
+
+        // Serialize the detector request
+        let request_json = serde_json::to_value(&request).map_err(|e| Error::Http {
+            code: StatusCode::INTERNAL_SERVER_ERROR,
+            message: format!("failed to serialize detector request: {e}"),
+        })?;
+
+        let request_bytes = serde_json::to_vec(&request_json).map_err(|e| Error::Http {
+            code: StatusCode::INTERNAL_SERVER_ERROR,
+            message: format!("failed to serialize detector request to bytes: {e}"),
+        })?;
+
+        // Base64-encode the payload bytes (router expects base64, not array of numbers)
+        let payload_base64 = general_purpose::STANDARD.encode(&request_bytes);
+
+        // Build HTTP passthrough payload (same structure as openai.rs lines 247-255)
+        let http_pass_payload = serde_json::json!({
+            "method": "POST",
+            "path": url.path(),
+            "headers": {
+                "Content-Type": "application/json",
+                "x-request-id": transaction_id,
+                "detector-id": model_id,
+            },
+            "payload": payload_base64,
+        });
+
+        let router_url = router_client.endpoint(ROUTER_HANDLE_ENDPOINT);
+        debug!("Posting to router-sender: {}", router_url);
+
+        // Send to router and get response
+        let response = router_client
+            .post(router_url, headers.clone(), http_pass_payload)
+            .await?;
 
         let status = response.status();
         match status {
@@ -92,7 +260,7 @@ impl DetectorClient {
                 .await
                 .unwrap_or(DetectorError {
                     code: status.as_u16(),
-                    message: "".into(),
+                    message: "router request failed".into(),
                 })
                 .into()),
         }

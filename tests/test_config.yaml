@@ -2,6 +2,12 @@ openai:
   service:
     hostname: localhost
     port: 3000
+router:
+  enabled: false
+  hostname: localhost
+  port: 19080
+  sla_seconds: 60
+  reply_type: redis
 generation:
   provider: nlp # tgis or nlp
   service:
