@@ -15,8 +15,8 @@
 
 */
 use futures::{Stream, StreamExt, stream};
-use tokio::sync::{mpsc, oneshot};
-use tracing::{debug, error};
+use tokio::sync::{broadcast, mpsc, oneshot};
+use tracing::{debug, error, warn};
 
 use super::{Batch, Chunk, Detection, DetectionBatcher, DetectionStream};
 use crate::orchestrator::Error;
@@ -31,23 +31,40 @@ pub struct DetectionBatchStream {
 }
 
 impl DetectionBatchStream {
-    pub fn new(batcher: impl DetectionBatcher, mut streams: Vec<DetectionStream>) -> Self {
+    pub fn new(
+        batcher: impl DetectionBatcher,
+        mut streams: Vec<DetectionStream>,
+        mut shutdown_rx: broadcast::Receiver<()>,
+    ) -> Self {
         let (batch_tx, batch_rx) = mpsc::channel(32);
         // Spawn task to receive detections and process batches
         tokio::spawn(async move {
             if streams.len() == 1 {
                 // Skip the batching process for a single detection stream
                 let mut stream = streams.swap_remove(0);
-                while let Some(msg) = stream.next().await {
-                    match msg {
-                        Ok(batch) => {
-                            debug!(?batch, "sending batch to batch channel");
-                            let _ = batch_tx.send(Ok(batch)).await;
-                        }
-                        Err(error) => {
-                            error!(?error, "sending error to batch channel");
-                            let _ = batch_tx.send(Err(error)).await;
+                loop {
+                    tokio::select! {
+                        // Receive shutdown signal
+                        _ = shutdown_rx.recv() => {
+                            warn!("received shutdown signal, terminating task");
                             break;
+                        },
+                        // Receive detections and send to batch channel
+                        msg = stream.next() => {
+                            match msg {
+                                Some(Ok(batch)) => {
+                                    debug!(?batch, "sending batch to batch channel");
+                                    let _ = batch_tx.send(Ok(batch)).await;
+                                }
+                                Some(Err(error)) => {
+                                    error!(?error, "sending error to batch channel");
+                                    let _ = batch_tx.send(Err(error)).await;
+                                    break;
+                                }
+                                None => {
+                                    debug!("detections stream has completed");
+                                }
+                            }
                         }
                     }
                 }
@@ -63,6 +80,11 @@ impl DetectionBatchStream {
                         // Disable random branch selection to poll the futures in order
                         biased;
 
+                        // Receive shutdown signal
+                        _ = shutdown_rx.recv() => {
+                            warn!("received shutdown signal, terminating task");
+                            break;
+                        },
                         // Receive detections and push to batcher
                         msg = stream_set.next(), if !stream_completed => {
                             match msg {
