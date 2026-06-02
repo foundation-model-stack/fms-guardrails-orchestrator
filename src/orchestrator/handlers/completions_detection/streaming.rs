@@ -120,7 +120,7 @@ pub async fn handle_streaming(
 
             if output_detectors.is_empty() {
                 // No output detectors, forward completion chunks to response channel
-                process_completion_stream(trace_id, completion_stream, None, None, Some(response_tx.clone())).await;
+                process_completion_stream(trace_id, completion_stream, None, None, Some(response_tx.clone()), None).await;
                 info!(%trace_id, "task completed: completion stream closed");
             } else {
                 // Handle output detection
@@ -236,6 +236,7 @@ async fn handle_output_detection(
         });
 
     let completion_state = Arc::new(CompletionState::new());
+    let empty_output_detected = Arc::new(std::sync::atomic::AtomicBool::new(false));
 
     if !chunk_detectors.is_empty() {
         // Set up streaming detection pipeline
@@ -280,6 +281,7 @@ async fn handle_output_detection(
             Some(completion_state.clone()),
             Some(input_txs),
             None,
+            Some(empty_output_detected.clone()),
         ));
         // Process detection streams and await completion
         let detection_batch_stream = DetectionBatchStream::new(
@@ -302,13 +304,17 @@ async fn handle_output_detection(
             Some(completion_state.clone()),
             None,
             Some(response_tx.clone()),
+            Some(empty_output_detected.clone()),
         )
         .await;
     }
     // NOTE: at this point, the completions stream has been fully consumed and completion state is final
 
     // If whole doc output detections or usage is requested, a final message is sent with these items
-    if !whole_doc_detectors.is_empty() || completion_state.usage().is_some() {
+    if !whole_doc_detectors.is_empty()
+        || completion_state.usage().is_some()
+        || empty_output_detected.load(std::sync::atomic::Ordering::Relaxed)
+    {
         let mut completion = Completion {
             id: completion_state.id().unwrap().to_string(),
             created: completion_state.created().unwrap(),
@@ -316,6 +322,15 @@ async fn handle_output_detection(
             usage: completion_state.usage().cloned(),
             ..Default::default()
         };
+
+        // Add empty output warning if detected
+        if empty_output_detected.load(std::sync::atomic::Ordering::Relaxed) {
+            completion.warnings.push(CompletionDetectionWarning::new(
+                DetectionWarningReason::EmptyOutput,
+                "One or more choices have no content. Output detection was not executed for those choices",
+            ));
+        }
+
         if !whole_doc_detectors.is_empty() {
             // Handle whole doc detection
             match handle_whole_doc_detection(
@@ -351,7 +366,11 @@ async fn process_completion_stream(
     completion_state: Option<Arc<CompletionState<Completion>>>,
     input_txs: Option<HashMap<u32, mpsc::Sender<Result<(usize, String), Error>>>>,
     response_tx: Option<mpsc::Sender<Result<Option<Completion>, Error>>>,
+    empty_output_detected: Option<Arc<std::sync::atomic::AtomicBool>>,
 ) {
+    // Track which choices have sent data to avoid chunker StopIteration errors
+    let mut choices_with_data = std::collections::HashSet::new();
+
     while let Some((message_index, result)) = completion_stream.next().await {
         match result {
             Ok(Some(completion)) => {
@@ -402,9 +421,16 @@ async fn process_completion_stream(
                         // Send choice text to detection input channel
                         if let Some(input_tx) =
                             input_txs.as_ref().and_then(|txs| txs.get(&choice.index))
-                            && !choice_text.is_empty()
                         {
-                            let _ = input_tx.send(Ok((message_index, choice_text))).await;
+                            if !choice_text.is_empty() {
+                                choices_with_data.insert(choice.index);
+                                let _ = input_tx.send(Ok((message_index, choice_text))).await;
+                            } else if let Some(_finish_reason) = &choice.finish_reason {
+                                // If we have a finish_reason and empty text, mark empty output detected
+                                if let Some(flag) = &empty_output_detected {
+                                    flag.store(true, std::sync::atomic::Ordering::Relaxed);
+                                }
+                            }
                         }
                     } else {
                         debug!(%trace_id, %message_index, ?completion, "completion chunk contains no choice");
@@ -425,6 +451,17 @@ async fn process_completion_stream(
                         let _ = input_tx.send(Err(error.clone())).await;
                     }
                 }
+            }
+        }
+    }
+
+    // After stream completes, send empty string to any input channels that never received data
+    // This prevents chunker StopIteration errors when the model returns empty output
+    if let Some(input_txs) = &input_txs {
+        for (choice_index, input_tx) in input_txs {
+            if !choices_with_data.contains(choice_index) {
+                debug!(%trace_id, %choice_index, "sending empty string to input channel for choice with no data");
+                let _ = input_tx.send(Ok((0, String::new()))).await;
             }
         }
     }
