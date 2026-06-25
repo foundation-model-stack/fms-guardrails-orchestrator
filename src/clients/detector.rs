@@ -170,13 +170,23 @@ impl DetectorClient {
         mut headers: HeaderMap,
         request: impl RequestBody,
     ) -> Result<U, Error> {
-        // Check if router is enabled
-        let use_router = self.router_config.as_ref().is_some_and(|r| r.enabled);
+        // Check if router is enabled AND this detector supports routing
+        let use_router = self.router_config.as_ref().is_some_and(|r| {
+            r.enabled
+                && (
+                    // If supported_detectors list is empty, use router for all (backward compatible)
+                    r.supported_detectors.is_empty() ||
+                // Otherwise, only use router if detector is in the supported list
+                r.supported_detectors.iter().any(|d| model_id.contains(d))
+                )
+        });
 
         if use_router {
+            debug!("Using router for detector: {}", model_id);
             self.post_via_router(model_id, url, headers, request).await
         } else {
             // Original direct HTTP path
+            debug!("Using direct HTTP for detector: {}", model_id);
             headers.append(DETECTOR_ID_HEADER_NAME, model_id.parse().unwrap());
             headers.append(CONTENT_TYPE, JSON_CONTENT_TYPE);
             headers.append(MODEL_HEADER_NAME, model_id.parse().unwrap());

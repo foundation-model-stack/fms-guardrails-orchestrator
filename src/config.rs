@@ -163,6 +163,10 @@ pub struct RouterConfig {
     pub sla_seconds: u64,
     #[serde(default = "default_router_reply_type")]
     pub reply_type: String,
+    /// List of detector model IDs that support routing (have router-receiver sidecars)
+    /// If empty, all detectors will use router when enabled (backward compatible)
+    #[serde(default)]
+    pub supported_detectors: Vec<String>,
 }
 
 fn default_router_hostname() -> String {

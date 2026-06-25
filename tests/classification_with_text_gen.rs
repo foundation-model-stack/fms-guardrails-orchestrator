@@ -686,6 +686,16 @@ async fn input_detector_client_error() -> Result<(), anyhow::Error> {
             });
         then.internal_server_error();
     });
+    // Add generation text generation mock that returns error
+    generation_mocks.mock(|when, then| {
+        when.path(GENERATION_NLP_UNARY_ENDPOINT)
+            .header(GENERATION_NLP_MODEL_ID_HEADER_NAME, MODEL_ID)
+            .pb(TextGenerationTaskRequest {
+                text: generation_server_error_input.into(),
+                ..Default::default()
+            });
+        then.internal_server_error();
+    });
 
     // Add chunker tokenization mock for detector internal server error scenario
     chunker_mocks.mock(|when, then| {
@@ -717,14 +727,17 @@ async fn input_detector_client_error() -> Result<(), anyhow::Error> {
     // Configure mock servers
     let mock_generation_server = MockServer::new_grpc("nlp").with_mocks(generation_mocks);
     let mock_chunker_server = MockServer::new_grpc(CHUNKER_NAME_SENTENCE).with_mocks(chunker_mocks);
-    let mock_detector_server =
-        MockServer::new_http(DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE).with_mocks(detector_mocks);
+    let mock_detector_server = MockServer::new_http(DETECTOR_NAME_ANGLE_BRACKETS_SENTENCE)
+        .with_mocks(detector_mocks.clone());
+    // Create mock server for whole_doc detector as well since the test uses it
+    let mock_detector_whole_doc_server =
+        MockServer::new_http(DETECTOR_NAME_ANGLE_BRACKETS_WHOLE_DOC).with_mocks(detector_mocks);
 
     // Run test orchestrator server
     let orchestrator_server = TestOrchestratorServer::builder()
         .config_path(ORCHESTRATOR_CONFIG_FILE_PATH)
         .chunker_servers([&mock_chunker_server])
-        .detector_servers([&mock_detector_server])
+        .detector_servers([&mock_detector_server, &mock_detector_whole_doc_server])
         .generation_server(&mock_generation_server)
         .build()
         .await?;
