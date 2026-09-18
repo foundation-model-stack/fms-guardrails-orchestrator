@@ -75,7 +75,9 @@ RUN groupadd --system orchestr8 --gid 1001 && \
 RUN --mount=type=bind,source=scripts,target=scripts \
     sh scripts/installRemediationTools.sh && \
     sh scripts/remediation-script.sh && \
-    sh scripts/removeRemediationTools.sh
+    sh scripts/removeRemediationTools.sh && \
+    # Remove vulnerable idna package to fix CVE-2026-45409 (must be done after remediation scripts)
+    rm -rf /usr/lib/python3.9/site-packages/idna
 
 USER orchestr8
 
