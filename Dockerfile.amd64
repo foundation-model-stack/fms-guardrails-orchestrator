@@ -99,7 +99,10 @@ RUN --mount=type=bind,source=scripts,target=/scripts \
     \
     rm -f /tmp/packages-before-remediation.txt \
           /tmp/packages-after-remediation.txt \
-          /tmp/packages-added-by-remediation.txt
+          /tmp/packages-added-by-remediation.txt; \
+    \
+    # Remove vulnerable idna package to fix CVE-2026-45409 (must be done after remediation scripts)
+    rm -rf /usr/lib/python3.9/site-packages/idna
 
 USER orchestr8
 
