@@ -101,6 +101,10 @@ uuid = { version = "1.19.0", features = ["v4"] }
 tonic-build = "0.14.2"
 tonic-prost-build = "0.14.2"
 
+[lints.rust]
+# mocktail is disabled (CVE); tests using it are gated on --cfg mocktail_tests
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(mocktail_tests)'] }
+
 [dev-dependencies]
 # mocktail = { git = "https://github.com/IBM/mocktail", rev = "860e75e171a8eb818083813dbeed4401d1a40b3b" }
 rand = "0.9.2"

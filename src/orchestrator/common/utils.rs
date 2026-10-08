@@ -74,7 +74,7 @@ pub fn current_timestamp() -> std::time::Duration {
 
 /// Updates an orchestrator config, adding entries for mock servers.
 /// TODO: move this to the test crate, once created.
-#[cfg(test)]
+#[cfg(all(test, mocktail_tests))]
 pub fn configure_mock_servers(
     config: &mut crate::config::OrchestratorConfig,
     generation_server: Option<&mocktail::server::MockServer>,

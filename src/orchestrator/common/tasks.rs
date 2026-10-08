@@ -489,7 +489,7 @@ where
     broadcast_tx
 }
 
-#[cfg(test)]
+#[cfg(all(test, mocktail_tests))]
 mod test {
 
     use mocktail::prelude::*;
