@@ -15,6 +15,9 @@
 
 */
 
+// mocktail is disabled (CVE); re-enable with the dependency in Cargo.toml
+#![cfg(mocktail_tests)]
+
 use common::{
     chunker::CHUNKER_UNARY_ENDPOINT,
     detectors::{
