@@ -794,11 +794,15 @@ impl ChatCompletionsRequest {
             // message is being validated.
             if let Some(message) = self.messages.last() {
                 // Content of type Array is not supported yet
-                if let Some(Content::Array(_)) = &message.content {
+
+                if let Some(Content::Array(parts)) = &message.content
+                    && parts.iter().any(|p| p.r#type != ContentType::Text)
+                {
                     return Err(ValidationError::Invalid(
                         "Detection on array is not supported".into(),
                     ));
                 }
+
                 // Content must not be empty
                 if message
                     .content
@@ -1823,6 +1827,106 @@ mod test {
         );
 
         Ok(())
+    }
+
+    #[test]
+    fn test_chat_completions_request_array_content_with_input_detectors() {
+        let json_request = json!({
+            "model": "vision-instruct",
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "Analyze document"
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "Hi, please analyze the document"
+                        }
+                    ]
+                }
+            ],
+            "moderations": {
+                "hap": {
+                    "input": {
+                        "enabled": true,
+                        "threshold": 0.1
+                    }
+                },
+                "pii": {
+                    "input": {
+                        "enabled": true
+                    }
+                }
+            },
+            "detectors": {
+                "input": {
+                    "hap_detector": {}
+                },
+                "output": {}
+            }
+        });
+
+        let request = ChatCompletionsRequest::deserialize(&json_request)
+            .expect("Should deserialize request with array content");
+
+        // The last message has array content with a text part — validation must not
+        // return "Detection on array is not supported".
+        let result = request.validate();
+        assert!(
+            result.is_ok(),
+            "Expected validation to pass for array content with text-only parts, \
+             but got: {:?}",
+            result.err()
+        );
+    }
+
+    /// Test that a chat request whose last message contains a non-text content part
+    /// content part has `type: "image_url"` instead of `type: "text"`.
+    #[test]
+    fn test_chat_completions_request_array_non_text_content_with_input_detectors_fails() {
+        let json_request = json!({
+            "model": "vision-instruct",
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "Analyze document"
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image_url",
+                            "image_url": { "url": "data:image/png;base64,abc123" }
+                        }
+                    ]
+                }
+            ],
+            "detectors": {
+                "input": {
+                    "hap_detector": {}
+                },
+                "output": {}
+            }
+        });
+
+        let request = ChatCompletionsRequest::deserialize(&json_request)
+            .expect("Should deserialize request with image_url content");
+
+        // The last message has an image_url part — validation must reject this
+        // because input detections on non-text content are not supported.
+        let result = request.validate();
+        assert!(
+            result.is_err(),
+            "Expected validation to fail for array content with a non-text part, \
+             but it passed"
+        );
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "Detection on array is not supported"
+        );
     }
 
     /// Test deserialization of stop_reason as integer
