@@ -72,7 +72,7 @@ RUN groupadd --system orchestr8 --gid 1001 && \
     --comment "FMS Orchestrator User" orchestr8
 
 # Image hardening
-RUN --mount=type=bind,source=image_hardening,target=/scripts \
+RUN --mount=type=bind,source=scripts,target=/scripts \
     set -eu; \
     rpm -qa --qf '%{NAME}\n' | sort -u > /tmp/packages-before-remediation.txt; \
     \
