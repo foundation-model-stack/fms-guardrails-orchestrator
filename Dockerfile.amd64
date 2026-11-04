@@ -63,7 +63,10 @@ ARG CONFIG_FILE=config/config.yaml
 COPY --from=fms-guardrails-orchestr8-builder /app/target/release/fms-guardrails-orchestr8 /app/bin/
 COPY ${CONFIG_FILE} /app/config/config.yaml
 
-RUN microdnf install -y --disableplugin=subscription-manager shadow-utils compat-openssl11 && \
+# The binary links OpenSSL 3 (built against openssl-devel on UBI9), so compat-openssl11 is not
+# needed. Explicitly update openssl so a cached ubi-minimal layer cannot leave old versions behind.
+RUN microdnf install -y --disableplugin=subscription-manager shadow-utils && \
+    microdnf update -y --disableplugin=subscription-manager openssl openssl-libs && \
     microdnf clean all --disableplugin=subscription-manager
 
 RUN groupadd --system orchestr8 --gid 1001 && \
@@ -99,7 +102,10 @@ RUN --mount=type=bind,source=scripts,target=/scripts \
     \
     rm -f /tmp/packages-before-remediation.txt \
           /tmp/packages-after-remediation.txt \
-          /tmp/packages-added-by-remediation.txt
+          /tmp/packages-added-by-remediation.txt; \
+    \
+    # Remove vulnerable idna package to fix CVE-2026-45409 (must be done after remediation scripts)
+    rm -rf /usr/lib/python3.9/site-packages/idna
 
 USER orchestr8
 
