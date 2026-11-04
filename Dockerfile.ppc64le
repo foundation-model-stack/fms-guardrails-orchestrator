@@ -73,7 +73,10 @@ ARG CONFIG_FILE=config/config.yaml
 COPY --from=fms-guardrails-orchestr8-builder /app/target/release/fms-guardrails-orchestr8 /app/bin/
 COPY ${CONFIG_FILE} /app/config/config.yaml
 
-RUN microdnf install -y --disableplugin=subscription-manager shadow-utils compat-openssl11 && \
+# The binary links OpenSSL 3 (built against openssl-devel on UBI9), so compat-openssl11 is not
+# needed. Explicitly update openssl so a cached ubi-minimal layer cannot leave old versions behind.
+RUN microdnf install -y --disableplugin=subscription-manager shadow-utils && \
+    microdnf update -y --disableplugin=subscription-manager openssl openssl-libs && \
     microdnf clean all --disableplugin=subscription-manager
 
 RUN groupadd --system orchestr8 --gid 1001 && \
